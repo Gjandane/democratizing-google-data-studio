@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>d3 Parts</title>
+<link rel="stylesheet" href="_base.css">
+<style>
+  .part h3 { font-size: 24px; }
+  .part .mono { font-size: 16px; }
+  .chip { transform: translateX(-50%); }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="title">Four parts, three contracts, three Google services</div>
+  <div class="legend">
+    <span><span class="sw blue"></span>frontend</span>
+    <span><span class="sw green"></span>backend</span>
+    <span><span class="sw red"></span>engine</span>
+    <span><span class="sw yellow"></span>release</span>
+    <span><span class="sw gray"></span>Google service</span>
+    <span><span class="tag planned">planned</span> not built yet</span>
+  </div>
+
+  <svg class="wires" viewBox="0 0 1840 800">
+    <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#202124"/></marker></defs>
+    <path class="w" d="M422,292 H698" marker-start="url(#a)" marker-end="url(#a)"/>
+    <path class="w" d="M1142,292 H1398" marker-end="url(#a)"/>
+    <path class="w" d="M770,432 V558" marker-end="url(#a)"/>
+    <path class="w" d="M1090,432 V558" marker-end="url(#a)"/>
+    <path class="w" d="M1590,402 V558" marker-end="url(#a)"/>
+    <path class="w" d="M1222,625 H1438" marker-end="url(#a)"/>
+    <path class="w d" d="M240,518 V404" marker-end="url(#a)"/>
+    <path class="w d" d="M462,540 H730 V434" marker-end="url(#a)"/>
+  </svg>
+
+  <div class="box yellow" style="left:60px;top:104px;width:1720px;height:40px;flex-direction:row;align-items:center;justify-content:flex-start;gap:14px;padding:0 16px">
+    <span class="mono" style="font-weight:700">contracts/conventions.md</span>
+    <span>shared by every part: env names (one root .env), ports, paths under data/, Cloud deployment</span>
+  </div>
+
+  <div class="box blue part top" style="left:60px;top:180px;width:360px;height:222px">
+    <div class="who">frontend/</div>
+    <h3>Web app</h3>
+    <p class="mono">Vite dev server :5173</p>
+    <p>History, stage stepper, chat, click-to-comment prototype, build view, settings, trace tab, access-code gate.</p>
+  </div>
+  <div class="box green part top" style="left:700px;top:155px;width:440px;height:277px">
+    <div class="who">backend/</div>
+    <h3>Harness and API</h3>
+    <p class="mono">FastAPI :8000 · Cloud Run :8080</p>
+    <p>ADK 2.0 Workflow, Gemini calls, three memory stores, SQLite, intake, spec, renderer, recipe compiler, REST + SSE.</p>
+    <div class="tags"><span class="tag">built: API, intake, thin slice, memory, interview, plan</span><span class="tag planned">spec, revise, cloud mode, dss-agent: planned</span></div>
+  </div>
+  <div class="box red part top" style="left:1400px;top:180px;width:380px;height:222px">
+    <div class="who">engine/</div>
+    <h3>dsengine CLI</h3>
+    <p class="mono">Chrome CDP 127.0.0.1:9222</p>
+    <p>Runs a recipe in Data Studio with Playwright on the signed-in Chrome profile; one event per op.</p>
+  </div>
+  <div class="box yellow part top" style="left:60px;top:520px;width:400px;height:190px">
+    <div class="who">release (repo root)</div>
+    <h3>Checks and delivery</h3>
+    <p>start.sh / start.ps1, integration/ contract and end-to-end checks, Dockerfile + deploy/deploy.sh, README, this deck.</p>
+    <div class="tags"><span class="tag planned">start scripts, e2e, deploy, README, deck: planned</span></div>
+  </div>
+
+  <div class="chip blue" style="left:560px;top:304px">contracts/api.md</div>
+  <div class="lbl c" style="left:560px;top:258px">REST + SSE, /api</div>
+  <div class="chip green" style="left:1270px;top:304px">contracts/recipe.md</div>
+  <div class="lbl c" style="left:1270px;top:258px">recipe.jsonl in, events out</div>
+  <div class="lbl" style="left:250px;top:448px">starts the parts</div>
+  <div class="lbl" style="left:500px;top:508px">e2e checks via the API</div>
+  <div class="lbl" style="left:780px;top:470px">LLM calls</div>
+  <div class="lbl" style="left:1100px;top:480px">load, profile, views</div>
+  <div class="lbl" style="left:1600px;top:470px">builds the report</div>
+  <div class="lbl c" style="left:1330px;top:590px">view as data source</div>
+
+  <div class="box gray center" style="left:640px;top:560px;width:260px;height:130px"><h3>Gemini API</h3><p>planner + worker models</p></div>
+  <div class="box gray center" style="left:960px;top:560px;width:260px;height:130px"><h3>BigQuery</h3><p>uploaded tables; one view per build</p></div>
+  <div class="box gray center" style="left:1440px;top:560px;width:300px;height:130px"><h3>Data Studio</h3><p>the real dashboard</p></div>
+</div>
+</body>
+</html>

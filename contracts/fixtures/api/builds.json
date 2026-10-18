@@ -1,0 +1,18 @@
+[
+  {
+    "id": "b_3f9a0c12d4e5",
+    "title": "Sales overview",
+    "archetype": "executive",
+    "stage": "prototype",
+    "updated_at": "2026-10-18T09:20:00Z",
+    "report_url": null
+  },
+  {
+    "id": "b_9c8d7e6f5a4b",
+    "title": "Support tickets ops view",
+    "archetype": "operational",
+    "stage": "done",
+    "updated_at": "2026-10-18T08:10:00Z",
+    "report_url": "https://datastudio.google.com/reporting/00000000-0000-0000-0000-000000000000"
+  }
+]

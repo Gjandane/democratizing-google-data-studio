@@ -1,0 +1,67 @@
+# PRD: engine
+Target: POC · Written 2026-10-18 · Kind: a part of a program (../docs/program.md)
+
+## Problem
+Data Studio has no API that creates charts or layout (only the Linking API, which opens a report
+with a data source). Having an LLM look at the screen and click is slow and burns tokens. The
+engine replays a compiled recipe of UI ops deterministically, with no LLM in the loop.
+
+## Users
+- backend: runs `dsengine run` as a subprocess and relays its events to the UI.
+- the demo user: watches the light Chrome window build the dashboard, and signs in once by hand.
+
+## Goals
+1. `dsengine run recipe.jsonl` builds the recipe's dashboard in the signed-in account and prints
+   the report link, with each op's result as an event (contracts/recipe.md).
+2. Every op in contracts/recipe.md is implemented; at least 90% of the ops in the live golden
+   recipe finish `ok`.
+3. A 20-op recipe finishes in under 5 minutes.
+4. A failed op never stops the run (except `open_report`): it is reported, screenshotted and skipped.
+
+## Non-goals
+- No LLM or vision calls inside the engine (token budget; the recipe is complete).
+- No automated Google sign-in and no password handling: the user signs in by hand once.
+- No editing of reports the engine didn't create in this run.
+- No Data Studio blends or calculated fields (the backend's BigQuery view holds them).
+- No headless/Cloud Run mode: the engine always runs on the user's machine; for the hosted app the
+  backend's `dss-agent` runs `dsengine run` locally (change 2026-10-19). The engine CLI is unchanged.
+- No CI.
+
+## Core flows
+1. backend runs `dsengine run data/builds/<id>/v1/recipe.jsonl` -> engine attaches to Chrome
+   (starts it if needed) -> opens the Linking API URL in edit mode -> runs each op -> saves ->
+   prints `run_finished` with `report_url`.
+2. First use: `dsengine login` opens Chrome with the dedicated profile at the Google sign-in page;
+   the user signs in; `dsengine check` then reports `signed_in: true`.
+
+## Features
+| Must | Should | Won't (this version) |
+|---|---|---|
+| CLI: run, validate, print, browser, login, check; `--dry-run` | `--screencast` frames | headless Cloud Run mode |
+| ops: open_report, set_canvas, set_background_image, add_chart (8 types), add_control, add_text, save_report, get_link | add_image, set_style, add_page, go_to_page | theme editing |
+| selectors in an OKF bundle (`knowledge/datastudio-ui/`) | read-back verification of boxes | self-healing selectors via LLM |
+
+## Constraints
+- Deadline 2026-10-20 01:05 MPST (the whole program). Engine core ready by about 22:00.
+- Windows 11 machine with Google Chrome installed; Python 3.12 + uv.
+- Data Studio UI can change; selectors live in data files so a fix is a data edit.
+
+## Success criteria
+- The golden live recipe produces a report link that opens in Data Studio with the charts at the
+  recipe's boxes (manual check against the recipe).
+- `uv run pytest` passes; `--dry-run` output validates against contracts/recipe.schema.json.
+
+## Decided by default
+- CLI framework: argparse (stdlib), no extra dependency (10-hour deadline).
+- Live tests use the public table `bigquery-public-data.thelook_ecommerce.order_items`, billed to
+  `GCP_PROJECT_ID`, so the engine never waits on the backend's intake.
+- Chrome: the installed Google Chrome, started normally with `--user-data-dir` and
+  `--remote-debugging-port`, then attached with Playwright `connect_over_cdp` (Google often refuses
+  sign-in in automation-launched browsers).
+
+## Open questions
+- none (the spike, task 1.3, answers the UI unknowns and stops for the user)
+
+## Later
+- Headless mode with a stored session for Cloud Run (program, next version).
+- LLM-assisted selector repair on failure (plan).

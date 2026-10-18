@@ -1,0 +1,10 @@
+{"recipe_version":"1.0","build_id":"b_000000000001","version":1,"report_name":"Engine charts B","canvas":{"width":1200,"height":900},"datasource":{"connector":"bigQuery","project_id":"bigquery-public-data","dataset_id":"thelook_ecommerce","table_id":"order_items"}}
+{"id":"s001","op":"open_report"}
+{"id":"s002","op":"add_chart","component_id":"p1_pivot","chart_type":"pivot_table","x":24,"y":100,"w":560,"h":280,"dimensions":["ignored_replaced_dimension"],"metrics":[{"field":"sale_price","agg":"sum"}],"title":"Pivot sales","options":{"row_dimensions":["status"],"column_dimensions":[]}}
+{"id":"s003","op":"add_chart","component_id":"p1_scatter","chart_type":"scatter","x":610,"y":100,"w":566,"h":280,"dimensions":["status"],"metrics":[{"field":"sale_price","agg":"avg"},{"field":"order_id","agg":"count_distinct"}],"title":"Price and orders"}
+{"id":"s004","op":"add_chart","component_id":"p1_geo","chart_type":"geo_map","x":24,"y":410,"w":560,"h":260,"dimensions":["status"],"metrics":[{"field":"sale_price","agg":"sum"}],"options":{"geo_type":"country"}}
+{"id":"s005","op":"add_chart","component_id":"p1_time","chart_type":"time_series","x":610,"y":410,"w":566,"h":260,"dimensions":[],"date_dimension":"created_at","metrics":[{"field":"sale_price","agg":"sum"}],"title":"Sales over time"}
+{"id":"s006","op":"add_control","component_id":"p1_date","control_type":"date_range","x":24,"y":24,"w":280,"h":50}
+{"id":"s007","op":"add_control","component_id":"p1_status","control_type":"dropdown","field":"status","x":330,"y":24,"w":280,"h":50}
+{"id":"s008","op":"save_report"}
+{"id":"s009","op":"get_link"}

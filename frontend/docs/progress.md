@@ -1,0 +1,144 @@
+# Progress log
+Append-only handoff log: one entry per session, newest at the bottom, written for someone with no
+context. Task status lives in docs/plan.md, not here.
+
+## 2026-10-18: Plan frontend (POC)
+- Status: done
+- What changed: wrote PRD, essentials (with UI design: Studio Light), plan (10 tasks), AGENTS.md, CLAUDE.md
+- Decisions: same-origin via Vite proxy so the prototype iframe DOM is readable; mock mode (`VITE_MOCK=1`) against fixtures that match ../contracts/api.md, so the UI is built before the backend exists; the backend renders the prototype, the frontend only overlays comments; design foundation 1.2 stops for the user's screenshot sign-off.
+- Baseline: new project: none
+- Next: Task 1.1. Start by scaffolding Vite + React + TS and writing src/api/types.ts from ../contracts/api.md.
+
+## 2026-10-18: Audit
+- Status: done
+- What changed: one reviewer audit across the program (18 findings: 2 P0, 4 P1, 9 P2, 3 P3 plus a pass note); all 18 accepted by the user and applied to contracts/ and every part's docs
+- Decisions: backend thin slice 1.3 before memory depth; engine must-have ops by 21:00 with DSS_ALLOWED_TYPES as fallback; shared API fixtures in ../contracts/fixtures/api/; no uvicorn --reload on Windows; gates written into docs/program.md's roadmap
+- Next: build, starting with task 1.1
+
+## 2026-10-18: Task 1.1 App skeleton, typed client and mock mode
+- Status: done
+- Plan check: off
+- What changed: Vite 8 + React 19 + TS 5.9 + Tailwind 4 app (all verified deps installed now: later tasks don't list package.json); `/api` proxy; src/api/types.ts (contract types + guards), client.ts (`ApiClient`, `httpApi`, `api`), events.ts (`useBuildEvents`); src/mocks/ (stateful fixture-backed `createMockApi`, fake stream); History route; tests.
+- Checks: `npm test` PASS (2 files, 28 tests); `npm run typecheck` PASS; manual `VITE_MOCK=1 npm run dev` at :5173 shows the History list (yes; loading state and focus ring seen at 1280x800; no screenshots required).
+- Decisions: guards are exact (extra keys fail), `problemsOf(guard, value)` names each mismatch; `api` = mock when `VITE_MOCK=1`, tests run with it (vite.config `test.env`), `resetMockState()` per test, `httpApi` importable for fetch-level tests; `ApiError{status,code,message,detail}` in types.ts; proxy's empty 502-504 → `network_error`; `useBuildEvents(id, onEvent, open?)` returns `connecting|open`, reopens with 1-15 s backoff after EventSource gives up; consumers re-fetch on every `ready`; mock `prototypeUrl` = same-origin blob URL of prototype.sample.html (jsdom: plain path); mock plays stage/run events per contract (STEP_MS 400, 0 in tests); src/index.css (Tailwind entry, outside Files, 1.2 extends) and .claude/launch.json added.
+- Tried and failed: none
+- Gotchas: see AGENTS.md Known gotchas (2 added).
+- Left open: P3 no fetch timeout; 2xx non-JSON throws SyntaxError - src/api/client.ts; P3 mocks + fixture validation load in real mode too (static import) - src/api/client.ts; P3 `fs.allow: ['..']` exposes ../data and ../.chrome-profile via /@fs/ on localhost, essentials prescribe it (architect note: `['.', '../contracts']`) - vite.config.ts; P3 panel radius 8 px not 10 - HistoryPage.tsx (tokens in 1.2).
+- Next: Task 1.2. Start by writing src/styles/tokens.css from the essentials' palette, then restyle HistoryPage with tokens.
+
+## 2026-10-18: Task 1.2 Design foundation
+- Status: done
+- Plan check: off
+- What changed: src/styles/tokens.css (Tailwind @theme, defaults cleared: only tokens exist); index.css (fonts, base, focus ring, reduced motion); src/components/ Button, Input/TextArea, Panel, Pin, Popover, Toast/ToastRegion, Spinner/LoadingState, EmptyState, ErrorState, Modal, Table, focus.ts; workspace/Stepper.tsx + WorkspaceShell.tsx (route `/builds/:id`); History restyled; App routes; tests/components.test.tsx.
+- Checks: `npm test` PASS (3 files, 52 tests); `npm run typecheck` PASS; hex regex (Grep tool, rg not on PATH) matches only tokens.css; manual 1280x800 + 1440x900 via headless Chrome: History list/empty/error yes, shell (48 px bar, aside 380 px, stepper on Connect) yes, no overlap (scrollWidth 1280), focus ring 2 px #1E40AF on every control yes; screenshots/1.2-*.png (13). User signed off the look (STOP).
+- Decisions: token classes: bg/surface/surface-muted/text/text-muted/border/border-strong(added #94A3B8)/primary(-hover,-soft)/accent(-hover)/success(-soft 5%)/danger(-hover,-soft)/focus; text-caption 12, label 13, body 14, title 16, heading 20, display 24; rounded-control/panel; shadow-popover; layout vars `--layout-topbar|chat|page` used as `w-(--layout-chat)`. `focusRing` in components/focus.ts. Button variants primary/secondary/ghost/accent/danger/inverse, sizes sm 28/md 32, `loading`, `buttonClass()` for links. Popover (non-modal, Esc/outside press, tone dark/light) and Modal (portal, focus trap, Esc, focus return) take `initialFocus`. Shell: Trace/Settings disabled until `onOpenTrace`/`onOpenSettings` props; stage areas are placeholders in `STAGE_VIEWS`, chat column a placeholder in `ChatColumn`: stage/chat tasks mount by editing WorkspaceShell.tsx (outside their Files: say why). Inter + Fira Code from Google Fonts (user kept it, reviewer read the /api rule as covering it).
+- Tried and failed: none
+- Gotchas: see AGENTS.md Known gotchas (3 added).
+- Left open: none (review P2/P3s fixed: badge contrast, shell retry focus, outline-color transition, toast live region, long-title shot).
+- Next: Task 2.1. Start by building src/features/workspace/connect/ and replacing `STAGE_VIEWS.connect` in WorkspaceShell.tsx with it.
+
+## 2026-10-18: Task 2.1 Connect stage
+- Status: done
+- Plan check: off
+- What changed: new src/features/history/NewBuildDialog.tsx (title, 4 archetype cards, data/research mode, createBuild then navigate) and src/features/workspace/connect/ConnectStage.tsx (drop zone + "Choose CSV files", GCS/BigQuery URI form, sources table with column chips, error state, "Start interview"); tests/connect.test.tsx (10); outside Files: HistoryPage.tsx ("New build" button, dialog mounted only while open), WorkspaceShell.tsx (mounts ConnectStage on `connect`, focuses `main` on stage change). client.ts/mocks unchanged.
+- Checks: `npm test` PASS (4 files, 61 tests, stable over 4 runs); `npm run typecheck` PASS; hex regex only tokens.css; manual via headless Chrome at 1280x800 + 1440x900: empty, uploading, error, filled yes; screenshots/2.1-connect-{empty,uploading,error,filled}-{1280x800,1440x900}.png, 2.1-newbuild-dialog-1280x800.png.
+- Decisions: built by a Sonnet worker from build notes (one call for all dropped files, server validates; ConnectStage props `{build, onBuildChange}`). `ARCHETYPE_INFO` (label + one-liner) exported from NewBuildDialog. Async callbacks read the latest build via ref (no lost sources); 422 errors offer Dismiss only, others Try again; URI field goes readOnly while busy and focus returns to it; startInterview never re-POSTs: if the follow-up getBuild fails the stage is set to interview locally; window-level dragover/drop prevented while on Connect.
+- Tried and failed: `toBeDisabled` (no jest-dom).
+- Gotchas: see AGENTS.md Known gotchas (3 added).
+- Left open: P3 "Start interview" below the fold at 1280x800 - ConnectStage.tsx; P3 unused STAGE_VIEWS.connect icon/title/text - WorkspaceShell.tsx; one-off failure of the shell "Try again" focus test seen once mid-edit, not reproduced in 4 later runs - tests/components.test.tsx.
+- Next: Task 2.2. Start by building src/features/workspace/chat/ and replacing `ChatColumn` in WorkspaceShell.tsx with it.
+
+## 2026-10-18: Task 2.2 Chat panel with streaming and Interview stage
+- Status: done
+- Plan check: off
+- What changed: new src/features/workspace/chat/ useBuildStream.ts (the one event stream per open build + chat state), ChatPanel.tsx (log, markdown bubbles, streamed drafts, composer), InterviewStage.tsx (sources, archetype, questions answered, Generate plan), Markdown.tsx; tests/chat.test.tsx (14). Outside Files: WorkspaceShell.tsx (`Workspace` child calls useBuildStream once, mounts ChatPanel + InterviewStage; stage-change focus skips when focus is outside main), HistoryPage.tsx + WorkspaceShell.tsx retry focus -> useLayoutEffect (fixed pre-existing history.test flake).
+- Checks: `npm test` PASS (5 files, 75 tests, 8 consecutive runs green); `npm run typecheck` PASS; hex regex only tokens.css; manual via headless Chrome at 1280x800 + 1440x900: long messages wrap yes, list scrolled to newest yes, loading yes, error yes, streaming yes, ready yes; screenshots/2.2-chat-{loading,error,interview,streaming,ready}-{1280x800,1440x900}.png.
+- Decisions: built by a Sonnet worker from build notes (hook owns stream; `ready` refetches build + messages; optimistic `local-N` bubble swapped to server id). `useBuildStream(build, onBuildChange, open?)` returns `{messages|null, loadError, drafts, status, reload, send, sendError}`; later stages read stage/build events through it (it calls onBuildChange for `build.updated`/`stage.changed`). Refetch merges by id and skips the build if a build event arrived meanwhile; `latest` ref set synchronously; failed `run.finished` clears drafts; drafts aria-hidden; composer locked until messages load and in connect. Generate plan enabled before ready (secondary), stage change left to events.
+- Tried and failed: none.
+- Gotchas: see AGENTS.md Known gotchas (2 added). Skills frontend-design/ui-ux-pro-max not invoked by the worker.
+- Left open: P3 panel headings are h2 under the stage h2 - InterviewStage.tsx (Panel has no level prop); P3 code block has no box inside panels (bg-surface) - Markdown.tsx; P3 markdown links lack "opens in a new tab" - Markdown.tsx; P3 fallback error copy repeats title - useBuildStream.ts; P3 Generate plan below the fold with many answers at 1280x800 - InterviewStage.tsx.
+- Next: Task 2.3. Start by building src/features/workspace/plan/ and replacing `STAGE_VIEWS.plan` in WorkspaceShell.tsx's StageArea; stream events come from useBuildStream.
+
+## 2026-10-18: Task 2.3 Plan stage
+- Status: done
+- Plan check: off
+- What changed: new src/features/workspace/plan/PlanStage.tsx (progress panel, docs list + markdown viewer) and tests/plan.test.tsx (8). Outside Files: chat/useBuildStream.ts (owns the one stream: now returns `progress: ProgressLine[]` and `planning`, handles node.progress, run.started reset, docs.updated -> build.docs) and WorkspaceShell.tsx (mounts PlanStage for stage `plan`). src/mocks unchanged (already emits the events and serves getDoc).
+- Checks: `npm test` PASS (6 files, 84 tests, 3 consecutive runs green); `npm run typecheck` PASS; no raw hex/px in plan/; manual via headless Chrome at 1280x800 + 1440x900: waiting/loading yes, empty docs yes, progress yes, docs list + doc open yes, doc loading yes, doc error yes; screenshots/2.3-plan-{waiting,progress,docs,doc-loading,doc-open,doc-error}-{1280x800,1440x900}.png (taken before the last review fixes, which changed no layout).
+- Decisions: `PlanStage({build, progress, planning})`; spinner shows on the last line only while a `plan` run is open (run.started/run.finished node `plan`); lines from other nodes are filtered out; docs are not auto-selected; an open doc refetches silently when `build.docs` changes identity; a selected doc that leaves the list is deselected. Doc headings styled via class variants on Markdown (shared component untouched). Skills frontend-design / ui-ux-pro-max not invoked (tokens and existing components reused).
+- Tried and failed: none.
+- Gotchas: see AGENTS.md Known gotchas (1 added).
+- Left open: P3 doc `# Title` renders as h1 inside the h2 panel (Markdown has no heading offset) - PlanStage.tsx; P3 progress lines' done/running state is icon-only (aria-hidden), no sr-only text - PlanStage.tsx.
+- Next: Task 3.1. Start by building src/features/workspace/prototype/ and replacing the prototype stage placeholder in WorkspaceShell.tsx's StageArea; `build.spec_version` and `prototype.updated` come through useBuildStream.
+
+## 2026-10-18: Task 3.1 Prototype stage with click-to-comment
+- Status: done
+- Plan check: off
+- What changed: new src/features/workspace/prototype/ (PrototypeStage, PrototypeCanvas, CommentPopover, PendingList, types.ts), tests/prototype.test.tsx (20). Outside Files: chat/useBuildStream.ts (`prototype.updated` -> build.spec_version; `applying`, `commentsError{seq,text}`; `ready` resets applying) and WorkspaceShell.tsx (mounts PrototypeStage). src/mocks: one stale comment fixed.
+- Checks: `npm test` PASS (7 files, 104 tests); `npm run typecheck` PASS; no raw hex/px in prototype/; manual via headless Chrome at 1280x800 + 1440x900: canvas fits stage (scale 0.71 / 0.843) yes, pins inside their elements after a 200 px resize yes, popover never intersects its element yes; screenshots/3.1-prototype-{ready,hover,popover,pins,applying}-{1280x800,1440x900}.png.
+- Decisions: built by a Sonnet worker from build notes (transparent target buttons per `[data-cid]` in the scaled pin layer, reading order, z by area so smaller boxes win; boxes read in iframe viewport coords on load, nothing injected; tag/pins counter-scaled; popover outside the scale wrapper, below else above). `PrototypeStage({build, applying, commentsError})`; frame size = max(canvas right/bottom, lowest box); targets disabled + veiled while applying; sent batch cleared on spec_version change; iframe tabIndex -1. Skills frontend-design / ui-ux-pro-max not invoked.
+- Tried and failed: none.
+- Gotchas: see AGENTS.md Known gotchas (1 added).
+- Left open: P3 unapplied comments are lost on leaving the stage or a re-plan, no warning - PrototypeStage.tsx; reconnect mid-run re-enables Apply (applying reset on `ready`) - useBuildStream.ts.
+- Next: Task 3.2. Start by building src/features/workspace/build/ and replacing the build stage placeholder in WorkspaceShell.tsx's StageArea.
+
+## 2026-10-18: Task 3.2 Build stage
+- Status: done
+- Plan check: off
+- What changed: new src/features/workspace/build/ (buildRun.ts reducer, BuildStage, EnginePanel, RecipePanel), tests/build.test.tsx (29); src/mocks/api.ts: `setMockEngine`, `setMockBuildOutcome('ok'|'partial'|'failed')`, 1200 ms build steps in dev, run.finished in the same step as build.finished. Outside Files: useBuildStream.ts (`buildRun` via reduceBuildRun: the build's one EventSource lives there), WorkspaceShell.tsx (mounts BuildStage, "Continue to build"/"Back to prototype"), PrototypeStage.tsx (`onPendingChange`).
+- Checks: `npm test` PASS (8 files, 133 tests); `npm run typecheck` PASS; no raw hex/px in build/; manual via headless Chrome at 1280x800 + 1440x900: signed-out, recipe, running, partial, failed, done show yes; link target=_blank rel=noopener noreferrer yes; no horizontal scroll yes; focus ring yes; screenshots/3.2-build-*.png (13).
+- Decisions: built by a Sonnet worker from build notes (reducer folds build.op/build.finished/run.finished; UI running = `build.stage === 'build'`, so a missed event can't lock it). Build view: from prototype via "Continue to build" (disabled while comments pending), auto-opens when a run starts, stays open in done after a run (3.4 owns Done for builds opened from History); failed keeps the card, stage back to prototype. "N ops failed" counted from build.op ("Some ops failed" if 0). Recipe in BuildStage state, auto-compiled once if opened mid-run; regenerating hides the previous run's results (`compiledFor`). Done stage: Build hidden, hint "Start a new version to build again." One sr-only role=status for the outcome. Engine login polls status every 2 s, max 5 min, sequence-guarded. Skills frontend-design / ui-ux-pro-max not invoked.
+- Tried and failed: none.
+- Gotchas: see AGENTS.md Known gotchas (1 added).
+- Left open: none (review P1-P3 fixed).
+- Next: Task 3.3. Start by reading its Files in docs/plan.md and wiring WorkspaceShell's `onOpenTrace`/`onOpenSettings`.
+
+
+## 2026-10-18: Task 3.3 Settings and Trace tab
+- Status: done
+- Plan check: off
+- What changed: new src/features/settings/ (serviceNotice.ts: `withServiceNotice(api)` reports 503 `llm_unavailable`/`gcp_not_configured`; SettingsModal, ServiceBanner, AppServices provider with `useAppServices()` -> `openSettings`, `openTrace(buildId?)`), src/features/trace/TraceModal.tsx, tests/settings.test.tsx (21). src/mocks/api.ts: `setMockSettings`, `setMockServiceFault('llm_unavailable'|'gcp_not_configured'|null)`; model actions answer 503 without a key, upload/add-source without a project. Outside Files: App.tsx (provider + `WorkspaceRoute` wires the top bar), api/client.ts (`api = withServiceNotice(...)`, needed for "any action"), WorkspaceShell.tsx (`h-dvh` -> `h-full`: the provider now owns the viewport column that holds the banner), components/Modal.tsx (size `lg` for the Trace table).
+- Checks: `npm test` PASS (9 files, 154 tests); `npm run typecheck` PASS; manual via headless Chrome at 1280x800 + 1440x900: focus stays in the dialog over 50 Tab/Shift+Tab, Esc closes, focus returns to the Settings button, key field empty after save, "Key set" shown, trace totals 18,130 / 3,390, no horizontal scroll, banner button opens Settings yes; screenshots/3.3-{workspace-clean,settings-keyset,settings-edited,settings-saved,trace-table,banner-503,banner-missing}-{1280x800,1440x900}.png.
+- Decisions: Settings and Trace are modals (Trace starts on "This build" when opened from a workspace, toggle "All builds"); modals mount fresh on each open. Banner shows when `google_api_key_set` is false or the project is empty (read once at app load, refreshed on save) or after any 503 of the two codes; Dismiss hides that message until the next failure; a save clears it. Save sends only changed (trimmed) fields plus the key when typed; the key lives only in the input state, cleared after save; the modal stays open and says "Settings saved.". Skills frontend-design / ui-ux-pro-max not invoked.
+- Tried and failed: none.
+- Gotchas: see AGENTS.md Known gotchas (2 added).
+- Left open: P3 closing the modal drops unsaved edits with no warning - AppServices.tsx; P3 `src/api` now imports from `src/features/settings` (client.ts wrap), against the folder map's direction.
+- Next: Task 3.4. Start by reading its Files in docs/plan.md; Done stage is mounted in WorkspaceShell.tsx's StageArea (the `done` branch is still the EmptyState placeholder).
+
+## 2026-10-18: Task 3.4 Done stage and history versions
+- Status: done
+- Plan check: off
+- What changed: new src/features/history/DoneStage.tsx (link card, Versions list newest first with per-version link/status, "New version" -> `api.createVersion` -> `onBuildChange`), tests/versions.test.tsx (7). WorkspaceShell.tsx: `done` branch mounts DoneStage; EmptyState import dropped. History and mocks unchanged (History already showed stage + link; mock `createVersion` already existed).
+- Checks: `npm test` PASS (10 files, 161 tests, versions 7); `npm run typecheck` PASS; no raw hex in DoneStage; manual via headless Chrome at 1280x800 + 1440x900: done stage, versions list, "New version" lands on Prototype, no horizontal scroll yes; screenshots/3.4-{history,done,new-version}-{1280x800,1440x900}.png.
+- Decisions: Done view shows when a done build is opened (History) and after "Back to versions" from a run's result; a run that finishes in the session keeps the Build result open in done (3.2 decision) with a "Back to versions" button. A run result whose `finished.version` != `current_version` is treated as idle (no stale v1 result under v2). Partial run in this session shows "N ops failed" on the link card. No-link card is neutral, not green. "Failed" pill uses text-text for 4.5:1. DoneStage lives in history/ (Files lists history/*). Skills frontend-design / ui-ux-pro-max not invoked.
+- Tried and failed: none.
+- Gotchas: none new.
+- Left open: P2 no test renders a run finishing inside WorkspaceShell (Back to versions, stale-run reset) - tests/versions.test.tsx; P2 nothing on screen names the new version (v2) on the Prototype stage - WorkspaceShell.tsx.
+- Next: Task 4.1. Start by reading its Files in docs/plan.md (stretch: style images, research prompt, UX audit, live build frames).
+
+## 2026-10-19: Task 4.1 Style images, research prompt, audit and screencast
+- Status: done
+- Plan check: off
+- What changed: connect/StylePanel.tsx + ResearchPanel.tsx (research mode only), "Run UX audit" in PrototypeStage, build/LiveViewPanel.tsx (BuildRun.frame from `build.frame`, reset on build run.started), new workspace/stretch.ts, mocks (png/jpg check, research source, audit findings message, frames via mocks/frame.ts + `setMockScreencast`), tests/stretch.test.tsx (18). Outside Files: useBuildStream.ts (`stretchRuns` per node from run.started/finished, running dropped on `ready`), WorkspaceShell.tsx (passes stretchRuns; `relative` on main), tests/build.test.tsx (`frame: null`).
+- Checks: `npm test` PASS (11 files, 179 tests, stretch 18); `npm run typecheck` PASS; manual via headless Chrome at 1280x800 + 1440x900: style saved, research done + new source, audit done + findings in chat, live view mid-run, document overflow 0 yes; screenshots/4.1-{connect-style,connect-research,prototype-audit,build-live}-{1280x800,1440x900}.png.
+- Decisions: built by a Sonnet worker from build notes. A 404 whose code isn't `build_not_found` hides the control, remembered per session (module set, `resetStretchAvailability()` for tests). `useStretchAction` follows its own run_id, adopts a newer run of the node (another tab), and `useRefocusAfter` returns focus when the action ends. Audit status is aria-live, not role=status (prototype tests use getByRole('status')). Review P2s fixed: stuck "running", document scroll from the sr-only status, focus loss. Skills frontend-design / ui-ux-pro-max not invoked.
+- Tried and failed: none.
+- Gotchas: see AGENTS.md Known gotchas (1 added, 1 extended).
+- Left open: P3 no fetch-level test that each action hits its route - tests/stretch.test.tsx; P3 live view img has no intrinsic size (shift on first decode) - build/LiveViewPanel.tsx; P3 a POST accepted while the stream is down stays "running" until remount - stretch.ts.
+- Next: Task 5.1 Access-code gate and build-agent status. Start by reading its Files and Spec in docs/plan.md.
+
+## 2026-10-19: Change Cloud Run deployment (program root)
+- Status: done
+- What changed: the architect, at the program root, lifted Cloud Run from non-goal to goal and moved the deadline to 2026-10-20 01:05 MPST; contracts/api.md and contracts/conventions.md are now 1.1 (access code, agent mode, agent endpoints, Cloud deployment, Build agent); a reviewer delta audit (33 findings) was applied.
+- Affects: new task 5.1 (access-code gate, agent panel, settings lock, 32 MB limit), built against the fixtures; essentials conventions updated.
+- Next: task 5.1.
+
+## 2026-10-20: Task 5.1 Access-code gate and build-agent status
+- Status: done
+- Plan check: off
+- What changed: src/features/access/ (AccessGate around AppServicesProvider in App.tsx, accessNotice wrapper on `api` for `401 access_required`); client `getSession`/`createSession`, 413 mapping and 32 MB pre-check (`oversizeError`, `UPLOAD_LIMIT_BYTES` in types.ts); EngineStatus 1.1 fields, `Session`, `Job` guards; EnginePanel agent states (offline + copyable `dss-agent` command, signed-out "Run dsengine login", connected); BuildStage `onEngine`/`offlineSignal`; SettingsModal lock on `403 settings_locked`; mock: `setMockSession`, `MOCK_ACCESS_CODE`, agent-mode 424/409/403, gate on every gated call; tests access (8), agent-status (9), contract (+6).
+- Checks: `npm test` PASS 13 files / 202 tests in 3 of 4 runs; 1 run had 1 failed test (not identified, did not recur in 2 reruns); `npm run typecheck` PASS; `npm run build` PASS, base `/`, assets under `/assets/`, no mock code, no `localhost:<port>`/`127.0.0.1`/`run.app` in dist; manual at 1280x800 + 1440x900: gate, agent offline/signed-out/ready yes, no horizontal scroll yes; screenshots/5.1-{gate,agent-offline,agent-signed-out,agent-ready}-{1280x800,1440x900}.png.
+- Decisions: built myself, not delegated (cross-cutting, deadline). dist still holds literal `http://localhost` twice inside react-router's own code (dummy URL base) plus library doc links and the Google Fonts @import: no app origin; accepted. Mock kept out of prod via `/* @__PURE__ */` on `seed()` and the fixtures IIFE. Gate wraps the whole app (local mode shows "Checking access…" briefly; backend down → gate's error with retry). Settings lock learned from the first 403 (module flag), not up front. `setMockEngine` takes a Partial merged over engine_status.local.json.
+- Tried and failed: none.
+- Gotchas: Git Bash `sed -i` strips CRLF to LF on the whole file: restore endings after.
+- Left open: P2 literal localhost in react-router bundle - dist; P3 EventSource/iframe 401 not routed to gate - src/api/events.ts; P3 stale in-flight 401 can re-lock after success - AccessGate.tsx; P3 lock only after failed save - SettingsModal.tsx; P3 command `<code>` not keyboard-scrollable - EnginePanel.tsx; P3 gate screenshot shows the session-ended hint; one unidentified test flake.
+- Next: none in frontend plan; final audit / deploy.

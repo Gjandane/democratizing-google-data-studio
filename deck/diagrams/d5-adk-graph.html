@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>d5 ADK graph</title>
+<link rel="stylesheet" href="_base.css">
+<style>
+  .node { height: 60px; padding: 6px 10px; gap: 3px; }
+  .node .tags { flex-wrap: nowrap; }
+  .node h3 { font-size: 19px; }
+  .act { position: absolute; left: 318px; width: 120px; height: 40px; border-radius: 20px;
+    border: 2px solid #4285F4; background: #E8F0FE; font-size: 16px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    font-family: Consolas, "Courier New", monospace; }
+  .term { position: absolute; border-radius: 30px; background: #202124; color: #fff;
+    font-size: 18px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .guard { position: absolute; left: 1690px; top: 112px; width: 110px; height: 630px;
+    border: 2.5px solid #EA4335; background: #FCE8E6; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center; }
+  .guard div { transform: rotate(-90deg); white-space: nowrap; font-size: 21px; font-weight: 700; text-align: center; line-height: 1.35; }
+  .guard span { font-size: 16px; font-weight: 400; }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="title">The ADK 2.0 Workflow: one router, one branch per action</div>
+  <div class="legend">
+    <span><span class="tag llm">LLM</span> LLM node</span>
+    <span><span class="tag code">code</span> function node</span>
+    <span><span class="tag planner">planner</span> planner model (else worker)</span>
+    <span><span class="tag planned">planned</span> not built yet</span>
+  </div>
+
+  <svg class="wires" viewBox="0 0 1840 800">
+    <defs>
+      <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#202124"/></marker>
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#EA4335"/></marker>
+    </defs>
+    <path class="w" d="M120,427 H148" marker-end="url(#a)"/>
+    <path class="w" d="M290,427 L316,142" marker-end="url(#a)"/>
+    <path class="w" d="M438,142 H458" marker-end="url(#a)"/>
+    <path class="w" d="M680,142 H1688" marker-end="url(#a)"/>
+    <path class="w" d="M290,427 L316,237" marker-end="url(#a)"/>
+    <path class="w" d="M438,237 H458" marker-end="url(#a)"/>
+    <path class="w" d="M680,237 H1688" marker-end="url(#a)"/>
+    <path class="w" d="M290,427 L316,332" marker-end="url(#a)"/>
+    <path class="w" d="M438,332 H458" marker-end="url(#a)"/>
+    <path class="w" d="M680,332 H702" marker-end="url(#a)"/>
+    <path class="w" d="M924,332 H946" marker-end="url(#a)"/>
+    <path class="w" d="M1168,332 H1190" marker-end="url(#a)"/>
+    <path class="w" d="M1412,332 H1434" marker-end="url(#a)"/>
+    <path class="w" d="M1656,332 H1688" marker-end="url(#a)"/>
+    <path class="w" d="M290,427 L316,427" marker-end="url(#a)"/>
+    <path class="w" d="M438,427 H458" marker-end="url(#a)"/>
+    <path class="w" d="M680,427 H702" marker-end="url(#a)"/>
+    <path class="w" d="M924,427 H946" marker-end="url(#a)"/>
+    <path class="w" d="M1168,427 H1688" marker-end="url(#a)"/>
+    <path class="w" d="M290,427 L316,522" marker-end="url(#a)"/>
+    <path class="w" d="M438,522 H458" marker-end="url(#a)"/>
+    <path class="w" d="M680,522 H702" marker-end="url(#a)"/>
+    <path class="w" d="M924,522 H946" marker-end="url(#a)"/>
+    <path class="w" d="M1168,522 H1688" marker-end="url(#a)"/>
+    <path class="w" d="M290,427 L316,617" marker-end="url(#a)"/>
+    <path class="w" d="M438,617 H458" marker-end="url(#a)"/>
+    <path class="w" d="M680,617 H1688" marker-end="url(#a)"/>
+    <path class="w" d="M290,427 L316,712" marker-end="url(#a)"/>
+    <path class="w" d="M438,712 H458" marker-end="url(#a)"/>
+    <path class="w" d="M924,712 H1688" marker-end="url(#a)"/>
+    <!-- repair loops: validate back to spec / revise, at most 2 -->
+    <path class="w r d" d="M1302,302 V284 H1058 V300" marker-end="url(#ar)"/>
+    <path class="w r d" d="M814,457 V476 H570 V459" marker-end="url(#ar)"/>
+  </svg>
+
+  <div class="term" style="left:30px;top:397px;width:90px;height:60px">START</div>
+  <div class="box gray center" style="left:150px;top:387px;width:140px;height:80px"><h3>router</h3><p class="mono">(action)</p></div>
+
+  <div class="act" style="top:122px">connect</div>
+  <div class="box node gray" style="left:460px;top:112px;width:220px"><h3>intake</h3><div class="tags"><span class="tag code">code</span></div></div>
+  <div class="act" style="top:217px">chat</div>
+  <div class="box node yellow" style="left:460px;top:207px;width:220px"><h3>interview</h3><div class="tags"><span class="tag llm">LLM</span></div></div>
+  <div class="act" style="top:312px">plan</div>
+  <div class="box node yellow" style="left:460px;top:302px;width:220px"><h3>plan</h3><div class="tags"><span class="tag llm">LLM</span><span class="tag planner">planner</span></div></div>
+  <div class="box node gray" style="left:704px;top:302px;width:220px"><h3>view</h3><div class="tags"><span class="tag code">code</span></div></div>
+  <div class="box node yellow plan" style="left:948px;top:302px;width:220px"><h3>spec</h3><div class="tags"><span class="tag llm">LLM</span><span class="tag planner">planner</span><span class="tag planned">planned</span></div></div>
+  <div class="box node gray plan" style="left:1192px;top:302px;width:220px"><h3>validate</h3><div class="tags"><span class="tag code">code</span><span class="tag planned">planned</span></div></div>
+  <div class="box node gray" style="left:1436px;top:302px;width:220px"><h3>render</h3><div class="tags"><span class="tag code">code</span></div></div>
+  <div class="act" style="top:407px">comment</div>
+  <div class="box node yellow plan" style="left:460px;top:397px;width:220px"><h3>revise</h3><div class="tags"><span class="tag llm">LLM</span><span class="tag planned">planned</span></div></div>
+  <div class="box node gray plan" style="left:704px;top:397px;width:220px"><h3>validate</h3><div class="tags"><span class="tag code">code</span><span class="tag planned">planned</span></div></div>
+  <div class="box node gray" style="left:948px;top:397px;width:220px"><h3>render</h3><div class="tags"><span class="tag code">code</span></div></div>
+  <div class="act" style="top:502px">build</div>
+  <div class="box node gray" style="left:460px;top:492px;width:220px"><h3>compile</h3><div class="tags"><span class="tag code">code</span><span class="tag planned">full: planned</span></div></div>
+  <div class="box node gray" style="left:704px;top:492px;width:220px"><h3>execute</h3><div class="tags"><span class="tag code">code</span><span class="tag planned">real run: planned</span></div></div>
+  <div class="box node gray plan" style="left:948px;top:492px;width:220px"><h3>publish</h3><div class="tags"><span class="tag code">code</span><span class="tag planned">planned</span></div></div>
+  <div class="act" style="top:597px">consolidate</div>
+  <div class="box node yellow plan" style="left:460px;top:587px;width:220px"><h3>consolidate</h3><div class="tags"><span class="tag llm">LLM</span><span class="tag planned">planned</span></div></div>
+  <div class="act" style="top:692px">stretch</div>
+  <div class="box node yellow plan" style="left:460px;top:682px;width:464px"><h3>ux_audit &middot; style_extract &middot; research</h3><div class="tags"><span class="tag llm">LLM</span><span class="tag planned">stretch</span></div></div>
+
+  <div class="lbl b red c" style="left:1180px;top:274px;font-size:14px;padding:0 6px">repair loop, at most 2</div>
+  <div class="lbl b red c" style="left:692px;top:466px;font-size:14px;padding:0 6px">repair loop, at most 2</div>
+
+  <div class="guard"><div>Guardrails at every exit<br><span>then reply, trace, END</span></div></div>
+</div>
+</body>
+</html>

@@ -1,0 +1,24 @@
+# Secrets: the API key, the access code and the agent token live in .env
+.env
+.env.*
+!.env.example
+
+# Runtime data and the engine's signed-in Chrome profile (contracts/conventions.md, Paths).
+# /data/ is anchored so deck/data/ (benchmark JSON) stays tracked.
+/data/
+.chrome-profile/
+screens/
+*.sqlite
+*.sqlite-*
+
+# Tooling
+.venv/
+node_modules/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.blueprint/
+
+# Deck: QA renders and Office lock files
+deck/render/
+~$*

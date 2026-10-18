@@ -1,0 +1,48 @@
+event: ready
+data: {"build_id": "b_3f9a0c12d4e5"}
+
+event: run.started
+data: {"run_id": "r_00000000000a", "node": "interview"}
+
+event: message.delta
+data: {"message_id": "m_000000000003", "text": "Got it. Should revenue "}
+
+event: message.delta
+data: {"message_id": "m_000000000003", "text": "be compared month over month, or against a target?"}
+
+event: message.done
+data: {"message": {"id": "m_000000000003", "role": "assistant", "text": "Got it. Should revenue be compared month over month, or against a target?", "node": "interview", "created_at": "2026-10-18T09:02:10Z"}}
+
+event: run.finished
+data: {"run_id": "r_00000000000a", "node": "interview", "status": "ok", "error": null}
+
+event: build.updated
+data: {"build": {"id": "b_3f9a0c12d4e5", "title": "Sales overview", "archetype": "executive", "mode": "data", "stage": "prototype", "created_at": "2026-10-18T09:00:00Z", "updated_at": "2026-10-18T09:20:00Z", "sources": [{"id": "s_a1b2c3d4e5f6", "kind": "upload", "name": "ecommerce_sales.csv", "bq_table": "my-gcp-project.dss_demo.src_b_3f9a0c12d4e5_ecommerce_sales", "row_count": 2000, "columns": [{"name": "order_id", "type": "string", "sample": ["O-00001", "O-00002", "O-00003"]}, {"name": "order_date", "type": "date", "sample": ["2026-01-03", "2026-01-03", "2026-01-04"]}, {"name": "region", "type": "string", "sample": ["APAC", "EMEA", "AMER"]}, {"name": "country", "type": "geo", "sample": ["Philippines", "Germany", "United States"]}, {"name": "category", "type": "string", "sample": ["Electronics", "Home", "Apparel"]}, {"name": "product_name", "type": "string", "sample": ["Wireless Mouse", "Desk Lamp", "Hoodie"]}, {"name": "customer_segment", "type": "string", "sample": ["Consumer", "SMB", "Enterprise"]}, {"name": "quantity", "type": "number", "sample": ["2", "1", "3"]}, {"name": "unit_price", "type": "number", "sample": ["24.99", "39.5", "45"]}, {"name": "revenue", "type": "number", "sample": ["49.98", "39.5", "135"]}]}], "docs": [{"path": "brief.md", "title": "Dashboard brief", "type": "Dashboard Brief"}, {"path": "questions.md", "title": "Business questions", "type": "Business Questions"}, {"path": "kpis.md", "title": "KPI definitions", "type": "KPI Definitions"}, {"path": "derived-fields.md", "title": "Derived fields", "type": "Derived Fields"}, {"path": "design.md", "title": "Design direction", "type": "Design Direction"}, {"path": "data-profile.md", "title": "Data profile", "type": "BigQuery Table"}], "spec_version": 2, "current_version": 1, "versions": [{"n": 1, "status": "draft", "report_url": null, "created_at": "2026-10-18T09:00:00Z"}], "report_url": null, "ready_for_plan": true}}
+
+event: stage.changed
+data: {"stage": "plan"}
+
+event: node.progress
+data: {"run_id": "r_00000000000b", "node": "plan", "text": "Writing questions.md"}
+
+event: docs.updated
+data: {"docs": [{"path": "brief.md", "title": "Dashboard brief", "type": "Dashboard Brief"}, {"path": "questions.md", "title": "Business questions", "type": "Business Questions"}, {"path": "kpis.md", "title": "KPI definitions", "type": "KPI Definitions"}, {"path": "derived-fields.md", "title": "Derived fields", "type": "Derived Fields"}, {"path": "design.md", "title": "Design direction", "type": "Design Direction"}, {"path": "data-profile.md", "title": "Data profile", "type": "BigQuery Table"}]}
+
+event: prototype.updated
+data: {"spec_version": 2}
+
+event: stage.changed
+data: {"stage": "build"}
+
+event: build.op
+data: {"event": "op_finished", "ts": "2026-10-18T12:00:09Z", "op_id": "s001", "op": "open_report", "status": "ok", "message": "", "screenshot": null, "duration_ms": 9120}
+
+event: build.op
+data: {"event": "op_finished", "ts": "2026-10-18T12:00:23Z", "op_id": "s012", "op": "set_style", "status": "failed", "message": "style panel: colors control not found", "screenshot": "s012_failed.png", "duration_ms": 3010}
+
+event: build.finished
+data: {"status": "partial", "report_url": "https://datastudio.google.com/reporting/00000000-0000-0000-0000-000000000000", "version": 1}
+
+event: stage.changed
+data: {"stage": "done"}
+

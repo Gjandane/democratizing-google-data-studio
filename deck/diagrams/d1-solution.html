@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>d1 Solution</title>
+<link rel="stylesheet" href="_base.css">
+</head>
+<body>
+<div class="canvas">
+  <div class="title">From a conversation to a real Data Studio dashboard</div>
+  <div class="subtitle">One Dashboard Spec drives every step: the prototype you comment on is the dashboard that gets built.</div>
+  <div class="legend">
+    <span><span class="sw blue"></span>frontend</span>
+    <span><span class="sw green"></span>backend</span>
+    <span><span class="sw red"></span>engine</span>
+    <span><span class="tag planned">planned</span> not built yet</span>
+  </div>
+
+  <svg class="wires" viewBox="0 0 1840 800">
+    <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#202124"/></marker></defs>
+    <path class="w" d="M360,290 H428" marker-end="url(#a)"/>
+    <path class="w" d="M710,290 H778" marker-end="url(#a)"/>
+    <path class="w" d="M1060,290 H1128" marker-end="url(#a)"/>
+    <path class="w" d="M1410,290 H1478" marker-end="url(#a)"/>
+    <path class="w d" d="M960,430 V490 H880 V432" marker-end="url(#a)"/>
+  </svg>
+
+  <div class="box gray top" style="left:80px;top:150px;width:280px;height:280px">
+    <div class="who">1 · You</div>
+    <h3>Bring your data and a goal</h3>
+    <p>Upload a CSV, or pick tables in GCS or BigQuery.</p>
+    <p>Everything lands in BigQuery and is profiled.</p>
+  </div>
+  <div class="box blue top" style="left:430px;top:150px;width:280px;height:280px">
+    <div class="who">2 · Interview</div>
+    <h3>Chat about what matters</h3>
+    <p>The agent asks about audience, questions and KPIs, using the data profile.</p>
+    <p>Answers become OKF build docs and the Dashboard Spec.</p>
+    <div class="tags"><span class="tag planned">spec: planned</span></div>
+  </div>
+  <div class="box blue top" style="left:780px;top:150px;width:280px;height:280px">
+    <div class="who">3 · Prototype</div>
+    <h3>HTML prototype with comments</h3>
+    <p>See the layout before anything is built.</p>
+    <p>Click any element and pin a comment; the spec is patched and re-rendered.</p>
+    <div class="tags"><span class="tag planned">revise: planned</span></div>
+  </div>
+  <div class="box green top" style="left:1130px;top:150px;width:280px;height:280px">
+    <div class="who">4 · Compile</div>
+    <h3>Compiled recipe</h3>
+    <p>Code (no LLM) turns the spec into <span class="mono">recipe.jsonl</span>: one line per Data Studio action.</p>
+    <p>Same spec, same recipe, every time.</p>
+    <div class="tags"><span class="tag planned">full compiler: planned</span></div>
+  </div>
+  <div class="box red top" style="left:1480px;top:150px;width:280px;height:280px">
+    <div class="who">5 · Build</div>
+    <h3>Real Data Studio dashboard</h3>
+    <p><span class="mono">dsengine</span> replays the recipe in your signed-in Chrome, live on screen.</p>
+    <p>You get the report link; History keeps every build.</p>
+  </div>
+
+  <div class="lbl c" style="left:394px;top:256px">answers</div>
+  <div class="lbl c" style="left:744px;top:256px">spec</div>
+  <div class="lbl c" style="left:1094px;top:256px">approve</div>
+  <div class="lbl c" style="left:1444px;top:256px">run</div>
+  <div class="lbl c b" style="left:920px;top:497px">comment, patch, re-render</div>
+
+  <div class="box white" style="left:80px;top:570px;width:1680px;height:150px">
+    <h3>Why it works</h3>
+    <p>The model writes a small JSON spec, never pixels or clicks. Layout, prototype and recipe are computed from that spec by code,
+      so edits stay cheap and the build is repeatable. Planner model on plan and spec; a fast worker model everywhere else.</p>
+  </div>
+</div>
+</body>
+</html>

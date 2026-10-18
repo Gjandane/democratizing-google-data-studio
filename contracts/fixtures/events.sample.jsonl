@@ -1,0 +1,15 @@
+{"event": "run_started", "ts": "2026-10-18T12:00:00Z", "build_id": "b_3f9a0c12d4e5", "version": 1, "total_ops": 14}
+{"event": "op_started", "ts": "2026-10-18T12:00:00Z", "op_id": "s001", "op": "open_report"}
+{"event": "op_finished", "ts": "2026-10-18T12:00:09Z", "op_id": "s001", "op": "open_report", "status": "ok", "message": "", "screenshot": null, "duration_ms": 9120}
+{"event": "op_started", "ts": "2026-10-18T12:00:09Z", "op_id": "s002", "op": "set_canvas"}
+{"event": "op_finished", "ts": "2026-10-18T12:00:12Z", "op_id": "s002", "op": "set_canvas", "status": "ok", "message": "", "screenshot": null, "duration_ms": 2950}
+{"event": "log", "ts": "2026-10-18T12:00:12Z", "level": "info", "message": "uploading background.png"}
+{"event": "op_started", "ts": "2026-10-18T12:00:12Z", "op_id": "s003", "op": "set_background_image"}
+{"event": "op_finished", "ts": "2026-10-18T12:00:20Z", "op_id": "s003", "op": "set_background_image", "status": "ok", "message": "", "screenshot": null, "duration_ms": 7800}
+{"event": "op_started", "ts": "2026-10-18T12:00:20Z", "op_id": "s012", "op": "set_style"}
+{"event": "op_finished", "ts": "2026-10-18T12:00:23Z", "op_id": "s012", "op": "set_style", "status": "failed", "message": "style panel: colors control not found", "screenshot": "s012_failed.png", "duration_ms": 3010}
+{"event": "op_started", "ts": "2026-10-18T12:00:23Z", "op_id": "s013", "op": "save_report"}
+{"event": "op_finished", "ts": "2026-10-18T12:00:25Z", "op_id": "s013", "op": "save_report", "status": "ok", "message": "", "screenshot": null, "duration_ms": 1900}
+{"event": "op_started", "ts": "2026-10-18T12:00:25Z", "op_id": "s014", "op": "get_link"}
+{"event": "op_finished", "ts": "2026-10-18T12:00:26Z", "op_id": "s014", "op": "get_link", "status": "ok", "message": "", "screenshot": null, "duration_ms": 640}
+{"event": "run_finished", "ts": "2026-10-18T12:00:26Z", "status": "partial", "report_url": "https://datastudio.google.com/reporting/00000000-0000-0000-0000-000000000000", "ok": 13, "failed": 1, "skipped": 0, "error_code": null}

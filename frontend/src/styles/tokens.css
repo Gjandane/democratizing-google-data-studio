@@ -1,0 +1,66 @@
+/*
+ * Design tokens: Studio Light (docs/architecture-essentials.md, UI design).
+ * The only place colors, type, radius and shadows are defined. Tailwind's default palette,
+ * type scale, radii and shadows are cleared, so components can use nothing but these.
+ */
+@theme {
+  --color-*: initial;
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f1f5f9;
+  --color-text: #0f172a;
+  --color-text-muted: #475569;
+  --color-border: #e2e8f0;
+  /* Control outlines (inputs, upcoming steps): the essentials' border is too faint on white. */
+  --color-border-strong: #94a3b8;
+  --color-primary: #1e40af;
+  --color-primary-hover: #1e3a8a;
+  --color-primary-soft: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
+  --color-on-primary: #ffffff;
+  --color-accent: #d97706;
+  --color-accent-hover: color-mix(in srgb, var(--color-accent) 85%, var(--color-text));
+  --color-on-accent: #000000;
+  --color-success: #15803d;
+  /* 5%: success text on it keeps 4.5:1. */
+  --color-success-soft: color-mix(in srgb, var(--color-success) 5%, var(--color-surface));
+  --color-danger: #dc2626;
+  --color-danger-hover: color-mix(in srgb, var(--color-danger) 85%, var(--color-text));
+  --color-danger-soft: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
+  --color-focus: #1e40af;
+
+  --font-*: initial;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Fira Code', ui-monospace, 'Cascadia Code', Consolas, monospace;
+
+  /* 12 / 13 / 14 (body) / 16 / 20 / 24 px */
+  --text-*: initial;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
+  --text-label: 0.8125rem;
+  --text-label--line-height: 1.125rem;
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.25rem;
+  --text-title: 1rem;
+  --text-title--line-height: 1.5rem;
+  --text-heading: 1.25rem;
+  --text-heading--line-height: 1.75rem;
+  --text-display: 1.5rem;
+  --text-display--line-height: 2rem;
+
+  /* Spacing keeps Tailwind's 4 px step: 1 = 4, 2 = 8, 3 = 12, 4 = 16, 6 = 24, 8 = 32. */
+
+  --radius-*: initial;
+  --radius-control: 6px;
+  --radius-panel: 10px;
+
+  /* Popovers, toasts and modals only. */
+  --shadow-*: initial;
+  --shadow-popover: 0 12px 32px -8px rgb(15 23 42 / 0.22), 0 2px 6px rgb(15 23 42 / 0.08);
+}
+
+/* Layout sizes, used as w-(--layout-chat) and the like. */
+:root {
+  --layout-topbar: 3rem;
+  --layout-chat: 23.75rem;
+  --layout-page: 60rem;
+}

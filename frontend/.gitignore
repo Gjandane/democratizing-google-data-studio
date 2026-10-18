@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+*.log
+.vite/
+
+# Secrets stay out of version control; .env.example lists names only.
+.env
+.env.*
+!.env.example

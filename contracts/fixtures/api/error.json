@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "wrong_stage",
+    "message": "Generate the plan after the interview has started.",
+    "detail": {
+      "stage": "connect"
+    }
+  }
+}

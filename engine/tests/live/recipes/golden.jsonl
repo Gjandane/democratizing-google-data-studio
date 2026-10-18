@@ -1,0 +1,11 @@
+{"recipe_version":"1.0","build_id":"b_000000000001","version":1,"report_name":"Engine golden recipe","canvas":{"width":1200,"height":900},"datasource":{"connector":"bigQuery","project_id":"bigquery-public-data","dataset_id":"thelook_ecommerce","table_id":"order_items"}}
+{"id":"s001","op":"open_report"}
+{"op":"set_canvas","width":1200,"height":900,"id":"s002"}
+{"op":"set_background_image","path":"background_p1.png","x":0,"y":0,"w":1200,"h":900,"id":"s003"}
+{"id":"s004","op":"add_chart","component_id":"p1_sales_scorecard","chart_type":"scorecard","x":24,"y":24,"w":250,"h":120,"dimensions":[],"metrics":[{"field":"sale_price","agg":"sum"}],"title":"Total sales","options":{"compact_numbers":true}}
+{"id":"s005","op":"add_chart","component_id":"p1_sales_time_series","chart_type":"time_series","x":300,"y":24,"w":876,"h":300,"dimensions":[],"metrics":[{"field":"sale_price","agg":"sum"}],"date_dimension":"created_at","title":"Sales over time"}
+{"id":"s006","op":"add_chart","component_id":"p1_sales_by_status","chart_type":"bar","x":24,"y":350,"w":560,"h":220,"dimensions":["status"],"metrics":[{"field":"sale_price","agg":"sum"}],"sort":{"field":"sale_price","order":"desc"},"title":"Sales by status","options":{"orientation":"horizontal","stacked":false}}
+{"id":"s007","op":"add_chart","component_id":"p1_sales_share","chart_type":"pie","x":610,"y":350,"w":566,"h":220,"dimensions":["status"],"metrics":[{"field":"sale_price","agg":"sum"}],"title":"Sales share","options":{"donut":true}}
+{"id":"s008","op":"add_chart","component_id":"p1_status_detail","chart_type":"table","x":24,"y":600,"w":1152,"h":260,"dimensions":["status"],"metrics":[{"field":"sale_price","agg":"avg"},{"field":"order_id","agg":"count_distinct"}],"sort":{"field":"sale_price","order":"desc"},"title":"Status detail","options":{"rows_per_page":10}}
+{"id":"s009","op":"save_report"}
+{"id":"s010","op":"get_link"}

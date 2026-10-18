@@ -1,0 +1,9 @@
+{
+  "planner_model": "gemini-4-argon",
+  "worker_model": "gemini-3.8-flash",
+  "gcp_project_id": "my-gcp-project",
+  "bq_dataset": "dss_demo",
+  "bq_location": "US",
+  "gcs_bucket": "",
+  "google_api_key_set": true
+}

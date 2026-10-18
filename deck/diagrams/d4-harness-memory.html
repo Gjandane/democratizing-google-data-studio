@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>d4 Harness and memory</title>
+<link rel="stylesheet" href="_base.css">
+<style>
+  .s h3 { font-size: 19px; }
+  .s p { font-size: 15px; }
+  .ops { padding: 6px 12px; }
+  .ops h3 { font-size: 18px; }
+  .ops p { font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="title">The harness: one agent run, three memory stores, one trace</div>
+  <div class="legend">
+    <span><span class="sw yellow"></span>LLM</span>
+    <span><span class="sw green"></span>memory</span>
+    <span><span class="sw gray"></span>code / ops</span>
+    <span><span class="tag planned">planned</span> not built yet</span>
+  </div>
+
+  <svg class="wires" viewBox="0 0 1840 800">
+    <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#202124"/></marker></defs>
+    <!-- memory reads into working memory -->
+    <path class="w" d="M490,160 L588,282" marker-end="url(#a)"/>
+    <path class="w" d="M490,290 L588,300" marker-end="url(#a)"/>
+    <path class="w" d="M490,410 L588,318" marker-end="url(#a)"/>
+    <!-- episodic write, consolidation -->
+    <path class="w" d="M590,560 H525 V450 H493" marker-end="url(#a)"/>
+    <path class="w" d="M280,470 V506" marker-end="url(#a)"/>
+    <path class="w" d="M70,555 H40 V290 H67" marker-end="url(#a)"/>
+    <!-- inside the run -->
+    <path class="w" d="M695,222 V258" marker-end="url(#a)"/>
+    <path class="w" d="M925,222 V258" marker-end="url(#a)"/>
+    <path class="w" d="M1160,222 V258" marker-end="url(#a)"/>
+    <path class="w" d="M795,342 V378" marker-end="url(#a)"/>
+    <path class="w" d="M1000,430 H1028" marker-end="url(#a)"/>
+    <path class="w" d="M1150,482 V518" marker-end="url(#a)"/>
+    <!-- run to LLM Ops and back -->
+    <path class="w" d="M1302,170 H1398" marker-end="url(#a)"/>
+    <path class="w" d="M1398,567 H1304" marker-end="url(#a)"/>
+    <!-- LLM Ops loop -->
+    <path class="w" d="M1485,198 V238" marker-end="url(#a)"/>
+    <path class="w" d="M1675,198 V238" marker-end="url(#a)"/>
+    <path class="w" d="M1485,316 V352" marker-end="url(#a)"/>
+    <path class="w" d="M1675,316 V352" marker-end="url(#a)"/>
+    <path class="w" d="M1580,412 V446" marker-end="url(#a)"/>
+    <path class="w" d="M1580,500 V536" marker-end="url(#a)"/>
+    <path class="w d" d="M1760,473 H1795 V170 H1762" marker-end="url(#a)"/>
+  </svg>
+
+  <!-- long-term memory -->
+  <div class="box green s" style="left:70px;top:110px;width:420px;height:100px">
+    <h3>Procedural: skills/*.md</h3>
+    <p>How to act: 4 archetypes, catalog and layout rules. Read: load the relevant skill files.</p>
+  </div>
+  <div class="box green s" style="left:70px;top:240px;width:420px;height:100px">
+    <h3>Semantic: OKF bundle</h3>
+    <p>What is true: facts, user profile. Read: navigate the OKF index (no vector store).</p>
+  </div>
+  <div class="box green s" style="left:70px;top:370px;width:420px;height:100px">
+    <h3>Episodic: SQLite + FTS5</h3>
+    <p>What happened: past builds and chats. Read: FTS5 relevance + SQL recency.</p>
+    <div class="tags"><span class="tag planned">FTS5 retrieval: planned</span></div>
+  </div>
+  <div class="box yellow plan s" style="left:70px;top:508px;width:420px;height:100px">
+    <h3>Consolidation</h3>
+    <p>After every 5 builds reach done, the worker model distills episodes into facts.</p>
+    <div class="tags"><span class="tag planned">planned</span></div>
+  </div>
+  <div class="lbl" style="left:530px;top:552px;transform:rotate(-90deg);transform-origin:left top;padding:0 3px;font-size:14px">save every run</div>
+  <div class="lbl" style="left:46px;top:410px;transform:rotate(-90deg);transform-origin:left top;padding:0 4px">distill facts</div>
+
+  <!-- the run -->
+  <div class="group" style="left:560px;top:110px;width:740px;height:500px">
+    <div class="glabel">Agent run: one API action = one ADK Workflow invocation (ephemeral)</div>
+  </div>
+  <div class="box white center" style="left:590px;top:150px;width:210px;height:72px"><h3 style="font-size:17px">User action + prompt</h3></div>
+  <div class="box white center" style="left:820px;top:150px;width:210px;height:72px"><h3 style="font-size:17px">Current chat history</h3></div>
+  <div class="box white center" style="left:1050px;top:150px;width:220px;height:72px"><h3 style="font-size:17px">System prompt (versioned)</h3></div>
+  <div class="box gray plan" style="left:590px;top:260px;width:680px;height:82px">
+    <h3>Working memory</h3>
+    <p>Assembled per node by its context recipe: only what that node needs.</p>
+    <div class="tags" style="position:absolute;right:12px;top:10px"><span class="tag planned">context recipes: planned</span></div>
+  </div>
+  <div class="box yellow" style="left:590px;top:380px;width:410px;height:102px">
+    <h3>Loop: LLM node ↔ tools</h3>
+    <p>Gemini planner or worker; tools: BigQuery, renderer, validator.</p>
+    <div class="tags" style="position:absolute;right:12px;top:10px"><span class="tag planned">validator: planned</span></div>
+  </div>
+  <div class="box gray center" style="left:1030px;top:380px;width:240px;height:102px"><h3>Guardrails</h3><p>at every exit</p></div>
+  <div class="box white" style="left:590px;top:520px;width:680px;height:72px"><h3>Reply + artifacts</h3><p>spec, prototype, recipe, events to the frontend</p></div>
+
+  <!-- LLM Ops -->
+  <div class="group" style="left:1370px;top:110px;width:440px;height:500px">
+    <div class="glabel">LLM Ops</div>
+  </div>
+  <div class="box gray ops" style="left:1400px;top:140px;width:360px;height:58px"><h3>Trace: 1 per run</h3><p>traces table, trace tab in the app</p></div>
+  <div class="box gray ops plan" style="left:1400px;top:240px;width:170px;height:76px"><h3>Eval</h3><p>LLM judge</p><div class="tags"><span class="tag planned">planned</span></div></div>
+  <div class="box gray ops" style="left:1590px;top:240px;width:170px;height:76px"><h3>Observe</h3><p>tokens, latency, errors</p></div>
+  <div class="box gray ops" style="left:1400px;top:354px;width:360px;height:58px"><h3>Diagnose</h3><p>where and why it broke</p></div>
+  <div class="box gray ops center" style="left:1400px;top:448px;width:360px;height:52px"><h3>Gate</h3></div>
+  <div class="box gray ops" style="left:1400px;top:538px;width:360px;height:58px"><h3>Release</h3><p>prompt + config versions</p></div>
+  <div class="lbl" style="left:1306px;top:142px">trace</div>
+  <div class="lbl c" style="left:1340px;top:576px">improved</div>
+  <div class="lbl" style="left:1696px;top:510px;font-size:14px">fail: fix, re-run</div>
+
+  <div class="box white" style="left:70px;top:650px;width:1740px;height:110px">
+    <h3>Mapped to this build</h3>
+    <p>Harness = ADK 2.0 Workflow. Planner <span class="mono">gemini-4-argon</span> on plan and spec; worker <span class="mono">gemini-3.8-flash</span> on every other LLM node and on consolidation.
+      Episodic is written every run; semantic only by consolidation; the loop exits only through guardrails.</p>
+  </div>
+</div>
+</body>
+</html>

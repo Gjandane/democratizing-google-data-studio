@@ -1,0 +1,21 @@
+{"recipe_version": "1.0", "build_id": "b_000000000042", "version": 1, "report_name": "Engine miscellaneous ops", "canvas": {"width": 1200, "height": 900}, "datasource": {"connector": "bigQuery", "project_id": "bigquery-public-data", "dataset_id": "thelook_ecommerce", "table_id": "order_items"}}
+{"id": "s001", "op": "open_report"}
+{"id": "s002", "op": "add_text", "component_id": "p1_heading", "text": "Sales overview\nOctober report", "x": 24, "y": 24, "w": 700, "h": 110, "font_size": 28, "color": "#123456", "bold": true, "align": "center"}
+{"id": "s003", "op": "add_image", "component_id": "p1_image", "path": "background_p1.png", "x": 800, "y": 24, "w": 300, "h": 180}
+{"id": "s004", "op": "add_chart", "component_id": "p1_sales", "chart_type": "bar", "x": 24, "y": 240, "w": 900, "h": 400, "dimensions": ["status"], "metrics": [{"field": "sale_price", "agg": "sum"}, {"field": "order_id", "agg": "count"}], "title": "Sales by status"}
+{"id": "s005", "op": "set_style", "component_id": "p1_sales", "style": {"colors": ["#2468AC", "#C86428"], "show_title": true, "font_size": 24, "background": "#F0F4F8", "border_color": "#456789", "unsupported_example": true}}
+{"id": "s006", "op": "add_page", "name": "Details"}
+{"id": "s007", "op": "add_text", "component_id": "p2_heading", "text": "Second page", "x": 24, "y": 24, "w": 600, "h": 100, "font_size": 24, "color": "#2468AC", "bold": false, "align": "right"}
+{"id": "s008", "op": "go_to_page", "index": 1}
+{"id": "s009", "op": "set_style", "component_id": "p1_heading", "style": {"font_size": 30}}
+{"id": "s010", "op": "go_to_page", "index": 2}
+{"op": "go_to_page", "index": 1, "id": "s011"}
+{"op": "add_page", "name": "Appendix", "id": "s012"}
+{"op": "add_text", "component_id": "p3_blank", "text": "\n", "x": 24, "y": 24, "w": 600, "h": 100, "id": "s013"}
+{"op": "add_image", "component_id": "p3_image", "path": "background_p1.png", "x": 800, "y": 24, "w": 300, "h": 180, "id": "s014"}
+{"op": "set_style", "component_id": "p2_heading", "style": {"font_size": 26}, "id": "s015"}
+{"op": "set_style", "component_id": "p1_sales", "style": {"font_size": 8}, "id": "s016"}
+{"op": "set_style", "component_id": "p1_sales", "style": {"font_size": 24}, "id": "s017"}
+{"op": "go_to_page", "index": 2, "id": "s018"}
+{"op": "save_report", "id": "s019"}
+{"op": "get_link", "id": "s020"}

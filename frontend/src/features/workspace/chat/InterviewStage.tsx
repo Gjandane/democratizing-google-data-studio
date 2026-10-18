@@ -1,0 +1,130 @@
+import { Sparkles } from 'lucide-react';
+import { useState } from 'react';
+import { api } from '../../../api/client';
+import { ApiError, type Build, type Message, type SourceKind } from '../../../api/types';
+import { Button } from '../../../components/Button';
+import { ErrorState } from '../../../components/ErrorState';
+import { Panel } from '../../../components/Panel';
+import { LoadingState } from '../../../components/Spinner';
+import { ARCHETYPE_INFO } from '../../history/NewBuildDialog';
+import { Markdown } from './Markdown';
+
+const KIND_LABELS: Record<SourceKind, string> = {
+  upload: 'CSV upload',
+  gcs: 'GCS',
+  bigquery: 'BigQuery',
+  research: 'Research',
+};
+
+const MODE_LABELS = { data: 'Data mode', research: 'Research mode' } as const;
+
+interface Answer {
+  id: string;
+  question: string | null;
+  answer: string;
+}
+
+/** Each user message with the closest assistant message before it (the question). */
+function answersOf(messages: Message[]): Answer[] {
+  const answers: Answer[] = [];
+  let question: string | null = null;
+  for (const m of messages) {
+    if (m.role === 'assistant') question = m.text;
+    else if (m.role === 'user') answers.push({ id: m.id, question, answer: m.text });
+  }
+  return answers;
+}
+
+const plural = (n: number, word: string) => `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`;
+
+/** The Interview stage area: sources, archetype, answers so far, and "Generate plan". */
+export function InterviewStage({ build, messages, loadError }: { build: Build; messages: Message[] | null; loadError?: string | null }) {
+  const [planning, setPlanning] = useState(false);
+  const [planError, setPlanError] = useState<string | null>(null);
+  const info = ARCHETYPE_INFO[build.archetype];
+
+  const generate = async () => {
+    setPlanning(true);
+    setPlanError(null);
+    try {
+      await api.generatePlan(build.id);
+      // The stage change arrives on the event stream.
+    } catch (error) {
+      setPlanError(error instanceof ApiError ? error.message : "Couldn't start the plan. Try again.");
+    } finally {
+      setPlanning(false);
+    }
+  };
+
+  const answers = messages ? answersOf(messages) : [];
+
+  return (
+    <div className="mt-6 flex flex-col gap-4">
+      <Panel title="Sources">
+        {build.sources.length === 0 ? (
+          <p className="px-4 py-3 text-body text-text-muted">No sources added.</p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {build.sources.map((s) => (
+              <li key={s.id} className="flex items-baseline gap-3 px-4 py-2 text-body">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium text-text" title={s.name}>
+                    {s.name}
+                  </span>
+                </span>
+                <span className="shrink-0 text-text-muted">{KIND_LABELS[s.kind]}</span>
+                <span className="shrink-0 text-text-muted">{plural(s.row_count, 'row')}</span>
+                <span className="shrink-0 text-text-muted">{plural(s.columns.length, 'column')}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
+
+      <Panel title="Archetype" bodyClassName="px-4 py-3">
+        <p className="text-body font-medium text-text">{info.label}</p>
+        <p className="text-body text-text-muted">{info.description}</p>
+        <p className="mt-1 text-caption text-text-muted">{MODE_LABELS[build.mode]}</p>
+      </Panel>
+
+      <Panel title="Questions answered so far" bodyClassName="px-4 py-3">
+        {messages === null && loadError ? (
+          <p className="text-body text-text-muted">Couldn't load the answers. Select Try again in the chat.</p>
+        ) : messages === null ? (
+          <LoadingState>Loading answers…</LoadingState>
+        ) : answers.length === 0 ? (
+          <p className="text-body text-text-muted">No answers yet. Answer the first question in the chat.</p>
+        ) : (
+          <ol className="flex list-decimal flex-col gap-3 pl-5 marker:text-text-muted">
+            {answers.map((a) => (
+              <li key={a.id} className="min-w-0 pl-1">
+                {a.question && <Markdown className="text-label text-text-muted">{a.question}</Markdown>}
+                <p className="mt-0.5 whitespace-pre-wrap text-body text-text [overflow-wrap:anywhere]">{a.answer}</p>
+              </li>
+            ))}
+          </ol>
+        )}
+      </Panel>
+
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant={build.ready_for_plan ? 'primary' : 'secondary'}
+            data-ready={String(build.ready_for_plan)}
+            icon={<Sparkles aria-hidden="true" />}
+            loading={planning}
+            onClick={() => void generate()}
+          >
+            Generate plan
+          </Button>
+          <p className="text-body text-text-muted">
+            {build.ready_for_plan
+              ? 'The assistant has enough to plan.'
+              : 'You can plan now, but answering a few more questions helps.'}
+          </p>
+        </div>
+        {planError && <ErrorState title="Couldn't start the plan" message={planError} onRetry={() => void generate()} />}
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,23 @@
+[
+  {
+    "id": "m_000000000001",
+    "role": "assistant",
+    "text": "Hi! I looked at **ecommerce_sales.csv** (2,000 orders, Jan-Sep 2026). Who will read this dashboard, and what decision should it help them make?",
+    "node": "interview",
+    "created_at": "2026-10-18T09:01:00Z"
+  },
+  {
+    "id": "m_000000000002",
+    "role": "user",
+    "text": "Our sales director. She wants to know which regions and categories drive revenue.",
+    "node": null,
+    "created_at": "2026-10-18T09:02:00Z"
+  },
+  {
+    "id": "m_000000000003",
+    "role": "assistant",
+    "text": "Got it. Should revenue be compared month over month, or against a target?",
+    "node": "interview",
+    "created_at": "2026-10-18T09:02:10Z"
+  }
+]

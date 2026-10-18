@@ -1,0 +1,496 @@
+// Types and runtime guards for ../contracts/api.md 1.1. Names in the "Types" block of the
+// contract are used exactly; the rest are named after their endpoint or event.
+// A guard accepts exactly the contract's keys with the contract's JSON types (extra keys fail),
+// so tests/contract.test.ts can check the shared fixtures with them.
+
+// ---------- Guard toolkit ----------
+
+/** `problems`, when given, collects one line per mismatch ("$.stage: expected one of ..."). */
+export type Guard<T> = (value: unknown, path?: string, problems?: string[]) => value is T;
+
+function fail(path: string, problems: string[] | undefined, message: string): false {
+  problems?.push(`${path}: ${message}`);
+  return false;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function primitive<T>(test: (v: unknown) => boolean, expected: string): Guard<T> {
+  return (v, path = '$', problems): v is T => test(v) || fail(path, problems, `expected ${expected}`);
+}
+
+const isString = primitive<string>((v) => typeof v === 'string', 'a string');
+const isInt = primitive<number>(Number.isInteger, 'an integer');
+const isBoolean = primitive<boolean>((v) => typeof v === 'boolean', 'a boolean');
+const isObject = primitive<Record<string, unknown>>(isRecord, 'an object');
+
+function oneOf<const T extends readonly string[]>(values: T): Guard<T[number]> {
+  return (v, path = '$', problems): v is T[number] =>
+    (typeof v === 'string' && values.includes(v)) ||
+    fail(path, problems, `expected one of ${values.join(' | ')}, got ${JSON.stringify(v)}`);
+}
+
+function nullable<T>(guard: Guard<T>): Guard<T | null> {
+  return (v, path = '$', problems): v is T | null => v === null || guard(v, path, problems);
+}
+
+export function arrayOf<T>(guard: Guard<T>): Guard<T[]> {
+  return (v, path = '$', problems): v is T[] => {
+    if (!Array.isArray(v)) return fail(path, problems, 'expected an array');
+    let ok = true;
+    v.forEach((item, i) => {
+      ok = guard(item, `${path}[${i}]`, problems) && ok;
+    });
+    return ok;
+  };
+}
+
+type Fields<T> = { [K in keyof T]-?: Guard<T[K]> };
+
+function shape<T extends object>(fields: Fields<T>): Guard<T> {
+  const guards = fields as Record<string, Guard<unknown>>;
+  return (v, path = '$', problems): v is T => {
+    if (!isRecord(v)) return fail(path, problems, 'expected an object');
+    let ok = true;
+    for (const [key, guard] of Object.entries(guards)) {
+      if (!Object.hasOwn(v, key)) ok = fail(`${path}.${key}`, problems, 'missing');
+      else ok = guard(v[key], `${path}.${key}`, problems) && ok;
+    }
+    for (const key of Object.keys(v)) {
+      if (!Object.hasOwn(guards, key)) ok = fail(`${path}.${key}`, problems, 'not in the contract');
+    }
+    return ok;
+  };
+}
+
+/** Every mismatch between `value` and `guard`, empty when it conforms. */
+export function problemsOf<T>(guard: Guard<T>, value: unknown, path = '$'): string[] {
+  const problems: string[] = [];
+  guard(value, path, problems);
+  return problems;
+}
+
+// ---------- Contract types ----------
+
+export const STAGES = ['connect', 'interview', 'plan', 'prototype', 'build', 'done'] as const;
+export const ARCHETYPES = ['executive', 'storytelling', 'operational', 'analytical'] as const;
+export const MODES = ['data', 'research'] as const;
+export const COLUMN_TYPES = ['string', 'number', 'date', 'datetime', 'boolean', 'geo'] as const;
+export const SOURCE_KINDS = ['upload', 'gcs', 'bigquery', 'research'] as const;
+export const VERSION_STATUSES = ['draft', 'building', 'published', 'failed'] as const;
+export const MESSAGE_ROLES = ['user', 'assistant', 'system'] as const;
+
+export type Stage = (typeof STAGES)[number];
+export type Archetype = (typeof ARCHETYPES)[number];
+export type Mode = (typeof MODES)[number];
+export type ColumnType = (typeof COLUMN_TYPES)[number];
+export type SourceKind = (typeof SOURCE_KINDS)[number];
+
+export interface Column {
+  name: string;
+  type: ColumnType;
+  sample: string[];
+}
+
+export interface Source {
+  id: string;
+  kind: SourceKind;
+  name: string;
+  /** project.dataset.table */
+  bq_table: string;
+  row_count: number;
+  columns: Column[];
+}
+
+export interface DocRef {
+  /** Relative to the version's docs/. */
+  path: string;
+  title: string;
+  type: string;
+}
+
+export interface Version {
+  n: number;
+  status: (typeof VERSION_STATUSES)[number];
+  report_url: string | null;
+  created_at: string;
+}
+
+export interface Build {
+  id: string;
+  title: string;
+  archetype: Archetype;
+  mode: Mode;
+  stage: Stage;
+  created_at: string;
+  updated_at: string;
+  sources: Source[];
+  docs: DocRef[];
+  spec_version: number | null;
+  current_version: number;
+  versions: Version[];
+  report_url: string | null;
+  /** The interview has enough to plan. */
+  ready_for_plan: boolean;
+}
+
+export type BuildSummary = Pick<Build, 'id' | 'title' | 'archetype' | 'stage' | 'updated_at' | 'report_url'>;
+
+export interface Message {
+  id: string;
+  role: (typeof MESSAGE_ROLES)[number];
+  /** Markdown. */
+  text: string;
+  node: string | null;
+  created_at: string;
+}
+
+export interface Comment {
+  component_id: string;
+  text: string;
+}
+
+export interface Trace {
+  run_id: string;
+  build_id: string | null;
+  node: string;
+  model: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  latency_ms: number;
+  tool_calls: number;
+  status: 'ok' | 'error';
+  error: string | null;
+  started_at: string;
+}
+
+export interface Settings {
+  planner_model: string;
+  worker_model: string;
+  gcp_project_id: string;
+  bq_dataset: string;
+  bq_location: string;
+  gcs_bucket: string;
+  google_api_key_set: boolean;
+}
+
+// ---------- Request and response bodies ----------
+
+/** PUT /api/settings: partial fields, plus the write-only key. */
+export type SettingsUpdate = Partial<Omit<Settings, 'google_api_key_set'>> & { google_api_key?: string };
+
+/** POST /api/builds */
+export interface NewBuild {
+  title?: string;
+  archetype: Archetype;
+  mode: Mode;
+}
+
+/** POST /api/builds/{id}/sources: `gs://bucket/path.csv` or `project.dataset.table`. */
+export interface SourceUri {
+  kind: 'gcs' | 'bigquery';
+  uri: string;
+}
+
+/** 202 body of every long-running action. */
+export interface RunAccepted {
+  run_id: string;
+}
+
+/** 202 body of POST /api/builds/{id}/messages. */
+export interface MessageAccepted {
+  run_id: string;
+  /** The user message's id. */
+  message_id: string;
+}
+
+/** 201 body of POST /api/builds/{id}/sources/upload. */
+export interface SourcesUploaded {
+  sources: Source[];
+}
+
+export interface RecipeOp {
+  op_id: string;
+  /** dsengine print line. */
+  line: string;
+}
+
+/** 200 body of POST /api/builds/{id}/recipe. */
+export interface Recipe {
+  op_count: number;
+  ops: RecipeOp[];
+}
+
+export const ENGINE_MODES = ['local', 'agent'] as const;
+export type EngineMode = (typeof ENGINE_MODES)[number];
+
+export interface EngineStatus {
+  /** `agent`: builds run on a build agent (Cloud Run); chrome_running and signed_in come from its heartbeat. */
+  mode: EngineMode;
+  chrome_running: boolean;
+  signed_in: boolean;
+  /** A heartbeat in the last 30 s; false in local mode. */
+  agent_connected: boolean;
+  agent_last_seen: string | null;
+}
+
+/** GET/POST /api/session (contracts/api.md, Access). */
+export interface Session {
+  /** DSS_ACCESS_CODE is set. */
+  required: boolean;
+  /** This request carries a valid code. */
+  ok: boolean;
+}
+
+/** A queued build for the build agent (Agent endpoints; the frontend only checks the fixture). */
+export interface Job {
+  run_id: string;
+  build_id: string;
+  version: number;
+  dry_run: boolean;
+  timeout_s: number;
+  /** "recipe.jsonl" first, then every file the recipe's ops name. */
+  files: string[];
+}
+
+export interface Health {
+  status: 'ok';
+}
+
+/** Error body (contracts/conventions.md, "Errors"). */
+export interface ApiErrorBody {
+  error: { code: string; message: string; detail: Record<string, unknown> };
+}
+
+/** The engine's `op_finished` event (contracts/recipe.md), forwarded as `build.op`. */
+export interface OpFinished {
+  event: 'op_finished';
+  ts: string;
+  op_id: string;
+  op: string;
+  status: 'ok' | 'failed' | 'skipped';
+  /** Empty when ok. */
+  message: string;
+  /** Relative to the screens dir. */
+  screenshot: string | null;
+  duration_ms: number;
+}
+
+/** Cloud Run refuses request bodies over 32 MB (contracts/api.md): uploads are checked first. */
+export const UPLOAD_LIMIT_BYTES = 32 * 1024 * 1024;
+export const UPLOAD_TOO_LARGE = "Files over 32 MB can't be uploaded to the hosted app.";
+
+/** A failed API call: the HTTP status plus the contract's error code, message and detail. */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string;
+  readonly detail: Record<string, unknown>;
+
+  constructor(status: number, code: string, message: string, detail: Record<string, unknown> = {}) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+    this.detail = detail;
+  }
+}
+
+/** The 413 for a batch of files over the upload limit, or null when they fit. */
+export function oversizeError(files: File[]): ApiError | null {
+  const total = files.reduce((sum, file) => sum + file.size, 0);
+  return total > UPLOAD_LIMIT_BYTES ? new ApiError(413, 'payload_too_large', UPLOAD_TOO_LARGE, { bytes: total }) : null;
+}
+
+// ---------- Guards ----------
+
+export const isStage = oneOf(STAGES);
+export const isArchetype = oneOf(ARCHETYPES);
+export const isMode = oneOf(MODES);
+
+export const isColumn = shape<Column>({ name: isString, type: oneOf(COLUMN_TYPES), sample: arrayOf(isString) });
+
+export const isSource = shape<Source>({
+  id: isString,
+  kind: oneOf(SOURCE_KINDS),
+  name: isString,
+  bq_table: isString,
+  row_count: isInt,
+  columns: arrayOf(isColumn),
+});
+
+export const isDocRef = shape<DocRef>({ path: isString, title: isString, type: isString });
+
+export const isVersion = shape<Version>({
+  n: isInt,
+  status: oneOf(VERSION_STATUSES),
+  report_url: nullable(isString),
+  created_at: isString,
+});
+
+export const isBuild = shape<Build>({
+  id: isString,
+  title: isString,
+  archetype: isArchetype,
+  mode: isMode,
+  stage: isStage,
+  created_at: isString,
+  updated_at: isString,
+  sources: arrayOf(isSource),
+  docs: arrayOf(isDocRef),
+  spec_version: nullable(isInt),
+  current_version: isInt,
+  versions: arrayOf(isVersion),
+  report_url: nullable(isString),
+  ready_for_plan: isBoolean,
+});
+
+export const isBuildSummary = shape<BuildSummary>({
+  id: isString,
+  title: isString,
+  archetype: isArchetype,
+  stage: isStage,
+  updated_at: isString,
+  report_url: nullable(isString),
+});
+
+export const isMessage = shape<Message>({
+  id: isString,
+  role: oneOf(MESSAGE_ROLES),
+  text: isString,
+  node: nullable(isString),
+  created_at: isString,
+});
+
+export const isComment = shape<Comment>({ component_id: isString, text: isString });
+
+export const isTrace = shape<Trace>({
+  run_id: isString,
+  build_id: nullable(isString),
+  node: isString,
+  model: nullable(isString),
+  input_tokens: isInt,
+  output_tokens: isInt,
+  latency_ms: isInt,
+  tool_calls: isInt,
+  status: oneOf(['ok', 'error']),
+  error: nullable(isString),
+  started_at: isString,
+});
+
+export const isSettings = shape<Settings>({
+  planner_model: isString,
+  worker_model: isString,
+  gcp_project_id: isString,
+  bq_dataset: isString,
+  bq_location: isString,
+  gcs_bucket: isString,
+  google_api_key_set: isBoolean,
+});
+
+export const isRunAccepted = shape<RunAccepted>({ run_id: isString });
+export const isMessageAccepted = shape<MessageAccepted>({ run_id: isString, message_id: isString });
+export const isSourcesUploaded = shape<SourcesUploaded>({ sources: arrayOf(isSource) });
+export const isRecipeOp = shape<RecipeOp>({ op_id: isString, line: isString });
+export const isRecipe = shape<Recipe>({ op_count: isInt, ops: arrayOf(isRecipeOp) });
+export const isEngineStatus = shape<EngineStatus>({
+  mode: oneOf(ENGINE_MODES),
+  chrome_running: isBoolean,
+  signed_in: isBoolean,
+  agent_connected: isBoolean,
+  agent_last_seen: nullable(isString),
+});
+export const isSession = shape<Session>({ required: isBoolean, ok: isBoolean });
+export const isJob = shape<Job>({
+  run_id: isString,
+  build_id: isString,
+  version: isInt,
+  dry_run: isBoolean,
+  timeout_s: isInt,
+  files: arrayOf(isString),
+});
+
+export const isApiErrorBody = shape<ApiErrorBody>({
+  error: shape<ApiErrorBody['error']>({ code: isString, message: isString, detail: isObject }),
+});
+
+export const isOpFinished = shape<OpFinished>({
+  event: oneOf(['op_finished']),
+  ts: isString,
+  op_id: isString,
+  op: isString,
+  status: oneOf(['ok', 'failed', 'skipped']),
+  message: isString,
+  screenshot: nullable(isString),
+  duration_ms: isInt,
+});
+
+// ---------- Event stream: GET /api/builds/{id}/events ----------
+
+export interface BuildEventMap {
+  ready: { build_id: string };
+  /** Append `text` to that assistant message. */
+  'message.delta': { message_id: string; text: string };
+  'message.done': { message: Message };
+  'stage.changed': { stage: Stage };
+  'build.updated': { build: Build };
+  'run.started': { run_id: string; node: string };
+  /** Short status line, e.g. "Writing questions.md". */
+  'node.progress': { run_id: string; node: string; text: string };
+  'run.finished': { run_id: string; node: string; status: 'ok' | 'error'; error: string | null };
+  'docs.updated': { docs: DocRef[] };
+  'prototype.updated': { spec_version: number };
+  'build.op': OpFinished;
+  /** Base64 JPEG (stretch, screencast). */
+  'build.frame': { data: string };
+  'build.finished': { status: 'ok' | 'partial' | 'failed'; report_url: string | null; version: number };
+}
+
+export type BuildEventName = keyof BuildEventMap;
+
+/** One event from the stream: `name` is the SSE `event:` field, `data` its parsed JSON. */
+export type BuildEvent = { [K in BuildEventName]: { name: K; data: BuildEventMap[K] } }[BuildEventName];
+
+type M = BuildEventMap;
+
+export const buildEventGuards: { [K in BuildEventName]: Guard<M[K]> } = {
+  ready: shape<M['ready']>({ build_id: isString }),
+  'message.delta': shape<M['message.delta']>({ message_id: isString, text: isString }),
+  'message.done': shape<M['message.done']>({ message: isMessage }),
+  'stage.changed': shape<M['stage.changed']>({ stage: isStage }),
+  'build.updated': shape<M['build.updated']>({ build: isBuild }),
+  'run.started': shape<M['run.started']>({ run_id: isString, node: isString }),
+  'node.progress': shape<M['node.progress']>({ run_id: isString, node: isString, text: isString }),
+  'run.finished': shape<M['run.finished']>({
+    run_id: isString,
+    node: isString,
+    status: oneOf(['ok', 'error']),
+    error: nullable(isString),
+  }),
+  'docs.updated': shape<M['docs.updated']>({ docs: arrayOf(isDocRef) }),
+  'prototype.updated': shape<M['prototype.updated']>({ spec_version: isInt }),
+  'build.op': isOpFinished,
+  'build.frame': shape<M['build.frame']>({ data: isString }),
+  'build.finished': shape<M['build.finished']>({
+    status: oneOf(['ok', 'partial', 'failed']),
+    report_url: nullable(isString),
+    version: isInt,
+  }),
+};
+
+export const BUILD_EVENT_NAMES = Object.keys(buildEventGuards) as BuildEventName[];
+
+export function isBuildEventName(name: string): name is BuildEventName {
+  return Object.hasOwn(buildEventGuards, name);
+}
+
+/** The typed event, or null when the name is unknown or the data doesn't match the contract. */
+export function toBuildEvent(name: string, data: unknown, problems?: string[]): BuildEvent | null {
+  if (!isBuildEventName(name)) {
+    problems?.push(`${name}: not an event in the contract`);
+    return null;
+  }
+  const guard = buildEventGuards[name] as Guard<unknown>;
+  return guard(data, `${name}.data`, problems) ? ({ name, data } as BuildEvent) : null;
+}

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>d6 Token economy</title>
+<link rel="stylesheet" href="_base.css">
+<style>
+  .card { width: 420px; height: 296px; padding: 16px 20px; gap: 8px; }
+  .card h3 { font-size: 23px; }
+  .card p { font-size: 17px; line-height: 1.35; }
+  .card .tags { min-height: 21px; }
+  .card .saves { min-height: 56px; margin-top: auto; padding-top: 8px; border-top: 1.5px solid #dadce0; }
+  .num { width: 38px; height: 38px; border-radius: 19px; color: #fff; font-size: 20px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="title">Eight token levers: the model writes decisions, code does the rest</div>
+  <div class="legend"><span><span class="tag planned">planned</span> not built yet</span></div>
+  <div class="box white top card plan" style="left:40px;top:112px;border-top:8px solid #4285F4">
+    <div class="num" style="background:#4285F4">1</div>
+    <h3>Spec as the single truth</h3>
+    <p>The Dashboard Spec (JSON) drives the prototype, the recipe and every edit. The model never rewrites HTML or Data Studio steps.</p>
+    <p class="saves"><b>Saves:</b> one small JSON per turn instead of regenerated pages</p>
+    <div class="tags"><span class="tag planned">spec node: planned</span></div>
+  </div>
+  <div class="box white top card" style="left:486px;top:112px;border-top:8px solid #EA4335">
+    <div class="num" style="background:#EA4335">2</div>
+    <h3>Grid layout</h3>
+    <p>The spec places items on a 12-column grid; code computes every pixel box for the prototype and the recipe.</p>
+    <p class="saves"><b>Saves:</b> the model never outputs coordinates</p>
+    <div class="tags"></div>
+  </div>
+  <div class="box white top card plan" style="left:932px;top:112px;border-top:8px solid #FBBC04">
+    <div class="num" style="background:#FBBC04">3</div>
+    <h3>JSON-patch comments</h3>
+    <p>Each pinned comment becomes a small JSON patch on the spec, not a rewrite of the whole design.</p>
+    <p class="saves"><b>Saves:</b> an edit costs about the size of the change</p>
+    <div class="tags"><span class="tag planned">revise: planned</span></div>
+  </div>
+  <div class="box white top card plan" style="left:1378px;top:112px;border-top:8px solid #34A853">
+    <div class="num" style="background:#34A853">4</div>
+    <h3>Compiled recipe</h3>
+    <p>A deterministic compiler turns the spec into recipe.jsonl; dsengine replays it with no LLM calls.</p>
+    <p class="saves"><b>Saves:</b> a build, and every re-run, costs zero tokens</p>
+    <div class="tags"><span class="tag planned">full compiler: planned</span></div>
+  </div>
+  <div class="box white top card plan" style="left:40px;top:436px;border-top:8px solid #4285F4">
+    <div class="num" style="background:#4285F4">5</div>
+    <h3>Background image</h3>
+    <p>Static styling (cards, headers, colors) is baked into one background PNG per page.</p>
+    <p class="saves"><b>Saves:</b> dozens of styling clicks become one op</p>
+    <div class="tags"><span class="tag planned">background: planned</span></div>
+  </div>
+  <div class="box white top card plan" style="left:486px;top:436px;border-top:8px solid #EA4335">
+    <div class="num" style="background:#EA4335">6</div>
+    <h3>Per-node context recipes</h3>
+    <p>Each node gets only the memory it needs: data profile, a spec slice, the relevant skill.</p>
+    <p class="saves"><b>Saves:</b> short prompts, no full history in every call</p>
+    <div class="tags"><span class="tag planned">planned</span></div>
+  </div>
+  <div class="box white top card" style="left:932px;top:436px;border-top:8px solid #FBBC04">
+    <div class="num" style="background:#FBBC04">7</div>
+    <h3>Model routing</h3>
+    <p>The planner model runs only on plan and spec; the fast worker model runs every other LLM node.</p>
+    <p class="saves"><b>Saves:</b> the expensive model on two nodes only</p>
+    <div class="tags"></div>
+  </div>
+  <div class="box white top card plan" style="left:1378px;top:436px;border-top:8px solid #34A853">
+    <div class="num" style="background:#34A853">8</div>
+    <h3>OKF instead of RAG</h3>
+    <p>Semantic memory is an OKF bundle the model navigates by its index; no embeddings, no vector store.</p>
+    <p class="saves"><b>Saves:</b> no embedding calls, no retrieval noise</p>
+    <div class="tags"><span class="tag planned">node context: planned</span></div>
+  </div>
+</div>
+</body>
+</html>

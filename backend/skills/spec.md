@@ -1,0 +1,18 @@
+---
+type: Procedural Skill
+title: Dashboard Spec
+---
+# Dashboard specification
+Write exactly one page, index 1. Use a 1200 px canvas; page height equals canvas height.
+Grid: columns 12, row_height 20, gutter 16, margin 24. Integer grid positions start at 1.
+All component and decoration IDs are unique lowercase snake_case prefixed p1_.
+Calculate pixel bounds: column width=(1200-48-11*16)/12; x=24+(col-1)*(column width+16),
+y=24+(row-1)*20; width=w*column width+(w-1)*16; height=h*20-16.
+Keep all boxes inside the canvas, and components separated. Decorations may underlay charts.
+Use only the supplied allowed catalog types and its exact slot roles, counts and minimum sizes.
+Copy the supplied datasource and build identity exactly; do not invent fields.
+Each high priority question qN must appear in a component question_ref. Use date_dimension
+for time_series/date_range; use field for dropdown. Field types and roles constrain binding.
+Respect design.md, brief.md and KPI definitions. Never generate HTML, SQL or recipe lines.
+Return a complete JSON DashboardSpec. Repair diagnostics are a list of path/message objects;
+correct them all while preserving the required datasource. At most two repair turns are available.

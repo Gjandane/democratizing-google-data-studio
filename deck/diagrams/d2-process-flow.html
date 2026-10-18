@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>d2 Process flow</title>
+<link rel="stylesheet" href="_base.css">
+<style>
+  .stage { position: absolute; top: 108px; width: 230px; height: 50px; border-radius: 25px;
+    background: #202124; color: #ffffff; font-size: 19px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; }
+  .lane { position: absolute; left: 40px; width: 150px; border-radius: 12px; color: #000;
+    font-size: 19px; font-weight: 700; display: flex; flex-direction: column; justify-content: center;
+    padding: 0 14px; border: 2.5px solid; gap: 2px; }
+  .lane span { font-size: 14px; font-weight: 400; color: #3c4043; }
+  .cell { width: 250px; padding: 8px 12px; justify-content: flex-start; }
+  .cell p { font-size: 16px; }
+  .cell h3 { font-size: 18px; }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="title">Flow 1 (build) and flow 3 (history), stage by stage</div>
+  <div class="legend">
+    <span><span class="sw blue"></span>frontend</span>
+    <span><span class="sw green"></span>backend</span>
+    <span><span class="sw red"></span>engine</span>
+    <span><span class="tag planned">planned</span> not built yet</span>
+  </div>
+
+  <svg class="wires" viewBox="0 0 1840 800">
+    <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#202124"/></marker></defs>
+    <path class="w" d="M450,133 H486" marker-end="url(#a)"/>
+    <path class="w" d="M718,133 H754" marker-end="url(#a)"/>
+    <path class="w" d="M986,133 H1022" marker-end="url(#a)"/>
+    <path class="w" d="M1254,133 H1290" marker-end="url(#a)"/>
+    <path class="w" d="M1522,133 H1558" marker-end="url(#a)"/>
+    <!-- build: backend starts the engine -->
+    <path class="w" d="M1407,505 V523" marker-end="url(#a)"/>
+    <!-- flow 3 chain -->
+    <path class="w" d="M700,710 H758" marker-end="url(#a)"/>
+    <path class="w" d="M1240,710 H1298" marker-end="url(#a)"/>
+  </svg>
+
+  <div class="stage" style="left:220px">Connect</div>
+  <div class="stage" style="left:488px">Interview</div>
+  <div class="stage" style="left:756px">Plan</div>
+  <div class="stage" style="left:1024px">Prototype + comments</div>
+  <div class="stage" style="left:1292px">Build</div>
+  <div class="stage" style="left:1560px">Done</div>
+
+  <div class="lane blue" style="top:182px;height:136px">frontend<span>web app :5173</span></div>
+  <div class="lane green" style="top:334px;height:171px">backend<span>harness :8000</span></div>
+  <div class="lane red" style="top:525px;height:96px">engine<span>dsengine CLI</span></div>
+  <div class="lane gray" style="top:648px;height:124px">Flow 3<span>History, new version</span></div>
+
+  <!-- frontend lane -->
+  <div class="box blue cell" style="left:210px;top:182px;height:136px"><h3>Add data</h3><p>Upload a CSV, or pick GCS or BigQuery tables.</p></div>
+  <div class="box blue cell" style="left:478px;top:182px;height:136px"><h3>Chat</h3><p>Answer the interview in the chat panel.</p></div>
+  <div class="box blue cell" style="left:746px;top:182px;height:136px"><h3>Review the plan</h3><p>Stage stepper shows the plan and build docs.</p></div>
+  <div class="box blue cell" style="left:1014px;top:182px;height:136px"><h3>Click to comment</h3><p>Pin comments on prototype elements, then apply them.</p></div>
+  <div class="box blue cell" style="left:1282px;top:182px;height:136px"><h3>Build view</h3><p>Click Build; events stream live (SSE).</p></div>
+  <div class="box blue cell" style="left:1550px;top:182px;height:136px"><h3>Dashboard link</h3><p>Open the real report in Data Studio.</p></div>
+
+  <!-- backend lane -->
+  <div class="box green cell" style="left:210px;top:334px;height:171px"><h3>intake</h3><p>Loads every source to BigQuery, profiles the schema, writes data-profile.md.</p></div>
+  <div class="box green cell" style="left:478px;top:334px;height:171px"><h3>interview</h3><p>Worker model asks about audience, questions and KPIs.</p></div>
+  <div class="box green cell" style="left:746px;top:334px;height:171px"><h3>plan · view · spec</h3><p>Planner model: OKF build docs, one BigQuery view, the Dashboard Spec.</p><div class="tags"><span class="tag planned">spec: planned</span></div></div>
+  <div class="box green cell" style="left:1014px;top:334px;height:171px"><h3>render · revise</h3><p>Spec to HTML prototype; revise turns comments into JSON patches.</p><div class="tags"><span class="tag planned">revise: planned</span></div></div>
+  <div class="box green cell" style="left:1282px;top:334px;height:171px"><h3>compile · execute</h3><p>Spec to recipe.jsonl (code), then runs dsengine and relays events.</p><div class="tags"><span class="tag planned">full compiler, real execute: planned</span></div></div>
+  <div class="box green cell plan" style="left:1550px;top:334px;height:171px"><h3>publish</h3><p>Saves the link and the version; episodic memory records the build.</p><div class="tags"><span class="tag planned">planned</span></div></div>
+
+  <!-- engine lane -->
+  <div class="box red cell" style="left:1282px;top:525px;height:96px"><h3>dsengine run</h3><p>Playwright on the signed-in Chrome.</p></div>
+  <div class="box red cell" style="left:1550px;top:525px;height:96px"><h3>save_report, get_link</h3><p>One event per op, then the link.</p></div>
+
+  <!-- flow 3 -->
+  <div class="box blue" style="left:210px;top:648px;width:490px;height:124px"><h3>Open a past build</h3><p>History lists every build and version (frontend).</p></div>
+  <div class="box green plan" style="left:760px;top:648px;width:480px;height:124px"><h3>Comment or chat edits</h3><p>revise patches the saved spec; prototype re-renders (backend).</p><div class="tags"><span class="tag planned">planned</span></div></div>
+  <div class="box red plan" style="left:1300px;top:648px;width:500px;height:124px"><h3>Re-run as a new version</h3><p>Recompiled recipe builds dashboard v2; v1 stays (backend + engine).</p><div class="tags"><span class="tag planned">versions: planned</span></div></div>
+</div>
+</body>
+</html>

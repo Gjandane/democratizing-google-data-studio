@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend-mock",
+      "runtimeExecutable": "C:/Program Files/Git/bin/bash.exe",
+      "runtimeArgs": ["-c", "VITE_MOCK=1 npm run dev"],
+      "port": 5173
+    }
+  ]
+}

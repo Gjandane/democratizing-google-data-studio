@@ -1,0 +1,28 @@
+[
+  {
+    "run_id": "r_00000000000b",
+    "build_id": "b_3f9a0c12d4e5",
+    "node": "plan",
+    "model": "gemini-4-argon",
+    "input_tokens": 14210,
+    "output_tokens": 3180,
+    "latency_ms": 41200,
+    "tool_calls": 3,
+    "status": "ok",
+    "error": null,
+    "started_at": "2026-10-18T09:10:00Z"
+  },
+  {
+    "run_id": "r_00000000000a",
+    "build_id": "b_3f9a0c12d4e5",
+    "node": "interview",
+    "model": "gemini-3.8-flash",
+    "input_tokens": 3920,
+    "output_tokens": 210,
+    "latency_ms": 2300,
+    "tool_calls": 0,
+    "status": "ok",
+    "error": null,
+    "started_at": "2026-10-18T09:02:05Z"
+  }
+]

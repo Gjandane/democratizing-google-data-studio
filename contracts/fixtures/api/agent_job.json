@@ -1,0 +1,8 @@
+{
+  "run_id": "r_00000000000d",
+  "build_id": "b_3f9a0c12d4e5",
+  "version": 1,
+  "dry_run": false,
+  "timeout_s": 600,
+  "files": ["recipe.jsonl", "background_p1.png"]
+}

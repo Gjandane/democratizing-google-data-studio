@@ -1,0 +1,27 @@
+[build-system]
+requires = ["uv_build>=0.9.7,<0.10"]
+build-backend = "uv_build"
+
+[project]
+name = "dsengine"
+version = "0.1.0"
+description = "Replay Data Studio recipes and stream operation events."
+requires-python = ">=3.12"
+dependencies = [
+    "jsonschema>=4.23",
+    "playwright>=1.48",
+    "pydantic>=2.8",
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+dsengine = "dsengine.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not live'"
+markers = ["live: requires the signed-in Chrome profile and Data Studio"]

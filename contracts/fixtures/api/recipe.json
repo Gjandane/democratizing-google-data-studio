@@ -1,0 +1,17 @@
+{
+  "op_count": 3,
+  "ops": [
+    {
+      "op_id": "s001",
+      "line": "dsengine open-report"
+    },
+    {
+      "op_id": "s002",
+      "line": "dsengine set-canvas --width 1200 --height 900"
+    },
+    {
+      "op_id": "s003",
+      "line": "dsengine add-chart --id p1_revenue_by_region --type bar --x 808 --y 248 --w 368 --h 300 --dim region --metric revenue:sum"
+    }
+  ]
+}

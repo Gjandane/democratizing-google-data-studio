@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dss/recipe.schema.json",
+  "title": "Recipe and engine events, contract version 1.0 (see contracts/recipe.md)",
+  "$defs": {
+    "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+    "px": { "type": "integer", "minimum": 0 },
+    "size": { "type": "integer", "minimum": 1 },
+    "box": {
+      "type": "object",
+      "required": ["x", "y", "w", "h"],
+      "properties": {
+        "x": { "$ref": "#/$defs/px" }, "y": { "$ref": "#/$defs/px" },
+        "w": { "$ref": "#/$defs/size" }, "h": { "$ref": "#/$defs/size" }
+      }
+    },
+    "opId": { "type": "string", "pattern": "^s[0-9]{3}$" },
+    "componentId": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+    "metric": {
+      "type": "object",
+      "required": ["field", "agg"],
+      "additionalProperties": false,
+      "properties": {
+        "field": { "type": "string", "minLength": 1 },
+        "agg": { "enum": ["sum", "avg", "count", "count_distinct", "min", "max", "none"] }
+      }
+    },
+    "header": {
+      "type": "object",
+      "required": ["recipe_version", "build_id", "version", "report_name", "canvas", "datasource"],
+      "additionalProperties": false,
+      "properties": {
+        "recipe_version": { "const": "1.0" },
+        "build_id": { "type": "string", "pattern": "^b_[0-9a-f]{12}$" },
+        "version": { "type": "integer", "minimum": 1 },
+        "report_name": { "type": "string", "minLength": 1 },
+        "canvas": {
+          "type": "object", "required": ["width", "height"], "additionalProperties": false,
+          "properties": { "width": { "$ref": "#/$defs/size" }, "height": { "$ref": "#/$defs/size" } }
+        },
+        "datasource": {
+          "type": "object",
+          "required": ["connector", "project_id", "dataset_id", "table_id"],
+          "additionalProperties": false,
+          "properties": {
+            "connector": { "const": "bigQuery" },
+            "project_id": { "type": "string", "minLength": 1 },
+            "dataset_id": { "type": "string", "minLength": 1 },
+            "table_id": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "op": {
+      "type": "object",
+      "required": ["id", "op"],
+      "properties": { "id": { "$ref": "#/$defs/opId" } },
+      "oneOf": [
+        { "properties": { "op": { "const": "open_report" } } },
+        {
+          "properties": { "op": { "const": "set_canvas" }, "width": { "$ref": "#/$defs/size" }, "height": { "$ref": "#/$defs/size" } },
+          "required": ["width", "height"]
+        },
+        {
+          "allOf": [{ "$ref": "#/$defs/box" }],
+          "properties": { "op": { "const": "set_background_image" }, "path": { "type": "string", "minLength": 1 } },
+          "required": ["path"]
+        },
+        { "properties": { "op": { "const": "add_page" }, "name": { "type": "string", "minLength": 1 } }, "required": ["name"] },
+        { "properties": { "op": { "const": "go_to_page" }, "index": { "type": "integer", "minimum": 1 } }, "required": ["index"] },
+        {
+          "allOf": [{ "$ref": "#/$defs/box" }],
+          "properties": {
+            "op": { "const": "add_chart" },
+            "component_id": { "$ref": "#/$defs/componentId" },
+            "chart_type": { "enum": ["scorecard", "time_series", "bar", "pie", "table", "pivot_table", "geo_map", "scatter"] },
+            "dimensions": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "metrics": { "type": "array", "items": { "$ref": "#/$defs/metric" } },
+            "date_dimension": { "type": ["string", "null"] },
+            "breakdown": { "type": ["string", "null"] },
+            "sort": {
+              "type": ["object", "null"],
+              "required": ["field", "order"],
+              "properties": { "field": { "type": "string" }, "order": { "enum": ["asc", "desc"] } }
+            },
+            "title": { "type": ["string", "null"] },
+            "options": { "type": "object" }
+          },
+          "required": ["component_id", "chart_type", "dimensions", "metrics"]
+        },
+        {
+          "allOf": [{ "$ref": "#/$defs/box" }],
+          "properties": {
+            "op": { "const": "add_control" },
+            "component_id": { "$ref": "#/$defs/componentId" },
+            "control_type": { "enum": ["date_range", "dropdown"] },
+            "field": { "type": ["string", "null"] }
+          },
+          "required": ["component_id", "control_type"]
+        },
+        {
+          "allOf": [{ "$ref": "#/$defs/box" }],
+          "properties": {
+            "op": { "const": "add_text" },
+            "component_id": { "$ref": "#/$defs/componentId" },
+            "text": { "type": "string", "minLength": 1 },
+            "font_size": { "type": "integer", "minimum": 6 },
+            "color": { "$ref": "#/$defs/color" },
+            "bold": { "type": "boolean" },
+            "align": { "enum": ["left", "center", "right"] }
+          },
+          "required": ["component_id", "text"]
+        },
+        {
+          "allOf": [{ "$ref": "#/$defs/box" }],
+          "properties": {
+            "op": { "const": "add_image" },
+            "component_id": { "$ref": "#/$defs/componentId" },
+            "path": { "type": "string", "minLength": 1 }
+          },
+          "required": ["component_id", "path"]
+        },
+        {
+          "properties": {
+            "op": { "const": "set_style" },
+            "component_id": { "$ref": "#/$defs/componentId" },
+            "style": {
+              "type": "object",
+              "properties": {
+                "colors": { "type": "array", "items": { "$ref": "#/$defs/color" } },
+                "show_title": { "type": "boolean" },
+                "font_size": { "type": "integer", "minimum": 6 },
+                "background": { "$ref": "#/$defs/color" },
+                "border_color": { "$ref": "#/$defs/color" }
+              }
+            }
+          },
+          "required": ["component_id", "style"]
+        },
+        { "properties": { "op": { "const": "save_report" } } },
+        { "properties": { "op": { "const": "get_link" } } }
+      ]
+    },
+    "event": {
+      "type": "object",
+      "required": ["event", "ts"],
+      "properties": { "ts": { "type": "string", "format": "date-time" } },
+      "oneOf": [
+        {
+          "properties": { "event": { "const": "run_started" }, "build_id": { "type": "string" }, "version": { "type": "integer" }, "total_ops": { "type": "integer", "minimum": 0 } },
+          "required": ["build_id", "version", "total_ops"]
+        },
+        {
+          "properties": { "event": { "const": "op_started" }, "op_id": { "$ref": "#/$defs/opId" }, "op": { "type": "string" } },
+          "required": ["op_id", "op"]
+        },
+        {
+          "properties": {
+            "event": { "const": "op_finished" },
+            "op_id": { "$ref": "#/$defs/opId" },
+            "op": { "type": "string" },
+            "status": { "enum": ["ok", "failed", "skipped"] },
+            "message": { "type": "string" },
+            "screenshot": { "type": ["string", "null"] },
+            "duration_ms": { "type": "integer", "minimum": 0 }
+          },
+          "required": ["op_id", "op", "status", "message", "screenshot", "duration_ms"]
+        },
+        { "properties": { "event": { "const": "frame" }, "data": { "type": "string" } }, "required": ["data"] },
+        {
+          "properties": { "event": { "const": "log" }, "level": { "enum": ["info", "warn", "error"] }, "message": { "type": "string" } },
+          "required": ["level", "message"]
+        },
+        {
+          "properties": {
+            "event": { "const": "run_finished" },
+            "status": { "enum": ["ok", "partial", "failed"] },
+            "report_url": { "type": ["string", "null"] },
+            "ok": { "type": "integer", "minimum": 0 },
+            "failed": { "type": "integer", "minimum": 0 },
+            "skipped": { "type": "integer", "minimum": 0 },
+            "error_code": { "type": ["string", "null"] }
+          },
+          "required": ["status", "report_url", "ok", "failed", "skipped", "error_code"]
+        }
+      ]
+    }
+  }
+}

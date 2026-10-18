@@ -1,0 +1,2001 @@
+order_id,order_date,region,country,category,product_name,customer_segment,quantity,unit_price,revenue
+O-00001,2026-01-01,AMER,United States,Apparel,Running Shoes,SMB,3,95.00,285.00
+O-00002,2026-01-01,EMEA,Germany,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-00003,2026-01-01,APAC,Philippines,Office,Desk Organizer,Consumer,1,27.99,27.99
+O-00004,2026-01-01,APAC,India,Electronics,Noise-Cancelling Headphones,Consumer,2,199.00,398.00
+O-00005,2026-01-02,AMER,United States,Apparel,Hoodie,SMB,1,45.00,45.00
+O-00006,2026-01-02,APAC,Philippines,Home,Desk Lamp,SMB,5,39.50,197.50
+O-00007,2026-01-02,AMER,Canada,Office,Monitor Stand,Enterprise,9,44.00,396.00
+O-00008,2026-01-02,EMEA,United Kingdom,Electronics,Webcam,Consumer,1,53.55,53.55
+O-00009,2026-01-02,APAC,Philippines,Home,Throw Blanket,Consumer,1,34.99,34.99
+O-00010,2026-01-02,AMER,United States,Home,Coffee Grinder,Enterprise,13,44.10,573.30
+O-00011,2026-01-03,APAC,Australia,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-00012,2026-01-03,AMER,United States,Apparel,Running Shoes,Consumer,1,85.50,85.50
+O-00013,2026-01-03,EMEA,France,Home,Throw Blanket,Consumer,3,34.99,104.97
+O-00014,2026-01-03,AMER,Canada,Home,Coffee Grinder,Consumer,1,49.00,49.00
+O-00015,2026-01-03,APAC,Japan,Electronics,Wireless Mouse,Consumer,3,24.99,74.97
+O-00016,2026-01-04,AMER,United States,Electronics,USB-C Hub,Consumer,1,39.99,39.99
+O-00017,2026-01-04,APAC,India,Home,Desk Lamp,Consumer,2,39.50,79.00
+O-00018,2026-01-04,APAC,Japan,Apparel,Wool Socks,Consumer,1,18.00,18.00
+O-00019,2026-01-04,EMEA,Germany,Electronics,Wireless Mouse,Consumer,1,24.99,24.99
+O-00020,2026-01-04,EMEA,South Africa,Apparel,Wool Socks,SMB,2,18.00,36.00
+O-00021,2026-01-05,APAC,Japan,Home,Desk Lamp,Consumer,2,35.55,71.10
+O-00022,2026-01-05,EMEA,Netherlands,Apparel,Baseball Cap,Enterprise,12,21.50,258.00
+O-00023,2026-01-05,EMEA,United Kingdom,Home,Throw Blanket,Consumer,1,34.99,34.99
+O-00024,2026-01-05,EMEA,United Kingdom,Home,Throw Blanket,Enterprise,10,31.49,314.90
+O-00025,2026-01-05,APAC,Philippines,Office,Notebook Set,Consumer,3,12.50,37.50
+O-00026,2026-01-05,APAC,Philippines,Apparel,Baseball Cap,Consumer,3,21.50,64.50
+O-00027,2026-01-05,AMER,Canada,Office,Monitor Stand,SMB,6,44.00,264.00
+O-00028,2026-01-06,APAC,Philippines,Home,Desk Lamp,SMB,4,39.50,158.00
+O-00029,2026-01-06,AMER,United States,Apparel,Hoodie,SMB,6,45.00,270.00
+O-00030,2026-01-06,EMEA,South Africa,Office,Notebook Set,Consumer,1,12.50,12.50
+O-00031,2026-01-06,APAC,Philippines,Office,Notebook Set,Consumer,1,12.50,12.50
+O-00032,2026-01-06,AMER,United States,Apparel,Baseball Cap,Enterprise,8,21.50,172.00
+O-00033,2026-01-06,EMEA,Germany,Home,Air Purifier,Consumer,2,134.10,268.20
+O-00034,2026-01-06,EMEA,Germany,Electronics,Noise-Cancelling Headphones,Consumer,2,199.00,398.00
+O-00035,2026-01-06,APAC,Australia,Electronics,Webcam,Consumer,2,53.55,107.10
+O-00036,2026-01-07,AMER,Canada,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-00037,2026-01-07,APAC,Philippines,Office,Desk Organizer,Consumer,1,27.99,27.99
+O-00038,2026-01-07,EMEA,Germany,Home,Desk Lamp,SMB,5,39.50,197.50
+O-00039,2026-01-07,APAC,Philippines,Apparel,Wool Socks,Consumer,3,18.00,54.00
+O-00040,2026-01-07,EMEA,France,Home,Throw Blanket,Enterprise,16,31.49,503.84
+O-00041,2026-01-07,EMEA,United Kingdom,Home,Ceramic Mug Set,Consumer,1,22.00,22.00
+O-00042,2026-01-07,AMER,Brazil,Home,Throw Blanket,Consumer,1,34.99,34.99
+O-00043,2026-01-08,EMEA,Germany,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-00044,2026-01-08,APAC,Singapore,Electronics,Noise-Cancelling Headphones,Consumer,1,179.10,179.10
+O-00045,2026-01-08,EMEA,Germany,Apparel,Hoodie,Enterprise,5,45.00,225.00
+O-00046,2026-01-08,EMEA,Netherlands,Home,Air Purifier,Enterprise,11,149.00,1639.00
+O-00047,2026-01-08,AMER,United States,Home,Air Purifier,SMB,4,149.00,596.00
+O-00048,2026-01-08,APAC,Australia,Electronics,USB-C Hub,SMB,4,39.99,159.96
+O-00049,2026-01-08,EMEA,United Kingdom,Apparel,Running Shoes,Enterprise,11,85.50,940.50
+O-00050,2026-01-09,AMER,United States,Office,Ergonomic Chair,Consumer,3,224.10,672.30
+O-00051,2026-01-09,EMEA,Netherlands,Office,Gel Pens,Consumer,2,8.99,17.98
+O-00052,2026-01-09,AMER,United States,Home,Air Purifier,SMB,4,149.00,596.00
+O-00053,2026-01-09,EMEA,Germany,Home,Throw Blanket,Consumer,3,34.99,104.97
+O-00054,2026-01-09,APAC,Singapore,Home,Throw Blanket,SMB,1,34.99,34.99
+O-00055,2026-01-09,APAC,Philippines,Home,Air Purifier,Enterprise,18,149.00,2682.00
+O-00056,2026-01-09,EMEA,Germany,Office,Notebook Set,Consumer,3,12.50,37.50
+O-00057,2026-01-09,EMEA,Netherlands,Home,Air Purifier,Consumer,2,134.10,268.20
+O-00058,2026-01-09,APAC,Singapore,Electronics,USB-C Hub,Consumer,1,39.99,39.99
+O-00059,2026-01-09,EMEA,Germany,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-00060,2026-01-10,EMEA,Germany,Apparel,Wool Socks,Consumer,1,18.00,18.00
+O-00061,2026-01-10,AMER,United States,Office,Desk Organizer,SMB,5,27.99,139.95
+O-00062,2026-01-10,AMER,Canada,Office,Notebook Set,SMB,5,12.50,62.50
+O-00063,2026-01-10,AMER,Mexico,Home,Coffee Grinder,Consumer,1,49.00,49.00
+O-00064,2026-01-10,APAC,Singapore,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-00065,2026-01-11,EMEA,United Kingdom,Home,Coffee Grinder,Consumer,2,49.00,98.00
+O-00066,2026-01-11,APAC,Japan,Home,Throw Blanket,SMB,1,34.99,34.99
+O-00067,2026-01-12,APAC,Philippines,Electronics,Webcam,SMB,3,59.50,178.50
+O-00068,2026-01-12,EMEA,Germany,Office,Desk Organizer,Consumer,1,27.99,27.99
+O-00069,2026-01-12,AMER,Canada,Apparel,Running Shoes,Consumer,2,95.00,190.00
+O-00070,2026-01-12,APAC,Japan,Electronics,USB-C Hub,Consumer,1,39.99,39.99
+O-00071,2026-01-12,AMER,United States,Electronics,Webcam,SMB,4,59.50,238.00
+O-00072,2026-01-12,EMEA,Netherlands,Apparel,Wool Socks,Consumer,2,18.00,36.00
+O-00073,2026-01-12,AMER,United States,Home,Air Purifier,Consumer,2,149.00,298.00
+O-00074,2026-01-13,APAC,India,Apparel,Baseball Cap,Consumer,3,19.35,58.05
+O-00075,2026-01-13,APAC,Philippines,Electronics,USB-C Hub,SMB,2,39.99,79.98
+O-00076,2026-01-13,APAC,Singapore,Apparel,Wool Socks,Consumer,1,18.00,18.00
+O-00077,2026-01-13,EMEA,France,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-00078,2026-01-13,APAC,Singapore,Electronics,USB-C Hub,Consumer,3,39.99,119.97
+O-00079,2026-01-13,APAC,Australia,Apparel,Wool Socks,SMB,1,18.00,18.00
+O-00080,2026-01-13,APAC,India,Office,Notebook Set,SMB,4,12.50,50.00
+O-00081,2026-01-13,APAC,Singapore,Electronics,USB-C Hub,SMB,4,39.99,159.96
+O-00082,2026-01-14,EMEA,Germany,Office,Monitor Stand,SMB,3,44.00,132.00
+O-00083,2026-01-14,EMEA,Germany,Electronics,Noise-Cancelling Headphones,SMB,3,199.00,597.00
+O-00084,2026-01-14,APAC,Australia,Home,Coffee Grinder,SMB,6,49.00,294.00
+O-00085,2026-01-14,AMER,Brazil,Electronics,USB-C Hub,Consumer,3,39.99,119.97
+O-00086,2026-01-15,EMEA,United Kingdom,Office,Ergonomic Chair,Consumer,1,249.00,249.00
+O-00087,2026-01-15,APAC,Australia,Office,Desk Organizer,Consumer,3,27.99,83.97
+O-00088,2026-01-15,AMER,United States,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-00089,2026-01-15,AMER,Canada,Electronics,USB-C Hub,Consumer,1,39.99,39.99
+O-00090,2026-01-15,AMER,United States,Electronics,Wireless Mouse,Consumer,1,22.49,22.49
+O-00091,2026-01-15,AMER,United States,Home,Air Purifier,Enterprise,6,149.00,894.00
+O-00092,2026-01-15,AMER,Brazil,Home,Ceramic Mug Set,Consumer,2,22.00,44.00
+O-00093,2026-01-15,APAC,Australia,Home,Desk Lamp,Consumer,2,35.55,71.10
+O-00094,2026-01-15,AMER,Brazil,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-00095,2026-01-15,APAC,Singapore,Apparel,Wool Socks,Consumer,1,16.20,16.20
+O-00096,2026-01-15,APAC,Philippines,Home,Desk Lamp,SMB,1,39.50,39.50
+O-00097,2026-01-15,EMEA,Netherlands,Apparel,Wool Socks,SMB,6,18.00,108.00
+O-00098,2026-01-15,APAC,India,Electronics,Webcam,Consumer,1,59.50,59.50
+O-00099,2026-01-16,AMER,Canada,Apparel,Wool Socks,Consumer,3,18.00,54.00
+O-00100,2026-01-16,AMER,Brazil,Electronics,Webcam,Enterprise,18,59.50,1071.00
+O-00101,2026-01-16,APAC,Philippines,Apparel,Wool Socks,Consumer,3,18.00,54.00
+O-00102,2026-01-16,EMEA,France,Electronics,Noise-Cancelling Headphones,Consumer,3,199.00,597.00
+O-00103,2026-01-16,EMEA,France,Home,Air Purifier,SMB,6,149.00,894.00
+O-00104,2026-01-16,EMEA,Germany,Electronics,Wireless Mouse,Consumer,1,24.99,24.99
+O-00105,2026-01-16,APAC,Australia,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-00106,2026-01-16,APAC,India,Home,Throw Blanket,Enterprise,6,34.99,209.94
+O-00107,2026-01-16,APAC,Singapore,Home,Ceramic Mug Set,Consumer,2,22.00,44.00
+O-00108,2026-01-16,APAC,Australia,Electronics,USB-C Hub,Consumer,3,39.99,119.97
+O-00109,2026-01-16,APAC,Japan,Apparel,Hoodie,Consumer,2,45.00,90.00
+O-00110,2026-01-17,EMEA,Germany,Home,Throw Blanket,SMB,3,34.99,104.97
+O-00111,2026-01-17,EMEA,United Kingdom,Electronics,Wireless Mouse,Consumer,3,24.99,74.97
+O-00112,2026-01-17,APAC,India,Apparel,Baseball Cap,SMB,5,21.50,107.50
+O-00113,2026-01-17,EMEA,Germany,Office,Monitor Stand,SMB,2,44.00,88.00
+O-00114,2026-01-18,APAC,Singapore,Electronics,Wireless Mouse,Consumer,3,24.99,74.97
+O-00115,2026-01-18,APAC,Australia,Office,Monitor Stand,SMB,1,44.00,44.00
+O-00116,2026-01-18,APAC,India,Electronics,Noise-Cancelling Headphones,Consumer,2,199.00,398.00
+O-00117,2026-01-18,AMER,Mexico,Apparel,Running Shoes,SMB,4,95.00,380.00
+O-00118,2026-01-18,AMER,United States,Home,Air Purifier,Consumer,1,149.00,149.00
+O-00119,2026-01-18,AMER,Mexico,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-00120,2026-01-18,EMEA,South Africa,Apparel,Wool Socks,Consumer,2,16.20,32.40
+O-00121,2026-01-19,AMER,Mexico,Office,Monitor Stand,Consumer,3,44.00,132.00
+O-00122,2026-01-19,EMEA,France,Apparel,Baseball Cap,Consumer,1,21.50,21.50
+O-00123,2026-01-19,EMEA,France,Electronics,Webcam,Consumer,3,59.50,178.50
+O-00124,2026-01-19,APAC,Philippines,Electronics,Wireless Mouse,Consumer,3,24.99,74.97
+O-00125,2026-01-19,AMER,Brazil,Home,Ceramic Mug Set,SMB,6,19.80,118.80
+O-00126,2026-01-19,AMER,Brazil,Apparel,Rain Jacket,Consumer,1,79.00,79.00
+O-00127,2026-01-19,EMEA,France,Office,Monitor Stand,Consumer,1,44.00,44.00
+O-00128,2026-01-19,EMEA,Germany,Apparel,Running Shoes,Consumer,1,95.00,95.00
+O-00129,2026-01-20,APAC,Japan,Home,Throw Blanket,Consumer,1,31.49,31.49
+O-00130,2026-01-20,EMEA,Netherlands,Office,Gel Pens,Consumer,1,8.99,8.99
+O-00131,2026-01-20,AMER,United States,Apparel,Running Shoes,SMB,1,95.00,95.00
+O-00132,2026-01-20,EMEA,Germany,Home,Throw Blanket,SMB,1,34.99,34.99
+O-00133,2026-01-20,APAC,India,Home,Coffee Grinder,Consumer,1,49.00,49.00
+O-00134,2026-01-21,AMER,United States,Electronics,Noise-Cancelling Headphones,Consumer,3,199.00,597.00
+O-00135,2026-01-21,AMER,United States,Home,Throw Blanket,SMB,4,34.99,139.96
+O-00136,2026-01-22,EMEA,France,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-00137,2026-01-22,AMER,Mexico,Home,Ceramic Mug Set,Consumer,1,22.00,22.00
+O-00138,2026-01-22,APAC,Australia,Electronics,Webcam,SMB,3,53.55,160.65
+O-00139,2026-01-22,AMER,United States,Apparel,Baseball Cap,Consumer,1,21.50,21.50
+O-00140,2026-01-22,APAC,Philippines,Electronics,Webcam,SMB,5,59.50,297.50
+O-00141,2026-01-22,APAC,India,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-00142,2026-01-22,APAC,Singapore,Electronics,Noise-Cancelling Headphones,Consumer,2,179.10,358.20
+O-00143,2026-01-22,AMER,United States,Home,Air Purifier,Consumer,2,149.00,298.00
+O-00144,2026-01-23,AMER,United States,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-00145,2026-01-23,EMEA,United Kingdom,Apparel,Hoodie,Consumer,1,45.00,45.00
+O-00146,2026-01-23,EMEA,France,Office,Notebook Set,Consumer,2,11.25,22.50
+O-00147,2026-01-23,EMEA,France,Office,Monitor Stand,SMB,1,44.00,44.00
+O-00148,2026-01-23,AMER,Mexico,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-00149,2026-01-24,APAC,Australia,Electronics,Mechanical Keyboard,SMB,5,89.00,445.00
+O-00150,2026-01-24,AMER,United States,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-00151,2026-01-24,EMEA,France,Office,Desk Organizer,Consumer,1,27.99,27.99
+O-00152,2026-01-24,AMER,Mexico,Apparel,Running Shoes,Consumer,2,95.00,190.00
+O-00153,2026-01-25,APAC,Philippines,Office,Notebook Set,SMB,3,12.50,37.50
+O-00154,2026-01-25,AMER,United States,Electronics,Webcam,Consumer,3,59.50,178.50
+O-00155,2026-01-25,APAC,India,Office,Notebook Set,SMB,2,12.50,25.00
+O-00156,2026-01-25,APAC,Australia,Office,Desk Organizer,Consumer,1,27.99,27.99
+O-00157,2026-01-25,APAC,Japan,Apparel,Wool Socks,Consumer,1,18.00,18.00
+O-00158,2026-01-26,AMER,Canada,Electronics,Webcam,Consumer,2,59.50,119.00
+O-00159,2026-01-26,EMEA,France,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-00160,2026-01-26,APAC,Australia,Office,Gel Pens,SMB,2,8.99,17.98
+O-00161,2026-01-26,EMEA,Germany,Home,Desk Lamp,Consumer,2,39.50,79.00
+O-00162,2026-01-27,AMER,Canada,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-00163,2026-01-27,EMEA,United Kingdom,Home,Desk Lamp,SMB,1,39.50,39.50
+O-00164,2026-01-27,APAC,Singapore,Office,Ergonomic Chair,Consumer,3,249.00,747.00
+O-00165,2026-01-27,AMER,United States,Electronics,Webcam,Enterprise,20,59.50,1190.00
+O-00166,2026-01-27,AMER,United States,Home,Desk Lamp,SMB,5,39.50,197.50
+O-00167,2026-01-27,APAC,Philippines,Electronics,USB-C Hub,Consumer,1,39.99,39.99
+O-00168,2026-01-27,APAC,India,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-00169,2026-01-28,APAC,Australia,Apparel,Wool Socks,Consumer,1,16.20,16.20
+O-00170,2026-01-28,APAC,Australia,Electronics,USB-C Hub,Consumer,2,39.99,79.98
+O-00171,2026-01-28,EMEA,South Africa,Electronics,Wireless Mouse,Consumer,3,24.99,74.97
+O-00172,2026-01-28,APAC,India,Home,Desk Lamp,Consumer,2,39.50,79.00
+O-00173,2026-01-28,AMER,Brazil,Electronics,USB-C Hub,SMB,1,39.99,39.99
+O-00174,2026-01-28,AMER,United States,Home,Air Purifier,SMB,3,149.00,447.00
+O-00175,2026-01-28,EMEA,France,Apparel,Running Shoes,Consumer,1,95.00,95.00
+O-00176,2026-01-29,APAC,Singapore,Home,Air Purifier,SMB,2,149.00,298.00
+O-00177,2026-01-29,EMEA,Germany,Apparel,Wool Socks,Consumer,3,18.00,54.00
+O-00178,2026-01-29,APAC,Australia,Apparel,Wool Socks,Consumer,2,18.00,36.00
+O-00179,2026-01-29,APAC,Japan,Apparel,Wool Socks,Consumer,3,16.20,48.60
+O-00180,2026-01-29,EMEA,Netherlands,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-00181,2026-01-29,APAC,India,Electronics,Wireless Mouse,Consumer,1,24.99,24.99
+O-00182,2026-01-29,AMER,United States,Home,Coffee Grinder,Consumer,2,49.00,98.00
+O-00183,2026-01-29,APAC,India,Electronics,Webcam,Enterprise,14,59.50,833.00
+O-00184,2026-01-29,AMER,Canada,Home,Air Purifier,Enterprise,9,149.00,1341.00
+O-00185,2026-01-30,APAC,Philippines,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-00186,2026-01-30,APAC,Singapore,Home,Desk Lamp,SMB,1,39.50,39.50
+O-00187,2026-01-30,APAC,Philippines,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-00188,2026-01-30,AMER,Canada,Apparel,Rain Jacket,Consumer,2,79.00,158.00
+O-00189,2026-01-30,EMEA,South Africa,Home,Air Purifier,Consumer,3,149.00,447.00
+O-00190,2026-01-30,EMEA,Netherlands,Home,Air Purifier,SMB,6,149.00,894.00
+O-00191,2026-01-30,APAC,Japan,Electronics,Webcam,Enterprise,10,53.55,535.50
+O-00192,2026-01-30,EMEA,Netherlands,Apparel,Rain Jacket,SMB,2,79.00,158.00
+O-00193,2026-01-30,AMER,Canada,Office,Notebook Set,SMB,4,12.50,50.00
+O-00194,2026-01-30,AMER,Mexico,Office,Ergonomic Chair,SMB,6,249.00,1494.00
+O-00195,2026-01-31,APAC,India,Home,Desk Lamp,Consumer,2,35.55,71.10
+O-00196,2026-01-31,AMER,Canada,Home,Ceramic Mug Set,Consumer,2,22.00,44.00
+O-00197,2026-01-31,EMEA,Netherlands,Electronics,Wireless Mouse,Consumer,3,24.99,74.97
+O-00198,2026-01-31,EMEA,United Kingdom,Electronics,USB-C Hub,Enterprise,6,39.99,239.94
+O-00199,2026-02-01,APAC,India,Home,Coffee Grinder,Consumer,2,49.00,98.00
+O-00200,2026-02-01,EMEA,Germany,Apparel,Baseball Cap,Consumer,2,21.50,43.00
+O-00201,2026-02-01,AMER,Canada,Electronics,USB-C Hub,SMB,5,39.99,199.95
+O-00202,2026-02-02,APAC,Australia,Apparel,Baseball Cap,Consumer,2,21.50,43.00
+O-00203,2026-02-02,APAC,Singapore,Home,Desk Lamp,Consumer,2,35.55,71.10
+O-00204,2026-02-02,AMER,United States,Home,Air Purifier,Enterprise,13,149.00,1937.00
+O-00205,2026-02-02,EMEA,France,Electronics,Noise-Cancelling Headphones,Consumer,3,199.00,597.00
+O-00206,2026-02-02,AMER,United States,Electronics,USB-C Hub,SMB,2,39.99,79.98
+O-00207,2026-02-02,APAC,India,Home,Coffee Grinder,Enterprise,12,44.10,529.20
+O-00208,2026-02-02,EMEA,Netherlands,Apparel,Running Shoes,Consumer,1,95.00,95.00
+O-00209,2026-02-02,APAC,India,Home,Throw Blanket,SMB,4,34.99,139.96
+O-00210,2026-02-02,AMER,Canada,Home,Air Purifier,Consumer,1,149.00,149.00
+O-00211,2026-02-03,APAC,Philippines,Electronics,Noise-Cancelling Headphones,SMB,4,199.00,796.00
+O-00212,2026-02-03,APAC,Philippines,Office,Monitor Stand,Consumer,1,39.60,39.60
+O-00213,2026-02-03,AMER,Mexico,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-00214,2026-02-03,EMEA,South Africa,Office,Ergonomic Chair,Consumer,1,249.00,249.00
+O-00215,2026-02-03,EMEA,United Kingdom,Electronics,Noise-Cancelling Headphones,SMB,1,199.00,199.00
+O-00216,2026-02-03,APAC,Australia,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-00217,2026-02-04,AMER,Canada,Office,Ergonomic Chair,Consumer,3,249.00,747.00
+O-00218,2026-02-04,EMEA,United Kingdom,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-00219,2026-02-04,EMEA,United Kingdom,Home,Ceramic Mug Set,SMB,2,22.00,44.00
+O-00220,2026-02-04,EMEA,France,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-00221,2026-02-04,AMER,United States,Apparel,Rain Jacket,Consumer,2,71.10,142.20
+O-00222,2026-02-04,EMEA,France,Home,Throw Blanket,SMB,6,31.49,188.94
+O-00223,2026-02-05,APAC,Philippines,Office,Desk Organizer,Consumer,3,27.99,83.97
+O-00224,2026-02-05,APAC,Philippines,Home,Coffee Grinder,Consumer,2,49.00,98.00
+O-00225,2026-02-05,APAC,Australia,Apparel,Running Shoes,Enterprise,9,95.00,855.00
+O-00226,2026-02-05,APAC,India,Home,Throw Blanket,SMB,4,34.99,139.96
+O-00227,2026-02-05,AMER,United States,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-00228,2026-02-05,APAC,Philippines,Office,Ergonomic Chair,Consumer,3,249.00,747.00
+O-00229,2026-02-05,EMEA,United Kingdom,Apparel,Running Shoes,SMB,5,95.00,475.00
+O-00230,2026-02-06,APAC,Philippines,Electronics,USB-C Hub,Consumer,3,39.99,119.97
+O-00231,2026-02-06,AMER,Brazil,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-00232,2026-02-06,APAC,Singapore,Office,Ergonomic Chair,SMB,3,249.00,747.00
+O-00233,2026-02-07,EMEA,United Kingdom,Office,Monitor Stand,Consumer,3,44.00,132.00
+O-00234,2026-02-07,APAC,Japan,Electronics,USB-C Hub,Enterprise,7,39.99,279.93
+O-00235,2026-02-07,APAC,Philippines,Electronics,USB-C Hub,SMB,2,39.99,79.98
+O-00236,2026-02-07,AMER,Mexico,Home,Ceramic Mug Set,Consumer,3,22.00,66.00
+O-00237,2026-02-08,AMER,United States,Apparel,Baseball Cap,SMB,4,21.50,86.00
+O-00238,2026-02-08,AMER,United States,Electronics,Webcam,SMB,4,59.50,238.00
+O-00239,2026-02-08,APAC,Japan,Home,Air Purifier,Consumer,3,149.00,447.00
+O-00240,2026-02-08,EMEA,United Kingdom,Home,Coffee Grinder,SMB,4,49.00,196.00
+O-00241,2026-02-09,EMEA,United Kingdom,Electronics,Webcam,SMB,5,59.50,297.50
+O-00242,2026-02-09,AMER,Brazil,Electronics,Webcam,Consumer,2,59.50,119.00
+O-00243,2026-02-09,APAC,Australia,Office,Desk Organizer,Consumer,2,27.99,55.98
+O-00244,2026-02-09,AMER,United States,Office,Ergonomic Chair,SMB,1,249.00,249.00
+O-00245,2026-02-09,AMER,United States,Apparel,Baseball Cap,SMB,2,21.50,43.00
+O-00246,2026-02-09,AMER,Canada,Home,Air Purifier,Consumer,3,149.00,447.00
+O-00247,2026-02-09,AMER,United States,Home,Throw Blanket,Consumer,1,31.49,31.49
+O-00248,2026-02-09,APAC,Japan,Apparel,Running Shoes,SMB,4,95.00,380.00
+O-00249,2026-02-09,APAC,Singapore,Office,Notebook Set,Consumer,1,12.50,12.50
+O-00250,2026-02-09,APAC,Japan,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-00251,2026-02-09,APAC,Australia,Apparel,Rain Jacket,Consumer,1,79.00,79.00
+O-00252,2026-02-10,AMER,United States,Apparel,Baseball Cap,Enterprise,6,21.50,129.00
+O-00253,2026-02-10,AMER,United States,Apparel,Wool Socks,Consumer,3,18.00,54.00
+O-00254,2026-02-10,APAC,Japan,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-00255,2026-02-10,EMEA,United Kingdom,Home,Coffee Grinder,Consumer,2,44.10,88.20
+O-00256,2026-02-10,APAC,Japan,Home,Air Purifier,Consumer,1,149.00,149.00
+O-00257,2026-02-11,EMEA,Germany,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-00258,2026-02-11,APAC,Australia,Apparel,Rain Jacket,Consumer,1,79.00,79.00
+O-00259,2026-02-11,EMEA,Germany,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-00260,2026-02-11,APAC,Philippines,Electronics,Wireless Mouse,SMB,6,24.99,149.94
+O-00261,2026-02-11,APAC,Singapore,Apparel,Running Shoes,Consumer,1,95.00,95.00
+O-00262,2026-02-11,AMER,United States,Apparel,Rain Jacket,SMB,6,79.00,474.00
+O-00263,2026-02-11,APAC,Japan,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-00264,2026-02-11,APAC,Singapore,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-00265,2026-02-11,EMEA,Netherlands,Electronics,Webcam,Enterprise,7,59.50,416.50
+O-00266,2026-02-11,APAC,Australia,Home,Desk Lamp,SMB,5,35.55,177.75
+O-00267,2026-02-12,APAC,India,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-00268,2026-02-12,EMEA,Netherlands,Office,Desk Organizer,Consumer,1,27.99,27.99
+O-00269,2026-02-12,AMER,Brazil,Home,Desk Lamp,Enterprise,6,39.50,237.00
+O-00270,2026-02-12,AMER,Mexico,Office,Monitor Stand,Consumer,1,44.00,44.00
+O-00271,2026-02-12,APAC,Australia,Apparel,Hoodie,Consumer,2,45.00,90.00
+O-00272,2026-02-12,APAC,Singapore,Apparel,Running Shoes,SMB,4,95.00,380.00
+O-00273,2026-02-12,APAC,India,Office,Monitor Stand,SMB,2,44.00,88.00
+O-00274,2026-02-13,APAC,Japan,Apparel,Wool Socks,Enterprise,20,18.00,360.00
+O-00275,2026-02-13,APAC,Australia,Apparel,Wool Socks,SMB,4,18.00,72.00
+O-00276,2026-02-13,APAC,Singapore,Electronics,Noise-Cancelling Headphones,SMB,2,199.00,398.00
+O-00277,2026-02-13,APAC,Australia,Office,Monitor Stand,SMB,2,44.00,88.00
+O-00278,2026-02-13,AMER,United States,Office,Desk Organizer,Consumer,1,27.99,27.99
+O-00279,2026-02-14,APAC,Philippines,Apparel,Hoodie,SMB,3,45.00,135.00
+O-00280,2026-02-14,EMEA,France,Office,Monitor Stand,Enterprise,17,44.00,748.00
+O-00281,2026-02-14,AMER,Mexico,Electronics,Mechanical Keyboard,SMB,2,89.00,178.00
+O-00282,2026-02-14,EMEA,United Kingdom,Electronics,Noise-Cancelling Headphones,SMB,4,199.00,796.00
+O-00283,2026-02-14,APAC,Japan,Apparel,Hoodie,SMB,3,45.00,135.00
+O-00284,2026-02-14,APAC,Japan,Electronics,Mechanical Keyboard,Enterprise,15,89.00,1335.00
+O-00285,2026-02-15,AMER,Brazil,Electronics,Mechanical Keyboard,Consumer,3,80.10,240.30
+O-00286,2026-02-15,APAC,Philippines,Apparel,Running Shoes,Consumer,1,95.00,95.00
+O-00287,2026-02-15,AMER,United States,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-00288,2026-02-15,AMER,United States,Home,Desk Lamp,Consumer,2,39.50,79.00
+O-00289,2026-02-16,AMER,Mexico,Apparel,Wool Socks,Enterprise,16,16.20,259.20
+O-00290,2026-02-16,APAC,Philippines,Apparel,Baseball Cap,SMB,3,21.50,64.50
+O-00291,2026-02-16,APAC,Philippines,Electronics,Webcam,Consumer,2,59.50,119.00
+O-00292,2026-02-16,AMER,United States,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-00293,2026-02-16,APAC,Philippines,Electronics,USB-C Hub,SMB,4,39.99,159.96
+O-00294,2026-02-16,APAC,Japan,Home,Coffee Grinder,Enterprise,7,49.00,343.00
+O-00295,2026-02-16,AMER,Canada,Office,Notebook Set,Enterprise,20,12.50,250.00
+O-00296,2026-02-16,EMEA,Germany,Apparel,Rain Jacket,Consumer,2,79.00,158.00
+O-00297,2026-02-16,AMER,Mexico,Apparel,Rain Jacket,Enterprise,16,79.00,1264.00
+O-00298,2026-02-16,EMEA,France,Apparel,Rain Jacket,SMB,1,79.00,79.00
+O-00299,2026-02-16,EMEA,Germany,Office,Ergonomic Chair,SMB,6,249.00,1494.00
+O-00300,2026-02-16,AMER,United States,Electronics,Mechanical Keyboard,SMB,4,89.00,356.00
+O-00301,2026-02-17,EMEA,Germany,Home,Ceramic Mug Set,Consumer,1,22.00,22.00
+O-00302,2026-02-17,AMER,Canada,Office,Ergonomic Chair,Consumer,3,249.00,747.00
+O-00303,2026-02-17,APAC,India,Home,Throw Blanket,Consumer,3,34.99,104.97
+O-00304,2026-02-17,APAC,Australia,Home,Ceramic Mug Set,SMB,3,22.00,66.00
+O-00305,2026-02-18,APAC,Singapore,Electronics,Mechanical Keyboard,SMB,4,80.10,320.40
+O-00306,2026-02-18,EMEA,France,Office,Notebook Set,Enterprise,8,12.50,100.00
+O-00307,2026-02-18,EMEA,South Africa,Apparel,Rain Jacket,Consumer,2,79.00,158.00
+O-00308,2026-02-18,APAC,Japan,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-00309,2026-02-18,APAC,Singapore,Electronics,Mechanical Keyboard,SMB,5,89.00,445.00
+O-00310,2026-02-18,APAC,Singapore,Apparel,Running Shoes,Consumer,1,95.00,95.00
+O-00311,2026-02-18,APAC,Australia,Office,Notebook Set,Consumer,2,12.50,25.00
+O-00312,2026-02-18,EMEA,United Kingdom,Home,Coffee Grinder,Consumer,2,49.00,98.00
+O-00313,2026-02-18,APAC,Japan,Apparel,Wool Socks,SMB,1,18.00,18.00
+O-00314,2026-02-18,APAC,Japan,Home,Air Purifier,Consumer,3,149.00,447.00
+O-00315,2026-02-18,APAC,Philippines,Home,Desk Lamp,SMB,5,39.50,197.50
+O-00316,2026-02-18,APAC,Singapore,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-00317,2026-02-18,EMEA,Netherlands,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-00318,2026-02-19,APAC,India,Electronics,Noise-Cancelling Headphones,Enterprise,9,199.00,1791.00
+O-00319,2026-02-19,EMEA,United Kingdom,Office,Desk Organizer,Consumer,3,27.99,83.97
+O-00320,2026-02-19,AMER,Brazil,Electronics,Webcam,SMB,3,59.50,178.50
+O-00321,2026-02-19,AMER,United States,Electronics,Wireless Mouse,Consumer,3,24.99,74.97
+O-00322,2026-02-19,EMEA,France,Electronics,Mechanical Keyboard,Consumer,2,89.00,178.00
+O-00323,2026-02-20,EMEA,Netherlands,Home,Air Purifier,Consumer,2,149.00,298.00
+O-00324,2026-02-20,EMEA,United Kingdom,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-00325,2026-02-20,APAC,Japan,Electronics,Webcam,SMB,3,59.50,178.50
+O-00326,2026-02-20,APAC,Philippines,Office,Desk Organizer,SMB,5,27.99,139.95
+O-00327,2026-02-20,APAC,Australia,Apparel,Wool Socks,SMB,3,18.00,54.00
+O-00328,2026-02-20,EMEA,France,Home,Throw Blanket,Consumer,1,34.99,34.99
+O-00329,2026-02-20,AMER,United States,Apparel,Baseball Cap,Enterprise,17,21.50,365.50
+O-00330,2026-02-20,EMEA,France,Home,Desk Lamp,Enterprise,17,35.55,604.35
+O-00331,2026-02-20,EMEA,France,Office,Gel Pens,SMB,2,8.09,16.18
+O-00332,2026-02-20,AMER,United States,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-00333,2026-02-21,AMER,United States,Office,Gel Pens,Consumer,2,8.99,17.98
+O-00334,2026-02-21,EMEA,United Kingdom,Home,Coffee Grinder,SMB,3,49.00,147.00
+O-00335,2026-02-21,EMEA,United Kingdom,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-00336,2026-02-21,APAC,Singapore,Home,Coffee Grinder,Enterprise,17,49.00,833.00
+O-00337,2026-02-22,AMER,Mexico,Office,Desk Organizer,Consumer,1,25.19,25.19
+O-00338,2026-02-22,EMEA,Germany,Electronics,Mechanical Keyboard,Consumer,1,80.10,80.10
+O-00339,2026-02-22,EMEA,France,Electronics,USB-C Hub,Consumer,2,39.99,79.98
+O-00340,2026-02-23,EMEA,United Kingdom,Home,Desk Lamp,Consumer,2,39.50,79.00
+O-00341,2026-02-23,EMEA,France,Home,Air Purifier,Consumer,2,149.00,298.00
+O-00342,2026-02-23,APAC,Singapore,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-00343,2026-02-24,APAC,Australia,Apparel,Rain Jacket,Consumer,2,79.00,158.00
+O-00344,2026-02-24,APAC,Australia,Office,Notebook Set,Consumer,3,11.25,33.75
+O-00345,2026-02-24,APAC,India,Electronics,USB-C Hub,SMB,4,39.99,159.96
+O-00346,2026-02-24,APAC,Singapore,Apparel,Baseball Cap,Consumer,3,21.50,64.50
+O-00347,2026-02-25,APAC,Philippines,Home,Ceramic Mug Set,Consumer,1,22.00,22.00
+O-00348,2026-02-25,APAC,India,Office,Ergonomic Chair,SMB,2,249.00,498.00
+O-00349,2026-02-25,APAC,Philippines,Electronics,Webcam,SMB,2,53.55,107.10
+O-00350,2026-02-25,AMER,Canada,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-00351,2026-02-25,APAC,Australia,Office,Gel Pens,Consumer,1,8.99,8.99
+O-00352,2026-02-25,AMER,United States,Electronics,Webcam,Enterprise,5,59.50,297.50
+O-00353,2026-02-25,AMER,United States,Home,Desk Lamp,Enterprise,7,39.50,276.50
+O-00354,2026-02-26,APAC,Singapore,Office,Desk Organizer,Consumer,2,27.99,55.98
+O-00355,2026-02-26,AMER,Canada,Office,Monitor Stand,Consumer,3,44.00,132.00
+O-00356,2026-02-26,APAC,Philippines,Office,Monitor Stand,Consumer,1,39.60,39.60
+O-00357,2026-02-26,EMEA,France,Apparel,Baseball Cap,Enterprise,14,21.50,301.00
+O-00358,2026-02-26,EMEA,United Kingdom,Home,Ceramic Mug Set,Consumer,3,22.00,66.00
+O-00359,2026-02-26,EMEA,Germany,Apparel,Baseball Cap,Consumer,2,21.50,43.00
+O-00360,2026-02-26,AMER,Canada,Electronics,Wireless Mouse,Consumer,3,24.99,74.97
+O-00361,2026-02-26,AMER,Mexico,Home,Throw Blanket,Consumer,1,34.99,34.99
+O-00362,2026-02-26,AMER,United States,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-00363,2026-02-26,APAC,India,Home,Ceramic Mug Set,Consumer,1,22.00,22.00
+O-00364,2026-02-27,AMER,Canada,Office,Desk Organizer,Consumer,1,25.19,25.19
+O-00365,2026-02-27,EMEA,Germany,Apparel,Running Shoes,SMB,1,95.00,95.00
+O-00366,2026-02-27,EMEA,Germany,Home,Air Purifier,Consumer,2,149.00,298.00
+O-00367,2026-02-27,AMER,Mexico,Apparel,Rain Jacket,SMB,2,79.00,158.00
+O-00368,2026-02-27,AMER,United States,Office,Notebook Set,Consumer,3,12.50,37.50
+O-00369,2026-02-27,APAC,Japan,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-00370,2026-02-27,APAC,Australia,Apparel,Wool Socks,Consumer,2,18.00,36.00
+O-00371,2026-02-27,APAC,Singapore,Electronics,Wireless Mouse,SMB,1,24.99,24.99
+O-00372,2026-02-28,EMEA,France,Home,Desk Lamp,Consumer,2,39.50,79.00
+O-00373,2026-02-28,APAC,Philippines,Electronics,Webcam,SMB,2,59.50,119.00
+O-00374,2026-02-28,EMEA,Germany,Apparel,Rain Jacket,Enterprise,7,79.00,553.00
+O-00375,2026-02-28,APAC,Japan,Office,Gel Pens,SMB,2,8.09,16.18
+O-00376,2026-02-28,EMEA,Netherlands,Apparel,Baseball Cap,SMB,3,21.50,64.50
+O-00377,2026-02-28,EMEA,United Kingdom,Electronics,Noise-Cancelling Headphones,SMB,6,199.00,1194.00
+O-00378,2026-02-28,APAC,Australia,Electronics,Wireless Mouse,Consumer,3,24.99,74.97
+O-00379,2026-03-01,EMEA,Germany,Home,Desk Lamp,Enterprise,20,35.55,711.00
+O-00380,2026-03-01,AMER,Brazil,Home,Throw Blanket,Enterprise,12,34.99,419.88
+O-00381,2026-03-01,AMER,Brazil,Electronics,Webcam,Consumer,2,59.50,119.00
+O-00382,2026-03-01,AMER,Mexico,Electronics,Noise-Cancelling Headphones,Consumer,3,199.00,597.00
+O-00383,2026-03-02,AMER,Canada,Office,Notebook Set,Consumer,1,12.50,12.50
+O-00384,2026-03-02,EMEA,Netherlands,Apparel,Running Shoes,Consumer,1,95.00,95.00
+O-00385,2026-03-02,AMER,United States,Home,Coffee Grinder,Consumer,3,44.10,132.30
+O-00386,2026-03-02,AMER,United States,Electronics,USB-C Hub,Consumer,1,39.99,39.99
+O-00387,2026-03-02,EMEA,United Kingdom,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-00388,2026-03-03,EMEA,United Kingdom,Electronics,Mechanical Keyboard,SMB,1,89.00,89.00
+O-00389,2026-03-03,AMER,Mexico,Home,Coffee Grinder,Consumer,1,49.00,49.00
+O-00390,2026-03-03,APAC,India,Home,Desk Lamp,Enterprise,20,39.50,790.00
+O-00391,2026-03-03,APAC,Singapore,Office,Notebook Set,Consumer,1,12.50,12.50
+O-00392,2026-03-03,AMER,Canada,Electronics,Wireless Mouse,Consumer,1,24.99,24.99
+O-00393,2026-03-03,EMEA,Netherlands,Electronics,Noise-Cancelling Headphones,SMB,3,199.00,597.00
+O-00394,2026-03-03,EMEA,Netherlands,Apparel,Hoodie,Enterprise,12,45.00,540.00
+O-00395,2026-03-04,APAC,Philippines,Office,Ergonomic Chair,Enterprise,8,249.00,1992.00
+O-00396,2026-03-04,APAC,Australia,Home,Air Purifier,Enterprise,18,149.00,2682.00
+O-00397,2026-03-04,APAC,Philippines,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-00398,2026-03-04,AMER,United States,Electronics,Webcam,SMB,1,59.50,59.50
+O-00399,2026-03-04,APAC,Philippines,Electronics,Wireless Mouse,Consumer,3,24.99,74.97
+O-00400,2026-03-04,EMEA,Germany,Office,Desk Organizer,Consumer,3,27.99,83.97
+O-00401,2026-03-04,APAC,Philippines,Apparel,Rain Jacket,Consumer,2,79.00,158.00
+O-00402,2026-03-04,APAC,Philippines,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-00403,2026-03-05,APAC,Singapore,Electronics,Webcam,SMB,6,59.50,357.00
+O-00404,2026-03-05,APAC,Japan,Office,Monitor Stand,SMB,4,44.00,176.00
+O-00405,2026-03-05,AMER,Brazil,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-00406,2026-03-05,APAC,Japan,Electronics,Mechanical Keyboard,Consumer,1,80.10,80.10
+O-00407,2026-03-06,EMEA,France,Office,Gel Pens,Consumer,3,8.99,26.97
+O-00408,2026-03-06,AMER,United States,Apparel,Hoodie,SMB,2,45.00,90.00
+O-00409,2026-03-06,EMEA,Germany,Office,Desk Organizer,Consumer,1,27.99,27.99
+O-00410,2026-03-06,APAC,Philippines,Home,Ceramic Mug Set,Consumer,2,22.00,44.00
+O-00411,2026-03-06,APAC,Singapore,Electronics,Webcam,Enterprise,19,59.50,1130.50
+O-00412,2026-03-06,APAC,Singapore,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-00413,2026-03-06,APAC,Singapore,Electronics,Noise-Cancelling Headphones,SMB,5,199.00,995.00
+O-00414,2026-03-06,APAC,India,Apparel,Baseball Cap,Consumer,2,19.35,38.70
+O-00415,2026-03-07,AMER,United States,Home,Ceramic Mug Set,Consumer,2,22.00,44.00
+O-00416,2026-03-07,APAC,Singapore,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-00417,2026-03-07,EMEA,Germany,Apparel,Running Shoes,SMB,5,95.00,475.00
+O-00418,2026-03-07,EMEA,Netherlands,Home,Ceramic Mug Set,Consumer,3,22.00,66.00
+O-00419,2026-03-07,AMER,United States,Home,Coffee Grinder,Enterprise,6,49.00,294.00
+O-00420,2026-03-07,APAC,Philippines,Apparel,Wool Socks,Consumer,2,18.00,36.00
+O-00421,2026-03-08,APAC,Australia,Office,Notebook Set,Consumer,3,12.50,37.50
+O-00422,2026-03-08,EMEA,Germany,Office,Desk Organizer,SMB,6,27.99,167.94
+O-00423,2026-03-08,AMER,Canada,Electronics,Noise-Cancelling Headphones,Enterprise,18,199.00,3582.00
+O-00424,2026-03-09,EMEA,United Kingdom,Home,Coffee Grinder,Enterprise,18,49.00,882.00
+O-00425,2026-03-09,APAC,Japan,Apparel,Hoodie,Consumer,2,45.00,90.00
+O-00426,2026-03-09,APAC,Australia,Office,Ergonomic Chair,Consumer,3,249.00,747.00
+O-00427,2026-03-09,AMER,Brazil,Home,Throw Blanket,Consumer,1,34.99,34.99
+O-00428,2026-03-09,EMEA,Germany,Electronics,Mechanical Keyboard,Consumer,1,80.10,80.10
+O-00429,2026-03-09,EMEA,Germany,Home,Throw Blanket,Consumer,3,34.99,104.97
+O-00430,2026-03-10,EMEA,United Kingdom,Electronics,Wireless Mouse,Consumer,3,24.99,74.97
+O-00431,2026-03-10,APAC,Australia,Apparel,Baseball Cap,SMB,2,21.50,43.00
+O-00432,2026-03-10,EMEA,Germany,Electronics,USB-C Hub,Consumer,1,39.99,39.99
+O-00433,2026-03-10,EMEA,Germany,Electronics,Mechanical Keyboard,Enterprise,17,89.00,1513.00
+O-00434,2026-03-11,EMEA,United Kingdom,Electronics,Webcam,Consumer,3,59.50,178.50
+O-00435,2026-03-11,AMER,Mexico,Home,Throw Blanket,SMB,5,34.99,174.95
+O-00436,2026-03-11,APAC,Singapore,Home,Coffee Grinder,SMB,5,44.10,220.50
+O-00437,2026-03-11,APAC,Philippines,Apparel,Running Shoes,Consumer,2,95.00,190.00
+O-00438,2026-03-11,APAC,Philippines,Home,Desk Lamp,Consumer,1,39.50,39.50
+O-00439,2026-03-11,EMEA,France,Office,Notebook Set,Consumer,3,12.50,37.50
+O-00440,2026-03-11,AMER,United States,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-00441,2026-03-11,AMER,Mexico,Electronics,Wireless Mouse,SMB,5,22.49,112.45
+O-00442,2026-03-11,APAC,Japan,Home,Ceramic Mug Set,SMB,4,22.00,88.00
+O-00443,2026-03-11,APAC,Japan,Electronics,Noise-Cancelling Headphones,SMB,4,199.00,796.00
+O-00444,2026-03-12,AMER,Canada,Home,Air Purifier,Consumer,1,149.00,149.00
+O-00445,2026-03-12,AMER,United States,Electronics,Mechanical Keyboard,SMB,3,89.00,267.00
+O-00446,2026-03-12,AMER,Canada,Office,Notebook Set,Consumer,2,12.50,25.00
+O-00447,2026-03-12,APAC,Philippines,Apparel,Baseball Cap,Enterprise,12,19.35,232.20
+O-00448,2026-03-13,EMEA,United Kingdom,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-00449,2026-03-13,AMER,Mexico,Home,Air Purifier,Consumer,3,149.00,447.00
+O-00450,2026-03-13,EMEA,Netherlands,Home,Ceramic Mug Set,SMB,1,22.00,22.00
+O-00451,2026-03-13,EMEA,Germany,Apparel,Wool Socks,Enterprise,6,18.00,108.00
+O-00452,2026-03-13,APAC,Japan,Home,Desk Lamp,Consumer,2,35.55,71.10
+O-00453,2026-03-13,APAC,Philippines,Electronics,Webcam,Enterprise,8,59.50,476.00
+O-00454,2026-03-13,EMEA,Germany,Electronics,Webcam,Consumer,2,53.55,107.10
+O-00455,2026-03-13,AMER,United States,Electronics,USB-C Hub,Consumer,1,39.99,39.99
+O-00456,2026-03-13,AMER,United States,Office,Desk Organizer,SMB,6,27.99,167.94
+O-00457,2026-03-13,APAC,India,Office,Ergonomic Chair,SMB,5,249.00,1245.00
+O-00458,2026-03-14,APAC,Philippines,Home,Ceramic Mug Set,Consumer,1,19.80,19.80
+O-00459,2026-03-14,APAC,Japan,Home,Coffee Grinder,Consumer,1,49.00,49.00
+O-00460,2026-03-14,APAC,India,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-00461,2026-03-14,AMER,United States,Home,Coffee Grinder,Consumer,1,49.00,49.00
+O-00462,2026-03-14,EMEA,United Kingdom,Home,Ceramic Mug Set,Consumer,1,22.00,22.00
+O-00463,2026-03-15,APAC,Philippines,Apparel,Running Shoes,Consumer,1,95.00,95.00
+O-00464,2026-03-15,AMER,Canada,Home,Desk Lamp,SMB,6,39.50,237.00
+O-00465,2026-03-15,EMEA,France,Office,Notebook Set,Consumer,1,12.50,12.50
+O-00466,2026-03-16,AMER,United States,Apparel,Wool Socks,Consumer,3,18.00,54.00
+O-00467,2026-03-16,AMER,Brazil,Apparel,Rain Jacket,SMB,2,79.00,158.00
+O-00468,2026-03-16,APAC,India,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-00469,2026-03-16,APAC,Australia,Home,Ceramic Mug Set,Consumer,3,22.00,66.00
+O-00470,2026-03-16,APAC,India,Home,Air Purifier,SMB,6,149.00,894.00
+O-00471,2026-03-16,EMEA,France,Apparel,Rain Jacket,Consumer,2,79.00,158.00
+O-00472,2026-03-16,AMER,Brazil,Electronics,Noise-Cancelling Headphones,Consumer,2,179.10,358.20
+O-00473,2026-03-16,APAC,India,Home,Air Purifier,Consumer,1,149.00,149.00
+O-00474,2026-03-16,EMEA,United Kingdom,Electronics,Mechanical Keyboard,SMB,4,89.00,356.00
+O-00475,2026-03-17,APAC,India,Electronics,Webcam,Consumer,1,59.50,59.50
+O-00476,2026-03-17,APAC,Philippines,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-00477,2026-03-17,APAC,Philippines,Apparel,Baseball Cap,Consumer,1,21.50,21.50
+O-00478,2026-03-17,APAC,India,Electronics,Webcam,Enterprise,12,59.50,714.00
+O-00479,2026-03-17,APAC,Japan,Office,Notebook Set,Consumer,3,12.50,37.50
+O-00480,2026-03-17,EMEA,United Kingdom,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-00481,2026-03-17,EMEA,Germany,Office,Desk Organizer,SMB,1,27.99,27.99
+O-00482,2026-03-17,EMEA,United Kingdom,Electronics,Webcam,Enterprise,13,59.50,773.50
+O-00483,2026-03-17,APAC,Singapore,Home,Desk Lamp,SMB,5,39.50,197.50
+O-00484,2026-03-17,EMEA,United Kingdom,Office,Notebook Set,Consumer,2,12.50,25.00
+O-00485,2026-03-17,APAC,Australia,Home,Air Purifier,Consumer,2,149.00,298.00
+O-00486,2026-03-18,EMEA,Germany,Office,Gel Pens,SMB,3,8.99,26.97
+O-00487,2026-03-18,APAC,Singapore,Apparel,Hoodie,Consumer,1,45.00,45.00
+O-00488,2026-03-18,AMER,United States,Home,Throw Blanket,Consumer,3,31.49,94.47
+O-00489,2026-03-18,EMEA,France,Electronics,USB-C Hub,Consumer,3,39.99,119.97
+O-00490,2026-03-18,AMER,Mexico,Office,Monitor Stand,Consumer,3,44.00,132.00
+O-00491,2026-03-18,EMEA,France,Electronics,USB-C Hub,Consumer,2,39.99,79.98
+O-00492,2026-03-18,AMER,Brazil,Office,Gel Pens,Consumer,1,8.99,8.99
+O-00493,2026-03-18,EMEA,Germany,Home,Air Purifier,Consumer,1,149.00,149.00
+O-00494,2026-03-18,APAC,Singapore,Electronics,Noise-Cancelling Headphones,Consumer,2,179.10,358.20
+O-00495,2026-03-18,AMER,United States,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-00496,2026-03-19,EMEA,United Kingdom,Electronics,Noise-Cancelling Headphones,Consumer,2,199.00,398.00
+O-00497,2026-03-19,EMEA,United Kingdom,Apparel,Hoodie,SMB,5,45.00,225.00
+O-00498,2026-03-19,EMEA,France,Electronics,Mechanical Keyboard,Consumer,2,89.00,178.00
+O-00499,2026-03-19,APAC,Singapore,Electronics,Webcam,Consumer,1,59.50,59.50
+O-00500,2026-03-19,EMEA,France,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-00501,2026-03-19,APAC,Philippines,Office,Desk Organizer,Consumer,1,25.19,25.19
+O-00502,2026-03-19,AMER,Mexico,Home,Desk Lamp,Consumer,2,39.50,79.00
+O-00503,2026-03-19,AMER,United States,Apparel,Hoodie,SMB,5,45.00,225.00
+O-00504,2026-03-19,APAC,Philippines,Home,Ceramic Mug Set,SMB,5,22.00,110.00
+O-00505,2026-03-19,AMER,United States,Electronics,Wireless Mouse,Consumer,3,22.49,67.47
+O-00506,2026-03-19,APAC,Japan,Apparel,Wool Socks,Enterprise,6,18.00,108.00
+O-00507,2026-03-20,APAC,Philippines,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-00508,2026-03-20,APAC,Australia,Home,Throw Blanket,Consumer,3,34.99,104.97
+O-00509,2026-03-20,EMEA,France,Office,Desk Organizer,Consumer,1,25.19,25.19
+O-00510,2026-03-20,EMEA,Netherlands,Office,Desk Organizer,Consumer,1,27.99,27.99
+O-00511,2026-03-20,AMER,Brazil,Home,Coffee Grinder,SMB,4,44.10,176.40
+O-00512,2026-03-21,EMEA,Netherlands,Apparel,Hoodie,SMB,5,45.00,225.00
+O-00513,2026-03-21,EMEA,South Africa,Apparel,Rain Jacket,Consumer,2,79.00,158.00
+O-00514,2026-03-21,EMEA,France,Electronics,Wireless Mouse,SMB,1,24.99,24.99
+O-00515,2026-03-21,EMEA,Netherlands,Electronics,USB-C Hub,Consumer,2,39.99,79.98
+O-00516,2026-03-21,APAC,Australia,Apparel,Wool Socks,Consumer,3,18.00,54.00
+O-00517,2026-03-21,APAC,Philippines,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-00518,2026-03-21,AMER,United States,Apparel,Wool Socks,SMB,5,18.00,90.00
+O-00519,2026-03-22,EMEA,Netherlands,Home,Desk Lamp,SMB,5,39.50,197.50
+O-00520,2026-03-22,APAC,Philippines,Electronics,Wireless Mouse,Consumer,3,24.99,74.97
+O-00521,2026-03-22,APAC,Japan,Apparel,Rain Jacket,Consumer,1,79.00,79.00
+O-00522,2026-03-22,EMEA,United Kingdom,Office,Monitor Stand,Consumer,1,44.00,44.00
+O-00523,2026-03-22,EMEA,Germany,Apparel,Hoodie,SMB,5,45.00,225.00
+O-00524,2026-03-23,AMER,United States,Office,Monitor Stand,SMB,4,44.00,176.00
+O-00525,2026-03-23,APAC,Philippines,Home,Throw Blanket,Consumer,3,34.99,104.97
+O-00526,2026-03-23,APAC,Philippines,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-00527,2026-03-23,EMEA,France,Home,Coffee Grinder,Consumer,1,44.10,44.10
+O-00528,2026-03-23,AMER,United States,Electronics,USB-C Hub,Consumer,3,39.99,119.97
+O-00529,2026-03-23,APAC,India,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-00530,2026-03-23,EMEA,South Africa,Apparel,Rain Jacket,Consumer,2,79.00,158.00
+O-00531,2026-03-23,APAC,India,Home,Throw Blanket,SMB,1,31.49,31.49
+O-00532,2026-03-24,EMEA,South Africa,Office,Ergonomic Chair,Consumer,3,249.00,747.00
+O-00533,2026-03-24,APAC,Australia,Electronics,Webcam,SMB,3,59.50,178.50
+O-00534,2026-03-24,EMEA,France,Office,Gel Pens,Consumer,2,8.99,17.98
+O-00535,2026-03-25,AMER,Canada,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-00536,2026-03-25,APAC,Philippines,Apparel,Wool Socks,Consumer,2,18.00,36.00
+O-00537,2026-03-25,AMER,Canada,Home,Air Purifier,Consumer,2,149.00,298.00
+O-00538,2026-03-25,APAC,Australia,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-00539,2026-03-25,EMEA,France,Apparel,Wool Socks,SMB,4,18.00,72.00
+O-00540,2026-03-25,APAC,Philippines,Apparel,Wool Socks,SMB,1,18.00,18.00
+O-00541,2026-03-25,EMEA,South Africa,Home,Ceramic Mug Set,Consumer,2,22.00,44.00
+O-00542,2026-03-25,AMER,Canada,Electronics,Wireless Mouse,SMB,1,24.99,24.99
+O-00543,2026-03-26,AMER,Canada,Apparel,Running Shoes,Consumer,1,95.00,95.00
+O-00544,2026-03-26,AMER,United States,Home,Desk Lamp,Consumer,2,39.50,79.00
+O-00545,2026-03-26,APAC,Singapore,Office,Desk Organizer,SMB,1,27.99,27.99
+O-00546,2026-03-26,APAC,Australia,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-00547,2026-03-26,APAC,Philippines,Apparel,Baseball Cap,Consumer,3,21.50,64.50
+O-00548,2026-03-26,APAC,Philippines,Home,Throw Blanket,Enterprise,15,34.99,524.85
+O-00549,2026-03-26,EMEA,Germany,Office,Gel Pens,Consumer,1,8.99,8.99
+O-00550,2026-03-27,APAC,Philippines,Electronics,Wireless Mouse,SMB,5,24.99,124.95
+O-00551,2026-03-27,EMEA,France,Home,Throw Blanket,SMB,3,34.99,104.97
+O-00552,2026-03-27,APAC,Japan,Home,Throw Blanket,SMB,2,31.49,62.98
+O-00553,2026-03-27,APAC,Philippines,Electronics,Wireless Mouse,SMB,5,24.99,124.95
+O-00554,2026-03-27,EMEA,United Kingdom,Electronics,Wireless Mouse,SMB,2,24.99,49.98
+O-00555,2026-03-27,APAC,Japan,Apparel,Rain Jacket,Consumer,1,79.00,79.00
+O-00556,2026-03-28,AMER,United States,Electronics,Webcam,SMB,5,59.50,297.50
+O-00557,2026-03-28,APAC,Singapore,Home,Coffee Grinder,Consumer,3,49.00,147.00
+O-00558,2026-03-28,AMER,United States,Office,Desk Organizer,SMB,6,27.99,167.94
+O-00559,2026-03-28,APAC,Philippines,Apparel,Baseball Cap,Consumer,2,21.50,43.00
+O-00560,2026-03-28,APAC,Australia,Apparel,Running Shoes,SMB,3,95.00,285.00
+O-00561,2026-03-28,EMEA,Netherlands,Home,Desk Lamp,Consumer,1,39.50,39.50
+O-00562,2026-03-29,AMER,United States,Electronics,Noise-Cancelling Headphones,Consumer,2,199.00,398.00
+O-00563,2026-03-29,AMER,United States,Office,Desk Organizer,Consumer,1,27.99,27.99
+O-00564,2026-03-29,EMEA,Germany,Apparel,Baseball Cap,Consumer,2,21.50,43.00
+O-00565,2026-03-29,APAC,Singapore,Apparel,Hoodie,Consumer,2,45.00,90.00
+O-00566,2026-03-29,AMER,Mexico,Apparel,Hoodie,Consumer,2,45.00,90.00
+O-00567,2026-03-29,EMEA,United Kingdom,Electronics,Wireless Mouse,SMB,1,24.99,24.99
+O-00568,2026-03-29,APAC,Singapore,Apparel,Baseball Cap,Consumer,2,21.50,43.00
+O-00569,2026-03-29,AMER,Brazil,Office,Ergonomic Chair,Consumer,1,249.00,249.00
+O-00570,2026-03-30,AMER,Canada,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-00571,2026-03-30,APAC,India,Office,Monitor Stand,SMB,6,44.00,264.00
+O-00572,2026-03-30,AMER,Mexico,Electronics,Wireless Mouse,SMB,1,24.99,24.99
+O-00573,2026-03-30,AMER,United States,Home,Throw Blanket,SMB,1,34.99,34.99
+O-00574,2026-03-30,APAC,Philippines,Electronics,Noise-Cancelling Headphones,Consumer,2,199.00,398.00
+O-00575,2026-03-30,AMER,United States,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-00576,2026-03-30,AMER,United States,Home,Air Purifier,Consumer,1,149.00,149.00
+O-00577,2026-03-31,AMER,United States,Electronics,USB-C Hub,SMB,6,39.99,239.94
+O-00578,2026-03-31,AMER,Brazil,Office,Desk Organizer,SMB,5,27.99,139.95
+O-00579,2026-03-31,AMER,Canada,Electronics,Mechanical Keyboard,Consumer,2,80.10,160.20
+O-00580,2026-03-31,AMER,Brazil,Apparel,Wool Socks,Consumer,1,16.20,16.20
+O-00581,2026-03-31,APAC,Philippines,Electronics,Webcam,Consumer,1,53.55,53.55
+O-00582,2026-03-31,APAC,Philippines,Home,Coffee Grinder,Consumer,2,49.00,98.00
+O-00583,2026-03-31,AMER,United States,Home,Coffee Grinder,SMB,3,49.00,147.00
+O-00584,2026-04-01,AMER,United States,Office,Ergonomic Chair,SMB,1,249.00,249.00
+O-00585,2026-04-01,APAC,Philippines,Electronics,USB-C Hub,SMB,4,39.99,159.96
+O-00586,2026-04-01,APAC,Philippines,Apparel,Baseball Cap,Consumer,3,21.50,64.50
+O-00587,2026-04-01,APAC,Philippines,Office,Desk Organizer,Enterprise,19,27.99,531.81
+O-00588,2026-04-01,AMER,Mexico,Home,Ceramic Mug Set,Consumer,3,22.00,66.00
+O-00589,2026-04-01,APAC,Australia,Home,Coffee Grinder,Consumer,1,49.00,49.00
+O-00590,2026-04-01,AMER,United States,Apparel,Wool Socks,SMB,2,18.00,36.00
+O-00591,2026-04-01,EMEA,Netherlands,Apparel,Baseball Cap,Consumer,3,21.50,64.50
+O-00592,2026-04-01,APAC,Philippines,Office,Monitor Stand,Consumer,1,44.00,44.00
+O-00593,2026-04-02,EMEA,Netherlands,Apparel,Wool Socks,SMB,2,18.00,36.00
+O-00594,2026-04-02,EMEA,United Kingdom,Home,Air Purifier,Consumer,1,149.00,149.00
+O-00595,2026-04-02,APAC,Philippines,Electronics,Webcam,SMB,5,59.50,297.50
+O-00596,2026-04-02,EMEA,United Kingdom,Apparel,Hoodie,Consumer,2,45.00,90.00
+O-00597,2026-04-02,EMEA,Germany,Home,Desk Lamp,SMB,1,39.50,39.50
+O-00598,2026-04-02,EMEA,Germany,Electronics,Webcam,Enterprise,7,59.50,416.50
+O-00599,2026-04-02,EMEA,Netherlands,Apparel,Hoodie,Consumer,2,45.00,90.00
+O-00600,2026-04-02,APAC,Australia,Electronics,Webcam,Consumer,3,59.50,178.50
+O-00601,2026-04-02,AMER,United States,Electronics,Wireless Mouse,Consumer,3,24.99,74.97
+O-00602,2026-04-02,AMER,United States,Home,Air Purifier,Consumer,3,149.00,447.00
+O-00603,2026-04-03,AMER,Canada,Home,Air Purifier,Consumer,2,149.00,298.00
+O-00604,2026-04-03,APAC,India,Office,Gel Pens,Consumer,1,8.99,8.99
+O-00605,2026-04-03,AMER,Mexico,Apparel,Baseball Cap,SMB,5,21.50,107.50
+O-00606,2026-04-03,AMER,Canada,Electronics,USB-C Hub,Consumer,2,39.99,79.98
+O-00607,2026-04-03,AMER,Canada,Home,Air Purifier,SMB,5,149.00,745.00
+O-00608,2026-04-03,EMEA,Germany,Home,Air Purifier,Consumer,3,149.00,447.00
+O-00609,2026-04-03,APAC,Singapore,Apparel,Rain Jacket,Consumer,1,71.10,71.10
+O-00610,2026-04-04,AMER,Canada,Home,Throw Blanket,Consumer,3,34.99,104.97
+O-00611,2026-04-04,EMEA,South Africa,Home,Coffee Grinder,Consumer,2,49.00,98.00
+O-00612,2026-04-04,APAC,Japan,Apparel,Baseball Cap,Consumer,3,19.35,58.05
+O-00613,2026-04-05,EMEA,Germany,Electronics,Noise-Cancelling Headphones,SMB,5,199.00,995.00
+O-00614,2026-04-05,APAC,Philippines,Electronics,Webcam,Consumer,1,59.50,59.50
+O-00615,2026-04-05,APAC,Japan,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-00616,2026-04-06,EMEA,Germany,Office,Ergonomic Chair,Consumer,2,249.00,498.00
+O-00617,2026-04-06,EMEA,United Kingdom,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-00618,2026-04-06,APAC,Australia,Apparel,Hoodie,Consumer,1,45.00,45.00
+O-00619,2026-04-06,EMEA,United Kingdom,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-00620,2026-04-06,AMER,United States,Electronics,Mechanical Keyboard,SMB,3,89.00,267.00
+O-00621,2026-04-06,APAC,Philippines,Home,Ceramic Mug Set,SMB,4,22.00,88.00
+O-00622,2026-04-06,EMEA,United Kingdom,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-00623,2026-04-06,APAC,Philippines,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-00624,2026-04-06,APAC,Australia,Electronics,Webcam,Consumer,1,59.50,59.50
+O-00625,2026-04-06,AMER,United States,Office,Ergonomic Chair,Consumer,3,249.00,747.00
+O-00626,2026-04-07,EMEA,France,Apparel,Hoodie,Enterprise,15,45.00,675.00
+O-00627,2026-04-07,AMER,Canada,Electronics,Mechanical Keyboard,SMB,5,89.00,445.00
+O-00628,2026-04-07,AMER,United States,Apparel,Rain Jacket,Consumer,2,79.00,158.00
+O-00629,2026-04-07,APAC,Singapore,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-00630,2026-04-07,AMER,Brazil,Office,Desk Organizer,Consumer,2,27.99,55.98
+O-00631,2026-04-07,EMEA,United Kingdom,Electronics,Webcam,SMB,2,53.55,107.10
+O-00632,2026-04-07,EMEA,South Africa,Office,Ergonomic Chair,Consumer,2,249.00,498.00
+O-00633,2026-04-07,AMER,Brazil,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-00634,2026-04-07,APAC,Japan,Home,Ceramic Mug Set,Consumer,3,22.00,66.00
+O-00635,2026-04-07,APAC,Singapore,Home,Ceramic Mug Set,Consumer,3,22.00,66.00
+O-00636,2026-04-08,APAC,Australia,Office,Desk Organizer,Consumer,3,27.99,83.97
+O-00637,2026-04-08,APAC,Japan,Apparel,Wool Socks,Consumer,2,18.00,36.00
+O-00638,2026-04-08,AMER,United States,Apparel,Rain Jacket,Enterprise,18,79.00,1422.00
+O-00639,2026-04-08,APAC,Singapore,Electronics,Webcam,Consumer,1,59.50,59.50
+O-00640,2026-04-08,EMEA,South Africa,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-00641,2026-04-08,EMEA,France,Electronics,Webcam,Consumer,2,59.50,119.00
+O-00642,2026-04-08,EMEA,United Kingdom,Electronics,Webcam,Enterprise,9,59.50,535.50
+O-00643,2026-04-08,AMER,Brazil,Office,Notebook Set,SMB,5,12.50,62.50
+O-00644,2026-04-09,APAC,Japan,Office,Gel Pens,Consumer,3,8.99,26.97
+O-00645,2026-04-09,APAC,India,Electronics,Mechanical Keyboard,Consumer,2,89.00,178.00
+O-00646,2026-04-09,APAC,Philippines,Home,Coffee Grinder,Consumer,2,49.00,98.00
+O-00647,2026-04-09,AMER,Canada,Electronics,Mechanical Keyboard,SMB,3,89.00,267.00
+O-00648,2026-04-09,AMER,Mexico,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-00649,2026-04-09,APAC,Japan,Home,Coffee Grinder,Consumer,2,49.00,98.00
+O-00650,2026-04-09,APAC,Japan,Electronics,Webcam,SMB,3,59.50,178.50
+O-00651,2026-04-09,APAC,Philippines,Home,Coffee Grinder,SMB,6,49.00,294.00
+O-00652,2026-04-09,AMER,United States,Office,Desk Organizer,SMB,3,27.99,83.97
+O-00653,2026-04-09,EMEA,Germany,Electronics,Mechanical Keyboard,Consumer,2,89.00,178.00
+O-00654,2026-04-09,AMER,United States,Office,Ergonomic Chair,Consumer,1,249.00,249.00
+O-00655,2026-04-09,EMEA,Netherlands,Home,Throw Blanket,SMB,3,34.99,104.97
+O-00656,2026-04-09,AMER,United States,Electronics,Mechanical Keyboard,SMB,1,80.10,80.10
+O-00657,2026-04-10,APAC,India,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-00658,2026-04-10,APAC,Philippines,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-00659,2026-04-10,EMEA,South Africa,Electronics,USB-C Hub,SMB,2,39.99,79.98
+O-00660,2026-04-10,APAC,Japan,Home,Coffee Grinder,Consumer,1,49.00,49.00
+O-00661,2026-04-10,APAC,Philippines,Electronics,Webcam,SMB,6,59.50,357.00
+O-00662,2026-04-10,APAC,Philippines,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-00663,2026-04-10,EMEA,Germany,Electronics,Mechanical Keyboard,Enterprise,5,89.00,445.00
+O-00664,2026-04-10,APAC,Japan,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-00665,2026-04-11,APAC,India,Electronics,Noise-Cancelling Headphones,Consumer,2,199.00,398.00
+O-00666,2026-04-11,EMEA,Germany,Electronics,Wireless Mouse,SMB,3,24.99,74.97
+O-00667,2026-04-11,APAC,Australia,Home,Air Purifier,SMB,2,149.00,298.00
+O-00668,2026-04-11,APAC,Philippines,Home,Ceramic Mug Set,SMB,3,22.00,66.00
+O-00669,2026-04-11,APAC,Philippines,Home,Ceramic Mug Set,Consumer,1,22.00,22.00
+O-00670,2026-04-11,EMEA,United Kingdom,Electronics,Noise-Cancelling Headphones,SMB,2,199.00,398.00
+O-00671,2026-04-11,AMER,Brazil,Apparel,Hoodie,SMB,4,45.00,180.00
+O-00672,2026-04-12,EMEA,United Kingdom,Home,Coffee Grinder,Consumer,3,49.00,147.00
+O-00673,2026-04-12,AMER,United States,Apparel,Wool Socks,Consumer,1,18.00,18.00
+O-00674,2026-04-12,EMEA,France,Apparel,Wool Socks,SMB,3,16.20,48.60
+O-00675,2026-04-12,AMER,Canada,Home,Coffee Grinder,Enterprise,15,49.00,735.00
+O-00676,2026-04-12,APAC,Philippines,Apparel,Wool Socks,Consumer,3,18.00,54.00
+O-00677,2026-04-12,EMEA,Germany,Electronics,Webcam,Consumer,2,53.55,107.10
+O-00678,2026-04-12,APAC,Singapore,Apparel,Rain Jacket,Consumer,3,71.10,213.30
+O-00679,2026-04-12,EMEA,France,Apparel,Wool Socks,SMB,6,18.00,108.00
+O-00680,2026-04-13,APAC,Australia,Office,Desk Organizer,Consumer,2,27.99,55.98
+O-00681,2026-04-13,EMEA,Germany,Electronics,Webcam,SMB,2,59.50,119.00
+O-00682,2026-04-13,APAC,Singapore,Electronics,Noise-Cancelling Headphones,SMB,5,199.00,995.00
+O-00683,2026-04-13,APAC,Singapore,Apparel,Baseball Cap,SMB,4,21.50,86.00
+O-00684,2026-04-13,AMER,Mexico,Electronics,USB-C Hub,SMB,1,39.99,39.99
+O-00685,2026-04-13,EMEA,Germany,Apparel,Rain Jacket,SMB,2,79.00,158.00
+O-00686,2026-04-13,EMEA,France,Apparel,Baseball Cap,Enterprise,9,21.50,193.50
+O-00687,2026-04-13,EMEA,United Kingdom,Home,Air Purifier,Consumer,3,149.00,447.00
+O-00688,2026-04-13,APAC,Australia,Apparel,Rain Jacket,SMB,2,79.00,158.00
+O-00689,2026-04-13,APAC,India,Home,Ceramic Mug Set,SMB,5,22.00,110.00
+O-00690,2026-04-13,AMER,United States,Electronics,USB-C Hub,Enterprise,20,39.99,799.80
+O-00691,2026-04-13,EMEA,Germany,Apparel,Hoodie,Consumer,1,45.00,45.00
+O-00692,2026-04-13,APAC,Japan,Home,Ceramic Mug Set,SMB,6,22.00,132.00
+O-00693,2026-04-14,APAC,Singapore,Apparel,Wool Socks,Consumer,1,16.20,16.20
+O-00694,2026-04-14,AMER,Brazil,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-00695,2026-04-14,APAC,India,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-00696,2026-04-14,APAC,India,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-00697,2026-04-14,APAC,Australia,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-00698,2026-04-14,AMER,United States,Office,Gel Pens,Consumer,2,8.99,17.98
+O-00699,2026-04-14,EMEA,France,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-00700,2026-04-14,APAC,Singapore,Office,Desk Organizer,Consumer,1,27.99,27.99
+O-00701,2026-04-15,AMER,United States,Electronics,Noise-Cancelling Headphones,SMB,6,199.00,1194.00
+O-00702,2026-04-15,AMER,United States,Office,Notebook Set,SMB,2,12.50,25.00
+O-00703,2026-04-15,APAC,Philippines,Apparel,Wool Socks,Consumer,3,18.00,54.00
+O-00704,2026-04-15,EMEA,France,Apparel,Baseball Cap,SMB,6,21.50,129.00
+O-00705,2026-04-15,AMER,Brazil,Electronics,Webcam,Consumer,1,59.50,59.50
+O-00706,2026-04-15,EMEA,United Kingdom,Home,Ceramic Mug Set,Consumer,2,19.80,39.60
+O-00707,2026-04-15,EMEA,France,Apparel,Hoodie,SMB,3,45.00,135.00
+O-00708,2026-04-15,EMEA,United Kingdom,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-00709,2026-04-16,APAC,India,Home,Desk Lamp,Consumer,2,39.50,79.00
+O-00710,2026-04-16,EMEA,France,Apparel,Running Shoes,Consumer,3,85.50,256.50
+O-00711,2026-04-16,AMER,Canada,Apparel,Wool Socks,Consumer,2,18.00,36.00
+O-00712,2026-04-16,APAC,Australia,Electronics,Webcam,SMB,4,59.50,238.00
+O-00713,2026-04-16,APAC,Philippines,Electronics,Wireless Mouse,SMB,6,22.49,134.94
+O-00714,2026-04-16,APAC,Philippines,Electronics,USB-C Hub,Consumer,3,39.99,119.97
+O-00715,2026-04-17,APAC,Philippines,Office,Ergonomic Chair,SMB,4,249.00,996.00
+O-00716,2026-04-17,APAC,Singapore,Electronics,USB-C Hub,Consumer,1,39.99,39.99
+O-00717,2026-04-17,AMER,Brazil,Apparel,Baseball Cap,Enterprise,18,21.50,387.00
+O-00718,2026-04-17,APAC,India,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-00719,2026-04-17,APAC,Japan,Apparel,Rain Jacket,Consumer,1,79.00,79.00
+O-00720,2026-04-18,EMEA,United Kingdom,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-00721,2026-04-18,AMER,Canada,Office,Desk Organizer,SMB,1,27.99,27.99
+O-00722,2026-04-18,APAC,Australia,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-00723,2026-04-18,AMER,Canada,Home,Desk Lamp,Consumer,1,39.50,39.50
+O-00724,2026-04-18,EMEA,France,Office,Desk Organizer,Consumer,1,25.19,25.19
+O-00725,2026-04-18,APAC,Philippines,Electronics,Wireless Mouse,Enterprise,7,24.99,174.93
+O-00726,2026-04-18,EMEA,South Africa,Electronics,Webcam,Consumer,2,53.55,107.10
+O-00727,2026-04-19,APAC,Australia,Home,Desk Lamp,Consumer,3,35.55,106.65
+O-00728,2026-04-19,APAC,India,Apparel,Hoodie,Consumer,2,40.50,81.00
+O-00729,2026-04-19,APAC,Philippines,Apparel,Baseball Cap,Consumer,1,19.35,19.35
+O-00730,2026-04-19,EMEA,Germany,Electronics,Wireless Mouse,SMB,2,24.99,49.98
+O-00731,2026-04-19,AMER,United States,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-00732,2026-04-19,APAC,Singapore,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-00733,2026-04-19,APAC,Singapore,Office,Monitor Stand,SMB,5,44.00,220.00
+O-00734,2026-04-19,AMER,United States,Apparel,Hoodie,Enterprise,13,45.00,585.00
+O-00735,2026-04-20,EMEA,France,Apparel,Running Shoes,SMB,6,95.00,570.00
+O-00736,2026-04-20,APAC,India,Home,Ceramic Mug Set,Consumer,1,19.80,19.80
+O-00737,2026-04-20,EMEA,Germany,Office,Gel Pens,Consumer,1,8.99,8.99
+O-00738,2026-04-20,AMER,United States,Office,Ergonomic Chair,Consumer,1,249.00,249.00
+O-00739,2026-04-20,APAC,Australia,Office,Desk Organizer,Consumer,1,27.99,27.99
+O-00740,2026-04-20,EMEA,United Kingdom,Office,Ergonomic Chair,Consumer,2,224.10,448.20
+O-00741,2026-04-20,EMEA,Germany,Office,Desk Organizer,Consumer,3,27.99,83.97
+O-00742,2026-04-20,EMEA,United Kingdom,Office,Gel Pens,Consumer,2,8.99,17.98
+O-00743,2026-04-20,AMER,United States,Electronics,Wireless Mouse,Enterprise,7,24.99,174.93
+O-00744,2026-04-20,APAC,Philippines,Office,Notebook Set,Enterprise,7,12.50,87.50
+O-00745,2026-04-21,AMER,Mexico,Home,Desk Lamp,SMB,4,39.50,158.00
+O-00746,2026-04-21,AMER,Brazil,Apparel,Rain Jacket,SMB,2,79.00,158.00
+O-00747,2026-04-21,EMEA,South Africa,Office,Desk Organizer,Consumer,2,25.19,50.38
+O-00748,2026-04-21,APAC,Australia,Electronics,USB-C Hub,Consumer,3,35.99,107.97
+O-00749,2026-04-21,AMER,United States,Home,Coffee Grinder,Consumer,1,49.00,49.00
+O-00750,2026-04-21,APAC,Australia,Office,Notebook Set,SMB,3,12.50,37.50
+O-00751,2026-04-21,APAC,Singapore,Home,Coffee Grinder,Consumer,2,49.00,98.00
+O-00752,2026-04-22,EMEA,United Kingdom,Apparel,Hoodie,Consumer,2,40.50,81.00
+O-00753,2026-04-22,APAC,India,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-00754,2026-04-22,AMER,United States,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-00755,2026-04-22,AMER,Brazil,Electronics,Noise-Cancelling Headphones,Consumer,3,199.00,597.00
+O-00756,2026-04-22,AMER,United States,Office,Gel Pens,Consumer,3,8.99,26.97
+O-00757,2026-04-22,EMEA,United Kingdom,Home,Air Purifier,Consumer,2,149.00,298.00
+O-00758,2026-04-23,AMER,Brazil,Electronics,Mechanical Keyboard,SMB,1,80.10,80.10
+O-00759,2026-04-23,EMEA,United Kingdom,Electronics,Webcam,Consumer,3,59.50,178.50
+O-00760,2026-04-23,APAC,Philippines,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-00761,2026-04-23,EMEA,United Kingdom,Electronics,Webcam,SMB,2,59.50,119.00
+O-00762,2026-04-23,AMER,Canada,Electronics,Noise-Cancelling Headphones,SMB,4,199.00,796.00
+O-00763,2026-04-23,AMER,Mexico,Home,Ceramic Mug Set,Consumer,2,22.00,44.00
+O-00764,2026-04-23,AMER,United States,Home,Coffee Grinder,Consumer,2,44.10,88.20
+O-00765,2026-04-24,APAC,Singapore,Home,Desk Lamp,Consumer,1,39.50,39.50
+O-00766,2026-04-24,APAC,Australia,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-00767,2026-04-24,EMEA,United Kingdom,Electronics,Noise-Cancelling Headphones,Consumer,2,179.10,358.20
+O-00768,2026-04-24,EMEA,Germany,Electronics,Wireless Mouse,SMB,4,24.99,99.96
+O-00769,2026-04-25,APAC,Philippines,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-00770,2026-04-25,APAC,Philippines,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-00771,2026-04-25,APAC,Australia,Electronics,USB-C Hub,Consumer,1,39.99,39.99
+O-00772,2026-04-25,APAC,Japan,Office,Ergonomic Chair,Consumer,2,249.00,498.00
+O-00773,2026-04-25,APAC,Japan,Home,Coffee Grinder,Consumer,1,44.10,44.10
+O-00774,2026-04-25,EMEA,Germany,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-00775,2026-04-25,APAC,Japan,Office,Gel Pens,Consumer,2,8.99,17.98
+O-00776,2026-04-26,APAC,Japan,Home,Air Purifier,Consumer,3,149.00,447.00
+O-00777,2026-04-26,APAC,Australia,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-00778,2026-04-26,EMEA,United Kingdom,Electronics,Wireless Mouse,SMB,6,22.49,134.94
+O-00779,2026-04-26,AMER,Brazil,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-00780,2026-04-26,APAC,India,Apparel,Hoodie,Consumer,3,40.50,121.50
+O-00781,2026-04-26,APAC,Australia,Office,Gel Pens,Consumer,1,8.99,8.99
+O-00782,2026-04-27,APAC,Singapore,Home,Air Purifier,Consumer,1,149.00,149.00
+O-00783,2026-04-27,AMER,United States,Electronics,Wireless Mouse,Enterprise,17,24.99,424.83
+O-00784,2026-04-27,EMEA,Germany,Home,Air Purifier,SMB,6,149.00,894.00
+O-00785,2026-04-27,EMEA,Germany,Apparel,Running Shoes,Consumer,2,95.00,190.00
+O-00786,2026-04-27,APAC,Japan,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-00787,2026-04-27,APAC,India,Home,Desk Lamp,SMB,1,39.50,39.50
+O-00788,2026-04-27,APAC,Philippines,Apparel,Rain Jacket,Consumer,2,79.00,158.00
+O-00789,2026-04-27,APAC,Singapore,Office,Gel Pens,Consumer,2,8.99,17.98
+O-00790,2026-04-27,APAC,Australia,Apparel,Hoodie,Consumer,1,45.00,45.00
+O-00791,2026-04-28,AMER,Canada,Apparel,Rain Jacket,SMB,1,79.00,79.00
+O-00792,2026-04-28,AMER,United States,Apparel,Wool Socks,Consumer,3,16.20,48.60
+O-00793,2026-04-28,APAC,Australia,Apparel,Baseball Cap,Consumer,1,21.50,21.50
+O-00794,2026-04-28,AMER,Brazil,Office,Ergonomic Chair,Consumer,2,249.00,498.00
+O-00795,2026-04-28,EMEA,United Kingdom,Electronics,Wireless Mouse,Consumer,3,22.49,67.47
+O-00796,2026-04-28,AMER,United States,Electronics,USB-C Hub,SMB,6,39.99,239.94
+O-00797,2026-04-29,AMER,Brazil,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-00798,2026-04-29,APAC,Philippines,Office,Desk Organizer,SMB,2,27.99,55.98
+O-00799,2026-04-29,APAC,Australia,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-00800,2026-04-29,EMEA,France,Electronics,Wireless Mouse,Consumer,1,24.99,24.99
+O-00801,2026-04-29,AMER,United States,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-00802,2026-04-29,EMEA,United Kingdom,Home,Air Purifier,SMB,4,134.10,536.40
+O-00803,2026-04-29,EMEA,United Kingdom,Office,Gel Pens,Consumer,1,8.99,8.99
+O-00804,2026-04-29,AMER,Canada,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-00805,2026-04-30,EMEA,Netherlands,Apparel,Hoodie,Enterprise,17,45.00,765.00
+O-00806,2026-04-30,AMER,Mexico,Electronics,Noise-Cancelling Headphones,Consumer,2,199.00,398.00
+O-00807,2026-04-30,APAC,Australia,Home,Ceramic Mug Set,SMB,2,19.80,39.60
+O-00808,2026-04-30,AMER,United States,Office,Monitor Stand,Consumer,1,44.00,44.00
+O-00809,2026-04-30,EMEA,Netherlands,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-00810,2026-04-30,APAC,Philippines,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-00811,2026-04-30,AMER,Brazil,Electronics,Webcam,Consumer,1,53.55,53.55
+O-00812,2026-04-30,APAC,Australia,Office,Ergonomic Chair,Consumer,2,249.00,498.00
+O-00813,2026-05-01,EMEA,Netherlands,Apparel,Baseball Cap,SMB,5,21.50,107.50
+O-00814,2026-05-01,EMEA,Germany,Office,Desk Organizer,Consumer,3,25.19,75.57
+O-00815,2026-05-01,APAC,India,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-00816,2026-05-01,AMER,Brazil,Home,Coffee Grinder,SMB,6,49.00,294.00
+O-00817,2026-05-01,APAC,Japan,Electronics,Wireless Mouse,Enterprise,14,24.99,349.86
+O-00818,2026-05-02,APAC,Philippines,Home,Throw Blanket,Consumer,3,34.99,104.97
+O-00819,2026-05-02,EMEA,South Africa,Office,Monitor Stand,SMB,1,44.00,44.00
+O-00820,2026-05-02,AMER,United States,Electronics,Noise-Cancelling Headphones,Consumer,2,199.00,398.00
+O-00821,2026-05-02,APAC,Australia,Electronics,Wireless Mouse,SMB,1,24.99,24.99
+O-00822,2026-05-02,APAC,India,Home,Desk Lamp,Consumer,2,39.50,79.00
+O-00823,2026-05-02,AMER,Mexico,Apparel,Baseball Cap,Consumer,2,19.35,38.70
+O-00824,2026-05-02,AMER,Mexico,Electronics,Mechanical Keyboard,Enterprise,13,80.10,1041.30
+O-00825,2026-05-02,APAC,Singapore,Electronics,Mechanical Keyboard,SMB,4,89.00,356.00
+O-00826,2026-05-02,EMEA,United Kingdom,Apparel,Running Shoes,Consumer,1,85.50,85.50
+O-00827,2026-05-02,EMEA,United Kingdom,Home,Air Purifier,Consumer,3,149.00,447.00
+O-00828,2026-05-02,AMER,United States,Electronics,Wireless Mouse,SMB,6,22.49,134.94
+O-00829,2026-05-03,AMER,Brazil,Apparel,Wool Socks,Consumer,3,18.00,54.00
+O-00830,2026-05-03,APAC,India,Office,Notebook Set,Consumer,1,12.50,12.50
+O-00831,2026-05-03,EMEA,Germany,Home,Coffee Grinder,SMB,6,49.00,294.00
+O-00832,2026-05-03,APAC,Japan,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-00833,2026-05-03,EMEA,Germany,Electronics,Webcam,Consumer,3,53.55,160.65
+O-00834,2026-05-04,APAC,Philippines,Home,Ceramic Mug Set,SMB,2,22.00,44.00
+O-00835,2026-05-04,APAC,India,Apparel,Running Shoes,Consumer,1,85.50,85.50
+O-00836,2026-05-04,EMEA,Germany,Apparel,Hoodie,Consumer,2,45.00,90.00
+O-00837,2026-05-04,EMEA,South Africa,Apparel,Baseball Cap,Consumer,2,21.50,43.00
+O-00838,2026-05-04,AMER,United States,Electronics,Mechanical Keyboard,SMB,1,89.00,89.00
+O-00839,2026-05-04,EMEA,France,Office,Ergonomic Chair,SMB,6,249.00,1494.00
+O-00840,2026-05-04,APAC,India,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-00841,2026-05-04,EMEA,United Kingdom,Office,Desk Organizer,Consumer,2,27.99,55.98
+O-00842,2026-05-04,APAC,Japan,Office,Desk Organizer,SMB,1,27.99,27.99
+O-00843,2026-05-04,AMER,Mexico,Electronics,USB-C Hub,Consumer,3,39.99,119.97
+O-00844,2026-05-04,EMEA,France,Electronics,USB-C Hub,Consumer,3,35.99,107.97
+O-00845,2026-05-04,AMER,United States,Office,Notebook Set,Consumer,3,12.50,37.50
+O-00846,2026-05-04,AMER,Canada,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-00847,2026-05-04,APAC,Singapore,Apparel,Rain Jacket,SMB,4,79.00,316.00
+O-00848,2026-05-05,APAC,Australia,Home,Air Purifier,Consumer,2,149.00,298.00
+O-00849,2026-05-05,EMEA,France,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-00850,2026-05-05,APAC,Philippines,Home,Air Purifier,Enterprise,5,149.00,745.00
+O-00851,2026-05-05,APAC,Japan,Home,Air Purifier,Consumer,3,149.00,447.00
+O-00852,2026-05-05,APAC,Philippines,Office,Monitor Stand,Consumer,1,44.00,44.00
+O-00853,2026-05-05,EMEA,Germany,Electronics,USB-C Hub,Consumer,1,35.99,35.99
+O-00854,2026-05-05,EMEA,United Kingdom,Home,Ceramic Mug Set,Enterprise,8,22.00,176.00
+O-00855,2026-05-05,EMEA,France,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-00856,2026-05-05,AMER,Canada,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-00857,2026-05-06,APAC,Philippines,Home,Coffee Grinder,SMB,3,49.00,147.00
+O-00858,2026-05-06,APAC,Singapore,Office,Gel Pens,Consumer,1,8.09,8.09
+O-00859,2026-05-06,APAC,Philippines,Home,Air Purifier,SMB,5,149.00,745.00
+O-00860,2026-05-06,EMEA,France,Apparel,Rain Jacket,SMB,2,79.00,158.00
+O-00861,2026-05-06,APAC,Philippines,Apparel,Baseball Cap,Consumer,1,21.50,21.50
+O-00862,2026-05-07,APAC,Japan,Electronics,Noise-Cancelling Headphones,Consumer,3,199.00,597.00
+O-00863,2026-05-07,EMEA,France,Office,Notebook Set,Consumer,3,12.50,37.50
+O-00864,2026-05-07,APAC,Australia,Apparel,Baseball Cap,Consumer,3,21.50,64.50
+O-00865,2026-05-07,APAC,Philippines,Apparel,Rain Jacket,Enterprise,7,79.00,553.00
+O-00866,2026-05-07,APAC,Philippines,Electronics,Webcam,SMB,6,59.50,357.00
+O-00867,2026-05-07,EMEA,France,Electronics,Noise-Cancelling Headphones,Consumer,2,199.00,398.00
+O-00868,2026-05-07,APAC,Philippines,Apparel,Rain Jacket,Consumer,1,71.10,71.10
+O-00869,2026-05-07,APAC,India,Office,Gel Pens,Consumer,1,8.99,8.99
+O-00870,2026-05-07,AMER,United States,Electronics,Noise-Cancelling Headphones,SMB,4,199.00,796.00
+O-00871,2026-05-08,APAC,Australia,Apparel,Baseball Cap,Consumer,3,21.50,64.50
+O-00872,2026-05-08,AMER,United States,Electronics,Wireless Mouse,Enterprise,16,24.99,399.84
+O-00873,2026-05-08,APAC,Singapore,Home,Ceramic Mug Set,Consumer,3,22.00,66.00
+O-00874,2026-05-08,EMEA,Germany,Home,Coffee Grinder,Consumer,3,49.00,147.00
+O-00875,2026-05-08,AMER,United States,Electronics,Webcam,SMB,3,59.50,178.50
+O-00876,2026-05-08,EMEA,Germany,Electronics,Wireless Mouse,Consumer,1,24.99,24.99
+O-00877,2026-05-08,EMEA,United Kingdom,Home,Desk Lamp,SMB,6,39.50,237.00
+O-00878,2026-05-08,APAC,Singapore,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-00879,2026-05-08,APAC,Singapore,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-00880,2026-05-08,APAC,India,Office,Notebook Set,Consumer,1,12.50,12.50
+O-00881,2026-05-08,AMER,Canada,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-00882,2026-05-09,APAC,Philippines,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-00883,2026-05-09,APAC,Japan,Apparel,Baseball Cap,Consumer,1,21.50,21.50
+O-00884,2026-05-09,EMEA,Germany,Electronics,Mechanical Keyboard,SMB,4,89.00,356.00
+O-00885,2026-05-09,APAC,Philippines,Home,Desk Lamp,Consumer,2,39.50,79.00
+O-00886,2026-05-09,AMER,United States,Electronics,Wireless Mouse,SMB,2,24.99,49.98
+O-00887,2026-05-09,AMER,United States,Electronics,Webcam,SMB,1,59.50,59.50
+O-00888,2026-05-09,APAC,India,Apparel,Wool Socks,Enterprise,20,16.20,324.00
+O-00889,2026-05-09,APAC,Philippines,Office,Gel Pens,SMB,1,8.99,8.99
+O-00890,2026-05-09,APAC,India,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-00891,2026-05-09,AMER,Canada,Apparel,Running Shoes,SMB,4,85.50,342.00
+O-00892,2026-05-09,EMEA,Germany,Apparel,Wool Socks,Consumer,2,18.00,36.00
+O-00893,2026-05-10,APAC,Australia,Electronics,Noise-Cancelling Headphones,SMB,1,199.00,199.00
+O-00894,2026-05-10,AMER,United States,Electronics,USB-C Hub,Consumer,3,39.99,119.97
+O-00895,2026-05-10,EMEA,France,Home,Coffee Grinder,Consumer,2,44.10,88.20
+O-00896,2026-05-10,AMER,United States,Electronics,Noise-Cancelling Headphones,Enterprise,14,199.00,2786.00
+O-00897,2026-05-10,EMEA,United Kingdom,Electronics,Noise-Cancelling Headphones,Consumer,2,199.00,398.00
+O-00898,2026-05-10,EMEA,France,Home,Air Purifier,SMB,6,149.00,894.00
+O-00899,2026-05-10,EMEA,United Kingdom,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-00900,2026-05-10,EMEA,Netherlands,Office,Ergonomic Chair,SMB,6,249.00,1494.00
+O-00901,2026-05-11,AMER,United States,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-00902,2026-05-11,EMEA,South Africa,Office,Gel Pens,SMB,3,8.99,26.97
+O-00903,2026-05-11,EMEA,Netherlands,Office,Notebook Set,Consumer,3,12.50,37.50
+O-00904,2026-05-11,EMEA,Germany,Apparel,Rain Jacket,Consumer,2,79.00,158.00
+O-00905,2026-05-11,EMEA,Germany,Apparel,Hoodie,Consumer,2,45.00,90.00
+O-00906,2026-05-11,EMEA,United Kingdom,Home,Ceramic Mug Set,Consumer,3,22.00,66.00
+O-00907,2026-05-11,APAC,Australia,Electronics,Noise-Cancelling Headphones,SMB,6,199.00,1194.00
+O-00908,2026-05-11,AMER,United States,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-00909,2026-05-12,AMER,United States,Office,Desk Organizer,SMB,2,27.99,55.98
+O-00910,2026-05-12,EMEA,Netherlands,Home,Throw Blanket,SMB,4,34.99,139.96
+O-00911,2026-05-12,AMER,Brazil,Electronics,USB-C Hub,Consumer,3,39.99,119.97
+O-00912,2026-05-12,EMEA,Netherlands,Electronics,Noise-Cancelling Headphones,Consumer,2,179.10,358.20
+O-00913,2026-05-13,APAC,Japan,Apparel,Wool Socks,SMB,4,18.00,72.00
+O-00914,2026-05-13,APAC,Australia,Office,Notebook Set,Consumer,3,12.50,37.50
+O-00915,2026-05-13,EMEA,Germany,Home,Ceramic Mug Set,SMB,6,22.00,132.00
+O-00916,2026-05-13,EMEA,United Kingdom,Office,Notebook Set,Consumer,2,12.50,25.00
+O-00917,2026-05-13,AMER,Canada,Office,Desk Organizer,SMB,5,27.99,139.95
+O-00918,2026-05-13,APAC,Australia,Home,Throw Blanket,Consumer,3,34.99,104.97
+O-00919,2026-05-13,EMEA,Germany,Apparel,Baseball Cap,SMB,5,21.50,107.50
+O-00920,2026-05-14,EMEA,United Kingdom,Office,Desk Organizer,Consumer,3,27.99,83.97
+O-00921,2026-05-14,EMEA,United Kingdom,Apparel,Wool Socks,SMB,2,16.20,32.40
+O-00922,2026-05-14,APAC,Philippines,Apparel,Rain Jacket,Consumer,3,71.10,213.30
+O-00923,2026-05-14,APAC,Australia,Apparel,Wool Socks,Consumer,1,18.00,18.00
+O-00924,2026-05-14,APAC,Australia,Home,Coffee Grinder,Consumer,1,49.00,49.00
+O-00925,2026-05-14,APAC,Australia,Electronics,Mechanical Keyboard,Consumer,2,89.00,178.00
+O-00926,2026-05-14,AMER,United States,Apparel,Running Shoes,SMB,1,85.50,85.50
+O-00927,2026-05-14,APAC,Singapore,Apparel,Baseball Cap,Consumer,2,21.50,43.00
+O-00928,2026-05-14,AMER,Brazil,Home,Ceramic Mug Set,Consumer,1,22.00,22.00
+O-00929,2026-05-15,EMEA,South Africa,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-00930,2026-05-15,EMEA,Germany,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-00931,2026-05-15,APAC,Singapore,Electronics,Wireless Mouse,SMB,3,24.99,74.97
+O-00932,2026-05-15,APAC,Singapore,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-00933,2026-05-15,APAC,Philippines,Office,Monitor Stand,SMB,5,44.00,220.00
+O-00934,2026-05-15,APAC,Singapore,Home,Desk Lamp,Consumer,2,39.50,79.00
+O-00935,2026-05-15,APAC,India,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-00936,2026-05-15,APAC,Philippines,Home,Coffee Grinder,SMB,5,49.00,245.00
+O-00937,2026-05-16,APAC,Philippines,Apparel,Hoodie,SMB,3,45.00,135.00
+O-00938,2026-05-16,AMER,Canada,Electronics,USB-C Hub,Enterprise,20,39.99,799.80
+O-00939,2026-05-16,EMEA,France,Home,Throw Blanket,SMB,5,34.99,174.95
+O-00940,2026-05-16,AMER,United States,Electronics,Webcam,Consumer,2,59.50,119.00
+O-00941,2026-05-16,APAC,Japan,Electronics,USB-C Hub,SMB,3,39.99,119.97
+O-00942,2026-05-16,AMER,United States,Home,Ceramic Mug Set,Consumer,1,22.00,22.00
+O-00943,2026-05-17,EMEA,United Kingdom,Office,Desk Organizer,SMB,2,27.99,55.98
+O-00944,2026-05-17,APAC,Philippines,Office,Gel Pens,Consumer,1,8.09,8.09
+O-00945,2026-05-17,APAC,Singapore,Apparel,Running Shoes,Consumer,2,95.00,190.00
+O-00946,2026-05-17,APAC,India,Home,Ceramic Mug Set,Consumer,2,19.80,39.60
+O-00947,2026-05-17,EMEA,Netherlands,Electronics,USB-C Hub,Consumer,1,35.99,35.99
+O-00948,2026-05-18,EMEA,Germany,Home,Ceramic Mug Set,Consumer,3,22.00,66.00
+O-00949,2026-05-18,APAC,India,Electronics,Webcam,Consumer,1,59.50,59.50
+O-00950,2026-05-18,AMER,United States,Electronics,USB-C Hub,Enterprise,7,39.99,279.93
+O-00951,2026-05-18,APAC,Japan,Apparel,Baseball Cap,Consumer,3,21.50,64.50
+O-00952,2026-05-18,AMER,United States,Office,Desk Organizer,Consumer,3,25.19,75.57
+O-00953,2026-05-18,AMER,United States,Apparel,Baseball Cap,Consumer,2,21.50,43.00
+O-00954,2026-05-18,EMEA,Netherlands,Home,Air Purifier,SMB,5,149.00,745.00
+O-00955,2026-05-18,APAC,Australia,Apparel,Hoodie,Consumer,2,40.50,81.00
+O-00956,2026-05-18,AMER,Canada,Office,Notebook Set,SMB,3,12.50,37.50
+O-00957,2026-05-18,APAC,Philippines,Office,Desk Organizer,SMB,1,25.19,25.19
+O-00958,2026-05-18,AMER,Brazil,Office,Notebook Set,Consumer,2,11.25,22.50
+O-00959,2026-05-18,AMER,United States,Apparel,Wool Socks,Consumer,1,18.00,18.00
+O-00960,2026-05-19,AMER,United States,Home,Ceramic Mug Set,Consumer,1,22.00,22.00
+O-00961,2026-05-19,AMER,Brazil,Home,Desk Lamp,Consumer,2,39.50,79.00
+O-00962,2026-05-19,AMER,Mexico,Home,Air Purifier,Consumer,2,149.00,298.00
+O-00963,2026-05-19,EMEA,South Africa,Electronics,USB-C Hub,Consumer,2,39.99,79.98
+O-00964,2026-05-19,APAC,Philippines,Home,Air Purifier,Consumer,3,149.00,447.00
+O-00965,2026-05-19,APAC,Philippines,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-00966,2026-05-19,APAC,India,Apparel,Rain Jacket,Consumer,2,79.00,158.00
+O-00967,2026-05-19,APAC,Singapore,Electronics,Webcam,Consumer,1,59.50,59.50
+O-00968,2026-05-20,APAC,Japan,Electronics,USB-C Hub,Consumer,2,39.99,79.98
+O-00969,2026-05-20,APAC,Japan,Home,Coffee Grinder,SMB,5,49.00,245.00
+O-00970,2026-05-20,APAC,Japan,Home,Air Purifier,Consumer,1,134.10,134.10
+O-00971,2026-05-20,APAC,Philippines,Office,Ergonomic Chair,Consumer,2,224.10,448.20
+O-00972,2026-05-20,AMER,Canada,Electronics,Wireless Mouse,Enterprise,11,24.99,274.89
+O-00973,2026-05-20,APAC,Australia,Apparel,Wool Socks,Consumer,2,18.00,36.00
+O-00974,2026-05-20,APAC,Philippines,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-00975,2026-05-20,APAC,Singapore,Office,Ergonomic Chair,Enterprise,8,249.00,1992.00
+O-00976,2026-05-21,EMEA,Germany,Home,Coffee Grinder,SMB,3,49.00,147.00
+O-00977,2026-05-21,EMEA,United Kingdom,Office,Ergonomic Chair,Consumer,2,249.00,498.00
+O-00978,2026-05-21,AMER,Mexico,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-00979,2026-05-21,EMEA,Netherlands,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-00980,2026-05-21,EMEA,Germany,Electronics,Wireless Mouse,SMB,6,24.99,149.94
+O-00981,2026-05-21,APAC,Japan,Apparel,Hoodie,Consumer,1,45.00,45.00
+O-00982,2026-05-21,AMER,Mexico,Electronics,USB-C Hub,Consumer,3,39.99,119.97
+O-00983,2026-05-21,APAC,Australia,Electronics,Webcam,Consumer,1,59.50,59.50
+O-00984,2026-05-22,APAC,Singapore,Office,Notebook Set,SMB,5,12.50,62.50
+O-00985,2026-05-22,APAC,Philippines,Electronics,Noise-Cancelling Headphones,SMB,6,199.00,1194.00
+O-00986,2026-05-22,AMER,Mexico,Home,Coffee Grinder,Enterprise,10,49.00,490.00
+O-00987,2026-05-22,APAC,Philippines,Home,Air Purifier,Consumer,2,149.00,298.00
+O-00988,2026-05-22,APAC,Singapore,Office,Ergonomic Chair,Consumer,2,249.00,498.00
+O-00989,2026-05-22,APAC,Singapore,Electronics,USB-C Hub,Consumer,2,39.99,79.98
+O-00990,2026-05-22,APAC,Philippines,Office,Gel Pens,SMB,4,8.99,35.96
+O-00991,2026-05-22,EMEA,Netherlands,Office,Desk Organizer,SMB,6,27.99,167.94
+O-00992,2026-05-23,APAC,Australia,Home,Throw Blanket,Consumer,3,34.99,104.97
+O-00993,2026-05-23,EMEA,United Kingdom,Home,Coffee Grinder,Consumer,2,49.00,98.00
+O-00994,2026-05-23,APAC,Australia,Apparel,Wool Socks,Consumer,1,18.00,18.00
+O-00995,2026-05-23,EMEA,France,Office,Desk Organizer,Consumer,3,27.99,83.97
+O-00996,2026-05-23,AMER,Canada,Electronics,Noise-Cancelling Headphones,Consumer,2,199.00,398.00
+O-00997,2026-05-24,EMEA,France,Electronics,Noise-Cancelling Headphones,SMB,3,199.00,597.00
+O-00998,2026-05-24,APAC,India,Electronics,Noise-Cancelling Headphones,Consumer,2,199.00,398.00
+O-00999,2026-05-24,APAC,Singapore,Apparel,Running Shoes,SMB,4,95.00,380.00
+O-01000,2026-05-24,APAC,India,Electronics,USB-C Hub,Consumer,2,39.99,79.98
+O-01001,2026-05-24,AMER,Mexico,Home,Coffee Grinder,SMB,6,44.10,264.60
+O-01002,2026-05-24,AMER,United States,Home,Air Purifier,Consumer,3,149.00,447.00
+O-01003,2026-05-24,EMEA,Germany,Home,Air Purifier,SMB,1,149.00,149.00
+O-01004,2026-05-25,EMEA,France,Apparel,Wool Socks,Consumer,3,18.00,54.00
+O-01005,2026-05-25,EMEA,Netherlands,Home,Desk Lamp,Consumer,3,35.55,106.65
+O-01006,2026-05-25,APAC,Japan,Office,Desk Organizer,Consumer,2,27.99,55.98
+O-01007,2026-05-25,APAC,Philippines,Office,Ergonomic Chair,Consumer,2,249.00,498.00
+O-01008,2026-05-25,EMEA,Netherlands,Office,Desk Organizer,SMB,3,27.99,83.97
+O-01009,2026-05-25,AMER,United States,Electronics,Wireless Mouse,Consumer,3,24.99,74.97
+O-01010,2026-05-25,EMEA,United Kingdom,Electronics,Webcam,Consumer,2,59.50,119.00
+O-01011,2026-05-26,APAC,Philippines,Home,Throw Blanket,Consumer,3,34.99,104.97
+O-01012,2026-05-26,EMEA,France,Electronics,Webcam,SMB,5,53.55,267.75
+O-01013,2026-05-26,EMEA,Netherlands,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-01014,2026-05-26,APAC,Australia,Apparel,Rain Jacket,Consumer,1,79.00,79.00
+O-01015,2026-05-26,APAC,Japan,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-01016,2026-05-27,APAC,Australia,Apparel,Running Shoes,SMB,5,95.00,475.00
+O-01017,2026-05-27,APAC,Japan,Electronics,Noise-Cancelling Headphones,Consumer,2,199.00,398.00
+O-01018,2026-05-27,EMEA,Germany,Apparel,Running Shoes,Consumer,1,95.00,95.00
+O-01019,2026-05-27,AMER,United States,Electronics,Wireless Mouse,SMB,1,22.49,22.49
+O-01020,2026-05-27,APAC,Philippines,Home,Throw Blanket,SMB,6,34.99,209.94
+O-01021,2026-05-27,APAC,Singapore,Office,Desk Organizer,Consumer,3,27.99,83.97
+O-01022,2026-05-27,EMEA,Germany,Home,Throw Blanket,Consumer,3,34.99,104.97
+O-01023,2026-05-28,EMEA,South Africa,Electronics,USB-C Hub,Consumer,2,39.99,79.98
+O-01024,2026-05-28,AMER,United States,Apparel,Rain Jacket,SMB,2,79.00,158.00
+O-01025,2026-05-28,AMER,United States,Electronics,Webcam,SMB,5,53.55,267.75
+O-01026,2026-05-28,EMEA,France,Electronics,Noise-Cancelling Headphones,Consumer,3,199.00,597.00
+O-01027,2026-05-28,APAC,Philippines,Apparel,Baseball Cap,SMB,2,21.50,43.00
+O-01028,2026-05-28,APAC,India,Apparel,Wool Socks,Enterprise,9,18.00,162.00
+O-01029,2026-05-28,EMEA,United Kingdom,Apparel,Wool Socks,SMB,5,18.00,90.00
+O-01030,2026-05-28,AMER,United States,Electronics,USB-C Hub,SMB,4,35.99,143.96
+O-01031,2026-05-28,AMER,Canada,Home,Ceramic Mug Set,Consumer,2,22.00,44.00
+O-01032,2026-05-28,AMER,United States,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-01033,2026-05-29,APAC,Philippines,Home,Coffee Grinder,Consumer,2,49.00,98.00
+O-01034,2026-05-29,APAC,Philippines,Home,Throw Blanket,Consumer,1,34.99,34.99
+O-01035,2026-05-29,EMEA,South Africa,Office,Desk Organizer,Consumer,1,25.19,25.19
+O-01036,2026-05-29,APAC,Philippines,Home,Throw Blanket,SMB,6,34.99,209.94
+O-01037,2026-05-30,AMER,Canada,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-01038,2026-05-30,APAC,India,Home,Throw Blanket,Enterprise,16,34.99,559.84
+O-01039,2026-05-30,AMER,Brazil,Home,Throw Blanket,SMB,3,34.99,104.97
+O-01040,2026-05-30,EMEA,France,Home,Throw Blanket,Consumer,3,34.99,104.97
+O-01041,2026-05-30,APAC,Japan,Home,Desk Lamp,Enterprise,15,39.50,592.50
+O-01042,2026-05-30,APAC,Australia,Apparel,Rain Jacket,Consumer,1,79.00,79.00
+O-01043,2026-05-30,APAC,Japan,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-01044,2026-05-30,EMEA,South Africa,Electronics,Webcam,Consumer,3,53.55,160.65
+O-01045,2026-05-31,EMEA,France,Apparel,Running Shoes,Consumer,1,95.00,95.00
+O-01046,2026-05-31,EMEA,United Kingdom,Office,Notebook Set,SMB,5,12.50,62.50
+O-01047,2026-05-31,AMER,United States,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-01048,2026-05-31,EMEA,United Kingdom,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-01049,2026-05-31,AMER,United States,Electronics,Wireless Mouse,Consumer,1,24.99,24.99
+O-01050,2026-05-31,AMER,Canada,Home,Throw Blanket,Consumer,1,34.99,34.99
+O-01051,2026-05-31,APAC,Singapore,Home,Ceramic Mug Set,SMB,3,22.00,66.00
+O-01052,2026-06-01,APAC,Singapore,Apparel,Baseball Cap,Enterprise,20,19.35,387.00
+O-01053,2026-06-01,APAC,Australia,Apparel,Rain Jacket,SMB,4,79.00,316.00
+O-01054,2026-06-01,EMEA,United Kingdom,Home,Desk Lamp,SMB,3,39.50,118.50
+O-01055,2026-06-01,APAC,India,Apparel,Running Shoes,Enterprise,6,95.00,570.00
+O-01056,2026-06-01,APAC,Japan,Apparel,Rain Jacket,SMB,2,79.00,158.00
+O-01057,2026-06-01,EMEA,Germany,Apparel,Wool Socks,Consumer,3,18.00,54.00
+O-01058,2026-06-01,AMER,Canada,Office,Ergonomic Chair,Consumer,2,249.00,498.00
+O-01059,2026-06-02,APAC,Japan,Electronics,USB-C Hub,Consumer,1,39.99,39.99
+O-01060,2026-06-02,EMEA,France,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-01061,2026-06-02,AMER,United States,Home,Ceramic Mug Set,Consumer,3,22.00,66.00
+O-01062,2026-06-02,EMEA,France,Apparel,Rain Jacket,Consumer,1,79.00,79.00
+O-01063,2026-06-02,EMEA,Germany,Apparel,Rain Jacket,Consumer,2,79.00,158.00
+O-01064,2026-06-03,APAC,Philippines,Apparel,Baseball Cap,Consumer,2,21.50,43.00
+O-01065,2026-06-03,AMER,Mexico,Apparel,Wool Socks,Enterprise,10,18.00,180.00
+O-01066,2026-06-03,AMER,United States,Electronics,Mechanical Keyboard,Consumer,2,89.00,178.00
+O-01067,2026-06-03,AMER,Canada,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-01068,2026-06-03,AMER,United States,Home,Throw Blanket,Enterprise,15,34.99,524.85
+O-01069,2026-06-03,APAC,Philippines,Apparel,Baseball Cap,Consumer,3,21.50,64.50
+O-01070,2026-06-03,APAC,Japan,Home,Ceramic Mug Set,Consumer,2,22.00,44.00
+O-01071,2026-06-03,AMER,Brazil,Home,Desk Lamp,Consumer,1,39.50,39.50
+O-01072,2026-06-04,EMEA,South Africa,Home,Desk Lamp,SMB,5,39.50,197.50
+O-01073,2026-06-04,APAC,Australia,Home,Coffee Grinder,SMB,4,44.10,176.40
+O-01074,2026-06-04,AMER,United States,Apparel,Baseball Cap,Enterprise,19,21.50,408.50
+O-01075,2026-06-04,APAC,Japan,Home,Air Purifier,Consumer,3,149.00,447.00
+O-01076,2026-06-05,AMER,Brazil,Electronics,Webcam,Enterprise,10,59.50,595.00
+O-01077,2026-06-05,EMEA,Germany,Apparel,Baseball Cap,SMB,2,21.50,43.00
+O-01078,2026-06-05,EMEA,United Kingdom,Apparel,Running Shoes,Consumer,2,95.00,190.00
+O-01079,2026-06-05,EMEA,France,Home,Desk Lamp,Consumer,3,35.55,106.65
+O-01080,2026-06-05,AMER,United States,Apparel,Rain Jacket,Enterprise,10,79.00,790.00
+O-01081,2026-06-05,APAC,Singapore,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-01082,2026-06-05,APAC,Philippines,Home,Ceramic Mug Set,Enterprise,20,22.00,440.00
+O-01083,2026-06-05,APAC,Singapore,Office,Monitor Stand,Enterprise,20,44.00,880.00
+O-01084,2026-06-05,APAC,Singapore,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-01085,2026-06-05,APAC,Japan,Apparel,Running Shoes,Consumer,1,95.00,95.00
+O-01086,2026-06-05,EMEA,Netherlands,Office,Ergonomic Chair,Enterprise,13,249.00,3237.00
+O-01087,2026-06-06,APAC,Philippines,Electronics,Mechanical Keyboard,Consumer,2,80.10,160.20
+O-01088,2026-06-06,APAC,Australia,Home,Coffee Grinder,Consumer,2,44.10,88.20
+O-01089,2026-06-06,AMER,Mexico,Office,Gel Pens,Consumer,3,8.99,26.97
+O-01090,2026-06-06,APAC,Australia,Apparel,Running Shoes,Consumer,1,85.50,85.50
+O-01091,2026-06-07,EMEA,South Africa,Office,Ergonomic Chair,SMB,4,249.00,996.00
+O-01092,2026-06-07,APAC,India,Electronics,Webcam,Enterprise,11,59.50,654.50
+O-01093,2026-06-07,AMER,United States,Home,Throw Blanket,Enterprise,19,34.99,664.81
+O-01094,2026-06-07,AMER,Brazil,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-01095,2026-06-07,EMEA,United Kingdom,Home,Air Purifier,SMB,3,149.00,447.00
+O-01096,2026-06-07,AMER,Mexico,Apparel,Rain Jacket,SMB,3,79.00,237.00
+O-01097,2026-06-08,EMEA,Germany,Apparel,Baseball Cap,Enterprise,5,21.50,107.50
+O-01098,2026-06-08,APAC,Singapore,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-01099,2026-06-08,EMEA,United Kingdom,Apparel,Baseball Cap,Consumer,2,21.50,43.00
+O-01100,2026-06-08,EMEA,United Kingdom,Electronics,Mechanical Keyboard,Enterprise,16,89.00,1424.00
+O-01101,2026-06-08,AMER,United States,Electronics,Webcam,Consumer,3,59.50,178.50
+O-01102,2026-06-08,EMEA,Germany,Home,Air Purifier,Consumer,2,149.00,298.00
+O-01103,2026-06-08,APAC,Philippines,Office,Gel Pens,SMB,3,8.99,26.97
+O-01104,2026-06-08,APAC,India,Electronics,USB-C Hub,SMB,1,39.99,39.99
+O-01105,2026-06-08,APAC,Australia,Home,Coffee Grinder,SMB,2,49.00,98.00
+O-01106,2026-06-08,EMEA,United Kingdom,Apparel,Wool Socks,Consumer,2,18.00,36.00
+O-01107,2026-06-09,APAC,India,Apparel,Running Shoes,SMB,4,85.50,342.00
+O-01108,2026-06-09,AMER,Brazil,Apparel,Running Shoes,Consumer,2,95.00,190.00
+O-01109,2026-06-09,APAC,India,Apparel,Hoodie,Consumer,1,45.00,45.00
+O-01110,2026-06-09,APAC,Japan,Home,Air Purifier,SMB,3,149.00,447.00
+O-01111,2026-06-09,APAC,Singapore,Office,Monitor Stand,Enterprise,13,44.00,572.00
+O-01112,2026-06-09,APAC,Japan,Office,Ergonomic Chair,Consumer,3,224.10,672.30
+O-01113,2026-06-10,AMER,United States,Office,Ergonomic Chair,Consumer,1,249.00,249.00
+O-01114,2026-06-10,APAC,Australia,Electronics,USB-C Hub,Enterprise,8,39.99,319.92
+O-01115,2026-06-10,APAC,Japan,Apparel,Baseball Cap,SMB,6,21.50,129.00
+O-01116,2026-06-10,APAC,India,Office,Monitor Stand,Consumer,3,44.00,132.00
+O-01117,2026-06-10,APAC,India,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-01118,2026-06-10,APAC,Australia,Home,Air Purifier,Consumer,2,149.00,298.00
+O-01119,2026-06-10,AMER,Mexico,Home,Throw Blanket,Consumer,3,31.49,94.47
+O-01120,2026-06-11,APAC,Singapore,Office,Notebook Set,SMB,2,12.50,25.00
+O-01121,2026-06-11,EMEA,Germany,Home,Ceramic Mug Set,SMB,1,22.00,22.00
+O-01122,2026-06-11,EMEA,France,Electronics,USB-C Hub,Consumer,3,39.99,119.97
+O-01123,2026-06-11,AMER,Canada,Electronics,Wireless Mouse,Enterprise,8,24.99,199.92
+O-01124,2026-06-11,EMEA,Germany,Apparel,Wool Socks,Consumer,3,16.20,48.60
+O-01125,2026-06-11,EMEA,France,Home,Coffee Grinder,Consumer,2,49.00,98.00
+O-01126,2026-06-11,EMEA,France,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-01127,2026-06-11,APAC,Australia,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-01128,2026-06-12,AMER,Canada,Electronics,Mechanical Keyboard,Consumer,2,89.00,178.00
+O-01129,2026-06-12,AMER,United States,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-01130,2026-06-12,APAC,India,Home,Ceramic Mug Set,Consumer,2,19.80,39.60
+O-01131,2026-06-12,APAC,Japan,Office,Notebook Set,Consumer,1,11.25,11.25
+O-01132,2026-06-12,EMEA,South Africa,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-01133,2026-06-12,APAC,Japan,Electronics,Webcam,Consumer,1,59.50,59.50
+O-01134,2026-06-12,APAC,Philippines,Electronics,Webcam,Consumer,3,59.50,178.50
+O-01135,2026-06-12,APAC,Australia,Home,Throw Blanket,Consumer,1,34.99,34.99
+O-01136,2026-06-13,APAC,Japan,Home,Coffee Grinder,Consumer,1,49.00,49.00
+O-01137,2026-06-13,APAC,Japan,Apparel,Wool Socks,Consumer,1,18.00,18.00
+O-01138,2026-06-13,EMEA,United Kingdom,Home,Ceramic Mug Set,SMB,1,22.00,22.00
+O-01139,2026-06-13,EMEA,United Kingdom,Home,Coffee Grinder,Enterprise,12,49.00,588.00
+O-01140,2026-06-13,AMER,United States,Office,Gel Pens,Consumer,1,8.99,8.99
+O-01141,2026-06-13,AMER,United States,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-01142,2026-06-13,APAC,Philippines,Electronics,Webcam,Consumer,2,59.50,119.00
+O-01143,2026-06-13,EMEA,France,Home,Air Purifier,Consumer,2,149.00,298.00
+O-01144,2026-06-13,AMER,Brazil,Home,Ceramic Mug Set,SMB,3,22.00,66.00
+O-01145,2026-06-13,AMER,United States,Home,Ceramic Mug Set,SMB,5,22.00,110.00
+O-01146,2026-06-13,AMER,Canada,Home,Ceramic Mug Set,Consumer,3,22.00,66.00
+O-01147,2026-06-13,APAC,Philippines,Home,Ceramic Mug Set,Consumer,1,22.00,22.00
+O-01148,2026-06-13,AMER,United States,Home,Coffee Grinder,Consumer,2,49.00,98.00
+O-01149,2026-06-13,APAC,Singapore,Electronics,USB-C Hub,Consumer,1,35.99,35.99
+O-01150,2026-06-14,APAC,Japan,Apparel,Wool Socks,SMB,1,18.00,18.00
+O-01151,2026-06-14,APAC,Australia,Apparel,Baseball Cap,SMB,1,21.50,21.50
+O-01152,2026-06-14,APAC,Philippines,Apparel,Baseball Cap,Consumer,1,21.50,21.50
+O-01153,2026-06-14,APAC,India,Home,Desk Lamp,Consumer,1,39.50,39.50
+O-01154,2026-06-14,APAC,Japan,Apparel,Rain Jacket,Consumer,1,79.00,79.00
+O-01155,2026-06-14,EMEA,Netherlands,Home,Desk Lamp,Consumer,1,39.50,39.50
+O-01156,2026-06-14,AMER,United States,Electronics,USB-C Hub,Consumer,1,39.99,39.99
+O-01157,2026-06-14,EMEA,Germany,Office,Gel Pens,Consumer,1,8.99,8.99
+O-01158,2026-06-15,EMEA,Netherlands,Home,Desk Lamp,Consumer,1,39.50,39.50
+O-01159,2026-06-15,APAC,Singapore,Home,Throw Blanket,Consumer,3,34.99,104.97
+O-01160,2026-06-15,AMER,United States,Home,Desk Lamp,SMB,3,39.50,118.50
+O-01161,2026-06-15,APAC,India,Home,Throw Blanket,Enterprise,6,31.49,188.94
+O-01162,2026-06-15,AMER,Mexico,Office,Desk Organizer,SMB,6,25.19,151.14
+O-01163,2026-06-15,EMEA,Netherlands,Home,Air Purifier,SMB,5,149.00,745.00
+O-01164,2026-06-15,APAC,Australia,Electronics,Wireless Mouse,Consumer,1,24.99,24.99
+O-01165,2026-06-16,EMEA,Germany,Home,Desk Lamp,Enterprise,14,39.50,553.00
+O-01166,2026-06-16,APAC,Philippines,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-01167,2026-06-16,AMER,United States,Home,Coffee Grinder,Consumer,3,49.00,147.00
+O-01168,2026-06-16,APAC,Australia,Apparel,Rain Jacket,Enterprise,11,79.00,869.00
+O-01169,2026-06-16,APAC,Australia,Office,Monitor Stand,Consumer,2,44.00,88.00
+O-01170,2026-06-16,AMER,Brazil,Apparel,Hoodie,Consumer,2,45.00,90.00
+O-01171,2026-06-17,APAC,Philippines,Electronics,Webcam,Consumer,2,53.55,107.10
+O-01172,2026-06-17,APAC,Australia,Electronics,USB-C Hub,SMB,4,39.99,159.96
+O-01173,2026-06-17,APAC,Australia,Electronics,Noise-Cancelling Headphones,Enterprise,7,199.00,1393.00
+O-01174,2026-06-17,APAC,Philippines,Home,Desk Lamp,Consumer,1,39.50,39.50
+O-01175,2026-06-17,APAC,Japan,Office,Desk Organizer,SMB,3,27.99,83.97
+O-01176,2026-06-17,APAC,India,Office,Gel Pens,Consumer,3,8.99,26.97
+O-01177,2026-06-17,AMER,United States,Apparel,Wool Socks,Consumer,2,18.00,36.00
+O-01178,2026-06-18,EMEA,South Africa,Electronics,Noise-Cancelling Headphones,Consumer,3,199.00,597.00
+O-01179,2026-06-18,APAC,Japan,Apparel,Hoodie,Consumer,2,45.00,90.00
+O-01180,2026-06-18,APAC,Australia,Office,Gel Pens,Enterprise,12,8.99,107.88
+O-01181,2026-06-18,APAC,Japan,Office,Notebook Set,Consumer,3,12.50,37.50
+O-01182,2026-06-18,EMEA,Germany,Home,Desk Lamp,Enterprise,5,39.50,197.50
+O-01183,2026-06-18,AMER,United States,Office,Ergonomic Chair,Consumer,1,249.00,249.00
+O-01184,2026-06-18,AMER,Brazil,Apparel,Rain Jacket,Enterprise,18,79.00,1422.00
+O-01185,2026-06-18,AMER,United States,Office,Ergonomic Chair,SMB,3,249.00,747.00
+O-01186,2026-06-19,AMER,United States,Office,Ergonomic Chair,Consumer,3,249.00,747.00
+O-01187,2026-06-19,EMEA,France,Home,Desk Lamp,Consumer,2,39.50,79.00
+O-01188,2026-06-19,AMER,United States,Home,Ceramic Mug Set,Consumer,3,22.00,66.00
+O-01189,2026-06-19,EMEA,United Kingdom,Home,Coffee Grinder,Consumer,2,49.00,98.00
+O-01190,2026-06-19,AMER,United States,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-01191,2026-06-19,APAC,Australia,Home,Coffee Grinder,Enterprise,7,49.00,343.00
+O-01192,2026-06-19,EMEA,South Africa,Apparel,Wool Socks,Consumer,3,18.00,54.00
+O-01193,2026-06-19,EMEA,South Africa,Home,Ceramic Mug Set,Consumer,3,22.00,66.00
+O-01194,2026-06-19,AMER,United States,Office,Gel Pens,Consumer,3,8.99,26.97
+O-01195,2026-06-19,APAC,Australia,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-01196,2026-06-19,APAC,Philippines,Home,Ceramic Mug Set,Consumer,3,22.00,66.00
+O-01197,2026-06-19,AMER,Mexico,Office,Ergonomic Chair,Consumer,2,249.00,498.00
+O-01198,2026-06-19,APAC,Philippines,Electronics,Wireless Mouse,SMB,2,24.99,49.98
+O-01199,2026-06-20,APAC,Australia,Home,Air Purifier,SMB,6,149.00,894.00
+O-01200,2026-06-20,EMEA,Germany,Apparel,Baseball Cap,Consumer,1,21.50,21.50
+O-01201,2026-06-20,APAC,India,Apparel,Wool Socks,Consumer,3,18.00,54.00
+O-01202,2026-06-20,APAC,Australia,Electronics,USB-C Hub,Consumer,1,39.99,39.99
+O-01203,2026-06-20,APAC,Singapore,Office,Gel Pens,Consumer,3,8.99,26.97
+O-01204,2026-06-21,APAC,Singapore,Office,Monitor Stand,SMB,5,39.60,198.00
+O-01205,2026-06-21,AMER,United States,Apparel,Baseball Cap,Enterprise,13,21.50,279.50
+O-01206,2026-06-21,APAC,Australia,Electronics,USB-C Hub,Enterprise,5,39.99,199.95
+O-01207,2026-06-21,AMER,United States,Electronics,Webcam,SMB,3,59.50,178.50
+O-01208,2026-06-22,EMEA,South Africa,Electronics,USB-C Hub,Consumer,2,39.99,79.98
+O-01209,2026-06-22,EMEA,Germany,Electronics,Webcam,Consumer,3,53.55,160.65
+O-01210,2026-06-22,APAC,Japan,Electronics,Webcam,SMB,4,59.50,238.00
+O-01211,2026-06-22,EMEA,Germany,Apparel,Hoodie,Enterprise,12,45.00,540.00
+O-01212,2026-06-22,APAC,Singapore,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-01213,2026-06-23,EMEA,Netherlands,Office,Gel Pens,Enterprise,20,8.99,179.80
+O-01214,2026-06-23,EMEA,South Africa,Electronics,USB-C Hub,Enterprise,18,39.99,719.82
+O-01215,2026-06-23,APAC,Australia,Office,Desk Organizer,Consumer,1,27.99,27.99
+O-01216,2026-06-23,APAC,India,Home,Air Purifier,SMB,1,149.00,149.00
+O-01217,2026-06-24,EMEA,South Africa,Office,Monitor Stand,Consumer,3,44.00,132.00
+O-01218,2026-06-24,EMEA,United Kingdom,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-01219,2026-06-24,APAC,Japan,Office,Desk Organizer,SMB,4,27.99,111.96
+O-01220,2026-06-24,APAC,Philippines,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-01221,2026-06-24,AMER,Canada,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-01222,2026-06-24,EMEA,France,Apparel,Rain Jacket,Consumer,1,79.00,79.00
+O-01223,2026-06-25,APAC,Australia,Home,Air Purifier,Consumer,3,149.00,447.00
+O-01224,2026-06-25,APAC,Australia,Office,Notebook Set,Consumer,2,12.50,25.00
+O-01225,2026-06-25,AMER,United States,Apparel,Hoodie,Consumer,1,45.00,45.00
+O-01226,2026-06-25,APAC,Japan,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-01227,2026-06-25,EMEA,South Africa,Home,Air Purifier,Consumer,2,149.00,298.00
+O-01228,2026-06-26,AMER,United States,Home,Air Purifier,Consumer,1,149.00,149.00
+O-01229,2026-06-26,AMER,United States,Electronics,Webcam,Consumer,3,59.50,178.50
+O-01230,2026-06-26,APAC,Japan,Electronics,Webcam,Consumer,3,59.50,178.50
+O-01231,2026-06-26,APAC,Philippines,Office,Monitor Stand,Consumer,2,39.60,79.20
+O-01232,2026-06-26,APAC,Japan,Apparel,Rain Jacket,SMB,6,79.00,474.00
+O-01233,2026-06-26,EMEA,France,Apparel,Baseball Cap,Consumer,1,21.50,21.50
+O-01234,2026-06-27,AMER,Brazil,Home,Ceramic Mug Set,Consumer,2,22.00,44.00
+O-01235,2026-06-27,AMER,United States,Apparel,Rain Jacket,Consumer,2,79.00,158.00
+O-01236,2026-06-27,APAC,Philippines,Apparel,Baseball Cap,Consumer,1,21.50,21.50
+O-01237,2026-06-27,AMER,United States,Home,Desk Lamp,Consumer,1,39.50,39.50
+O-01238,2026-06-27,APAC,Australia,Home,Throw Blanket,SMB,3,34.99,104.97
+O-01239,2026-06-27,EMEA,United Kingdom,Apparel,Running Shoes,Enterprise,12,95.00,1140.00
+O-01240,2026-06-27,AMER,Brazil,Electronics,Noise-Cancelling Headphones,SMB,5,199.00,995.00
+O-01241,2026-06-27,AMER,Canada,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-01242,2026-06-27,EMEA,Netherlands,Apparel,Baseball Cap,SMB,3,21.50,64.50
+O-01243,2026-06-27,EMEA,United Kingdom,Apparel,Wool Socks,Consumer,2,16.20,32.40
+O-01244,2026-06-27,AMER,Mexico,Apparel,Wool Socks,Consumer,1,18.00,18.00
+O-01245,2026-06-27,AMER,Mexico,Apparel,Baseball Cap,Consumer,3,21.50,64.50
+O-01246,2026-06-28,AMER,United States,Office,Monitor Stand,Consumer,1,44.00,44.00
+O-01247,2026-06-28,EMEA,Germany,Apparel,Wool Socks,Consumer,1,18.00,18.00
+O-01248,2026-06-28,APAC,Japan,Home,Coffee Grinder,SMB,3,49.00,147.00
+O-01249,2026-06-28,EMEA,United Kingdom,Home,Coffee Grinder,SMB,3,49.00,147.00
+O-01250,2026-06-28,AMER,Brazil,Home,Desk Lamp,Consumer,2,39.50,79.00
+O-01251,2026-06-28,EMEA,France,Office,Gel Pens,Consumer,1,8.99,8.99
+O-01252,2026-06-28,AMER,United States,Apparel,Hoodie,Consumer,1,45.00,45.00
+O-01253,2026-06-28,APAC,Australia,Apparel,Wool Socks,Consumer,2,18.00,36.00
+O-01254,2026-06-28,APAC,Australia,Office,Ergonomic Chair,SMB,5,249.00,1245.00
+O-01255,2026-06-29,EMEA,France,Apparel,Rain Jacket,Enterprise,18,71.10,1279.80
+O-01256,2026-06-29,APAC,Australia,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-01257,2026-06-29,AMER,Canada,Office,Ergonomic Chair,Consumer,2,224.10,448.20
+O-01258,2026-06-29,APAC,Japan,Apparel,Baseball Cap,SMB,5,21.50,107.50
+O-01259,2026-06-29,EMEA,France,Electronics,Mechanical Keyboard,SMB,2,89.00,178.00
+O-01260,2026-06-29,AMER,Mexico,Apparel,Running Shoes,Consumer,1,95.00,95.00
+O-01261,2026-06-29,AMER,Mexico,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-01262,2026-06-29,APAC,Japan,Office,Ergonomic Chair,SMB,6,249.00,1494.00
+O-01263,2026-06-29,EMEA,United Kingdom,Office,Notebook Set,Consumer,3,12.50,37.50
+O-01264,2026-06-30,APAC,Philippines,Apparel,Baseball Cap,Consumer,3,21.50,64.50
+O-01265,2026-06-30,APAC,Japan,Home,Desk Lamp,SMB,5,39.50,197.50
+O-01266,2026-06-30,AMER,United States,Apparel,Hoodie,Consumer,2,45.00,90.00
+O-01267,2026-06-30,APAC,Philippines,Electronics,USB-C Hub,SMB,1,39.99,39.99
+O-01268,2026-06-30,AMER,Brazil,Electronics,Mechanical Keyboard,SMB,2,89.00,178.00
+O-01269,2026-07-01,AMER,Canada,Apparel,Hoodie,SMB,3,45.00,135.00
+O-01270,2026-07-01,EMEA,Germany,Electronics,Webcam,SMB,2,59.50,119.00
+O-01271,2026-07-01,EMEA,Germany,Office,Ergonomic Chair,Enterprise,8,224.10,1792.80
+O-01272,2026-07-01,AMER,Brazil,Electronics,Webcam,Consumer,1,59.50,59.50
+O-01273,2026-07-01,APAC,Philippines,Home,Coffee Grinder,Consumer,3,49.00,147.00
+O-01274,2026-07-01,APAC,Australia,Apparel,Rain Jacket,SMB,3,79.00,237.00
+O-01275,2026-07-02,EMEA,Netherlands,Electronics,Wireless Mouse,SMB,5,24.99,124.95
+O-01276,2026-07-02,AMER,United States,Electronics,Mechanical Keyboard,SMB,2,89.00,178.00
+O-01277,2026-07-02,EMEA,United Kingdom,Apparel,Rain Jacket,SMB,1,79.00,79.00
+O-01278,2026-07-02,AMER,Canada,Electronics,Webcam,Consumer,1,59.50,59.50
+O-01279,2026-07-03,APAC,Singapore,Electronics,Noise-Cancelling Headphones,SMB,2,199.00,398.00
+O-01280,2026-07-03,APAC,India,Apparel,Running Shoes,Enterprise,18,95.00,1710.00
+O-01281,2026-07-03,APAC,Japan,Office,Gel Pens,SMB,4,8.99,35.96
+O-01282,2026-07-04,APAC,Australia,Apparel,Rain Jacket,Consumer,1,79.00,79.00
+O-01283,2026-07-04,EMEA,Germany,Apparel,Rain Jacket,SMB,6,79.00,474.00
+O-01284,2026-07-04,AMER,Canada,Apparel,Running Shoes,Enterprise,13,95.00,1235.00
+O-01285,2026-07-04,APAC,Japan,Home,Air Purifier,Consumer,1,149.00,149.00
+O-01286,2026-07-04,APAC,Philippines,Apparel,Running Shoes,Consumer,1,95.00,95.00
+O-01287,2026-07-05,APAC,Philippines,Home,Air Purifier,Consumer,2,149.00,298.00
+O-01288,2026-07-05,APAC,India,Office,Monitor Stand,Enterprise,5,44.00,220.00
+O-01289,2026-07-05,AMER,Canada,Electronics,USB-C Hub,Consumer,2,39.99,79.98
+O-01290,2026-07-05,APAC,Philippines,Electronics,Wireless Mouse,Consumer,3,24.99,74.97
+O-01291,2026-07-05,APAC,Japan,Electronics,Mechanical Keyboard,Consumer,3,80.10,240.30
+O-01292,2026-07-05,AMER,Mexico,Electronics,Noise-Cancelling Headphones,SMB,4,199.00,796.00
+O-01293,2026-07-05,APAC,Singapore,Home,Desk Lamp,Consumer,1,39.50,39.50
+O-01294,2026-07-06,APAC,Philippines,Electronics,Wireless Mouse,SMB,5,22.49,112.45
+O-01295,2026-07-06,APAC,Australia,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-01296,2026-07-06,EMEA,France,Electronics,USB-C Hub,Consumer,3,39.99,119.97
+O-01297,2026-07-06,EMEA,South Africa,Home,Throw Blanket,SMB,6,34.99,209.94
+O-01298,2026-07-06,AMER,United States,Apparel,Hoodie,Enterprise,15,45.00,675.00
+O-01299,2026-07-06,EMEA,Germany,Home,Air Purifier,Consumer,1,149.00,149.00
+O-01300,2026-07-06,APAC,Australia,Office,Desk Organizer,SMB,6,27.99,167.94
+O-01301,2026-07-06,APAC,Japan,Office,Notebook Set,Consumer,3,11.25,33.75
+O-01302,2026-07-06,APAC,Philippines,Electronics,Wireless Mouse,Enterprise,7,24.99,174.93
+O-01303,2026-07-06,APAC,Singapore,Home,Desk Lamp,SMB,1,39.50,39.50
+O-01304,2026-07-07,APAC,Australia,Office,Ergonomic Chair,Consumer,2,249.00,498.00
+O-01305,2026-07-07,APAC,Japan,Office,Monitor Stand,SMB,5,44.00,220.00
+O-01306,2026-07-07,APAC,Japan,Apparel,Baseball Cap,Consumer,2,21.50,43.00
+O-01307,2026-07-07,AMER,United States,Apparel,Baseball Cap,Enterprise,18,21.50,387.00
+O-01308,2026-07-07,EMEA,United Kingdom,Home,Throw Blanket,SMB,5,34.99,174.95
+O-01309,2026-07-07,EMEA,South Africa,Home,Air Purifier,SMB,4,149.00,596.00
+O-01310,2026-07-07,EMEA,United Kingdom,Office,Ergonomic Chair,Consumer,2,249.00,498.00
+O-01311,2026-07-08,EMEA,South Africa,Office,Notebook Set,Consumer,3,12.50,37.50
+O-01312,2026-07-08,EMEA,South Africa,Office,Ergonomic Chair,Consumer,1,224.10,224.10
+O-01313,2026-07-08,EMEA,United Kingdom,Home,Air Purifier,Consumer,2,134.10,268.20
+O-01314,2026-07-08,EMEA,Germany,Home,Air Purifier,SMB,2,149.00,298.00
+O-01315,2026-07-09,EMEA,United Kingdom,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-01316,2026-07-09,EMEA,South Africa,Apparel,Wool Socks,Consumer,3,18.00,54.00
+O-01317,2026-07-09,APAC,India,Electronics,Webcam,Consumer,1,59.50,59.50
+O-01318,2026-07-09,EMEA,France,Apparel,Running Shoes,Enterprise,19,95.00,1805.00
+O-01319,2026-07-09,APAC,Singapore,Electronics,Wireless Mouse,SMB,5,24.99,124.95
+O-01320,2026-07-09,APAC,Singapore,Apparel,Running Shoes,Consumer,2,95.00,190.00
+O-01321,2026-07-09,APAC,Japan,Home,Coffee Grinder,Consumer,1,49.00,49.00
+O-01322,2026-07-09,APAC,Philippines,Electronics,USB-C Hub,SMB,4,39.99,159.96
+O-01323,2026-07-09,EMEA,United Kingdom,Office,Monitor Stand,Enterprise,19,44.00,836.00
+O-01324,2026-07-09,EMEA,Germany,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-01325,2026-07-09,AMER,Brazil,Electronics,USB-C Hub,Consumer,2,39.99,79.98
+O-01326,2026-07-09,EMEA,United Kingdom,Electronics,Wireless Mouse,Consumer,1,24.99,24.99
+O-01327,2026-07-09,AMER,United States,Office,Desk Organizer,Consumer,2,27.99,55.98
+O-01328,2026-07-10,APAC,Japan,Electronics,USB-C Hub,SMB,4,39.99,159.96
+O-01329,2026-07-10,EMEA,Germany,Apparel,Wool Socks,Enterprise,18,18.00,324.00
+O-01330,2026-07-10,AMER,Canada,Apparel,Wool Socks,Consumer,3,18.00,54.00
+O-01331,2026-07-11,APAC,Philippines,Electronics,USB-C Hub,Consumer,3,39.99,119.97
+O-01332,2026-07-11,APAC,Japan,Apparel,Rain Jacket,Consumer,2,79.00,158.00
+O-01333,2026-07-11,EMEA,Germany,Apparel,Rain Jacket,Enterprise,10,71.10,711.00
+O-01334,2026-07-11,AMER,Brazil,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-01335,2026-07-11,AMER,Canada,Electronics,Noise-Cancelling Headphones,Consumer,2,199.00,398.00
+O-01336,2026-07-11,APAC,Philippines,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-01337,2026-07-11,EMEA,United Kingdom,Home,Throw Blanket,SMB,4,34.99,139.96
+O-01338,2026-07-11,APAC,Japan,Electronics,Noise-Cancelling Headphones,Consumer,3,179.10,537.30
+O-01339,2026-07-11,AMER,United States,Electronics,USB-C Hub,SMB,1,39.99,39.99
+O-01340,2026-07-11,AMER,United States,Electronics,Noise-Cancelling Headphones,SMB,3,199.00,597.00
+O-01341,2026-07-11,EMEA,United Kingdom,Electronics,Noise-Cancelling Headphones,Enterprise,7,199.00,1393.00
+O-01342,2026-07-12,AMER,United States,Electronics,Wireless Mouse,SMB,2,24.99,49.98
+O-01343,2026-07-12,AMER,United States,Apparel,Wool Socks,Consumer,3,18.00,54.00
+O-01344,2026-07-12,APAC,Philippines,Office,Gel Pens,SMB,6,8.99,53.94
+O-01345,2026-07-12,APAC,Philippines,Office,Monitor Stand,Consumer,3,44.00,132.00
+O-01346,2026-07-12,AMER,United States,Electronics,Webcam,Enterprise,6,59.50,357.00
+O-01347,2026-07-12,APAC,Philippines,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-01348,2026-07-12,APAC,Japan,Apparel,Running Shoes,SMB,4,95.00,380.00
+O-01349,2026-07-12,APAC,Singapore,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-01350,2026-07-13,APAC,Japan,Home,Ceramic Mug Set,Consumer,2,22.00,44.00
+O-01351,2026-07-13,APAC,Japan,Apparel,Wool Socks,Consumer,1,18.00,18.00
+O-01352,2026-07-13,AMER,United States,Office,Ergonomic Chair,Consumer,1,224.10,224.10
+O-01353,2026-07-13,APAC,Australia,Apparel,Baseball Cap,SMB,5,21.50,107.50
+O-01354,2026-07-13,EMEA,Germany,Home,Ceramic Mug Set,Enterprise,15,22.00,330.00
+O-01355,2026-07-13,APAC,Australia,Office,Monitor Stand,SMB,5,44.00,220.00
+O-01356,2026-07-13,APAC,Philippines,Office,Gel Pens,SMB,2,8.99,17.98
+O-01357,2026-07-13,APAC,Philippines,Apparel,Rain Jacket,Consumer,2,79.00,158.00
+O-01358,2026-07-13,AMER,Canada,Office,Ergonomic Chair,Consumer,2,249.00,498.00
+O-01359,2026-07-14,APAC,Philippines,Apparel,Wool Socks,Consumer,2,18.00,36.00
+O-01360,2026-07-14,AMER,United States,Apparel,Rain Jacket,SMB,4,79.00,316.00
+O-01361,2026-07-14,AMER,United States,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-01362,2026-07-14,APAC,Philippines,Electronics,Mechanical Keyboard,Consumer,2,89.00,178.00
+O-01363,2026-07-14,EMEA,Germany,Office,Ergonomic Chair,Consumer,1,249.00,249.00
+O-01364,2026-07-14,EMEA,South Africa,Apparel,Rain Jacket,Consumer,1,71.10,71.10
+O-01365,2026-07-14,EMEA,France,Electronics,Webcam,Consumer,1,59.50,59.50
+O-01366,2026-07-15,APAC,Philippines,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-01367,2026-07-15,APAC,Australia,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-01368,2026-07-16,EMEA,Germany,Apparel,Running Shoes,Enterprise,10,95.00,950.00
+O-01369,2026-07-16,AMER,Canada,Home,Air Purifier,Consumer,2,149.00,298.00
+O-01370,2026-07-16,EMEA,United Kingdom,Apparel,Rain Jacket,Consumer,2,79.00,158.00
+O-01371,2026-07-16,AMER,Brazil,Home,Air Purifier,SMB,3,149.00,447.00
+O-01372,2026-07-16,EMEA,France,Electronics,Mechanical Keyboard,Consumer,2,89.00,178.00
+O-01373,2026-07-17,APAC,Philippines,Electronics,Wireless Mouse,SMB,6,24.99,149.94
+O-01374,2026-07-17,APAC,India,Apparel,Wool Socks,SMB,6,18.00,108.00
+O-01375,2026-07-17,APAC,Australia,Apparel,Hoodie,Consumer,2,45.00,90.00
+O-01376,2026-07-17,EMEA,United Kingdom,Office,Desk Organizer,Consumer,2,27.99,55.98
+O-01377,2026-07-17,APAC,Japan,Home,Ceramic Mug Set,Consumer,3,19.80,59.40
+O-01378,2026-07-17,APAC,India,Apparel,Rain Jacket,Consumer,2,71.10,142.20
+O-01379,2026-07-17,EMEA,United Kingdom,Office,Desk Organizer,Consumer,3,25.19,75.57
+O-01380,2026-07-17,EMEA,Germany,Electronics,USB-C Hub,Consumer,2,39.99,79.98
+O-01381,2026-07-17,APAC,India,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-01382,2026-07-17,EMEA,France,Electronics,Webcam,Consumer,3,59.50,178.50
+O-01383,2026-07-18,EMEA,Germany,Electronics,Noise-Cancelling Headphones,Consumer,3,199.00,597.00
+O-01384,2026-07-18,AMER,Canada,Electronics,Wireless Mouse,SMB,5,24.99,124.95
+O-01385,2026-07-18,APAC,Australia,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-01386,2026-07-18,EMEA,Germany,Apparel,Hoodie,Enterprise,8,40.50,324.00
+O-01387,2026-07-18,AMER,Canada,Electronics,Noise-Cancelling Headphones,SMB,6,179.10,1074.60
+O-01388,2026-07-18,APAC,Japan,Electronics,Wireless Mouse,Consumer,1,24.99,24.99
+O-01389,2026-07-18,AMER,United States,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-01390,2026-07-18,AMER,United States,Apparel,Running Shoes,SMB,2,95.00,190.00
+O-01391,2026-07-18,APAC,Singapore,Home,Ceramic Mug Set,Consumer,1,19.80,19.80
+O-01392,2026-07-18,EMEA,France,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-01393,2026-07-19,AMER,Canada,Home,Air Purifier,SMB,2,149.00,298.00
+O-01394,2026-07-19,EMEA,Netherlands,Electronics,Wireless Mouse,Consumer,1,24.99,24.99
+O-01395,2026-07-20,EMEA,Germany,Home,Throw Blanket,Consumer,3,34.99,104.97
+O-01396,2026-07-20,APAC,Japan,Office,Gel Pens,Enterprise,13,8.99,116.87
+O-01397,2026-07-20,APAC,Japan,Electronics,Wireless Mouse,SMB,4,24.99,99.96
+O-01398,2026-07-20,APAC,Philippines,Home,Coffee Grinder,Consumer,1,49.00,49.00
+O-01399,2026-07-20,APAC,Australia,Apparel,Baseball Cap,Consumer,1,21.50,21.50
+O-01400,2026-07-20,APAC,Philippines,Office,Gel Pens,Consumer,1,8.99,8.99
+O-01401,2026-07-20,EMEA,United Kingdom,Home,Coffee Grinder,SMB,1,49.00,49.00
+O-01402,2026-07-20,EMEA,Germany,Home,Air Purifier,Consumer,1,149.00,149.00
+O-01403,2026-07-21,AMER,Canada,Home,Desk Lamp,Consumer,2,39.50,79.00
+O-01404,2026-07-21,EMEA,Germany,Office,Gel Pens,Consumer,2,8.99,17.98
+O-01405,2026-07-21,EMEA,South Africa,Electronics,Wireless Mouse,Consumer,1,24.99,24.99
+O-01406,2026-07-21,EMEA,South Africa,Home,Ceramic Mug Set,Consumer,3,22.00,66.00
+O-01407,2026-07-21,EMEA,United Kingdom,Electronics,Webcam,Consumer,1,59.50,59.50
+O-01408,2026-07-21,EMEA,United Kingdom,Apparel,Baseball Cap,SMB,4,21.50,86.00
+O-01409,2026-07-21,AMER,Brazil,Home,Coffee Grinder,SMB,1,44.10,44.10
+O-01410,2026-07-21,EMEA,France,Office,Notebook Set,SMB,6,12.50,75.00
+O-01411,2026-07-21,EMEA,Netherlands,Electronics,Webcam,SMB,5,59.50,297.50
+O-01412,2026-07-21,AMER,United States,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-01413,2026-07-22,AMER,Canada,Apparel,Running Shoes,Consumer,1,95.00,95.00
+O-01414,2026-07-22,EMEA,France,Apparel,Wool Socks,Consumer,1,18.00,18.00
+O-01415,2026-07-22,AMER,Brazil,Apparel,Hoodie,SMB,2,40.50,81.00
+O-01416,2026-07-22,AMER,Canada,Apparel,Baseball Cap,Enterprise,16,21.50,344.00
+O-01417,2026-07-22,AMER,Canada,Apparel,Wool Socks,SMB,3,18.00,54.00
+O-01418,2026-07-22,EMEA,Germany,Home,Desk Lamp,Consumer,2,39.50,79.00
+O-01419,2026-07-22,AMER,United States,Office,Gel Pens,SMB,6,8.99,53.94
+O-01420,2026-07-22,APAC,Australia,Electronics,USB-C Hub,Consumer,2,39.99,79.98
+O-01421,2026-07-22,APAC,Australia,Electronics,Wireless Mouse,SMB,4,24.99,99.96
+O-01422,2026-07-22,EMEA,Germany,Electronics,USB-C Hub,SMB,6,39.99,239.94
+O-01423,2026-07-22,APAC,Philippines,Office,Notebook Set,Enterprise,18,12.50,225.00
+O-01424,2026-07-23,EMEA,Germany,Electronics,Mechanical Keyboard,SMB,6,89.00,534.00
+O-01425,2026-07-23,EMEA,United Kingdom,Electronics,Noise-Cancelling Headphones,Enterprise,12,199.00,2388.00
+O-01426,2026-07-23,EMEA,Germany,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-01427,2026-07-23,EMEA,United Kingdom,Electronics,USB-C Hub,Consumer,1,39.99,39.99
+O-01428,2026-07-23,AMER,United States,Electronics,Mechanical Keyboard,Consumer,2,89.00,178.00
+O-01429,2026-07-24,AMER,Brazil,Apparel,Wool Socks,Consumer,3,18.00,54.00
+O-01430,2026-07-24,AMER,United States,Electronics,USB-C Hub,Consumer,1,35.99,35.99
+O-01431,2026-07-24,AMER,Canada,Apparel,Wool Socks,SMB,5,18.00,90.00
+O-01432,2026-07-24,EMEA,Germany,Office,Desk Organizer,SMB,3,27.99,83.97
+O-01433,2026-07-24,AMER,Brazil,Home,Desk Lamp,Consumer,1,39.50,39.50
+O-01434,2026-07-24,APAC,Philippines,Apparel,Wool Socks,SMB,6,18.00,108.00
+O-01435,2026-07-24,AMER,United States,Office,Monitor Stand,Consumer,1,44.00,44.00
+O-01436,2026-07-24,AMER,United States,Electronics,Noise-Cancelling Headphones,SMB,5,199.00,995.00
+O-01437,2026-07-24,AMER,Mexico,Apparel,Hoodie,Consumer,1,45.00,45.00
+O-01438,2026-07-25,APAC,Philippines,Electronics,USB-C Hub,Consumer,3,39.99,119.97
+O-01439,2026-07-25,APAC,Philippines,Apparel,Rain Jacket,SMB,1,79.00,79.00
+O-01440,2026-07-25,EMEA,Germany,Home,Air Purifier,SMB,2,149.00,298.00
+O-01441,2026-07-25,EMEA,Netherlands,Office,Ergonomic Chair,SMB,2,249.00,498.00
+O-01442,2026-07-25,AMER,United States,Office,Gel Pens,Consumer,1,8.99,8.99
+O-01443,2026-07-26,APAC,Japan,Electronics,Wireless Mouse,SMB,1,24.99,24.99
+O-01444,2026-07-26,EMEA,United Kingdom,Electronics,Noise-Cancelling Headphones,Consumer,2,199.00,398.00
+O-01445,2026-07-26,EMEA,South Africa,Home,Desk Lamp,Consumer,1,39.50,39.50
+O-01446,2026-07-26,APAC,Philippines,Office,Notebook Set,Consumer,2,12.50,25.00
+O-01447,2026-07-26,APAC,India,Apparel,Hoodie,Consumer,3,40.50,121.50
+O-01448,2026-07-27,EMEA,France,Electronics,Wireless Mouse,Consumer,3,22.49,67.47
+O-01449,2026-07-27,EMEA,Germany,Apparel,Rain Jacket,Consumer,2,79.00,158.00
+O-01450,2026-07-27,EMEA,Netherlands,Office,Gel Pens,Consumer,3,8.99,26.97
+O-01451,2026-07-27,APAC,India,Office,Gel Pens,SMB,6,8.99,53.94
+O-01452,2026-07-27,APAC,Philippines,Home,Coffee Grinder,Consumer,1,44.10,44.10
+O-01453,2026-07-27,APAC,Philippines,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-01454,2026-07-27,APAC,Japan,Office,Desk Organizer,Consumer,3,27.99,83.97
+O-01455,2026-07-27,APAC,Philippines,Office,Ergonomic Chair,Consumer,1,249.00,249.00
+O-01456,2026-07-27,APAC,Philippines,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-01457,2026-07-27,APAC,Philippines,Office,Notebook Set,SMB,3,12.50,37.50
+O-01458,2026-07-28,EMEA,South Africa,Electronics,Noise-Cancelling Headphones,SMB,1,199.00,199.00
+O-01459,2026-07-28,EMEA,Germany,Home,Air Purifier,Consumer,3,134.10,402.30
+O-01460,2026-07-28,EMEA,Germany,Home,Coffee Grinder,Consumer,3,49.00,147.00
+O-01461,2026-07-28,AMER,United States,Electronics,Wireless Mouse,Consumer,1,24.99,24.99
+O-01462,2026-07-28,APAC,Japan,Office,Gel Pens,Consumer,1,8.09,8.09
+O-01463,2026-07-29,APAC,Singapore,Apparel,Rain Jacket,Consumer,1,79.00,79.00
+O-01464,2026-07-29,APAC,Japan,Electronics,Mechanical Keyboard,SMB,3,89.00,267.00
+O-01465,2026-07-29,EMEA,Netherlands,Home,Air Purifier,Consumer,1,149.00,149.00
+O-01466,2026-07-29,AMER,United States,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-01467,2026-07-29,APAC,Singapore,Home,Coffee Grinder,SMB,3,49.00,147.00
+O-01468,2026-07-30,AMER,Canada,Apparel,Running Shoes,SMB,6,95.00,570.00
+O-01469,2026-07-30,EMEA,South Africa,Office,Monitor Stand,SMB,2,44.00,88.00
+O-01470,2026-07-30,AMER,United States,Electronics,Webcam,Consumer,3,59.50,178.50
+O-01471,2026-07-30,EMEA,Germany,Home,Coffee Grinder,Consumer,1,49.00,49.00
+O-01472,2026-07-30,APAC,Philippines,Office,Notebook Set,Consumer,3,12.50,37.50
+O-01473,2026-07-30,AMER,United States,Home,Air Purifier,SMB,3,134.10,402.30
+O-01474,2026-07-30,EMEA,South Africa,Apparel,Baseball Cap,Consumer,3,21.50,64.50
+O-01475,2026-07-30,APAC,India,Electronics,Webcam,SMB,4,59.50,238.00
+O-01476,2026-07-30,APAC,Australia,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-01477,2026-07-31,APAC,Philippines,Office,Gel Pens,Consumer,1,8.99,8.99
+O-01478,2026-07-31,EMEA,Germany,Home,Air Purifier,SMB,1,149.00,149.00
+O-01479,2026-07-31,APAC,Australia,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-01480,2026-07-31,APAC,Japan,Electronics,USB-C Hub,Consumer,3,39.99,119.97
+O-01481,2026-07-31,AMER,Canada,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-01482,2026-07-31,APAC,Philippines,Electronics,Noise-Cancelling Headphones,Consumer,3,199.00,597.00
+O-01483,2026-07-31,AMER,Brazil,Electronics,Noise-Cancelling Headphones,SMB,3,199.00,597.00
+O-01484,2026-07-31,APAC,Singapore,Home,Air Purifier,SMB,2,149.00,298.00
+O-01485,2026-07-31,APAC,India,Home,Coffee Grinder,Consumer,1,49.00,49.00
+O-01486,2026-08-01,AMER,Canada,Electronics,Noise-Cancelling Headphones,Consumer,3,199.00,597.00
+O-01487,2026-08-01,AMER,United States,Apparel,Running Shoes,SMB,6,85.50,513.00
+O-01488,2026-08-01,AMER,United States,Office,Gel Pens,SMB,3,8.99,26.97
+O-01489,2026-08-01,APAC,Japan,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-01490,2026-08-01,APAC,Singapore,Apparel,Running Shoes,Consumer,2,95.00,190.00
+O-01491,2026-08-01,APAC,Japan,Electronics,Webcam,Consumer,2,59.50,119.00
+O-01492,2026-08-01,EMEA,United Kingdom,Home,Coffee Grinder,Consumer,2,49.00,98.00
+O-01493,2026-08-01,AMER,Canada,Office,Ergonomic Chair,SMB,4,224.10,896.40
+O-01494,2026-08-02,EMEA,France,Home,Coffee Grinder,Consumer,1,49.00,49.00
+O-01495,2026-08-02,EMEA,United Kingdom,Apparel,Wool Socks,Consumer,3,16.20,48.60
+O-01496,2026-08-02,AMER,United States,Home,Air Purifier,Consumer,1,149.00,149.00
+O-01497,2026-08-02,AMER,United States,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-01498,2026-08-02,APAC,Japan,Office,Notebook Set,SMB,4,12.50,50.00
+O-01499,2026-08-02,APAC,Japan,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-01500,2026-08-02,AMER,Canada,Apparel,Rain Jacket,Consumer,2,79.00,158.00
+O-01501,2026-08-03,AMER,United States,Electronics,Webcam,Consumer,2,59.50,119.00
+O-01502,2026-08-03,EMEA,Germany,Electronics,Mechanical Keyboard,SMB,2,89.00,178.00
+O-01503,2026-08-03,APAC,Philippines,Electronics,Wireless Mouse,SMB,3,24.99,74.97
+O-01504,2026-08-03,AMER,Canada,Electronics,Webcam,Consumer,1,59.50,59.50
+O-01505,2026-08-03,APAC,Australia,Apparel,Baseball Cap,Consumer,2,21.50,43.00
+O-01506,2026-08-03,EMEA,Germany,Office,Gel Pens,Consumer,2,8.99,17.98
+O-01507,2026-08-03,APAC,Japan,Home,Ceramic Mug Set,Consumer,1,22.00,22.00
+O-01508,2026-08-03,EMEA,France,Apparel,Wool Socks,SMB,4,18.00,72.00
+O-01509,2026-08-03,AMER,United States,Electronics,Webcam,Consumer,3,53.55,160.65
+O-01510,2026-08-03,AMER,United States,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-01511,2026-08-04,APAC,Philippines,Home,Ceramic Mug Set,Consumer,2,22.00,44.00
+O-01512,2026-08-04,AMER,United States,Office,Desk Organizer,SMB,5,27.99,139.95
+O-01513,2026-08-04,EMEA,Germany,Electronics,Mechanical Keyboard,Consumer,2,89.00,178.00
+O-01514,2026-08-04,EMEA,Germany,Office,Gel Pens,Enterprise,19,8.99,170.81
+O-01515,2026-08-04,AMER,Canada,Apparel,Baseball Cap,SMB,1,21.50,21.50
+O-01516,2026-08-04,APAC,Japan,Electronics,Noise-Cancelling Headphones,Consumer,2,199.00,398.00
+O-01517,2026-08-04,AMER,Canada,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-01518,2026-08-04,APAC,Philippines,Home,Desk Lamp,SMB,4,35.55,142.20
+O-01519,2026-08-04,APAC,Japan,Electronics,Noise-Cancelling Headphones,Consumer,2,199.00,398.00
+O-01520,2026-08-05,EMEA,Germany,Apparel,Baseball Cap,SMB,2,21.50,43.00
+O-01521,2026-08-05,AMER,Brazil,Home,Coffee Grinder,Consumer,3,49.00,147.00
+O-01522,2026-08-05,APAC,India,Apparel,Running Shoes,Consumer,2,95.00,190.00
+O-01523,2026-08-05,APAC,Philippines,Home,Ceramic Mug Set,Enterprise,20,22.00,440.00
+O-01524,2026-08-05,AMER,United States,Home,Desk Lamp,SMB,3,39.50,118.50
+O-01525,2026-08-05,EMEA,Germany,Home,Coffee Grinder,Consumer,1,49.00,49.00
+O-01526,2026-08-05,EMEA,Germany,Electronics,Noise-Cancelling Headphones,Consumer,2,199.00,398.00
+O-01527,2026-08-05,AMER,Canada,Home,Throw Blanket,Consumer,3,31.49,94.47
+O-01528,2026-08-05,APAC,Japan,Electronics,Webcam,Consumer,1,59.50,59.50
+O-01529,2026-08-05,APAC,Japan,Home,Desk Lamp,Consumer,1,39.50,39.50
+O-01530,2026-08-05,APAC,Singapore,Home,Ceramic Mug Set,Consumer,2,22.00,44.00
+O-01531,2026-08-06,EMEA,France,Apparel,Wool Socks,Consumer,2,18.00,36.00
+O-01532,2026-08-06,AMER,Canada,Apparel,Baseball Cap,Consumer,2,21.50,43.00
+O-01533,2026-08-06,AMER,United States,Home,Ceramic Mug Set,SMB,6,22.00,132.00
+O-01534,2026-08-06,APAC,Philippines,Apparel,Baseball Cap,Consumer,2,21.50,43.00
+O-01535,2026-08-06,EMEA,Netherlands,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-01536,2026-08-06,EMEA,Germany,Home,Coffee Grinder,SMB,6,49.00,294.00
+O-01537,2026-08-06,APAC,Philippines,Home,Desk Lamp,SMB,5,39.50,197.50
+O-01538,2026-08-06,EMEA,South Africa,Office,Desk Organizer,Consumer,2,27.99,55.98
+O-01539,2026-08-06,APAC,Australia,Apparel,Rain Jacket,Enterprise,20,79.00,1580.00
+O-01540,2026-08-06,EMEA,France,Office,Ergonomic Chair,Consumer,1,249.00,249.00
+O-01541,2026-08-06,AMER,United States,Apparel,Hoodie,Consumer,2,45.00,90.00
+O-01542,2026-08-06,EMEA,Germany,Apparel,Hoodie,SMB,4,45.00,180.00
+O-01543,2026-08-07,APAC,Philippines,Electronics,Wireless Mouse,Enterprise,13,24.99,324.87
+O-01544,2026-08-07,EMEA,Germany,Home,Air Purifier,Consumer,3,134.10,402.30
+O-01545,2026-08-07,APAC,Australia,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-01546,2026-08-07,APAC,Philippines,Office,Ergonomic Chair,Consumer,2,249.00,498.00
+O-01547,2026-08-07,APAC,Philippines,Apparel,Baseball Cap,SMB,2,19.35,38.70
+O-01548,2026-08-08,EMEA,United Kingdom,Home,Desk Lamp,Consumer,2,39.50,79.00
+O-01549,2026-08-08,EMEA,Germany,Apparel,Hoodie,Consumer,2,45.00,90.00
+O-01550,2026-08-08,APAC,Japan,Electronics,Webcam,Consumer,1,59.50,59.50
+O-01551,2026-08-08,APAC,Singapore,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-01552,2026-08-08,AMER,Brazil,Electronics,Noise-Cancelling Headphones,SMB,3,179.10,537.30
+O-01553,2026-08-09,APAC,Japan,Electronics,USB-C Hub,SMB,1,39.99,39.99
+O-01554,2026-08-09,AMER,Brazil,Electronics,Mechanical Keyboard,Enterprise,17,89.00,1513.00
+O-01555,2026-08-09,APAC,Australia,Home,Ceramic Mug Set,SMB,5,22.00,110.00
+O-01556,2026-08-09,APAC,Philippines,Home,Coffee Grinder,SMB,2,49.00,98.00
+O-01557,2026-08-10,APAC,Singapore,Home,Desk Lamp,SMB,6,39.50,237.00
+O-01558,2026-08-10,AMER,Mexico,Apparel,Rain Jacket,SMB,2,79.00,158.00
+O-01559,2026-08-10,AMER,Canada,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-01560,2026-08-10,APAC,Japan,Electronics,Mechanical Keyboard,Enterprise,14,89.00,1246.00
+O-01561,2026-08-10,EMEA,United Kingdom,Electronics,Webcam,SMB,5,59.50,297.50
+O-01562,2026-08-10,APAC,Australia,Apparel,Hoodie,Consumer,2,45.00,90.00
+O-01563,2026-08-10,APAC,Australia,Electronics,Wireless Mouse,Consumer,1,24.99,24.99
+O-01564,2026-08-10,APAC,Australia,Home,Throw Blanket,Consumer,3,34.99,104.97
+O-01565,2026-08-10,APAC,Japan,Home,Coffee Grinder,SMB,4,49.00,196.00
+O-01566,2026-08-10,APAC,Australia,Home,Throw Blanket,Consumer,3,34.99,104.97
+O-01567,2026-08-10,EMEA,Germany,Apparel,Rain Jacket,SMB,3,79.00,237.00
+O-01568,2026-08-10,APAC,India,Office,Monitor Stand,Enterprise,17,44.00,748.00
+O-01569,2026-08-10,APAC,Philippines,Office,Desk Organizer,SMB,5,27.99,139.95
+O-01570,2026-08-11,EMEA,United Kingdom,Office,Desk Organizer,SMB,4,27.99,111.96
+O-01571,2026-08-11,EMEA,Germany,Office,Notebook Set,SMB,3,12.50,37.50
+O-01572,2026-08-11,EMEA,United Kingdom,Apparel,Hoodie,Consumer,1,40.50,40.50
+O-01573,2026-08-11,EMEA,Germany,Office,Gel Pens,Consumer,3,8.99,26.97
+O-01574,2026-08-11,EMEA,Germany,Office,Gel Pens,Consumer,2,8.99,17.98
+O-01575,2026-08-11,AMER,United States,Home,Throw Blanket,Consumer,3,34.99,104.97
+O-01576,2026-08-11,EMEA,United Kingdom,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-01577,2026-08-11,AMER,United States,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-01578,2026-08-11,EMEA,United Kingdom,Home,Air Purifier,Consumer,2,149.00,298.00
+O-01579,2026-08-11,EMEA,Netherlands,Apparel,Rain Jacket,SMB,2,79.00,158.00
+O-01580,2026-08-11,AMER,United States,Home,Throw Blanket,Consumer,1,34.99,34.99
+O-01581,2026-08-12,AMER,United States,Home,Ceramic Mug Set,Enterprise,18,22.00,396.00
+O-01582,2026-08-12,EMEA,South Africa,Electronics,USB-C Hub,Consumer,2,39.99,79.98
+O-01583,2026-08-12,APAC,Philippines,Apparel,Wool Socks,SMB,2,18.00,36.00
+O-01584,2026-08-12,APAC,Australia,Office,Notebook Set,Consumer,3,12.50,37.50
+O-01585,2026-08-12,EMEA,France,Electronics,Wireless Mouse,Consumer,1,24.99,24.99
+O-01586,2026-08-12,APAC,India,Electronics,Noise-Cancelling Headphones,Consumer,3,199.00,597.00
+O-01587,2026-08-13,EMEA,Germany,Electronics,Mechanical Keyboard,Consumer,2,80.10,160.20
+O-01588,2026-08-13,AMER,Canada,Home,Desk Lamp,Consumer,2,39.50,79.00
+O-01589,2026-08-13,AMER,United States,Office,Gel Pens,Consumer,2,8.99,17.98
+O-01590,2026-08-13,APAC,Philippines,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-01591,2026-08-13,EMEA,United Kingdom,Apparel,Rain Jacket,Consumer,2,79.00,158.00
+O-01592,2026-08-13,AMER,Canada,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-01593,2026-08-13,AMER,United States,Office,Gel Pens,Consumer,3,8.99,26.97
+O-01594,2026-08-13,EMEA,South Africa,Office,Desk Organizer,Enterprise,12,27.99,335.88
+O-01595,2026-08-13,APAC,Philippines,Office,Notebook Set,Consumer,1,12.50,12.50
+O-01596,2026-08-13,EMEA,Germany,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-01597,2026-08-13,AMER,Mexico,Electronics,Noise-Cancelling Headphones,Consumer,3,199.00,597.00
+O-01598,2026-08-14,AMER,Mexico,Electronics,Mechanical Keyboard,SMB,3,89.00,267.00
+O-01599,2026-08-14,AMER,United States,Apparel,Wool Socks,Consumer,2,18.00,36.00
+O-01600,2026-08-14,EMEA,Netherlands,Electronics,Mechanical Keyboard,Consumer,2,80.10,160.20
+O-01601,2026-08-14,APAC,Philippines,Electronics,Noise-Cancelling Headphones,Consumer,2,199.00,398.00
+O-01602,2026-08-14,EMEA,United Kingdom,Apparel,Wool Socks,Consumer,2,18.00,36.00
+O-01603,2026-08-15,EMEA,South Africa,Apparel,Wool Socks,SMB,6,18.00,108.00
+O-01604,2026-08-15,AMER,Brazil,Apparel,Baseball Cap,SMB,1,21.50,21.50
+O-01605,2026-08-15,EMEA,France,Home,Ceramic Mug Set,Consumer,1,22.00,22.00
+O-01606,2026-08-15,APAC,Philippines,Office,Ergonomic Chair,SMB,1,249.00,249.00
+O-01607,2026-08-16,APAC,Philippines,Electronics,Mechanical Keyboard,Enterprise,9,80.10,720.90
+O-01608,2026-08-16,AMER,Canada,Electronics,Noise-Cancelling Headphones,Enterprise,14,199.00,2786.00
+O-01609,2026-08-16,EMEA,Germany,Office,Ergonomic Chair,Consumer,3,249.00,747.00
+O-01610,2026-08-16,EMEA,Germany,Home,Ceramic Mug Set,Consumer,3,22.00,66.00
+O-01611,2026-08-16,APAC,Singapore,Apparel,Rain Jacket,SMB,3,79.00,237.00
+O-01612,2026-08-16,APAC,Australia,Home,Air Purifier,Consumer,1,149.00,149.00
+O-01613,2026-08-17,AMER,Mexico,Office,Desk Organizer,SMB,5,25.19,125.95
+O-01614,2026-08-17,AMER,United States,Office,Ergonomic Chair,Consumer,1,249.00,249.00
+O-01615,2026-08-17,APAC,Japan,Office,Gel Pens,Consumer,3,8.99,26.97
+O-01616,2026-08-17,AMER,United States,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-01617,2026-08-17,EMEA,Germany,Electronics,Webcam,Consumer,2,59.50,119.00
+O-01618,2026-08-17,AMER,Canada,Electronics,USB-C Hub,Consumer,2,39.99,79.98
+O-01619,2026-08-17,APAC,India,Office,Gel Pens,SMB,5,8.09,40.45
+O-01620,2026-08-17,EMEA,United Kingdom,Electronics,Wireless Mouse,SMB,6,24.99,149.94
+O-01621,2026-08-17,AMER,Mexico,Electronics,Mechanical Keyboard,SMB,6,89.00,534.00
+O-01622,2026-08-17,AMER,United States,Electronics,Wireless Mouse,Consumer,3,22.49,67.47
+O-01623,2026-08-18,APAC,Australia,Home,Throw Blanket,Consumer,1,34.99,34.99
+O-01624,2026-08-18,EMEA,South Africa,Electronics,Mechanical Keyboard,SMB,3,89.00,267.00
+O-01625,2026-08-18,APAC,India,Home,Ceramic Mug Set,Consumer,2,22.00,44.00
+O-01626,2026-08-18,EMEA,France,Office,Desk Organizer,Consumer,1,27.99,27.99
+O-01627,2026-08-18,AMER,Canada,Home,Air Purifier,Consumer,2,149.00,298.00
+O-01628,2026-08-18,APAC,Singapore,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-01629,2026-08-18,AMER,United States,Home,Desk Lamp,Consumer,1,39.50,39.50
+O-01630,2026-08-18,APAC,Japan,Electronics,Webcam,SMB,6,59.50,357.00
+O-01631,2026-08-18,APAC,Philippines,Electronics,Noise-Cancelling Headphones,Consumer,2,179.10,358.20
+O-01632,2026-08-18,AMER,United States,Electronics,Wireless Mouse,Consumer,1,22.49,22.49
+O-01633,2026-08-18,EMEA,Germany,Office,Monitor Stand,Consumer,1,44.00,44.00
+O-01634,2026-08-18,APAC,Australia,Home,Air Purifier,Consumer,2,149.00,298.00
+O-01635,2026-08-18,APAC,Philippines,Apparel,Running Shoes,Consumer,2,95.00,190.00
+O-01636,2026-08-19,APAC,Singapore,Electronics,Webcam,Consumer,1,59.50,59.50
+O-01637,2026-08-19,APAC,Philippines,Electronics,Noise-Cancelling Headphones,SMB,2,199.00,398.00
+O-01638,2026-08-19,APAC,Philippines,Electronics,Webcam,SMB,5,59.50,297.50
+O-01639,2026-08-19,AMER,United States,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-01640,2026-08-19,AMER,Brazil,Apparel,Baseball Cap,SMB,2,19.35,38.70
+O-01641,2026-08-20,APAC,Australia,Electronics,Noise-Cancelling Headphones,Consumer,2,179.10,358.20
+O-01642,2026-08-20,EMEA,United Kingdom,Electronics,Mechanical Keyboard,Consumer,2,89.00,178.00
+O-01643,2026-08-20,APAC,Philippines,Electronics,Noise-Cancelling Headphones,SMB,5,199.00,995.00
+O-01644,2026-08-20,APAC,India,Office,Ergonomic Chair,Consumer,3,249.00,747.00
+O-01645,2026-08-20,APAC,Philippines,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-01646,2026-08-20,AMER,United States,Home,Throw Blanket,SMB,1,34.99,34.99
+O-01647,2026-08-20,EMEA,United Kingdom,Electronics,Noise-Cancelling Headphones,Consumer,3,199.00,597.00
+O-01648,2026-08-20,AMER,Mexico,Office,Gel Pens,Consumer,2,8.99,17.98
+O-01649,2026-08-20,EMEA,France,Electronics,USB-C Hub,SMB,1,39.99,39.99
+O-01650,2026-08-20,EMEA,France,Home,Air Purifier,Consumer,3,149.00,447.00
+O-01651,2026-08-20,APAC,Singapore,Electronics,Noise-Cancelling Headphones,Consumer,3,199.00,597.00
+O-01652,2026-08-21,APAC,Australia,Home,Throw Blanket,SMB,3,34.99,104.97
+O-01653,2026-08-21,EMEA,Germany,Apparel,Running Shoes,Enterprise,20,95.00,1900.00
+O-01654,2026-08-21,APAC,Japan,Apparel,Running Shoes,Consumer,2,95.00,190.00
+O-01655,2026-08-21,APAC,Philippines,Apparel,Wool Socks,Consumer,2,18.00,36.00
+O-01656,2026-08-21,APAC,Philippines,Home,Throw Blanket,SMB,5,34.99,174.95
+O-01657,2026-08-22,AMER,United States,Office,Gel Pens,Consumer,1,8.99,8.99
+O-01658,2026-08-22,APAC,Australia,Office,Gel Pens,Enterprise,6,8.99,53.94
+O-01659,2026-08-22,APAC,Philippines,Electronics,Noise-Cancelling Headphones,Consumer,3,199.00,597.00
+O-01660,2026-08-22,APAC,Philippines,Home,Desk Lamp,SMB,3,39.50,118.50
+O-01661,2026-08-22,EMEA,Germany,Office,Desk Organizer,Consumer,3,27.99,83.97
+O-01662,2026-08-22,APAC,Philippines,Office,Desk Organizer,Consumer,3,27.99,83.97
+O-01663,2026-08-22,AMER,Brazil,Office,Monitor Stand,Consumer,1,44.00,44.00
+O-01664,2026-08-23,APAC,India,Home,Coffee Grinder,SMB,6,49.00,294.00
+O-01665,2026-08-23,APAC,Philippines,Apparel,Hoodie,SMB,5,45.00,225.00
+O-01666,2026-08-23,EMEA,South Africa,Electronics,Wireless Mouse,Consumer,3,22.49,67.47
+O-01667,2026-08-23,EMEA,France,Office,Gel Pens,Consumer,3,8.99,26.97
+O-01668,2026-08-23,APAC,Philippines,Apparel,Wool Socks,SMB,2,18.00,36.00
+O-01669,2026-08-23,AMER,United States,Electronics,Webcam,Consumer,3,59.50,178.50
+O-01670,2026-08-23,APAC,Australia,Apparel,Hoodie,Consumer,1,45.00,45.00
+O-01671,2026-08-23,APAC,Australia,Office,Ergonomic Chair,Consumer,2,249.00,498.00
+O-01672,2026-08-24,AMER,United States,Apparel,Rain Jacket,Enterprise,5,79.00,395.00
+O-01673,2026-08-24,EMEA,United Kingdom,Electronics,Mechanical Keyboard,Enterprise,7,89.00,623.00
+O-01674,2026-08-24,APAC,Australia,Electronics,USB-C Hub,Consumer,2,39.99,79.98
+O-01675,2026-08-24,AMER,United States,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-01676,2026-08-24,APAC,Japan,Electronics,Wireless Mouse,Consumer,3,24.99,74.97
+O-01677,2026-08-24,EMEA,United Kingdom,Apparel,Hoodie,Consumer,2,45.00,90.00
+O-01678,2026-08-24,APAC,Philippines,Home,Throw Blanket,Consumer,3,31.49,94.47
+O-01679,2026-08-24,EMEA,Germany,Electronics,USB-C Hub,Enterprise,12,39.99,479.88
+O-01680,2026-08-24,AMER,Mexico,Electronics,Wireless Mouse,Consumer,1,24.99,24.99
+O-01681,2026-08-24,EMEA,Germany,Office,Ergonomic Chair,Consumer,2,249.00,498.00
+O-01682,2026-08-24,AMER,United States,Apparel,Wool Socks,Consumer,3,18.00,54.00
+O-01683,2026-08-25,AMER,Canada,Office,Ergonomic Chair,Consumer,3,249.00,747.00
+O-01684,2026-08-25,APAC,Australia,Apparel,Rain Jacket,SMB,1,71.10,71.10
+O-01685,2026-08-25,APAC,Japan,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-01686,2026-08-25,EMEA,United Kingdom,Electronics,USB-C Hub,Consumer,2,39.99,79.98
+O-01687,2026-08-25,APAC,Australia,Electronics,Mechanical Keyboard,SMB,5,80.10,400.50
+O-01688,2026-08-25,AMER,United States,Apparel,Wool Socks,SMB,1,18.00,18.00
+O-01689,2026-08-25,EMEA,United Kingdom,Home,Coffee Grinder,Enterprise,6,49.00,294.00
+O-01690,2026-08-25,AMER,United States,Electronics,Noise-Cancelling Headphones,Consumer,2,199.00,398.00
+O-01691,2026-08-25,APAC,India,Home,Coffee Grinder,Enterprise,16,49.00,784.00
+O-01692,2026-08-25,EMEA,South Africa,Apparel,Baseball Cap,Consumer,1,21.50,21.50
+O-01693,2026-08-25,EMEA,France,Electronics,Noise-Cancelling Headphones,SMB,2,199.00,398.00
+O-01694,2026-08-26,APAC,Japan,Electronics,Wireless Mouse,Consumer,1,24.99,24.99
+O-01695,2026-08-26,EMEA,France,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-01696,2026-08-26,AMER,Canada,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-01697,2026-08-26,APAC,Philippines,Electronics,USB-C Hub,SMB,6,39.99,239.94
+O-01698,2026-08-26,APAC,Philippines,Home,Coffee Grinder,Consumer,1,49.00,49.00
+O-01699,2026-08-26,APAC,Philippines,Electronics,Webcam,Consumer,1,53.55,53.55
+O-01700,2026-08-26,EMEA,United Kingdom,Home,Air Purifier,Consumer,3,149.00,447.00
+O-01701,2026-08-26,EMEA,Netherlands,Electronics,Webcam,Enterprise,12,59.50,714.00
+O-01702,2026-08-26,APAC,Australia,Apparel,Hoodie,Enterprise,15,40.50,607.50
+O-01703,2026-08-26,APAC,Australia,Office,Desk Organizer,SMB,3,27.99,83.97
+O-01704,2026-08-26,AMER,Canada,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-01705,2026-08-26,EMEA,France,Office,Gel Pens,SMB,6,8.99,53.94
+O-01706,2026-08-26,AMER,United States,Home,Air Purifier,Consumer,2,149.00,298.00
+O-01707,2026-08-26,EMEA,Germany,Home,Coffee Grinder,Consumer,1,49.00,49.00
+O-01708,2026-08-27,AMER,United States,Electronics,Mechanical Keyboard,SMB,3,89.00,267.00
+O-01709,2026-08-27,AMER,Canada,Apparel,Hoodie,Consumer,1,45.00,45.00
+O-01710,2026-08-27,APAC,India,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-01711,2026-08-27,AMER,Brazil,Apparel,Running Shoes,Enterprise,5,95.00,475.00
+O-01712,2026-08-27,APAC,Philippines,Apparel,Wool Socks,Consumer,1,18.00,18.00
+O-01713,2026-08-27,APAC,Philippines,Home,Ceramic Mug Set,SMB,3,22.00,66.00
+O-01714,2026-08-28,AMER,United States,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-01715,2026-08-28,APAC,Australia,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-01716,2026-08-28,APAC,Singapore,Electronics,Mechanical Keyboard,Enterprise,20,89.00,1780.00
+O-01717,2026-08-28,EMEA,South Africa,Electronics,Webcam,Consumer,2,53.55,107.10
+O-01718,2026-08-28,EMEA,South Africa,Apparel,Wool Socks,Consumer,3,18.00,54.00
+O-01719,2026-08-28,AMER,United States,Home,Coffee Grinder,SMB,4,49.00,196.00
+O-01720,2026-08-28,AMER,Brazil,Electronics,Mechanical Keyboard,SMB,5,89.00,445.00
+O-01721,2026-08-28,AMER,United States,Home,Desk Lamp,SMB,1,39.50,39.50
+O-01722,2026-08-28,AMER,Mexico,Electronics,Noise-Cancelling Headphones,Consumer,3,199.00,597.00
+O-01723,2026-08-28,APAC,Australia,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-01724,2026-08-28,EMEA,France,Electronics,Webcam,SMB,3,53.55,160.65
+O-01725,2026-08-28,EMEA,United Kingdom,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-01726,2026-08-28,EMEA,South Africa,Office,Gel Pens,Enterprise,5,8.99,44.95
+O-01727,2026-08-28,APAC,Australia,Home,Ceramic Mug Set,Consumer,3,19.80,59.40
+O-01728,2026-08-28,EMEA,United Kingdom,Apparel,Running Shoes,Consumer,1,95.00,95.00
+O-01729,2026-08-28,EMEA,France,Apparel,Hoodie,SMB,6,45.00,270.00
+O-01730,2026-08-28,EMEA,Germany,Electronics,Wireless Mouse,Enterprise,17,24.99,424.83
+O-01731,2026-08-28,AMER,Mexico,Office,Desk Organizer,SMB,4,27.99,111.96
+O-01732,2026-08-29,APAC,Philippines,Apparel,Baseball Cap,Consumer,2,21.50,43.00
+O-01733,2026-08-29,EMEA,Germany,Office,Notebook Set,Enterprise,12,12.50,150.00
+O-01734,2026-08-29,APAC,India,Home,Ceramic Mug Set,Consumer,2,22.00,44.00
+O-01735,2026-08-29,APAC,Philippines,Home,Coffee Grinder,Consumer,1,49.00,49.00
+O-01736,2026-08-29,APAC,Philippines,Electronics,Mechanical Keyboard,SMB,4,89.00,356.00
+O-01737,2026-08-29,AMER,Canada,Office,Desk Organizer,Consumer,3,27.99,83.97
+O-01738,2026-08-29,APAC,Japan,Home,Ceramic Mug Set,SMB,3,22.00,66.00
+O-01739,2026-08-29,AMER,United States,Electronics,Wireless Mouse,Consumer,1,24.99,24.99
+O-01740,2026-08-29,APAC,Philippines,Home,Coffee Grinder,Consumer,3,49.00,147.00
+O-01741,2026-08-29,AMER,United States,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-01742,2026-08-30,APAC,India,Apparel,Rain Jacket,SMB,5,79.00,395.00
+O-01743,2026-08-30,EMEA,South Africa,Office,Monitor Stand,Enterprise,15,44.00,660.00
+O-01744,2026-08-30,APAC,India,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-01745,2026-08-31,AMER,Mexico,Electronics,Noise-Cancelling Headphones,Consumer,2,179.10,358.20
+O-01746,2026-08-31,AMER,United States,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-01747,2026-08-31,AMER,United States,Office,Gel Pens,SMB,5,8.99,44.95
+O-01748,2026-08-31,EMEA,United Kingdom,Home,Ceramic Mug Set,Consumer,3,22.00,66.00
+O-01749,2026-08-31,EMEA,France,Electronics,Webcam,Consumer,3,59.50,178.50
+O-01750,2026-09-01,AMER,United States,Office,Gel Pens,Consumer,1,8.99,8.99
+O-01751,2026-09-01,EMEA,United Kingdom,Electronics,Wireless Mouse,Consumer,3,24.99,74.97
+O-01752,2026-09-01,AMER,United States,Office,Monitor Stand,SMB,3,44.00,132.00
+O-01753,2026-09-01,AMER,Mexico,Apparel,Running Shoes,Consumer,1,95.00,95.00
+O-01754,2026-09-01,APAC,Japan,Electronics,Webcam,Enterprise,5,59.50,297.50
+O-01755,2026-09-01,EMEA,France,Electronics,Wireless Mouse,Consumer,3,24.99,74.97
+O-01756,2026-09-01,EMEA,France,Apparel,Rain Jacket,SMB,4,79.00,316.00
+O-01757,2026-09-01,EMEA,United Kingdom,Apparel,Baseball Cap,SMB,5,21.50,107.50
+O-01758,2026-09-01,AMER,United States,Apparel,Baseball Cap,Enterprise,14,21.50,301.00
+O-01759,2026-09-01,EMEA,United Kingdom,Home,Desk Lamp,Consumer,2,39.50,79.00
+O-01760,2026-09-01,APAC,Japan,Office,Notebook Set,Enterprise,10,12.50,125.00
+O-01761,2026-09-01,APAC,Singapore,Apparel,Running Shoes,SMB,3,95.00,285.00
+O-01762,2026-09-01,EMEA,South Africa,Apparel,Hoodie,SMB,1,45.00,45.00
+O-01763,2026-09-01,APAC,Philippines,Home,Throw Blanket,Enterprise,11,31.49,346.39
+O-01764,2026-09-02,AMER,United States,Apparel,Baseball Cap,SMB,1,21.50,21.50
+O-01765,2026-09-02,EMEA,Germany,Apparel,Hoodie,Consumer,1,45.00,45.00
+O-01766,2026-09-02,EMEA,Netherlands,Electronics,USB-C Hub,Consumer,1,39.99,39.99
+O-01767,2026-09-02,AMER,United States,Apparel,Rain Jacket,SMB,3,79.00,237.00
+O-01768,2026-09-02,APAC,India,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-01769,2026-09-02,AMER,United States,Home,Desk Lamp,Consumer,2,39.50,79.00
+O-01770,2026-09-02,APAC,Japan,Apparel,Running Shoes,Consumer,3,85.50,256.50
+O-01771,2026-09-03,AMER,United States,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-01772,2026-09-03,EMEA,Germany,Home,Ceramic Mug Set,Consumer,3,22.00,66.00
+O-01773,2026-09-03,EMEA,United Kingdom,Office,Ergonomic Chair,Consumer,2,249.00,498.00
+O-01774,2026-09-03,APAC,India,Home,Desk Lamp,Enterprise,20,39.50,790.00
+O-01775,2026-09-03,AMER,United States,Office,Notebook Set,Consumer,2,11.25,22.50
+O-01776,2026-09-03,APAC,Philippines,Electronics,USB-C Hub,SMB,4,39.99,159.96
+O-01777,2026-09-03,EMEA,France,Office,Ergonomic Chair,Consumer,3,249.00,747.00
+O-01778,2026-09-03,APAC,Singapore,Apparel,Hoodie,Consumer,3,40.50,121.50
+O-01779,2026-09-03,APAC,Philippines,Apparel,Wool Socks,Enterprise,10,18.00,180.00
+O-01780,2026-09-03,AMER,United States,Apparel,Baseball Cap,Consumer,1,21.50,21.50
+O-01781,2026-09-03,EMEA,United Kingdom,Apparel,Rain Jacket,Consumer,1,71.10,71.10
+O-01782,2026-09-04,EMEA,France,Electronics,Mechanical Keyboard,SMB,2,89.00,178.00
+O-01783,2026-09-04,APAC,Philippines,Office,Notebook Set,Consumer,3,12.50,37.50
+O-01784,2026-09-04,APAC,Australia,Apparel,Wool Socks,Consumer,1,18.00,18.00
+O-01785,2026-09-05,EMEA,Netherlands,Home,Throw Blanket,Consumer,1,34.99,34.99
+O-01786,2026-09-05,EMEA,France,Home,Throw Blanket,Consumer,1,34.99,34.99
+O-01787,2026-09-05,AMER,United States,Home,Air Purifier,SMB,6,149.00,894.00
+O-01788,2026-09-05,AMER,United States,Home,Desk Lamp,SMB,1,39.50,39.50
+O-01789,2026-09-05,APAC,Japan,Apparel,Wool Socks,SMB,2,18.00,36.00
+O-01790,2026-09-05,APAC,Australia,Home,Coffee Grinder,Consumer,1,49.00,49.00
+O-01791,2026-09-05,AMER,United States,Office,Monitor Stand,Consumer,3,44.00,132.00
+O-01792,2026-09-05,APAC,Australia,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-01793,2026-09-06,AMER,United States,Apparel,Wool Socks,Consumer,1,18.00,18.00
+O-01794,2026-09-06,AMER,United States,Electronics,Noise-Cancelling Headphones,Consumer,2,179.10,358.20
+O-01795,2026-09-06,APAC,Japan,Home,Coffee Grinder,Consumer,2,49.00,98.00
+O-01796,2026-09-06,AMER,Brazil,Home,Desk Lamp,SMB,3,39.50,118.50
+O-01797,2026-09-06,APAC,Australia,Electronics,Wireless Mouse,Consumer,1,24.99,24.99
+O-01798,2026-09-06,APAC,Philippines,Home,Coffee Grinder,Consumer,3,49.00,147.00
+O-01799,2026-09-06,APAC,Philippines,Office,Notebook Set,Consumer,2,12.50,25.00
+O-01800,2026-09-07,EMEA,Germany,Electronics,USB-C Hub,Consumer,2,39.99,79.98
+O-01801,2026-09-07,APAC,Japan,Electronics,USB-C Hub,SMB,3,39.99,119.97
+O-01802,2026-09-07,EMEA,South Africa,Electronics,USB-C Hub,Consumer,2,39.99,79.98
+O-01803,2026-09-07,AMER,United States,Electronics,Noise-Cancelling Headphones,Enterprise,12,199.00,2388.00
+O-01804,2026-09-07,APAC,Australia,Electronics,Wireless Mouse,Consumer,1,24.99,24.99
+O-01805,2026-09-07,APAC,Philippines,Office,Ergonomic Chair,Consumer,3,249.00,747.00
+O-01806,2026-09-07,EMEA,South Africa,Office,Monitor Stand,Consumer,3,44.00,132.00
+O-01807,2026-09-07,AMER,United States,Electronics,USB-C Hub,SMB,5,35.99,179.95
+O-01808,2026-09-07,APAC,Japan,Electronics,Webcam,SMB,1,59.50,59.50
+O-01809,2026-09-07,AMER,Brazil,Office,Notebook Set,SMB,4,12.50,50.00
+O-01810,2026-09-08,EMEA,Germany,Electronics,Mechanical Keyboard,Consumer,2,89.00,178.00
+O-01811,2026-09-08,APAC,Australia,Apparel,Rain Jacket,Consumer,2,79.00,158.00
+O-01812,2026-09-08,EMEA,United Kingdom,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-01813,2026-09-08,APAC,India,Office,Notebook Set,Consumer,1,11.25,11.25
+O-01814,2026-09-08,EMEA,Germany,Apparel,Hoodie,Consumer,2,45.00,90.00
+O-01815,2026-09-08,EMEA,United Kingdom,Apparel,Baseball Cap,Consumer,1,21.50,21.50
+O-01816,2026-09-08,EMEA,Germany,Home,Throw Blanket,Enterprise,17,34.99,594.83
+O-01817,2026-09-09,EMEA,France,Office,Monitor Stand,Consumer,1,44.00,44.00
+O-01818,2026-09-09,AMER,Brazil,Electronics,Wireless Mouse,SMB,6,24.99,149.94
+O-01819,2026-09-09,APAC,Japan,Home,Air Purifier,Consumer,2,149.00,298.00
+O-01820,2026-09-09,APAC,Australia,Apparel,Hoodie,SMB,6,45.00,270.00
+O-01821,2026-09-09,APAC,Philippines,Home,Ceramic Mug Set,Enterprise,15,19.80,297.00
+O-01822,2026-09-09,AMER,United States,Electronics,USB-C Hub,SMB,5,39.99,199.95
+O-01823,2026-09-10,APAC,Philippines,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-01824,2026-09-10,AMER,Canada,Apparel,Baseball Cap,SMB,2,21.50,43.00
+O-01825,2026-09-10,EMEA,United Kingdom,Home,Throw Blanket,Consumer,3,31.49,94.47
+O-01826,2026-09-10,EMEA,Germany,Office,Notebook Set,SMB,3,12.50,37.50
+O-01827,2026-09-10,APAC,Philippines,Electronics,Webcam,Consumer,1,59.50,59.50
+O-01828,2026-09-10,APAC,Australia,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-01829,2026-09-10,AMER,United States,Electronics,Wireless Mouse,Consumer,3,24.99,74.97
+O-01830,2026-09-10,AMER,Brazil,Electronics,Webcam,Consumer,3,59.50,178.50
+O-01831,2026-09-10,AMER,Mexico,Electronics,Mechanical Keyboard,SMB,1,89.00,89.00
+O-01832,2026-09-10,APAC,Philippines,Electronics,Webcam,SMB,5,59.50,297.50
+O-01833,2026-09-10,AMER,Mexico,Electronics,USB-C Hub,Consumer,3,39.99,119.97
+O-01834,2026-09-11,EMEA,Netherlands,Apparel,Wool Socks,Consumer,1,18.00,18.00
+O-01835,2026-09-11,APAC,Philippines,Office,Desk Organizer,Consumer,2,25.19,50.38
+O-01836,2026-09-11,AMER,United States,Home,Ceramic Mug Set,Enterprise,15,22.00,330.00
+O-01837,2026-09-11,AMER,Brazil,Office,Notebook Set,Consumer,3,12.50,37.50
+O-01838,2026-09-11,APAC,India,Apparel,Rain Jacket,Consumer,2,79.00,158.00
+O-01839,2026-09-11,APAC,Singapore,Office,Desk Organizer,Enterprise,18,27.99,503.82
+O-01840,2026-09-11,AMER,United States,Apparel,Baseball Cap,Consumer,1,21.50,21.50
+O-01841,2026-09-12,EMEA,Germany,Home,Coffee Grinder,Consumer,1,49.00,49.00
+O-01842,2026-09-12,EMEA,France,Electronics,USB-C Hub,Consumer,3,39.99,119.97
+O-01843,2026-09-12,AMER,United States,Home,Air Purifier,SMB,6,149.00,894.00
+O-01844,2026-09-12,APAC,Australia,Office,Ergonomic Chair,Consumer,3,249.00,747.00
+O-01845,2026-09-12,EMEA,United Kingdom,Apparel,Wool Socks,Consumer,1,18.00,18.00
+O-01846,2026-09-12,EMEA,France,Home,Coffee Grinder,Consumer,3,49.00,147.00
+O-01847,2026-09-12,APAC,Philippines,Electronics,Webcam,SMB,4,59.50,238.00
+O-01848,2026-09-12,EMEA,Germany,Home,Throw Blanket,SMB,2,34.99,69.98
+O-01849,2026-09-12,AMER,United States,Electronics,USB-C Hub,Consumer,1,39.99,39.99
+O-01850,2026-09-12,EMEA,France,Apparel,Hoodie,Consumer,2,40.50,81.00
+O-01851,2026-09-13,AMER,Brazil,Apparel,Rain Jacket,Consumer,1,79.00,79.00
+O-01852,2026-09-13,EMEA,Germany,Home,Desk Lamp,Consumer,2,35.55,71.10
+O-01853,2026-09-13,APAC,Philippines,Home,Desk Lamp,Consumer,3,35.55,106.65
+O-01854,2026-09-13,AMER,Canada,Home,Desk Lamp,SMB,5,39.50,197.50
+O-01855,2026-09-13,EMEA,Germany,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-01856,2026-09-13,EMEA,France,Home,Ceramic Mug Set,Consumer,2,22.00,44.00
+O-01857,2026-09-13,APAC,India,Home,Desk Lamp,Consumer,2,39.50,79.00
+O-01858,2026-09-13,APAC,Japan,Home,Throw Blanket,SMB,5,34.99,174.95
+O-01859,2026-09-14,AMER,United States,Electronics,USB-C Hub,Enterprise,16,35.99,575.84
+O-01860,2026-09-14,AMER,United States,Electronics,USB-C Hub,SMB,6,39.99,239.94
+O-01861,2026-09-14,EMEA,South Africa,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-01862,2026-09-14,AMER,Brazil,Electronics,USB-C Hub,Consumer,3,39.99,119.97
+O-01863,2026-09-15,APAC,Australia,Electronics,USB-C Hub,SMB,6,39.99,239.94
+O-01864,2026-09-15,APAC,Japan,Office,Gel Pens,Consumer,1,8.99,8.99
+O-01865,2026-09-15,APAC,India,Electronics,Wireless Mouse,Consumer,3,24.99,74.97
+O-01866,2026-09-15,EMEA,France,Office,Notebook Set,SMB,1,11.25,11.25
+O-01867,2026-09-15,APAC,Japan,Apparel,Running Shoes,Consumer,2,95.00,190.00
+O-01868,2026-09-15,AMER,Canada,Home,Throw Blanket,SMB,2,34.99,69.98
+O-01869,2026-09-15,AMER,Mexico,Office,Gel Pens,Consumer,3,8.99,26.97
+O-01870,2026-09-16,APAC,India,Home,Throw Blanket,SMB,3,34.99,104.97
+O-01871,2026-09-16,AMER,United States,Office,Ergonomic Chair,Enterprise,6,249.00,1494.00
+O-01872,2026-09-16,APAC,India,Home,Desk Lamp,SMB,6,35.55,213.30
+O-01873,2026-09-16,APAC,Philippines,Electronics,USB-C Hub,Consumer,2,39.99,79.98
+O-01874,2026-09-16,APAC,Philippines,Electronics,Noise-Cancelling Headphones,Consumer,3,199.00,597.00
+O-01875,2026-09-16,AMER,United States,Home,Throw Blanket,SMB,3,34.99,104.97
+O-01876,2026-09-16,APAC,Japan,Electronics,Mechanical Keyboard,SMB,6,89.00,534.00
+O-01877,2026-09-17,EMEA,Netherlands,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-01878,2026-09-17,EMEA,South Africa,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-01879,2026-09-17,EMEA,Netherlands,Electronics,Mechanical Keyboard,SMB,3,89.00,267.00
+O-01880,2026-09-17,APAC,Australia,Electronics,USB-C Hub,SMB,4,39.99,159.96
+O-01881,2026-09-17,EMEA,United Kingdom,Office,Notebook Set,Consumer,3,12.50,37.50
+O-01882,2026-09-17,AMER,Canada,Apparel,Baseball Cap,Consumer,1,21.50,21.50
+O-01883,2026-09-17,APAC,Australia,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-01884,2026-09-17,EMEA,Netherlands,Apparel,Hoodie,Consumer,3,45.00,135.00
+O-01885,2026-09-17,AMER,United States,Office,Ergonomic Chair,SMB,2,249.00,498.00
+O-01886,2026-09-17,AMER,United States,Electronics,USB-C Hub,SMB,3,39.99,119.97
+O-01887,2026-09-17,APAC,Australia,Office,Monitor Stand,Consumer,2,44.00,88.00
+O-01888,2026-09-18,EMEA,France,Home,Ceramic Mug Set,SMB,2,22.00,44.00
+O-01889,2026-09-18,AMER,United States,Apparel,Wool Socks,Consumer,1,18.00,18.00
+O-01890,2026-09-18,AMER,Mexico,Apparel,Hoodie,SMB,5,45.00,225.00
+O-01891,2026-09-18,AMER,United States,Electronics,Wireless Mouse,SMB,3,24.99,74.97
+O-01892,2026-09-18,APAC,Philippines,Apparel,Baseball Cap,Enterprise,5,21.50,107.50
+O-01893,2026-09-18,APAC,Singapore,Apparel,Running Shoes,SMB,2,95.00,190.00
+O-01894,2026-09-18,APAC,Japan,Apparel,Wool Socks,Consumer,1,18.00,18.00
+O-01895,2026-09-18,APAC,Singapore,Home,Ceramic Mug Set,SMB,2,22.00,44.00
+O-01896,2026-09-18,AMER,Brazil,Home,Coffee Grinder,Enterprise,11,49.00,539.00
+O-01897,2026-09-18,EMEA,South Africa,Home,Ceramic Mug Set,Consumer,2,22.00,44.00
+O-01898,2026-09-18,EMEA,United Kingdom,Home,Ceramic Mug Set,Consumer,3,22.00,66.00
+O-01899,2026-09-18,APAC,Philippines,Office,Ergonomic Chair,Consumer,1,249.00,249.00
+O-01900,2026-09-18,AMER,United States,Office,Monitor Stand,Consumer,3,39.60,118.80
+O-01901,2026-09-19,EMEA,Netherlands,Home,Air Purifier,Consumer,2,149.00,298.00
+O-01902,2026-09-19,APAC,Japan,Home,Coffee Grinder,Consumer,2,49.00,98.00
+O-01903,2026-09-19,AMER,United States,Apparel,Running Shoes,Consumer,3,95.00,285.00
+O-01904,2026-09-19,AMER,Brazil,Electronics,Wireless Mouse,Consumer,3,24.99,74.97
+O-01905,2026-09-20,EMEA,France,Home,Air Purifier,SMB,4,149.00,596.00
+O-01906,2026-09-20,APAC,Japan,Electronics,USB-C Hub,Consumer,3,39.99,119.97
+O-01907,2026-09-20,EMEA,France,Apparel,Wool Socks,SMB,4,18.00,72.00
+O-01908,2026-09-20,APAC,Singapore,Home,Desk Lamp,Consumer,3,39.50,118.50
+O-01909,2026-09-20,EMEA,Germany,Apparel,Rain Jacket,SMB,2,79.00,158.00
+O-01910,2026-09-20,APAC,Japan,Home,Ceramic Mug Set,Consumer,2,22.00,44.00
+O-01911,2026-09-20,AMER,Canada,Home,Air Purifier,SMB,4,149.00,596.00
+O-01912,2026-09-21,APAC,Singapore,Apparel,Hoodie,Consumer,1,45.00,45.00
+O-01913,2026-09-21,AMER,United States,Home,Air Purifier,SMB,1,149.00,149.00
+O-01914,2026-09-21,AMER,Brazil,Apparel,Running Shoes,SMB,5,95.00,475.00
+O-01915,2026-09-21,APAC,Australia,Home,Throw Blanket,Enterprise,19,34.99,664.81
+O-01916,2026-09-21,APAC,Philippines,Office,Ergonomic Chair,SMB,3,249.00,747.00
+O-01917,2026-09-21,EMEA,South Africa,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-01918,2026-09-21,AMER,United States,Office,Gel Pens,SMB,4,8.99,35.96
+O-01919,2026-09-21,APAC,Japan,Electronics,Mechanical Keyboard,SMB,2,89.00,178.00
+O-01920,2026-09-21,AMER,United States,Office,Desk Organizer,Enterprise,5,27.99,139.95
+O-01921,2026-09-21,APAC,India,Electronics,Mechanical Keyboard,SMB,6,89.00,534.00
+O-01922,2026-09-22,APAC,Australia,Apparel,Rain Jacket,SMB,2,79.00,158.00
+O-01923,2026-09-22,APAC,India,Electronics,USB-C Hub,Consumer,1,39.99,39.99
+O-01924,2026-09-22,EMEA,United Kingdom,Apparel,Wool Socks,SMB,4,18.00,72.00
+O-01925,2026-09-22,APAC,Philippines,Apparel,Running Shoes,Enterprise,8,95.00,760.00
+O-01926,2026-09-22,EMEA,United Kingdom,Apparel,Hoodie,Consumer,2,40.50,81.00
+O-01927,2026-09-22,APAC,Australia,Electronics,Noise-Cancelling Headphones,SMB,5,199.00,995.00
+O-01928,2026-09-22,EMEA,Germany,Apparel,Running Shoes,Consumer,2,95.00,190.00
+O-01929,2026-09-22,EMEA,Netherlands,Home,Coffee Grinder,Consumer,2,49.00,98.00
+O-01930,2026-09-22,APAC,Japan,Home,Coffee Grinder,Consumer,1,49.00,49.00
+O-01931,2026-09-23,APAC,Japan,Electronics,Noise-Cancelling Headphones,Consumer,3,199.00,597.00
+O-01932,2026-09-23,AMER,United States,Electronics,Noise-Cancelling Headphones,Consumer,3,199.00,597.00
+O-01933,2026-09-23,AMER,Mexico,Electronics,Mechanical Keyboard,SMB,1,89.00,89.00
+O-01934,2026-09-23,APAC,India,Home,Throw Blanket,Consumer,1,34.99,34.99
+O-01935,2026-09-23,AMER,United States,Electronics,USB-C Hub,Consumer,2,39.99,79.98
+O-01936,2026-09-23,EMEA,Germany,Home,Desk Lamp,SMB,1,39.50,39.50
+O-01937,2026-09-23,APAC,Australia,Electronics,Mechanical Keyboard,SMB,6,80.10,480.60
+O-01938,2026-09-23,AMER,Canada,Electronics,Mechanical Keyboard,Consumer,1,89.00,89.00
+O-01939,2026-09-24,APAC,Japan,Home,Throw Blanket,SMB,5,31.49,157.45
+O-01940,2026-09-24,EMEA,France,Office,Desk Organizer,Consumer,2,27.99,55.98
+O-01941,2026-09-24,EMEA,United Kingdom,Office,Monitor Stand,Consumer,3,39.60,118.80
+O-01942,2026-09-24,APAC,Australia,Apparel,Wool Socks,SMB,1,18.00,18.00
+O-01943,2026-09-24,APAC,Japan,Apparel,Baseball Cap,Consumer,1,21.50,21.50
+O-01944,2026-09-24,APAC,India,Office,Monitor Stand,SMB,4,44.00,176.00
+O-01945,2026-09-24,EMEA,South Africa,Apparel,Baseball Cap,Consumer,3,21.50,64.50
+O-01946,2026-09-24,AMER,United States,Home,Air Purifier,Consumer,1,134.10,134.10
+O-01947,2026-09-24,EMEA,Germany,Electronics,Mechanical Keyboard,Enterprise,5,80.10,400.50
+O-01948,2026-09-24,EMEA,France,Home,Air Purifier,Consumer,2,149.00,298.00
+O-01949,2026-09-24,EMEA,France,Electronics,Wireless Mouse,Consumer,1,24.99,24.99
+O-01950,2026-09-24,AMER,United States,Apparel,Rain Jacket,Consumer,1,79.00,79.00
+O-01951,2026-09-24,EMEA,Netherlands,Electronics,USB-C Hub,Consumer,3,39.99,119.97
+O-01952,2026-09-25,EMEA,France,Office,Desk Organizer,Consumer,2,27.99,55.98
+O-01953,2026-09-25,APAC,Philippines,Electronics,Noise-Cancelling Headphones,SMB,1,199.00,199.00
+O-01954,2026-09-25,AMER,United States,Apparel,Wool Socks,SMB,4,18.00,72.00
+O-01955,2026-09-25,AMER,United States,Office,Notebook Set,SMB,1,12.50,12.50
+O-01956,2026-09-25,EMEA,Germany,Electronics,Webcam,Enterprise,14,59.50,833.00
+O-01957,2026-09-25,AMER,Brazil,Office,Desk Organizer,Consumer,1,27.99,27.99
+O-01958,2026-09-25,APAC,Japan,Apparel,Wool Socks,Consumer,2,18.00,36.00
+O-01959,2026-09-25,EMEA,Germany,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-01960,2026-09-26,EMEA,South Africa,Electronics,USB-C Hub,Consumer,2,35.99,71.98
+O-01961,2026-09-26,EMEA,South Africa,Apparel,Hoodie,Consumer,2,45.00,90.00
+O-01962,2026-09-26,APAC,Singapore,Home,Air Purifier,Consumer,1,149.00,149.00
+O-01963,2026-09-26,AMER,United States,Office,Gel Pens,SMB,6,8.99,53.94
+O-01964,2026-09-26,APAC,Japan,Home,Ceramic Mug Set,SMB,4,22.00,88.00
+O-01965,2026-09-26,EMEA,France,Office,Ergonomic Chair,Consumer,3,249.00,747.00
+O-01966,2026-09-26,EMEA,Netherlands,Office,Notebook Set,SMB,3,12.50,37.50
+O-01967,2026-09-27,APAC,Japan,Apparel,Rain Jacket,Enterprise,9,71.10,639.90
+O-01968,2026-09-27,EMEA,Germany,Electronics,USB-C Hub,Enterprise,10,39.99,399.90
+O-01969,2026-09-27,EMEA,Netherlands,Electronics,Mechanical Keyboard,Consumer,3,89.00,267.00
+O-01970,2026-09-27,AMER,United States,Apparel,Rain Jacket,SMB,3,79.00,237.00
+O-01971,2026-09-27,APAC,Philippines,Apparel,Running Shoes,Consumer,2,95.00,190.00
+O-01972,2026-09-28,APAC,Australia,Office,Notebook Set,Consumer,2,12.50,25.00
+O-01973,2026-09-28,EMEA,Netherlands,Apparel,Baseball Cap,SMB,2,21.50,43.00
+O-01974,2026-09-28,EMEA,Netherlands,Office,Gel Pens,SMB,2,8.99,17.98
+O-01975,2026-09-28,APAC,India,Home,Throw Blanket,SMB,5,34.99,174.95
+O-01976,2026-09-29,APAC,Philippines,Office,Monitor Stand,SMB,2,39.60,79.20
+O-01977,2026-09-29,APAC,Philippines,Office,Notebook Set,SMB,3,12.50,37.50
+O-01978,2026-09-29,AMER,United States,Office,Desk Organizer,SMB,6,27.99,167.94
+O-01979,2026-09-29,EMEA,Germany,Home,Throw Blanket,Consumer,2,34.99,69.98
+O-01980,2026-09-29,EMEA,Netherlands,Office,Ergonomic Chair,Consumer,3,249.00,747.00
+O-01981,2026-09-29,AMER,United States,Office,Desk Organizer,Consumer,3,27.99,83.97
+O-01982,2026-09-29,APAC,Australia,Home,Ceramic Mug Set,SMB,1,22.00,22.00
+O-01983,2026-09-29,AMER,United States,Office,Gel Pens,Consumer,1,8.09,8.09
+O-01984,2026-09-29,APAC,Australia,Home,Throw Blanket,Consumer,1,34.99,34.99
+O-01985,2026-09-29,EMEA,Germany,Home,Ceramic Mug Set,Consumer,3,22.00,66.00
+O-01986,2026-09-29,APAC,Australia,Electronics,Wireless Mouse,SMB,5,24.99,124.95
+O-01987,2026-09-29,EMEA,France,Apparel,Rain Jacket,Consumer,3,79.00,237.00
+O-01988,2026-09-29,EMEA,United Kingdom,Electronics,Noise-Cancelling Headphones,SMB,1,199.00,199.00
+O-01989,2026-09-29,APAC,Australia,Electronics,Wireless Mouse,Consumer,3,24.99,74.97
+O-01990,2026-09-29,APAC,Philippines,Electronics,USB-C Hub,Consumer,3,39.99,119.97
+O-01991,2026-09-30,AMER,Canada,Apparel,Baseball Cap,Consumer,2,21.50,43.00
+O-01992,2026-09-30,APAC,Australia,Electronics,Noise-Cancelling Headphones,Enterprise,11,199.00,2189.00
+O-01993,2026-09-30,AMER,Brazil,Home,Coffee Grinder,Consumer,2,44.10,88.20
+O-01994,2026-09-30,AMER,Brazil,Apparel,Baseball Cap,SMB,3,21.50,64.50
+O-01995,2026-09-30,EMEA,Netherlands,Home,Coffee Grinder,SMB,5,49.00,245.00
+O-01996,2026-09-30,APAC,Singapore,Electronics,Noise-Cancelling Headphones,Consumer,1,199.00,199.00
+O-01997,2026-09-30,APAC,Australia,Electronics,Wireless Mouse,Consumer,2,24.99,49.98
+O-01998,2026-09-30,AMER,Brazil,Office,Notebook Set,SMB,3,12.50,37.50
+O-01999,2026-09-30,EMEA,France,Home,Desk Lamp,SMB,5,39.50,197.50
+O-02000,2026-09-30,APAC,Singapore,Home,Ceramic Mug Set,Consumer,2,22.00,44.00

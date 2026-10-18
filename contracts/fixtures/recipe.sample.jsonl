@@ -1,0 +1,15 @@
+{"recipe_version": "1.0", "build_id": "b_3f9a0c12d4e5", "version": 1, "report_name": "Sales overview (executive)", "canvas": {"width": 1200, "height": 900}, "datasource": {"connector": "bigQuery", "project_id": "my-gcp-project", "dataset_id": "dss_demo", "table_id": "dash_b_3f9a0c12d4e5_v1"}}
+{"id": "s001", "op": "open_report"}
+{"id": "s002", "op": "set_canvas", "width": 1200, "height": 900}
+{"id": "s003", "op": "set_background_image", "path": "background_p1.png", "x": 0, "y": 0, "w": 1200, "h": 900}
+{"id": "s004", "op": "add_control", "component_id": "p1_date_range", "control_type": "date_range", "x": 936, "y": 32, "w": 240, "h": 40}
+{"id": "s005", "op": "add_chart", "component_id": "p1_kpi_revenue", "chart_type": "scorecard", "x": 24, "y": 104, "w": 270, "h": 120, "dimensions": [], "metrics": [{"field": "revenue", "agg": "sum"}], "title": "Revenue", "options": {"compact_numbers": true}}
+{"id": "s006", "op": "add_chart", "component_id": "p1_kpi_orders", "chart_type": "scorecard", "x": 318, "y": 104, "w": 270, "h": 120, "dimensions": [], "metrics": [{"field": "order_id", "agg": "count_distinct"}], "title": "Orders", "options": {"compact_numbers": true}}
+{"id": "s007", "op": "add_chart", "component_id": "p1_revenue_trend", "chart_type": "time_series", "x": 24, "y": 248, "w": 760, "h": 300, "dimensions": [], "metrics": [{"field": "revenue", "agg": "sum"}], "date_dimension": "order_date", "title": "Revenue over time"}
+{"id": "s008", "op": "add_chart", "component_id": "p1_revenue_by_region", "chart_type": "bar", "x": 808, "y": 248, "w": 368, "h": 300, "dimensions": ["region"], "metrics": [{"field": "revenue", "agg": "sum"}], "sort": {"field": "revenue", "order": "desc"}, "title": "Revenue by region", "options": {"orientation": "horizontal"}}
+{"id": "s009", "op": "add_chart", "component_id": "p1_category_share", "chart_type": "pie", "x": 24, "y": 572, "w": 368, "h": 300, "dimensions": ["category"], "metrics": [{"field": "revenue", "agg": "sum"}], "title": "Category share", "options": {"donut": true}}
+{"id": "s010", "op": "add_chart", "component_id": "p1_top_products", "chart_type": "table", "x": 416, "y": 572, "w": 760, "h": 300, "dimensions": ["product_name"], "metrics": [{"field": "revenue", "agg": "sum"}, {"field": "quantity", "agg": "sum"}], "sort": {"field": "revenue", "order": "desc"}, "title": "Top products", "options": {"rows_per_page": 10}}
+{"id": "s011", "op": "add_text", "component_id": "p1_note", "text": "Data refreshed daily from BigQuery.", "x": 24, "y": 876, "w": 400, "h": 20, "font_size": 10, "color": "#64748B", "align": "left"}
+{"id": "s012", "op": "set_style", "component_id": "p1_revenue_by_region", "style": {"colors": ["#1E40AF"], "show_title": true}}
+{"id": "s013", "op": "save_report"}
+{"id": "s014", "op": "get_link"}
