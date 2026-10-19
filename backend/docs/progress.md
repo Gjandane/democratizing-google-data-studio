@@ -179,3 +179,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: model/schema cause remains unisolated; API key was sanitized in diagnostics.
 - Left open: required live title-only revision and review.
 - Next: Restore the named stash, isolate the smallest accepted worker schema (including a plain-model control), then fix/retest and complete 4.2. Start a new chat and invoke blueprint-solution-builder.
+
+## 2026-10-19: Task 4.2 Revise from comments
+- Status: done
+- Plan check: off
+- What changed: recovered comments API, scoped RFC6902 revision branch, one repair, staged rendering/publication and decisions; fixed provider schema compatibility.
+- Checks: `uv run pytest tests/test_revise.py` PASS (27); `uv run pytest` PASS (153, 3 live deselected). Final real Gemini sample: only title grows 28px to 36px, spec_version increments. Browser screenshots inspected: `.blueprint/qa/revise-before.png`, `.blueprint/qa/revise-after.png`. Reviewer no-op finding fixed/rechecked; no remaining findings.
+- Decisions: sequential per-comment patches; collision-justified neighbour moves; canonicalize before detecting changes. Stage artifacts with rollback, reuse aggregates. Graph/context edits provide required wiring. Provider omits array maxima; Pydantic retains 20 comments/40 operations. Added AGENTS.md gotcha; no dependencies added.
+- Tried and failed: controls isolated provider rejection to nested maxItems. Initial live font patch matched renderer default; supplying defaults fixed visible growth. Removing a default key falsely incremented version; canonicalization fixed it.
+- Gotchas: none beyond Known gotchas.
+- Left open: none.
+- Next: Task 4.3 Recipe compiler (full), deep work. New chat, gpt-6.1-sol at high, invoke blueprint-solution-builder.

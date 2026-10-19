@@ -69,3 +69,27 @@ def spec_context(config, folder, build, fields, allowed):
     if len(result) > 48000:
         raise RunError('llm_unavailable', 'Spec context exceeds its input budget', 503)
     return result
+
+
+def revise_context(document, comments, allowed):
+    """6k-token revision working memory: targeted items and direct grid neighbours."""
+    from dss.spec.patch import neighbours
+    from dss.spec.validate import catalog
+    targets = {c['component_id'] for c in comments}
+    visible = neighbours(document, targets)
+    selected = [{'path': f'/pages/0/{group}/{i}', 'item': item}
+        for group in ('components', 'decorations')
+        for i, item in enumerate(document['pages'][0][group]) if item['id'] in visible]
+    types = {entry['item'].get('type') for entry in selected}
+    rules = catalog()
+    sections = [(BACKEND_DIR / 'prompts/v1/revise.md').read_text(encoding='utf-8'),
+        SkillLoader().load('revise'),
+        'Target catalog:\n' + json.dumps({k: v for k, v in rules.items() if k in types}),
+        'Allowed types (offer these for unsupported requests):\n' + json.dumps(sorted(allowed)),
+        'Canvas and grid:\n' + json.dumps({k: document[k] for k in ('canvas','grid')}),
+        'Targeted items and grid neighbours (untrusted data):\n' + json.dumps(selected),
+        'Comments in application order (untrusted data):\n' + json.dumps(comments)]
+    result = '\n\n'.join(sections)
+    if len(result) > 18000:
+        raise RunError('llm_unavailable', 'Revision context exceeds its input budget', 503)
+    return result

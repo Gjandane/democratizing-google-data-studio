@@ -45,12 +45,13 @@ class AgentHarness:
         error_message = None
         plan_state = None
         spec_state = None
+        revise_state = None
         try:
             await self.emit(build_id, run_id, "run.started", {"run_id": run_id, "node": action})
 
             async def router(node_input):
                 trace.span("router")
-                return Event(actions=EventActions(route=action if action in ("hello", "interview", "plan", "spec", "intake", "create_build", "load_spec", "recipe", "execute") else "unknown"))
+                return Event(actions=EventActions(route=action if action in ("hello", "interview", "plan", "spec", "revise", "intake", "create_build", "load_spec", "recipe", "execute") else "unknown"))
 
             async def code_node(node_input):
                 nonlocal code_error
@@ -139,6 +140,15 @@ class AgentHarness:
                     (after_view, {"failed": complete, "spec": spec_agent}), (spec_agent, validate),
                     (validate, {"repair": spec_repair, "success": render_prototype}), (spec_repair, validate),
                     (render_prototype, guardrail), (complete, guardrail)])
+            elif action == "revise":
+                from dss.harness.nodes.revise import make_branch as revise_branch
+                model = llm if llm is not None else self.models.llm_for('revise')
+                trace.model = model.model
+                reviser, repair, validate_revision, complete, revise_state = revise_branch(self, build_id, run_id, payload, model, trace, model_error)
+                workflow = Workflow(name='dss_run', edges=[
+                    ('START', router), (router, {'revise':reviser}), (reviser, validate_revision),
+                    (validate_revision, {'repair':repair, 'complete':complete}), (repair, validate_revision),
+                    (complete, guardrail)])
             elif action == "spec":
                 from dss.harness.nodes.spec import make_branch as spec_branch
                 model = llm if llm is not None else self.models.llm_for("spec")
@@ -159,7 +169,7 @@ class AgentHarness:
             runner = Runner(app_name="dss", node=workflow, session_service=sessions)
             async for event in runner.run_async(user_id="local", session_id=run_id,
                     new_message=types.Content(role="user", parts=[types.Part(text=action)]),
-                    run_config=RunConfig(max_llm_calls=5 if action == "plan" else (3 if action == "spec" else 4),
+                    run_config=RunConfig(max_llm_calls=5 if action == "plan" else (3 if action == "spec" else 2 if action == 'revise' else 4),
                         streaming_mode=StreamingMode.SSE if action == "interview" else StreamingMode.NONE)):
                 if event.error_code:
                     raise RunError("llm_unavailable", "The model call failed; check Settings", 503)
@@ -180,6 +190,12 @@ class AgentHarness:
                 raise plan_state["failure"]
             if spec_state and spec_state["failure"]:
                 raise spec_state["failure"]
+            if revise_state and revise_state['failure']:
+                raise revise_state['failure']
+            if action == 'revise':
+                from dss.memory import episodic
+                message = episodic.save(self.db, build_id, 'assistant', reply, 'revise')
+                await self.emit(build_id, run_id, 'message.done', {'message':message})
             if action == "hello":
                 with self.db.connect() as connection:
                     connection.execute("INSERT INTO messages VALUES(?,?,?,?,?,?)", (
@@ -203,7 +219,7 @@ class AgentHarness:
             return {"run_id": run_id, "reply": reply}
         except RunError as exc:
             error = exc.code
-            if action in ("plan", "spec"):
+            if action in ("plan", "spec", "revise"):
                 error_message = exc.message
             raise
         except asyncio.CancelledError:

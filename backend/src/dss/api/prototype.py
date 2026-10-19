@@ -1,4 +1,5 @@
 import json
+import asyncio
 from fastapi import APIRouter, Request, Query
 from fastapi.responses import HTMLResponse
 from typing import Literal
@@ -7,8 +8,23 @@ from dss.harness.guardrails import RunError
 from dss.render.prototype import render, aggregate_sql
 from hashlib import sha256
 from dss.spec.models import DashboardSpec
+from pydantic import BaseModel, ConfigDict, Field
+from dss.db import new_id
+from dss.harness.guardrails import check_reply
+from dss.memory import episodic
 
 router = APIRouter(prefix="/api/builds")
+
+
+class Comment(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    component_id: str = Field(pattern=r'^p[1-9][0-9]*_[a-z][a-z0-9]*(?:_[a-z0-9]+)*$')
+    text: str = Field(min_length=1, max_length=4000, pattern=r'\S')
+
+
+class Comments(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    comments: list[Comment] = Field(min_length=1, max_length=20)
 
 
 def current(state, build_id):
@@ -44,3 +60,32 @@ def prototype(build_id: str, request: Request, layer: Literal["all", "decoration
 def spec(build_id: str, request: Request):
     _, folder = current(request.app.state, build_id)
     return read_spec(folder).model_dump()
+
+
+@router.post('/{build_id}/comments', status_code=202)
+async def comments(build_id: str, body: Comments, request: Request):
+    state = request.app.state
+    build, folder = current(state, build_id)
+    if build['stage'] != 'prototype' or build_id in state.harness.active_builds:
+        raise RunError('wrong_stage', 'Comments require an idle prototype', 409, {'stage':build['stage']})
+    document = read_spec(folder)
+    ids = {item.id for page in document.pages for item in page.components + page.decorations}
+    values = [comment.model_dump() for comment in body.comments]
+    if any(comment['component_id'] not in ids for comment in values):
+        raise RunError('invalid_request', 'Comment item does not exist in the current spec', 422)
+    config = state.settings.get()
+    text = check_reply(json.dumps(values), (config.google_api_key.get_secret_value(),))
+    run_id = new_id('r')
+    episodic.save(state.db, build_id, 'user', text, 'revise')
+    state.harness.active_builds.add(build_id)
+    async def background():
+        try:
+            await state.harness.run('revise', build_id,
+                {'comments':values, 'config':config, 'factory':state.bigquery_factory},
+                run_id=run_id, reserved=True)
+        except RunError:
+            pass
+    task = asyncio.create_task(background())
+    state.engine_tasks.add(task)
+    task.add_done_callback(state.engine_tasks.discard)
+    return {'run_id':run_id}

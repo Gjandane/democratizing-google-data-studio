@@ -69,7 +69,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_render.py` passes: one `data-cid` per spec component and decoration with `data-label` and `data-kind`, boxes equal Layout's, no nested `data-cid`; `layer=decoration` hides every component; `background_p1.png` is 1200 px wide with the page height; a second render of the same version runs zero aggregate queries (cache); 12 components with FakeBigQuery render in under 15 s; `prototype.updated` and `stage.changed: prototype` are emitted; manual: the sample build's prototype opens at `http://localhost:8000/api/builds/<id>/prototype` with real numbers in each chart.
   - Review focus: the HTML contract in ../contracts/api.md "Prototype HTML" (the frontend's comment overlay depends on it).
-- [ ] 4.2 Revise from comments
+- [x] 4.2 Revise from comments
   - Goal: comments -> validated JSON patch -> new spec version -> re-render.
   - Spec: docs/architecture.md#Revise
   - Files: src/dss/harness/nodes/revise.py, src/dss/spec/patch.py, src/dss/api/prototype.py, skills/revise.md, prompts/v1/revise.md, tests/test_revise.py
