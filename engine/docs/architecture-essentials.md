@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:f98463938363 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:6b6c994bb896 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: engine
 One page, read at the start of every build session. A summary of docs/architecture.md, which
 wins if the two disagree.
@@ -25,6 +25,13 @@ tests/                   offline tests (fake driver); tests/live/ marked `live`
   screenshots, events and status (docs/architecture.md#Recipe executor).
 - Screenshots: `<recipe dir>/screens/<op_id>_failed.png` unless `--screens` is given.
 - Live tests read `DSS_TEST_TABLE` (default `bigquery-public-data.thelook_ecommerce.order_items`).
+- Editor mechanics: docs/architecture.md#Live editor conventions. Use 1920 x 1200 at 100% zoom,
+  mouse geometry with ±4 px readback, reuse creations on retry and record their actual page.
+  Append pages from the last page; exclude images from chart enumeration.
+- Schema extension fields are op-specific: read chart-only arguments only on `add_chart`.
+  Wait for rendered charts/loaded images; preserve text blank lines through block/BR readback.
+- Screencast is opt-in JPEG quality 60 at most once per 500 ms; acknowledge dropped CDP frames
+  and stop/remove/detach before closing the owned page.
 
 ## Never do
 - Never call an LLM or send screenshots anywhere.

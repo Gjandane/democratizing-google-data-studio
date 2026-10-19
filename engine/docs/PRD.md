@@ -65,3 +65,12 @@ engine replays a compiled recipe of UI ops deterministically, with no LLM in the
 ## Later
 - Headless mode with a stored session for Cloud Run (program, next version).
 - LLM-assisted selector repair on failure (plan).
+- Successful geo-map rendering on a compatible geographic source remains unverified; the
+  current public source exercises the explicitly permitted incompatible-field failure (audit 2026-10-19).
+- Full report-building coverage, including native calculated fields and persistent filters,
+  requires separate scope/contract planning; docs/coverage-audit.md records the proposals
+  (audit 2026-10-19).
+- Clarify timeout lifecycle wording with the architect at the program root: the engine emits
+  skipped event pairs for remaining ops while suppressing their UI execution, as task 2.1
+  decided and current tests require; the contract says remaining ops are not started
+  (audit 2026-10-19).

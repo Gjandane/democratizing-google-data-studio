@@ -80,3 +80,37 @@ tasks and require a separately specified scope/contract revision. Task statuses 
   - Depends on: 4.2
   - Size: S
   - Done when: `uv run pytest tests/test_screencast.py` passes (frames from a fake CDP session become schema-valid `frame` events, at most one per 400 ms); manual: a live run with `--screencast` prints frame events between op events.
+
+## Phase 5: Audit fixes
+- [ ] 5.1 Start the dedicated Chrome session before checking sign-in
+  - Goal: a live run starts a closed dedicated Chrome profile and then checks sign-in; preserve ownership checks and exit 3 for an actually unsigned-in profile. Missing Chrome and an occupied/unrecognized CDP port must retain useful browser errors.
+  - Spec: docs/architecture.md#Recipe executor; docs/architecture.md#Key flows
+  - Files: src/dsengine/executor.py, src/dsengine/chrome.py, tests/test_executor.py, tests/test_linking.py
+  - Depends on: 4.3
+  - Size: S
+  - Done when: `uv run pytest tests/test_executor.py tests/test_linking.py` passes with regressions proving a stopped browser is launched before sign-in checking, a running owned browser is reused, launch/ownership failures produce browser_error, and unsigned-in still exits 3. Dry-run and header-only recipes must not launch Chrome. `uv run pytest` passes.
+  - Review focus: final-audit P1 at executor.py:124-136; do not automate sign-in or act on unrelated tabs.
+- [ ] 5.2 Make retry cleanup call the supported Playwright APIs
+  - Goal: after a transient operation failure, Escape and canvas deselection actually run before retry, within the existing operation/run budget. Cleanup must remain best-effort if the page or canvas is unavailable.
+  - Spec: docs/architecture.md#Recipe executor
+  - Files: src/dsengine/executor.py, tests/test_executor.py
+  - Depends on: 5.1
+  - Size: S
+  - Done when: `uv run pytest tests/test_executor.py` passes with strict keyboard/mouse fakes matching installed Playwright method signatures; regressions observe Escape and the empty-workspace click before the second attempt, no unsupported keyword arguments, and safe cleanup when canvas/page is absent. `uv run pytest` passes.
+  - Review focus: final-audit P2 at executor.py:32,42-43; permissive mocks must not hide API signature errors.
+- [ ] 5.3 Scope and reuse background images across retries
+  - Goal: set_background_image addresses only its own newly created image, reuses it on retry, works beside ordinary images/other backgrounds, and meets arbitrary clamped recipe boxes without aspect-ratio distortion of the box.
+  - Spec: docs/architecture.md#Recipe executor; docs/architecture.md#Live editor conventions
+  - Files: src/dsengine/ops/report.py, src/dsengine/ops/text.py, src/dsengine/ops/style.py, tests/test_executor.py, tests/live/test_report_ops.py, knowledge/datastudio-ui/*.md
+  - Depends on: 5.2
+  - Size: M
+  - Done when: `uv run pytest tests/test_executor.py` and `uv run pytest -m live tests/live/test_report_ops.py` pass. New regression coverage includes an ordinary image before the background, two background ops on one page, an injected transient failure after upload (retry does not increase component count), and the 1200x900 fixture placed in a square box; verify the intended background is behind other content, loaded, and within ±4 px after saving/reopening. After sending a background back, apply set_style to an earlier component and assert that only the intended component changes (paint-order changes must not invalidate the component registry). Keep the original five-op test. `uv run pytest` passes.
+  - Review focus: final-audit P2 at report.py:205-218; scope image_content under the retained component and verify that component's paint order rather than any image's presence.
+- [ ] 5.4 Recheck live acceptance after audit fixes
+  - Goal: repeat all original live gates and the 20-op budget after tasks 5.1–5.3. Account/template/billing access was restored during the 2026-10-19 audit and the original nine live tests passed; preserve that behavior after repair. Diagnose first-query consent or data-access errors explicitly: an ok event with an error panel is not visual acceptance.
+  - Spec: docs/architecture.md#Recipe executor; docs/architecture.md#Testing
+  - Files: spikes/spike_one_chart.py, tests/live/test_report_ops.py, tests/live/test_charts_a.py, tests/live/test_golden.py, tests/live/test_charts_b.py, tests/live/test_misc_ops.py, knowledge/datastudio-ui/*.md
+  - Depends on: 5.3
+  - Size: M
+  - Done when: `uv run python spikes/spike_one_chart.py`, `uv run pytest -m live tests/live/test_report_ops.py tests/live/test_charts_a.py tests/live/test_golden.py tests/live/test_charts_b.py tests/live/test_misc_ops.py`, and `uv run pytest` pass. Inspect fresh saved-report screenshots; keep the permitted incompatible-geo failure only. Record golden elapsed/median op time and 20-op elapsed under 300 s. A fresh live run with --screencast emits schema-valid frames between op events. Record every command, evidence path, and external prerequisite in docs/progress.md; never weaken render assertions to accept data errors.
+  - If: the underlying source cannot be queried with the existing account/configuration -> stop with safe error evidence and the exact prerequisite the user must repair; never automate sign-in, expose secrets or provision a replacement source silently.

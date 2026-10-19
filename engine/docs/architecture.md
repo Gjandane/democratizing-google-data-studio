@@ -118,6 +118,42 @@ jsonschema (validate against the contract schema), pyyaml (selector frontmatter)
 pytest; `tests/` runs offline with a fake driver; `tests/live/` needs the signed-in Chrome and is
 marked `live` (excluded by default via `addopts = "-m 'not live'"`). Test (all) = `uv run pytest`.
 
+## Live editor conventions
+These conventions consolidate the verified build decisions and selector traps from tasks
+1.1–4.3. They describe the local editor workflow; the recipe contract remains the interface.
+- Interpret chart-only extension arguments only for `add_chart`; the shared op schema allows
+  identically named extras of other types on other ops.
+- Use the 1920 x 1200 editor viewport and 100% zoom. Place components with mouse geometry;
+  cross CDK's drag threshold with a short initial move before the target move. Read boxes back
+  within ±4 px. Images need Preserve Aspect Ratio disabled for arbitrary recipe boxes.
+- Retain creations and their actual owning page before retry/navigation, so retry does not
+  duplicate components. Append pages from the last page: Add page inserts after the current one.
+- Disambiguate the saved-report View action from the View menu. Saving a new report requires
+  Save and share and the acknowledgement; return the saved URL without `/edit`.
+- Wait for lazy chart iframes and their rendered content; scorecards and tables render directly.
+  Saved images may be visible before `naturalWidth` is nonzero. Generic chart selectors also
+  match uploaded images: exclude `image_content` when enumerating charts.
+- Test each match when a locator has multiple results; `is_visible()` on the full locator throws.
+  Batch chip labels with `evaluate_all` to stay inside the 20 s per-op budget.
+- Chart chip names open field pickers; chip icons open metric editors. Scope primary sort
+  radios because Secondary sort repeats their labels. Drill-down adds dimension slots
+  asynchronously; presets may add an unwanted breakdown, and single series may hide stacking.
+- Wait for the control menu to close before drawing. Escape the calendar opened by selecting
+  a date control. Cache source field names before selecting it: the Data panel clears its fields.
+  A geo picker without compatible fields can omit Chart fields entirely; close it on failure.
+- Pivot tables need a row dimension, even with column dimensions. Date preset families such
+  as Last 7 days need a second submenu selection.
+- Multiple series expose clickable multiColor swatches. Scope font options directly to avoid
+  tooltip overlays. Select all text again before each formatting property; use Selection Mode
+  to leave text editing before geometry/readback. Image Setup can require canvas deselection
+  and a top-left component click.
+- Read text through logical blocks and BR elements to preserve blank lines; neither textContent
+  nor innerText alone is a reliable whitespace oracle.
+- Live recipes use `DSS_TEST_TABLE`; shared contract fixtures contain an unavailable placeholder
+  table. Successful geo rendering needs a source with a compatible geographic field.
+- Screencast is opt-in, JPEG quality 60, gated by a monotonic 500 ms interval. Acknowledge every
+  CDP frame, including dropped frames; stop, remove the listener and detach before page closure.
+
 ## Decision log
 | Date | Decision | Alternatives | Why | Source |
 |---|---|---|---|---|
@@ -125,3 +161,7 @@ marked `live` (excluded by default via `addopts = "-m 'not live'"`). Test (all) 
 | 2026-10-18 | Selectors as OKF files | constants in code | UI drift is fixed by editing data | plan |
 | 2026-10-18 | No LLM in the engine | vision agent | token budget; recipe is complete | program |
 | 2026-10-18 | Must-have ops (open, canvas, background, scorecard, time series, bar, pie, table, save, link) before the rest | all ops first | integration by 21:00; backend narrows DSS_ALLOWED_TYPES if needed | audit |
+| 2026-10-19 | Mouse placement at 100% zoom with geometry readback; explicit save acknowledgement and template fallback | numeric geometry controls; blank Linking URL | spike proved exact boxes and blank `ds0` rejection; user approved the approach | tasks 1.3–3.1 |
+| 2026-10-19 | Reuse created components on retry, record their real page and append pages from the end | recreate after transient failure; infer page from recipe order | prevents duplicates and preserves page indices | tasks 2.2, 4.1, 4.2 |
+| 2026-10-19 | Read rendered text by logical blocks/BR; verify loaded images and saved report state | textContent-only checks; immediate screenshots | preserves blank lines and avoids accepting loading placeholders | tasks 4.2, 3.1 |
+| 2026-10-19 | Owned-page CDP JPEG frames, monotonic 500 ms gating and acknowledgement of dropped frames | a background thread or an additional dependency | schema-valid opt-in streaming with deterministic cleanup | task 4.3 |
