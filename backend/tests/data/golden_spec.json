@@ -1,0 +1,342 @@
+{
+  "spec_version": 7,
+  "build_id": "b_123456789abc",
+  "title": "Golden sales — all types",
+  "archetype": "analytical",
+  "canvas": {
+    "width": 1200,
+    "height": 1800
+  },
+  "grid": {
+    "columns": 12,
+    "row_height": 20,
+    "gutter": 16,
+    "margin": 24
+  },
+  "theme": {
+    "palette": [
+      "#1E40AF",
+      "#0D9488",
+      "#E11D48"
+    ]
+  },
+  "datasource": {
+    "table": "public-source.analytics.sales_view_v3",
+    "fields": [
+      {
+        "name": "region",
+        "type": "STRING",
+        "label": "Region",
+        "role": "dimension",
+        "default_agg": "none"
+      },
+      {
+        "name": "category",
+        "type": "STRING",
+        "label": "Category",
+        "role": "dimension",
+        "default_agg": "none"
+      },
+      {
+        "name": "sale_date",
+        "type": "DATE",
+        "label": "Sale Date",
+        "role": "dimension",
+        "default_agg": "none"
+      },
+      {
+        "name": "country",
+        "type": "GEO",
+        "label": "Country",
+        "role": "dimension",
+        "default_agg": "none"
+      },
+      {
+        "name": "revenue",
+        "type": "FLOAT64",
+        "label": "Revenue",
+        "role": "metric",
+        "default_agg": "sum"
+      },
+      {
+        "name": "units",
+        "type": "INT64",
+        "label": "Units",
+        "role": "metric",
+        "default_agg": "sum"
+      }
+    ]
+  },
+  "pages": [
+    {
+      "index": 1,
+      "name": "Overview",
+      "height": 1800,
+      "decorations": [
+        {
+          "id": "p1_title",
+          "kind": "title",
+          "grid": {
+            "col": 1,
+            "row": 1,
+            "w": 12,
+            "h": 4
+          },
+          "text": "All chart types"
+        }
+      ],
+      "components": [
+        {
+          "type": "dropdown",
+          "label": "Region filter",
+          "field": "region",
+          "id": "p1_dropdown",
+          "grid": {
+            "col": 7,
+            "row": 76,
+            "w": 6,
+            "h": 12
+          }
+        },
+        {
+          "type": "date_range",
+          "label": "Sale dates",
+          "date_dimension": "sale_date",
+          "id": "p1_date_range",
+          "grid": {
+            "col": 1,
+            "row": 76,
+            "w": 6,
+            "h": 12
+          }
+        },
+        {
+          "type": "image",
+          "label": "Brand logo",
+          "image_path": "images/logo.png",
+          "id": "p1_image",
+          "grid": {
+            "col": 7,
+            "row": 62,
+            "w": 6,
+            "h": 12
+          }
+        },
+        {
+          "type": "text",
+          "label": "Source note",
+          "text": "Sales \"overview\"\nRevenue in pesos — café",
+          "id": "p1_text",
+          "grid": {
+            "col": 1,
+            "row": 62,
+            "w": 6,
+            "h": 12
+          }
+        },
+        {
+          "type": "scatter",
+          "label": "Revenue and units",
+          "dimensions": [
+            "category"
+          ],
+          "metrics": [
+            {
+              "field": "revenue",
+              "agg": "sum"
+            },
+            {
+              "field": "units",
+              "agg": "sum"
+            }
+          ],
+          "id": "p1_scatter",
+          "grid": {
+            "col": 7,
+            "row": 48,
+            "w": 6,
+            "h": 12
+          }
+        },
+        {
+          "type": "geo_map",
+          "label": "Revenue by country",
+          "dimensions": [
+            "country"
+          ],
+          "metrics": [
+            {
+              "field": "revenue",
+              "agg": "sum"
+            }
+          ],
+          "options": {
+            "geo_type": "country"
+          },
+          "id": "p1_geo_map",
+          "grid": {
+            "col": 1,
+            "row": 48,
+            "w": 6,
+            "h": 12
+          }
+        },
+        {
+          "type": "pivot_table",
+          "label": "Region by category",
+          "dimensions": [
+            "region",
+            "category"
+          ],
+          "metrics": [
+            {
+              "field": "units",
+              "agg": "count_distinct"
+            }
+          ],
+          "options": {
+            "row_dimensions": [
+              "region"
+            ],
+            "column_dimensions": [
+              "category"
+            ]
+          },
+          "id": "p1_pivot_table",
+          "grid": {
+            "col": 7,
+            "row": 34,
+            "w": 6,
+            "h": 12
+          }
+        },
+        {
+          "type": "table",
+          "label": "Sales detail",
+          "dimensions": [
+            "region",
+            "category"
+          ],
+          "metrics": [
+            {
+              "field": "units",
+              "agg": "count"
+            },
+            {
+              "field": "revenue",
+              "agg": "none"
+            }
+          ],
+          "options": {
+            "rows_per_page": 20
+          },
+          "id": "p1_table",
+          "grid": {
+            "col": 1,
+            "row": 34,
+            "w": 6,
+            "h": 12
+          }
+        },
+        {
+          "type": "pie",
+          "label": "Regional share",
+          "dimensions": [
+            "region"
+          ],
+          "metrics": [
+            {
+              "field": "revenue",
+              "agg": "sum"
+            }
+          ],
+          "options": {
+            "donut": true
+          },
+          "id": "p1_pie",
+          "grid": {
+            "col": 7,
+            "row": 20,
+            "w": 6,
+            "h": 12
+          }
+        },
+        {
+          "type": "bar",
+          "label": "Revenue by region",
+          "dimensions": [
+            "region"
+          ],
+          "metrics": [
+            {
+              "field": "revenue",
+              "agg": "max"
+            },
+            {
+              "field": "units",
+              "agg": "min"
+            }
+          ],
+          "sort": {
+            "field": "revenue",
+            "order": "desc"
+          },
+          "options": {
+            "orientation": "horizontal",
+            "stacked": true
+          },
+          "id": "p1_bar",
+          "grid": {
+            "col": 1,
+            "row": 20,
+            "w": 6,
+            "h": 12
+          }
+        },
+        {
+          "type": "time_series",
+          "label": "Revenue over time",
+          "metrics": [
+            {
+              "field": "revenue",
+              "agg": "avg"
+            }
+          ],
+          "date_dimension": "sale_date",
+          "breakdown": "region",
+          "sort": {
+            "field": "sale_date",
+            "order": "asc"
+          },
+          "id": "p1_time_series",
+          "grid": {
+            "col": 7,
+            "row": 6,
+            "w": 6,
+            "h": 12
+          }
+        },
+        {
+          "type": "scorecard",
+          "label": "Revenue",
+          "metrics": [
+            {
+              "field": "revenue",
+              "agg": "sum"
+            }
+          ],
+          "options": {
+            "compact_numbers": true
+          },
+          "id": "p1_scorecard",
+          "grid": {
+            "col": 1,
+            "row": 6,
+            "w": 6,
+            "h": 12
+          }
+        }
+      ]
+    }
+  ]
+}

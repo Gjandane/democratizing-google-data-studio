@@ -190,3 +190,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond Known gotchas.
 - Left open: none.
 - Next: Task 4.3 Recipe compiler (full), deep work. New chat, gpt-6.1-sol at high, invoke blueprint-solution-builder.
+
+## 2026-10-19: Task 4.3 Recipe compiler (full)
+- Status: done
+- Plan check: off
+- What changed: wired the compile node into POST /recipe with atomic UTF-8/LF publication; compute Layout boxes once, preserve reading order, and fix add_page's name argument collision. Added all-12-type golden spec/recipe and contract tests.
+- Checks: `uv run pytest tests/test_recipe_contract.py` PASS (8); `uv run pytest` PASS (161, 3 live deselected, existing upstream warnings). Schema, byte equality on two writes, shuffled ordering, all aggregations/options, extra-page ops, op-id capacity and API ids/traces checked. Read-only reviewer: no findings. Git attributes confirm golden recipe eol=lf.
+- Decisions: compile node returns the recipe string; compilation ValueError maps to invalid_recipe without replacing the existing recipe. No new dependencies. Added backend .gitattributes outside task Files to preserve golden bytes with core.autocrlf=true; the POC's one-page spec restriction stays in place.
+- Tried and failed: first extra-page test exposed the existing helper's name collision; a positional-only op name fixed it.
+- Gotchas: none.
+- Left open: none.
+- Next: Task 4.4 Execute, publish, versions and engine endpoints, routine work. New chat, gpt-6.1-sol at Light (low), invoke blueprint-solution-builder.

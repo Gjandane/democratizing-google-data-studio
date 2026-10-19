@@ -7,7 +7,7 @@ from dss.db import new_id, now
 from dss.harness.guardrails import RunError
 from dss.harness.nodes.execute import execute, engine_command
 from dss.config import BACKEND_DIR
-from dss.recipe.compiler import compile_recipe
+from dss.harness.nodes.compile import perform as compile_current
 
 router = APIRouter(prefix="/api/builds")
 
@@ -23,8 +23,7 @@ async def recipe(build_id: str, request: Request):
     build, folder = current(state, build_id)
     require_prototype(build)
     async def perform(run_id):
-        text = compile_recipe(read_spec(folder), build["current_version"])
-        (folder / "recipe.jsonl").write_text(text, encoding="utf-8", newline="\n")
+        text = compile_current(read_spec(folder), build["current_version"], folder)
         def printable():
             result = subprocess.run(engine_command() + ["print", str(folder / "recipe.jsonl")], cwd=BACKEND_DIR, capture_output=True, text=True, encoding="utf-8", timeout=30)
             if result.returncode:

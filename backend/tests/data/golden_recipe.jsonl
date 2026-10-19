@@ -1,0 +1,26 @@
+{"build_id":"b_123456789abc","canvas":{"height":1800,"width":1200},"datasource":{"connector":"bigQuery","dataset_id":"analytics","project_id":"public-source","table_id":"sales_view_v3"},"recipe_version":"1.0","report_name":"Golden sales — all types","version":3}
+{"id":"s001","op":"open_report"}
+{"height":1800,"id":"s002","op":"set_canvas","width":1200}
+{"h":1800,"id":"s003","op":"set_background_image","path":"background_p1.png","w":1200,"x":0,"y":0}
+{"chart_type":"scorecard","component_id":"p1_scorecard","dimensions":[],"h":224,"id":"s004","metrics":[{"agg":"sum","field":"revenue"}],"op":"add_chart","options":{"compact_numbers":true},"title":"Revenue","w":568,"x":24,"y":124}
+{"component_id":"p1_scorecard","id":"s005","op":"set_style","style":{"colors":["#1E40AF","#0D9488","#E11D48"]}}
+{"breakdown":"region","chart_type":"time_series","component_id":"p1_time_series","date_dimension":"sale_date","dimensions":[],"h":224,"id":"s006","metrics":[{"agg":"avg","field":"revenue"}],"op":"add_chart","options":{},"sort":{"field":"sale_date","order":"asc"},"title":"Revenue over time","w":568,"x":608,"y":124}
+{"component_id":"p1_time_series","id":"s007","op":"set_style","style":{"colors":["#1E40AF","#0D9488","#E11D48"]}}
+{"chart_type":"bar","component_id":"p1_bar","dimensions":["region"],"h":224,"id":"s008","metrics":[{"agg":"max","field":"revenue"},{"agg":"min","field":"units"}],"op":"add_chart","options":{"orientation":"horizontal","stacked":true},"sort":{"field":"revenue","order":"desc"},"title":"Revenue by region","w":568,"x":24,"y":404}
+{"component_id":"p1_bar","id":"s009","op":"set_style","style":{"colors":["#1E40AF","#0D9488","#E11D48"]}}
+{"chart_type":"pie","component_id":"p1_pie","dimensions":["region"],"h":224,"id":"s010","metrics":[{"agg":"sum","field":"revenue"}],"op":"add_chart","options":{"donut":true},"title":"Regional share","w":568,"x":608,"y":404}
+{"component_id":"p1_pie","id":"s011","op":"set_style","style":{"colors":["#1E40AF","#0D9488","#E11D48"]}}
+{"chart_type":"table","component_id":"p1_table","dimensions":["region","category"],"h":224,"id":"s012","metrics":[{"agg":"count","field":"units"},{"agg":"none","field":"revenue"}],"op":"add_chart","options":{"rows_per_page":20},"title":"Sales detail","w":568,"x":24,"y":684}
+{"component_id":"p1_table","id":"s013","op":"set_style","style":{"colors":["#1E40AF","#0D9488","#E11D48"]}}
+{"chart_type":"pivot_table","component_id":"p1_pivot_table","dimensions":["region","category"],"h":224,"id":"s014","metrics":[{"agg":"count_distinct","field":"units"}],"op":"add_chart","options":{"column_dimensions":["category"],"row_dimensions":["region"]},"title":"Region by category","w":568,"x":608,"y":684}
+{"component_id":"p1_pivot_table","id":"s015","op":"set_style","style":{"colors":["#1E40AF","#0D9488","#E11D48"]}}
+{"chart_type":"geo_map","component_id":"p1_geo_map","dimensions":["country"],"h":224,"id":"s016","metrics":[{"agg":"sum","field":"revenue"}],"op":"add_chart","options":{"geo_type":"country"},"title":"Revenue by country","w":568,"x":24,"y":964}
+{"component_id":"p1_geo_map","id":"s017","op":"set_style","style":{"colors":["#1E40AF","#0D9488","#E11D48"]}}
+{"chart_type":"scatter","component_id":"p1_scatter","dimensions":["category"],"h":224,"id":"s018","metrics":[{"agg":"sum","field":"revenue"},{"agg":"sum","field":"units"}],"op":"add_chart","options":{},"title":"Revenue and units","w":568,"x":608,"y":964}
+{"component_id":"p1_scatter","id":"s019","op":"set_style","style":{"colors":["#1E40AF","#0D9488","#E11D48"]}}
+{"component_id":"p1_text","h":224,"id":"s020","op":"add_text","text":"Sales \"overview\"\nRevenue in pesos — café","w":568,"x":24,"y":1244}
+{"component_id":"p1_image","h":224,"id":"s021","op":"add_image","path":"images/logo.png","w":568,"x":608,"y":1244}
+{"component_id":"p1_date_range","control_type":"date_range","h":224,"id":"s022","op":"add_control","w":568,"x":24,"y":1524}
+{"component_id":"p1_dropdown","control_type":"dropdown","field":"region","h":224,"id":"s023","op":"add_control","w":568,"x":608,"y":1524}
+{"id":"s024","op":"save_report"}
+{"id":"s025","op":"get_link"}

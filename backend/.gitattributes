@@ -1,0 +1,2 @@
+# Keep the byte-for-byte recipe oracle identical on Windows and Unix.
+tests/data/golden_recipe.jsonl text eol=lf

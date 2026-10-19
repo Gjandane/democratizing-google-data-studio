@@ -1,24 +1,26 @@
 """Deterministic, code-produced recipe JSON Lines."""
 import json
 from dss.spec.layout import box
+from dss.spec.models import DashboardSpec
 
 
-def compile_recipe(spec, version):
+def compile_recipe(spec: DashboardSpec, version: int) -> str:
+    """Compile the current spec without consulting settings or mutating the spec."""
     project, dataset, table = spec.datasource.table.split(".")
     lines = [dict(recipe_version="1.0", build_id=spec.build_id, version=version,
                   report_name=spec.title, canvas=spec.canvas.model_dump(),
                   datasource=dict(connector="bigQuery", project_id=project, dataset_id=dataset, table_id=table))]
-    def op(name, **args):
+    def op(name, /, **args):
         lines.append(dict(id=f"s{len(lines):03d}", op=name, **args))
     op("open_report")
-    for page in spec.pages:
-        if page.index > 1:
+    for page_number, page in enumerate(spec.pages):
+        if page_number:
             op("add_page", name=page.name)
         op("set_canvas", width=spec.canvas.width, height=page.height)
         op("set_background_image", path=f"background_p{page.index}.png", x=0, y=0, w=spec.canvas.width, h=page.height)
-        ordered = sorted(page.components, key=lambda c: (box(spec.canvas, spec.grid, c.grid, height=page.height)["y"], box(spec.canvas, spec.grid, c.grid, height=page.height)["x"]))
-        for c in ordered:
-            args = dict(component_id=c.id, **box(spec.canvas, spec.grid, c.grid, height=page.height))
+        placed = [(c, box(spec.canvas, spec.grid, c.grid, height=page.height)) for c in page.components]
+        for c, bounds in sorted(placed, key=lambda item: (item[1]["y"], item[1]["x"])):
+            args = dict(component_id=c.id, **bounds)
             if c.type in ("date_range", "dropdown"):
                 op("add_control", control_type=c.type, **args, **({"field": c.field} if c.field else {}))
             elif c.type == "text":

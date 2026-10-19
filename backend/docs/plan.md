@@ -76,7 +76,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Depends on: 4.1
   - Size: S
   - Done when: `uv run pytest tests/test_revise.py` passes: a "make this bigger" comment patch grows the component and moves its neighbour to keep no overlap; a patch touching an unrelated id is rejected; a decoration comment changes the decoration; a request for a non-allowed type is refused with an assistant message; conflicting comments apply last-wins with a note; an empty patch keeps `spec_version`; otherwise `spec_version` increments, `decisions.md` gains one entry per comment and `prototype.updated` carries the new version; manual (live): "make the title bigger" on the sample prototype changes only the title.
-- [ ] 4.3 Recipe compiler (full)
+- [x] 4.3 Recipe compiler (full)
   - Goal: every spec type compiles per ../contracts/recipe.md, deterministic, from `spec.datasource.table`.
   - Spec: docs/architecture.md#Recipe compiler
   - Files: src/dss/recipe/compiler.py, src/dss/harness/nodes/compile.py, src/dss/api/run.py, tests/test_recipe_contract.py, tests/data/golden_spec.json, tests/data/golden_recipe.jsonl
