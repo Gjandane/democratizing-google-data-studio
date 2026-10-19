@@ -11,8 +11,8 @@ y=24+(row-1)*20; width=w*column width+(w-1)*16; height=h*20-16.
 Keep all boxes inside the canvas, and components separated. Decorations may underlay charts.
 Use only the supplied allowed catalog types and its exact slot roles, counts and minimum sizes.
 Copy the supplied datasource and build identity exactly; do not invent fields.
-Each high priority question qN must appear in a component question_ref. Use date_dimension
-for time_series/date_range; use field for dropdown. Field types and roles constrain binding.
+Each high priority question qN must appear in a component question_ref. Bind dedicated
+date_dimension and field slots as the supplied catalog requires. Field types and roles constrain binding.
 Respect design.md, brief.md and KPI definitions. Never generate HTML, SQL or recipe lines.
 Return a complete JSON DashboardSpec. Repair diagnostics are a list of path/message objects;
 correct them all while preserving the required datasource. At most two repair turns are available.

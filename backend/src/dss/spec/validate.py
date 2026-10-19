@@ -22,7 +22,8 @@ def allowed_types():
 
 
 def high_questions(text):
-    return re.findall(r"(?m)^-\s+(q\d+):[^\n]*\(priority:\s*high\)", text)
+    blocks = re.finditer(r"(?ms)^-\s+(q\d+):\s*(.*?)(?=^-\s+q\d+:|\Z)", text)
+    return [m[1] for m in blocks if re.search(r"\(priority:\s*high\)\s*$", m[2])]
 
 
 def validate_spec(value, *, allowed=None, high_priority=(), catalog_root=None):

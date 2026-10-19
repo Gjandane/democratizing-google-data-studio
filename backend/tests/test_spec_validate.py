@@ -74,3 +74,9 @@ def test_semantic_constraints(mutation):
     if mutation == 'height': spec['pages'][0]['height'] = 1000
     if mutation == 'sort': c['sort'] = {'field':'missing'}
     assert validate_spec(spec)
+
+
+def test_multiline_high_priority_questions():
+    from dss.spec.validate import high_questions
+    text = '- q1: Revenue\nby month? (priority: high)\n- q2: Customers? (priority: low)\n- q3: Margin? (priority: high)'
+    assert high_questions(text) == ['q1', 'q3']

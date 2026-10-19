@@ -75,6 +75,13 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         schema['$defs']['Component']['properties']['type']['enum'] = sorted(prepared['allowed'])
         llm_request.config.response_mime_type = 'application/json'
         llm_request.config.response_json_schema = schema
+        # Workflow history contains earlier nodes' outputs. The spec gets only
+        # its centrally assembled working memory, including explicit repair data.
+        llm_request.contents = [types.Content(role='user', parts=[types.Part(text='Write the requested Dashboard Spec.')])]
+        size = len(str(llm_request.config.system_instruction)) + len(json.dumps(schema)) + sum(len(c.model_dump_json(exclude_none=True)) for c in llm_request.contents)
+        trace.spans[-1]['input_tokens_estimate'] = (size + 3) // 4
+        if size > 64000:
+            raise RunError('llm_unavailable', 'Spec request exceeds its input budget', 503)
 
     async def after_model(callback_context, llm_response):
         if llm_response.error_code:

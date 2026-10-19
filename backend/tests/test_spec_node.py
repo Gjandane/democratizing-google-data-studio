@@ -82,3 +82,46 @@ def test_datasource_projection():
 
 def test_missing_spec(client, build_id):
     assert client.get(f'/api/builds/{build_id}/spec').status_code == 409
+
+
+@pytest.mark.parametrize('raw', ['not json', '{"pages": [', '[]'])
+async def test_malformed_spec_exhausts_repairs(client, app, build_id, raw):
+    folder = spec_seed(app, build_id)
+    old = '{"previous": "saved"}'
+    (folder / 'spec.json').write_text(old)
+    fake = FakeLLM(response=raw)
+    with pytest.raises(RunError):
+        await app.state.harness.run('spec', build_id, {'config':app.state.settings.get()}, llm=fake)
+    assert fake.calls == 3
+    assert (folder / 'spec.json').read_text() == old
+
+
+async def test_unsafe_spec_does_not_log_secrets(client, app, build_id, caplog):
+    folder = spec_seed(app, build_id)
+    with pytest.raises(RunError):
+        await app.state.harness.run('spec', build_id, {'config':app.state.settings.get()}, llm=FakeLLM(response='{"title":"test-key"}'))
+    assert 'test-key' not in caplog.text
+    assert not (folder / 'spec.json').exists()
+
+
+async def test_spec_budget_and_history(client, app, build_id):
+    spec_seed(app, build_id)
+    class Budget(SpecLLM):
+        async def generate_content_async(self, llm_request, stream=False):
+            assert len(llm_request.contents) == 1
+            assert llm_request.contents[0].parts[0].text == 'Write the requested Dashboard Spec.'
+            async for event in super().generate_content_async(llm_request, stream):
+                yield event
+    await app.state.harness.run('spec', build_id, {'config':app.state.settings.get()}, llm=Budget())
+    with app.state.db.connect() as conn:
+        spans = json.loads(conn.execute("SELECT spans_json FROM traces WHERE node='spec'").fetchone()[0])
+    assert 0 < next(s['input_tokens_estimate'] for s in spans if s['node'] == 'spec') <= 16000
+
+
+async def test_oversized_context_never_calls_model(client, app, build_id):
+    folder = spec_seed(app, build_id)
+    (folder / 'docs/brief.md').write_text('x' * 64001)
+    fake = SpecLLM()
+    with pytest.raises(RunError):
+        await app.state.harness.run('spec', build_id, {'config':app.state.settings.get()}, llm=fake)
+    assert fake.calls == 0
