@@ -112,3 +112,11 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Depends on: 7.1
   - Size: S
   - Done when: `npm test` passes with: `formatLatency(119600)` is "2 min 0 s" and `formatLatency(59960)` is not "60.0 s"; the trace error pill has class `text-text`, not `text-danger`; the Build result link and a markdown link each contain "(opens in a new tab)"; the done-build empty chat no longer contains "first question"; a search of src/ finds no "`comments` run"; `npm run typecheck` passes; manual: screenshot 7.2-trace-error at 1280x800.
+
+## Phase 8: Audit fixes (final re-audit 2026-10-19)
+- [ ] 8.1 Retry guard, error punctuation, trace wrap and link hover
+  - Goal: the Interview stage's "Generate plan again" (ErrorState action) can't post `/plan` twice: one in-flight guard covers it and the main "Generate plan" button, and the retry is disabled while the POST runs; the interview error suffix " Send your answer again." follows a sentence end (add ". " when the server text doesn't end in `.`, `!` or `?`); in the Trace table the latency cells and the total row ("Total, N runs", total latency) never wrap (`whitespace-nowrap` through the Column `className`, which the footer cells share); markdown links show hover feedback (`hover:text-primary-hover`).
+  - Files: src/features/workspace/chat/InterviewStage.tsx, src/features/workspace/chat/ChatPanel.tsx, src/features/trace/TraceModal.tsx, src/features/workspace/chat/Markdown.tsx, tests/chat.test.tsx, tests/settings.test.tsx, screenshots/
+  - Depends on: none
+  - Size: S
+  - Done when: `npm test` passes with tests/chat.test.tsx: after a failed plan run, two clicks on "Generate plan again" before the POST resolves post `/plan` once and the button is disabled while it runs; an `interview` run error "quota hit" shows "quota hit. Send your answer again." and "Model timed out." shows "Model timed out. Send your answer again."; a markdown link has class `hover:text-primary-hover`; and tests/settings.test.tsx: the trace latency cells and the total row's node and latency cells have class `whitespace-nowrap`; `npm run typecheck` passes; manual: screenshot 8.1-trace-1280x800 shows "2 min 43 s" and "Total, 3 runs" each on one line.

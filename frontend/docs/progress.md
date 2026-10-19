@@ -213,3 +213,12 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none new (sed -i CRLF flip already in Known gotchas; hit again, restored).
 - Left open: none from review (P3 directional copy fixed). Pre-existing: trace total row wraps "2 min 43 s" at 1280; markdown link has no hover state.
 - Next: Phase 7 done; all plan tasks [x].
+
+## 2026-10-19: Audit (final, re-audit after Phase 7)
+- Status: done
+- Verdict: DEFECTS (0 P0, 0 P1, 0 P2, 4 P3); user chose to fix all four: Phase 8 added (8.1 retry guard, error punctuation, trace wrap and link hover, S).
+- Checks rerun (re-audit: Test (all) plus 7.1, 7.2 Done when; earlier tasks whose Files they touched, 2.2, 2.3, 3.1, 3.2, 3.3, 6.1, are covered by the same `npm test`): `npm test` 14 files / 230 tests PASS; `npm run typecheck` PASS; `npm run build` exit 0, default base `/`, absolute URLs in dist only w3.org, react docs, react-router `localhost` and fonts.googleapis.com; hex search of src/components and src/features none; "`comments` run" search none; 6.2 node-name search none (only stage/scope `'build'`); secrets: no .env in frontend or its git history. Skipped: earlier manual screenshot checks of tasks 7.x didn't touch; no fresh core-screen screenshots, the reviewer used 7.1/7.2 screenshots (taken after the changes) plus the first audit's audit-* set.
+- Reviewer (blueprint-reviewer, opus high, with web-design-guidelines on the 7.x UI files): 7.1 Review focus both pass (errors say what to do next; card anchor never shifts a live log); 7.2 Done when items present; no regressions, no Non-goal built, package.json matches the verified table. P3: "Generate plan again" can double-post `/plan` (InterviewStage.tsx:140); " Send your answer again." after text with no final punctuation (ChatPanel.tsx:209); trace latency and total row wrap at 1280 (TraceModal.tsx:35); markdown links have no hover (Markdown.tsx:13).
+- Docs: essentials Conventions gained the run-card anchor rule and the `ready`-drops-running-runs test rule (7.1 Decisions and Gotchas); PRD Later gained 7.1's two Left open P3s as known limitations. AGENTS.md Known gotchas unchanged (7.x added none).
+- Left open: typescript Verified row still not re-verified (from the first final audit); lint warns the essentials exceed one page (6.9k chars) and the 5.1 entry's date is out of order.
+- Next: task 8.1, then a re-audit (architect).

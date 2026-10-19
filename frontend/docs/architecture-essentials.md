@@ -40,6 +40,8 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
   `setMockSession`); no jest-dom: assert `el.disabled`, drive with `fireEvent`. Guards are exact.
 - Run `node` values are the api.md 1.2 names; StretchRoute `'audit'` is a route, not a node.
 - Activity clock lives in ActivityStrip/RunCard, not useBuildStream (no per-second re-render).
+  A run card sits after the message count known at its `run.started` (never timestamps). A
+  `ready` event drops running runs: tests fire `ready` before a pre-load `run.started`.
 - Focus after an async load: `useLayoutEffect`. Set state that disables a control in the event's
   batch, not via a child's passive effect. Truncate the focusable element, never its wrapper.
 
