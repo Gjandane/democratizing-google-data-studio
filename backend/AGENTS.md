@@ -45,3 +45,4 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Uvicorn's graceful-shutdown timeout excludes lifespan teardown; bound backup waits separately and avoid non-daemon executor threads for volume I/O.
 - httpx string headers must be ASCII; use byte header values when testing non-ASCII credentials at the server boundary.
 <!-- blueprint-solution:end -->
+- Config does not strip root .env values and GCP_PROJECT_ID there has leading whitespace; live tests pass a stripped project through PUT /api/settings (or DSS_LIVE_GCP_PROJECT).

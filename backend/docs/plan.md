@@ -157,7 +157,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Done when: `uv run pytest tests/test_research.py` passes with FakeLLM and fake search/HTTP tools: scraper HTTP requests stop at 20 including redirects and failures; search runs at most once; raw scraped rows never enter model context; writes a CSV with a header row and `sources.md` listing every URL used, and registers a `research` source; manual (live): "NBA players 2025-26 season stats" yields a CSV with at least 20 rows.
 
 ## Phase 9: Audit fixes
-- [ ] 9.1 Restore live planner schema compatibility
+- [x] 9.1 Restore live planner schema compatibility
   - Goal: the normal interview-to-prototype path works with the real configured planner. Current plan/repair output_schema conversion sends unsupported additional_properties in response_schema and fails with provider 400 before writing docs.
   - Spec: docs/architecture.md#Graph; docs/architecture.md#Implementation conventions
   - Files: src/dss/harness/nodes/plan.py, tests/test_plan.py, tests/live/test_backend_flow.py

@@ -422,3 +422,14 @@ context. Task status lives in docs/plan.md, not here.
   (9.1-9.7), with unchanged task markers. The activity change remains first in plan order.
 - Current audit does not certify the unimplemented run.usage extension. Its own task check and
   API 1.2 conformance must pass before the next final acceptance. Both phases remain pending.
+
+## 2026-10-19: Task 9.1 Restore live planner schema compatibility
+- Status: done
+- Plan check: off
+- What changed: plan/plan_repair drop ADK output_schema; before_model sends Plan's strict JSON schema as response_json_schema (response_schema cleared), replaces history with one fixed user turn and checks the whole request (schema included) against the plan budget. after_model guards and strictly validates raw output, keeps it in state for the view node and returns a placeholder with usage. New provider-request/strict-validation tests; new live interview-to-prototype test.
+- Checks: `uv run pytest tests/test_plan.py tests/test_spec_node.py` PASS (24; new request test fails on old plan.py); `uv run pytest -m live tests/live/test_backend_flow.py` PASS (88 s, small_sales.csv, build b_26225492be89, runs r_b4950af59fe4/r_f0d0814bd138/r_591ca8f69634, one spec call, view 3 rows, 1200px background); `uv run pytest` PASS (354, 4 deselected). Evidence: `.blueprint/qa/final-audit/task-9.1/`. Reviewer: no findings.
+- Decisions: live test uses temp data_dir/db, clears access code, sets project via PUT /api/settings from DSS_LIVE_GCP_PROJECT or stripped GCP_PROJECT_ID. No new dependencies.
+- Tried and failed: none.
+- Gotchas: root .env GCP_PROJECT_ID has leading whitespace (added to Known gotchas).
+- Left open: renderer seen in screenshot: header title clipped/subtitle spills; table repeats `revenue` column. Not 9.1 scope.
+- Next: Task 9.2 Compile and preview recipes without a server-side engine.

@@ -5,6 +5,7 @@ import yaml
 from dss.db import new_id
 from dss.harness.nodes.intake import write_doc
 from dss.harness.guardrails import RunError
+from dss.harness.nodes.plan import Plan
 from fakes import FakeLLM as BaseFakeLLM
 from google.adk.models.llm_response import LlmResponse
 from google.genai import types
@@ -151,7 +152,40 @@ async def test_repair_changes_sql(client, app, build_id):
     assert "`t0`.`revenue` * 0.9" in service.views[0][1]
 
 
-@pytest.mark.parametrize("response", ["not json", '{"brief":"test-key",', json.dumps({**PLAN, "brief": "test-key"})])
+class RecordingLLM(FakeLLM):
+    requests: list = []
+
+    async def generate_content_async(self, llm_request, stream=False):
+        self.requests.append(llm_request.model_copy(deep=True))
+        async for event in super().generate_content_async(llm_request, stream):
+            yield event
+
+
+async def test_provider_request_uses_json_schema(client, app, build_id):
+    seed(app, build_id)
+    model = RecordingLLM(response=json.dumps(PLAN), requests=[])
+    await app.state.harness.run("plan", build_id,
+        {"config": app.state.settings.get(), "factory": lambda config: FakeBigQuery()}, llm=model)
+    plan, spec = model.requests
+    for request, title in ((plan, "Plan"), (spec, "DashboardSpec")):
+        assert request.config.response_json_schema["title"] == title
+        assert request.config.response_schema is None
+        assert request.config.response_mime_type == "application/json"
+    # The provider receives the strict schema; nothing is converted or loosened.
+    assert plan.config.response_json_schema == Plan.model_json_schema()
+    assert plan.config.response_json_schema["additionalProperties"] is False
+    assert [c.parts[0].text for c in plan.contents] == ["Write the dashboard plan."]
+    with app.state.db.connect() as conn:
+        trace = conn.execute("SELECT * FROM traces").fetchone()
+    spans = json.loads(trace["spans_json"])
+    assert [s["node"] for s in spans][:4] == ["router", "plan", "view", "spec"]
+    assert spans[1]["input_tokens_estimate"] > 0 and spans[1]["sections"]
+    assert trace["input_tokens"] >= 5 and trace["output_tokens"] >= 2
+
+
+@pytest.mark.parametrize("response", ["not json", '{"brief":"test-key",', json.dumps({**PLAN, "brief": "test-key"}),
+    json.dumps({**PLAN, "extra": "field"}), json.dumps({**PLAN, "questions": [{"question": "Q?", "priority": "urgent"}]}),
+    json.dumps({**PLAN, "fields": [{"name": "Bad Name", "sql": "1", "type": "FLOAT"}]})])
 async def test_invalid_or_unsafe_output(client, app, build_id, response, caplog):
     docs = seed(app, build_id)
     service = FakeBigQuery()

@@ -6,6 +6,7 @@ from google.adk import Event
 from google.adk.agents import LlmAgent
 from google.adk.events.event_actions import EventActions
 from google.adk.models.llm_response import LlmResponse
+from google.genai import types
 from pydantic import BaseModel, ConfigDict, Field
 from dss.db import now
 from dss.harness.context import BUDGETS, plan_context, tokens
@@ -50,7 +51,7 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         version = conn.execute("SELECT current_version FROM builds WHERE id=?", (build_id,)).fetchone()[0]
         sources = [{"bq_table": row["bq_table"], "columns": json.loads(row["columns_json"])}
                    for row in conn.execute("SELECT * FROM sources WHERE build_id=? ORDER BY rowid", (build_id,))]
-    state = {"error": None, "repaired": False, "previous": "", "failure": None}
+    state = {"raw": "", "error": None, "repaired": False, "previous": "", "failure": None}
     secret = config.google_api_key.get_secret_value()
 
     def diagnostic_text(exc):
@@ -73,6 +74,19 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
     async def before_model(callback_context, llm_request):
         trace.span("plan_repair" if state["repaired"] else "plan")
         context.record(trace.spans[-1], repair())
+        # ADK's output_schema converts to response_schema, which rejects additionalProperties.
+        # Send the JSON schema directly; Plan.model_validate_json keeps strict local checks.
+        schema = Plan.model_json_schema()
+        llm_request.config.response_schema = None
+        llm_request.config.response_mime_type = "application/json"
+        llm_request.config.response_json_schema = schema
+        # Repair data travels in the assembled instruction, never in workflow history.
+        llm_request.contents = [types.Content(role="user", parts=[types.Part(text="Write the dashboard plan.")])]
+        size = len(str(llm_request.config.system_instruction)) + len(json.dumps(schema)) + sum(
+            len(c.model_dump_json(exclude_none=True)) for c in llm_request.contents)
+        trace.spans[-1]["input_tokens_estimate"] = (size + 3) // 4
+        if (size + 3) // 4 > BUDGETS["plan"]:
+            raise RunError("llm_unavailable", "Plan request exceeds its input budget", 503)
 
     async def after_model(callback_context, llm_response):
         if llm_response.error_code:
@@ -83,21 +97,22 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
             check_reply(raw, (secret,))
             Plan.model_validate_json(raw)
         except (RunError, ValueError):
-            # ADK validates output_schema outside on_model_error_callback and logs
-            # exceptions. Replace unsafe/invalid output before that boundary.
+            # Raw output never enters events or logs: replace unsafe/invalid output here.
             return LlmResponse(error_code="llm_unavailable", error_message="The planning model returned invalid output")
-        return None
+        state["raw"] = raw
+        return LlmResponse(content=types.Content(role="model", parts=[types.Part(text="Plan received for the view.")]),
+                           usage_metadata=llm_response.usage_metadata)
 
     def agent(name):
         return LlmAgent(name=name, model=model, mode="single_turn", instruction=instruction_provider,
-                        output_schema=Plan, before_model_callback=before_model,
+                        before_model_callback=before_model,
                         after_model_callback=after_model,
                         on_model_error_callback=model_error)
 
     async def view(node_input):
         trace.span("view")
         try:
-            raw = check_reply(json.dumps(node_input) if isinstance(node_input, dict) else node_input, (secret,))
+            raw = check_reply(state["raw"], (secret,))
             plan = Plan.model_validate_json(raw)
             sql = select_sql(sources, plan.fields, plan.joins)
             table = view_table(config, build_id, version)
