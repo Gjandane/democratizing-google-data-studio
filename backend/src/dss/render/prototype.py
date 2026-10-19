@@ -57,8 +57,9 @@ def aggregate_sql(spec, component):
     sql = f'SELECT {", ".join(select)} FROM {quoted(table_uri(spec.datasource.table))}'
     if dims:
         sql += ' GROUP BY ' + ', '.join(group)
-    sort = component.sort or {}
-    order = sort.get('field')
+    # Absent sort: time series by date ascending, others by the first metric descending.
+    sort = component.sort
+    order = sort.field if sort else None
     aliases = {m.field: 'm' + str(i) for i, m in enumerate(component.metrics)}
     if order and order not in known:
         raise ValueError('Unknown sort field')
@@ -70,7 +71,7 @@ def aggregate_sql(spec, component):
     else:
         order = aliases.get(order, order) if order else (dims[0] if component.type == 'time_series' and dims else 'm0' if component.metrics else dims[0])
         expression = quoted(order)
-    direction = str(sort.get('direction', 'asc' if component.type == 'time_series' else 'desc')).upper()
+    direction = (sort.order if sort else 'asc' if component.type == 'time_series' else 'desc').upper()
     if direction not in ('ASC', 'DESC'):
         raise ValueError('Invalid sort direction')
     sql += f' ORDER BY {expression} {direction}'

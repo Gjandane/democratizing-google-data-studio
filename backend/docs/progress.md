@@ -455,3 +455,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: test_timeout_and_late_agent_then_retry (0.12 s grace) failed once under load on old src; passed 3/3 reruns.
 - Left open: none.
 - Next: Task 9.4 Align sort validation, prototype SQL and recipe order.
+
+## 2026-10-19: Task 9.4 Align sort validation, prototype SQL and recipe order
+- Status: done
+- Plan check: off
+- What changed: typed `Sort{field, order: asc|desc}` (extra forbidden) replaces `sort: dict`; validator reads `sort.field`; renderer orders by `sort.order` (was reading a nonexistent `direction`, so explicit asc rendered desc); compiler emits `sort.model_dump()`. POST /recipe now maps a model-invalid spec.json to 422 invalid_recipe. Tests: valid/malformed sort matrix, provider schema shape, asc/desc SQL+recipe match on golden bar/table/time_series, absent-sort defaults, API publishes nothing on malformed/legacy sort.
+- Checks: `uv run pytest tests/test_spec_validate.py tests/test_render.py tests/test_recipe_contract.py` PASS (81, 2 deselected); `uv run pytest` PASS (409, 4 deselected). Golden recipe bytes unchanged. Reviewer: one P2, no P0/P1.
+- Decisions: `order` required (contract requires it); absent sort keeps time_series date ASC, others m0 DESC. Renderer keeps a defensive order check for model_construct'ed values. Edited src/dss/api/run.py (outside Files): read_spec moved inside /recipe's try (RunError re-raised), else invalid spec surfaced as invalid_source. Legacy spec.json with `direction` now fails validation (intended). No new dependencies.
+- Tried and failed: none.
+- Gotchas: none.
+- Left open: P2 revise LLM context/prompt never shows the Sort shape, so a sort comment may guess `direction` and fail validation - src/dss/harness/context.py, skills/prompts. Live check not run: spec provider schema now has `anyOf[$ref Sort, null]`; confirm with `uv run pytest -m live tests/live/test_backend_flow.py`.
+- Next: Task 9.5 Package nested image assets for plain-name agent jobs.

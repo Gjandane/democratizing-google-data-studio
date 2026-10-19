@@ -181,7 +181,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: S
   - Done when: `uv run pytest tests/test_execute.py tests/test_agent_server.py tests/test_revise.py` passes: compile -> real revision publication -> run refreshes the recipe from the current spec in local and agent modes; the engine argument input and downloaded Job recipe both contain revised chart content; a replan replacing a spec is covered too. Refresh failure starts no subprocess/job, preserves prototype stage and previous complete recipe, and leaves locks usable; concurrent recipe calls cannot mutate active job files. A no-op remains deterministic. `uv run pytest` passes.
   - Review focus: freshness holds at the execution boundary, including direct API use; no reliance on a frontend recompilation sequence.
-- [ ] 9.4 Align sort validation, prototype SQL and recipe order
+- [x] 9.4 Align sort validation, prototype SQL and recipe order
   - Goal: one validated sort shape uses the contract's order key, so ascending/descending previews match the report.
   - Spec: docs/architecture.md#Dashboard Spec; docs/architecture.md#Prototype renderer; docs/architecture.md#Recipe compiler
   - Files: src/dss/spec/models.py, src/dss/spec/validate.py, src/dss/render/prototype.py, src/dss/recipe/compiler.py, tests/test_spec_validate.py, tests/test_render.py, tests/test_recipe_contract.py

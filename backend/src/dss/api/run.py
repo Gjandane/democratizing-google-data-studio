@@ -36,9 +36,12 @@ async def recipe(build_id: str, request: Request):
     async def perform(run_id):
         # Preview in code (never the engine): hosted agent mode has none. Preview before
         # publishing so a failure leaves the previous recipe in place.
-        spec, version = read_spec(folder), build["current_version"]
+        version = build["current_version"]
         try:
+            spec = read_spec(folder)
             ops = preview(compile_recipe(spec, version))
+        except RunError:
+            raise
         except Exception:
             raise RunError("invalid_recipe", "Spec could not be compiled into a recipe", 422) from None
         compile_current(spec, version, folder)

@@ -105,7 +105,7 @@ def validate_spec(value, *, allowed=None, high_priority=(), catalog_root=None):
                         error(fp, "sum/avg require a numeric field")
                     if slot == "dimensions" and item.type == "geo_map" and field.type.upper() not in ("GEO", "GEOGRAPHY"):
                         error(fp, "Geo map requires a geographic field")
-            if item.sort and item.sort.get("field") not in fields:
+            if item.sort and item.sort.field not in fields:
                 error(path + ".sort.field", "Unknown datasource field")
     for ref in high_priority:
         if ref not in refs:

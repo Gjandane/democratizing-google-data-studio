@@ -14,7 +14,8 @@ from dss.harness.guardrails import RunError
 from dss.harness.nodes.compile import perform
 from dss.main import create_app
 from dss.recipe.compiler import compile_recipe, preview, print_line
-from dss.spec.models import DashboardSpec, TYPES
+from dss.render.prototype import aggregate_sql
+from dss.spec.models import DashboardSpec, Sort, TYPES
 from dss.spec.validate import validate_spec
 from fakes import fake_models
 
@@ -77,7 +78,8 @@ def test_all_types_arguments_and_order(spec):
                 if getattr(c, key) is None:
                     assert key not in op
                 else:
-                    assert op[key] == getattr(c, key)
+                    value = getattr(c, key)
+                    assert op[key] == (value.model_dump() if key == 'sort' else value)
         elif c.type == 'text':
             assert op['op'] == 'add_text' and op['text'] == c.text
         elif c.type == 'image':
@@ -90,6 +92,30 @@ def test_all_types_arguments_and_order(spec):
     assert all(op['style'] == {'colors': spec.theme.palette} for op in styles)
     assert all(ops[ops.index(op) - 1]['component_id'] == op['component_id'] for op in styles)
     assert not any(op.get('component_id') == 'p1_title' for op in ops)
+
+
+@pytest.mark.parametrize('kind', ['bar', 'table', 'time_series'])
+@pytest.mark.parametrize('order', ['asc', 'desc'])
+def test_sort_order_matches_prototype_sql(spec, kind, order):
+    c = next(c for c in spec.pages[0].components if c.type == kind)
+    grouping = c.date_dimension or c.dimensions[0]
+    metric = 'm' + str([m.field for m in c.metrics].index('revenue'))
+    for field, alias in (('revenue', metric), (grouping, grouping)):
+        c.sort = Sort(field=field, order=order)
+        assert not validate_spec(spec, allowed=TYPES)
+        op = next(op for op in validate_lines(compile_recipe(spec, 3))[1:]
+                  if op['op'] == 'add_chart' and op['component_id'] == c.id)
+        assert op['sort'] == {'field': field, 'order': order}
+        assert f'ORDER BY `{alias}` {order.upper()} LIMIT' in aggregate_sql(spec, c)
+
+
+def test_absent_sort_is_omitted_and_keeps_defaults(spec):
+    table = next(c for c in spec.pages[0].components if c.type == 'table')
+    assert table.sort is None
+    op = next(op for op in validate_lines(compile_recipe(spec, 3))[1:]
+              if op['op'] == 'add_chart' and op['component_id'] == table.id)
+    assert 'sort' not in op
+    assert aggregate_sql(spec, table).endswith('ORDER BY `m0` DESC LIMIT 20')
 
 
 def test_reading_order_is_independent_of_input_order(spec):
@@ -202,19 +228,26 @@ def test_recipe_api_uses_current_spec(agent_client, spec):
     assert not app.state.agent_jobs.jobs and not app.state.agent_jobs.queue
 
 
-@pytest.mark.parametrize('failure', ['compile', 'preview'])
+@pytest.mark.parametrize('failure', ['compile', 'preview', 'sort', 'direction'])
 def test_recipe_api_failure_publishes_nothing(agent_client, spec, failure, monkeypatch):
     client, app, folder = agent_client
     previous = b'previous complete recipe\n'
     (folder / 'recipe.jsonl').write_bytes(previous)
-    if failure == 'compile':
+    if failure in ('sort', 'direction'):
+        # A spec.json that bypassed the validator: a malformed order or a legacy direction key.
+        document = json.loads(spec.model_dump_json())
+        bar = next(c for c in document['pages'][0]['components'] if c['type'] == 'bar')
+        bar['sort'] = {'field': 'revenue', 'order': 'up'} if failure == 'sort' else {'field': 'revenue', 'direction': 'asc'}
+        (folder / 'spec.json').write_text(json.dumps(document), encoding='utf-8')
+    elif failure == 'compile':
         next(c for c in spec.pages[0].components if c.type == 'image').image_path = None
     else:
         from dss.api import run
         def broken(text):
             raise KeyError('C:/secret/raw-detail')
         monkeypatch.setattr(run, 'preview', broken)
-    (folder / 'spec.json').write_text(spec.model_dump_json(), encoding='utf-8')
+    if failure not in ('sort', 'direction'):
+        (folder / 'spec.json').write_text(spec.model_dump_json(), encoding='utf-8')
     response = client.post('/api/builds/b_123456789abc/recipe')
     assert response.status_code == 422
     assert response.json()['error']['code'] == 'invalid_recipe'

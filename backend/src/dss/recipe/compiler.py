@@ -31,7 +31,9 @@ def compile_recipe(spec: DashboardSpec, version: int) -> str:
                     raise ValueError("Image component needs image_path")
                 op("add_image", path=c.image_path, **args)
             else:
-                optional = {key: getattr(c, key) for key in ("date_dimension", "breakdown", "sort") if getattr(c, key) is not None}
+                optional = {key: getattr(c, key) for key in ("date_dimension", "breakdown") if getattr(c, key) is not None}
+                if c.sort is not None:
+                    optional["sort"] = c.sort.model_dump()
                 op("add_chart", chart_type=c.type, dimensions=c.dimensions, metrics=[m.model_dump() for m in c.metrics], title=c.label, options=c.options, **optional, **args)
                 op("set_style", component_id=c.id, style=dict(colors=spec.theme.palette))
     op("save_report")

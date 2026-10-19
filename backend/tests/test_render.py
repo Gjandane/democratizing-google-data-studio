@@ -12,7 +12,7 @@ from dss.harness.nodes.render import artifacts, perform
 from dss.render import background
 from dss.render.prototype import aggregate_data, aggregate_sql, chart_option, render
 from dss.spec.layout import box
-from dss.spec.models import DashboardSpec
+from dss.spec.models import DashboardSpec, Sort
 
 
 @pytest.fixture
@@ -106,14 +106,15 @@ def test_sql_aggregation_bounds_sort(dashboard):
     c = dashboard.pages[0].components[1]
     c.breakdown = 'revenue'
     c.metrics[0].agg = 'count_distinct'
-    c.sort = {'field': 'revenue', 'direction': 'asc'}
+    c.sort = Sort(field='revenue', order='asc')
     sql = aggregate_sql(dashboard, c)
     assert 'COUNT(DISTINCT `revenue`) AS `m0`' in sql
     assert 'GROUP BY `region`, `revenue`' in sql
     assert sql.endswith('ORDER BY `m0` ASC LIMIT 50')
     c.type = 'pivot_table'
     assert aggregate_sql(dashboard, c).endswith('LIMIT 20')
-    c.sort['direction'] = 'desc; DROP TABLE x'
+    # Defense in depth: the renderer never interpolates an order the model would reject.
+    c.sort = Sort.model_construct(field='revenue', order='desc; DROP TABLE x')
     with pytest.raises(ValueError):
         aggregate_sql(dashboard, c)
     c.sort = None
@@ -152,8 +153,37 @@ def test_geography_and_date_binding(dashboard):
     option = chart_option(c, rows, dashboard.theme, 550)
     assert option['series'][0]['coordinateSystem'] == 'geo'
     assert option['series'][0]['data'][0]['value'] == [121.0,14.6,9]
-    c.sort = {'field':'region'}
-    assert 'ORDER BY ANY_VALUE(`region`)' in aggregate_sql(dashboard, c)
+    c.sort = Sort(field='region', order='asc')
+    assert 'ORDER BY ANY_VALUE(`region`) ASC' in aggregate_sql(dashboard, c)
+
+
+def time_series(dashboard):
+    from dss.spec.models import DataField
+    dashboard.datasource.fields.append(DataField(name='sale_date', type='DATE', label='Date', role='dimension'))
+    c = dashboard.pages[0].components[1]
+    c.type, c.dimensions, c.date_dimension = 'time_series', [], 'sale_date'
+    return c
+
+
+@pytest.mark.parametrize('kind', ['bar', 'table', 'time_series'])
+@pytest.mark.parametrize('order', ['asc', 'desc'])
+def test_explicit_sort_order(dashboard, kind, order):
+    c = time_series(dashboard) if kind == 'time_series' else dashboard.pages[0].components[1]
+    c.type = kind
+    limit = ' LIMIT 20' if kind == 'table' else ' LIMIT 50'
+    c.sort = Sort(field='revenue', order=order)
+    assert aggregate_sql(dashboard, c).endswith(f'ORDER BY `m0` {order.upper()}{limit}')
+    grouping = 'sale_date' if kind == 'time_series' else 'region'
+    c.sort = Sort(field=grouping, order=order)
+    assert aggregate_sql(dashboard, c).endswith(f'ORDER BY `{grouping}` {order.upper()}{limit}')
+
+
+@pytest.mark.parametrize('kind, tail', [('bar', 'ORDER BY `m0` DESC LIMIT 50'),
+    ('table', 'ORDER BY `m0` DESC LIMIT 20'), ('time_series', 'ORDER BY `sale_date` ASC LIMIT 50')])
+def test_absent_sort_defaults(dashboard, kind, tail):
+    c = time_series(dashboard) if kind == 'time_series' else dashboard.pages[0].components[1]
+    c.type, c.sort = kind, None
+    assert aggregate_sql(dashboard, c).endswith(tail)
 
 
 @pytest.mark.parametrize('kind', ['time_series','bar','pie','table','pivot_table','geo_map','scatter'])

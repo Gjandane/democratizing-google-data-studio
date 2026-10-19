@@ -37,6 +37,11 @@ class Metric(Model):
     field: str = Field(min_length=1)
     agg: Literal["sum", "avg", "count", "count_distinct", "min", "max", "none"]
 
+class Sort(Model):
+    """The recipe contract's add_chart.sort shape; renderer and compiler read it as is."""
+    field: str = Field(min_length=1)
+    order: Literal["asc", "desc"]
+
 class Component(Model):
     id: str = Field(pattern=r"^p[1-9][0-9]*_[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
     type: Literal["scorecard", "time_series", "bar", "pie", "table", "pivot_table", "geo_map", "scatter", "text", "image", "date_range", "dropdown"]
@@ -46,7 +51,7 @@ class Component(Model):
     metrics: list[Metric] = Field(default_factory=list)
     date_dimension: str | None = None
     breakdown: str | None = None
-    sort: dict | None = None
+    sort: Sort | None = None
     options: dict = Field(default_factory=dict)
     text: str | None = None
     image_path: str | None = None

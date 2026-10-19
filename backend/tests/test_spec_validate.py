@@ -80,3 +80,53 @@ def test_multiline_high_priority_questions():
     from dss.spec.validate import high_questions
     text = '- q1: Revenue\nby month? (priority: high)\n- q2: Customers? (priority: low)\n- q3: Margin? (priority: high)'
     assert high_questions(text) == ['q1', 'q3']
+
+
+def charted(kind):
+    """thin_spec with its bar retyped; time series bind a date and no grouping dimensions."""
+    spec = sample()
+    spec['datasource']['fields'].append({'name': 'sale_date', 'type': 'DATE', 'label': 'Date', 'role': 'dimension'})
+    c = spec['pages'][0]['components'][1]
+    c['type'] = kind
+    if kind == 'time_series':
+        c.update(dimensions=[], date_dimension='sale_date')
+    return spec, c
+
+
+@pytest.mark.parametrize('kind', ['bar', 'table', 'time_series'])
+@pytest.mark.parametrize('order', ['asc', 'desc'])
+def test_valid_sort_orders(kind, order):
+    spec, c = charted(kind)
+    for field in ('revenue', 'sale_date', 'region'):
+        c['sort'] = {'field': field, 'order': order}
+        assert validate_spec(spec, allowed=catalog()) == []
+    c.pop('sort')
+    assert validate_spec(spec, allowed=catalog()) == []
+
+
+@pytest.mark.parametrize('sort', [
+    {'field': 'revenue'}, {'order': 'asc'}, {'field': '', 'order': 'asc'},
+    {'field': 'revenue', 'order': 'up'}, {'field': 'revenue', 'order': 'ASC'}, {'field': 'revenue', 'order': None},
+    {'field': 'revenue', 'direction': 'asc'}, {'field': 'revenue', 'order': 'asc', 'direction': 'desc'},
+    {'field': 'revenue', 'order': 'asc', 'nulls': 'last'}, {'field': 1, 'order': 'asc'},
+    'revenue', ['revenue', 'asc'], {'field': 'missing', 'order': 'asc'}])
+def test_malformed_sort_fails(sort):
+    spec, c = charted('bar')
+    c['sort'] = sort
+    errors = validate_spec(spec, allowed=catalog())
+    assert errors and all(e['path'].startswith('pages.0.components.1.sort') for e in errors), errors
+
+
+def test_unknown_component_field_fails():
+    spec, c = charted('table')
+    c['sort_order'] = 'asc'
+    assert validate_spec(spec, allowed=catalog()) == [{'path': 'pages.0.components.1.sort_order', 'message': 'Extra inputs are not permitted'}]
+
+
+def test_provider_schema_carries_the_sort_contract():
+    from dss.spec.models import DashboardSpec
+    schema = DashboardSpec.model_json_schema()
+    assert schema['$defs']['Sort']['required'] == ['field', 'order']
+    assert schema['$defs']['Sort']['properties']['order']['enum'] == ['asc', 'desc']
+    assert schema['$defs']['Sort']['additionalProperties'] is False
+    assert {'$ref': '#/$defs/Sort'} in schema['$defs']['Component']['properties']['sort']['anyOf']
