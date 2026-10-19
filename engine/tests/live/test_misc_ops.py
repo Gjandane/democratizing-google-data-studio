@@ -61,12 +61,19 @@ def test_misc_ops(tmp_path, capsys, monkeypatch):
                 raise
 
         monkeypatch.setattr(module, "run", observed)
+    started = time.monotonic()
     code = main(["run", str(recipe.path), "--screens", str(tmp_path / "screens")])
+    elapsed = time.monotonic() - started
     output = capsys.readouterr()
     (tmp_path / "events.jsonl").write_text(output.out)
     (tmp_path / "diagnostics.txt").write_text("\n".join(diagnostics))
     events = [json.loads(s) for s in output.out.splitlines()]
     finished = [e for e in events if e["event"] == "op_finished"]
+    (tmp_path / "budget.json").write_text(json.dumps({
+        "total_ops": len(recipe.ops), "elapsed_s": elapsed,
+        "median_op_s": statistics.median(e["duration_ms"] for e in finished) / 1000,
+        "summed_op_s": sum(e["duration_ms"] for e in finished) / 1000,
+    }, indent=2), encoding="utf-8")
     assert code == 0 and not output.err, output.out + output.err
     assert [e["op_id"] for e in finished] == [op.id for op in recipe.ops]
     assert all(e["status"] == "ok" for e in finished), (finished, diagnostics)
@@ -74,6 +81,7 @@ def test_misc_ops(tmp_path, capsys, monkeypatch):
     assert any(e["event"] == "log" and e["level"] == "warn"
                and "unsupported_example" in e["message"] for e in events)
     assert events[-1]["status"] == "ok" and events[-1]["report_url"]
+    assert len(recipe.ops) == 20 and elapsed < 300
     assert statistics.median(e["duration_ms"] for e in finished) <= 15000
     assert sum(e["duration_ms"] for e in finished) < 300000
     selectors = load_selectors()

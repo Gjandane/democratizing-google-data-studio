@@ -128,6 +128,11 @@ shape; it is not the future generic field-selection implementation.
 The first query can open `consent_dialog`; `consent_allow` grants viewer audit
 logging for the report's configured source. Never automate Google sign-in.
 
+Selecting an image can also empty the Data panel before the first chart exists.
+An empty `field_buttons` result in that state does not establish that a source
+field is missing. Retain source-field names while the panel is populated, before
+selecting an image, just as for a date control.
+
 ## Geometry
 
 Set a 1920 x 1200 viewport and choose `zoom_menu` -> `zoom_100`. The canvas

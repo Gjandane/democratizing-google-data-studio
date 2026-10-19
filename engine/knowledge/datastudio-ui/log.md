@@ -6,6 +6,9 @@ timestamp: 2026-10-18
 selectors: {}
 ---
 
+- 2026-10-19: repeated golden acceptance observed an empty Data panel while an
+  uploaded image is selected; documented source-field retention before image
+  selection in editor.md. No selector changes.
 - 2026-10-18 task 4.2: text formatting, custom colors, image Setup/aspect ratio and page manager selectors in misc.md; Selection Mode exits text editing before geometry/readback.
 
 - 2026-10-18: task 4.1 observed pivot row/column lists, scatter X/Y/size slots, Geo chart and geo-type menu, date/dropdown controls and date presets; added selectors. Geo picker with no compatible fields shows No results without Chart fields.

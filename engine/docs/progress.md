@@ -240,3 +240,22 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond recorded guidance.
 - Left open: none.
 - Next: task 5.4 Recheck live acceptance after audit fixes; run original live gates and screencast/budget checks.
+
+## 2026-10-19: Task 5.4 Recheck live acceptance after audit fixes
+- Status: partial.
+- Plan check: off
+- What changed: screencast/20-op acceptance checks; image-selection knowledge.
+- Checks: evidence/logs under `.blueprint/check54/`:
+  - `uv run dsengine check`: true/true.
+  - `uv run python spikes/spike_one_chart.py`: PASS; `spike/` screenshots inspected, zero-pixel errors.
+  - `uv run pytest`: PASS 117,11 deselected,5.15s (`offline.log`).
+  - `uv run pytest -m live tests/live/test_report_ops.py tests/live/test_charts_a.py tests/live/test_golden.py tests/live/test_charts_b.py tests/live/test_misc_ops.py --basetemp=.blueprint/check54/live -x`: FAIL screenshot timeout; repeated with `--basetemp=.blueprint/check54/live-rerun`: report2/chartsA3 PASS, golden8/10 FAIL,33s/median2.820s.
+  - `uv run pytest -m live tests/live/test_golden.py tests/live/test_charts_b.py tests/live/test_misc_ops.py --basetemp=.blueprint/check54/remaining -x`: golden8/10 FAIL,32.437s/median2.648s.
+  - `uv run pytest -m live tests/live/test_golden.py -k 'timeout or screencast' tests/live/test_charts_b.py tests/live/test_misc_ops.py --basetemp=.blueprint/check54/independent`: timeout PASS; screencast98 JPEG/120 valid events, saved-render FAIL.
+  - `uv run pytest -m live tests/live/test_charts_b.py tests/live/test_misc_ops.py --basetemp=.blueprint/check54/other`: chartsB2 PASS/screenshots inspected; misc17/20 FAIL,63.609s.
+  - `uv run pytest -m live tests/live/test_misc_ops.py --basetemp=.blueprint/check54/misc-rerun`: repeated17/20 FAIL,64.015s/median1.867s.
+- Decisions: retained assertions; reviewer: no test-diff findings. Prerequisites: signed-in dedicated Chrome, copyable template, billing-enabled project/BigQuery access; source queried successfully.
+- Tried and failed: unchanged reruns.
+- Gotchas: none.
+- Left open: P1 image selection clears uncached fields; repeated misc s007 text timeout, consequential s015, s016 title-size failure.
+- Next: approve product-repair scope (report.py; investigate text.py/style.py), fix regressions, rerun acceptance.

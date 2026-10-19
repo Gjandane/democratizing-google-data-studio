@@ -1,5 +1,6 @@
 """Golden compiler-order recipe, real run budget, and timeout recovery."""
 
+import base64
 import json
 import os
 import re
@@ -12,6 +13,7 @@ from urllib.parse import urlsplit
 
 import pytest
 from dotenv import load_dotenv
+from jsonschema import Draft202012Validator, FormatChecker
 from playwright.sync_api import expect
 
 from dsengine import chrome
@@ -95,21 +97,42 @@ def _open_saved(url, ops, tmp_path, *, complete):
             page.close()
 
 
-@pytest.mark.parametrize("timeout", [300, 30], ids=["budget", "timeout-recovery"])
-def test_golden_recipe(tmp_path, capsys, timeout):
+@pytest.mark.parametrize("timeout,screencast", [(300, False), (30, False), (300, True)],
+                         ids=["budget", "timeout-recovery", "screencast"])
+def test_golden_recipe(tmp_path, capsys, timeout, screencast):
     recipe, ops = _recipe(tmp_path)
     started = time.monotonic()
-    code = main(["run", str(recipe), "--timeout", str(timeout),
-                 "--screens", str(tmp_path / "screens")])
+    args = ["run", str(recipe), "--timeout", str(timeout),
+            "--screens", str(tmp_path / "screens")]
+    if screencast:
+        args.append("--screencast")
+    code = main(args)
     elapsed = time.monotonic() - started
     output = capsys.readouterr()
     (tmp_path / "events.jsonl").write_text(output.out, encoding="utf-8")
     events = [json.loads(line) for line in output.out.splitlines()]
     finished = [event for event in events if event["event"] == "op_finished"]
     result = events[-1]
+    schema = json.loads((ENGINE_ROOT.parent / "contracts/recipe.schema.json").read_text())
+    validator = Draft202012Validator(
+        {"$ref": "#/$defs/event", "$defs": schema["$defs"]}, format_checker=FormatChecker())
+    for event in events:
+        validator.validate(event)
+    frames = [index for index, event in enumerate(events) if event["event"] == "frame"]
+    if screencast:
+        assert frames, "live screencast emitted no frames"
+        first_start = next(i for i, e in enumerate(events) if e["event"] == "op_started")
+        last_finish = max(i for i, e in enumerate(events) if e["event"] == "op_finished")
+        assert any(first_start < index < last_finish for index in frames)
+        for index in frames:
+            assert base64.b64decode(events[index]["data"], validate=True).startswith(b"\xff\xd8")
+    else:
+        assert not frames
     (tmp_path / "budget.json").write_text(json.dumps({
         "elapsed_s": elapsed,
         "median_op_s": statistics.median(event["duration_ms"] for event in finished) / 1000,
+        "schema_valid_events": len(events),
+        "jpeg_frames": len(frames),
         "result": result,
     }, indent=2), encoding="utf-8")
     assert output.err == "", output.err
