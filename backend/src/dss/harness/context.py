@@ -3,7 +3,7 @@
 LLM nodes get context only from here. No section holds raw data rows: the data profile is
 aggregate metadata, and build documents and spec subsets carry no rows.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 import logging
 from pathlib import PurePosixPath
@@ -25,6 +25,10 @@ RESERVES = {"plan": 4000, "spec": 4000, "revise": 1500, "ux_audit": 1000, "conso
 BUDGETS['judge'] = 16000
 BUDGETS['research'] = 16000
 SEPARATOR = "\n\n"
+# Offline estimate per attached image; online, the provider counts the image itself.
+IMAGE_TOKENS = 1500
+# Provider counting calls per model request (the first count plus recounts after drops).
+MAX_COUNTS = 4
 DOCS = ("brief.md", "questions.md", "kpis.md", "derived-fields.md", "design.md", "decisions.md")
 # A build's interview summary (brief, design direction) and its revision decisions.
 CONSOLIDATE_DOCS = {"brief": "brief.md", "design": "design.md", "decisions": "decisions.md"}
@@ -69,8 +73,32 @@ class Context(str):
             span["repair_tokens"] = tokens(repair)
 
 
+    def refit(self, over):
+        """A copy with further drops (same order as assembly) while `over(text)` holds."""
+        sections = [replace(s, items=None if s.items is None else list(s.items)) for s in self.sections]
+        dropped = dict(self.dropped)
+        _drop(sections, dropped, lambda: over(SEPARATOR.join(s.text for s in sections)))
+        return Context(self.node, sections, dropped)
+
+
+def _drop(sections, dropped, over):
+    """Drop FTS past results (least relevant first), then the oldest messages, then semantic
+    concepts beyond the first, while over() holds. Other sections are never dropped."""
+    for kind, position in (("past", -1), ("history", 0)):
+        for section in [s for s in sections if s.kind == kind]:
+            while section.items and over():
+                section.items.pop(position)
+                dropped[kind] += 1
+            if not section.items:
+                sections.remove(section)
+    semantic = [s for s in sections if s.kind == "semantic"]
+    while len(semantic) > 1 and over():
+        sections.remove(semantic.pop())
+        dropped["semantic"] += 1
+
+
 def assemble(node, sections, *, reserve=0):
-    """Order the sections, then fit them to the node's input budget.
+    """Order the sections, then fit them to the node's input budget (offline chars/4 estimate).
 
     Over budget: drop FTS past results (least relevant first), then the oldest messages,
     then semantic concepts beyond the first. The system prompt, skills, user input and the
@@ -83,20 +111,72 @@ def assemble(node, sections, *, reserve=0):
     def over():
         return tokens(SEPARATOR.join(section.text for section in sections)) > budget
 
-    for kind, position in (("past", -1), ("history", 0)):
-        for section in [s for s in sections if s.kind == kind]:
-            while section.items and over():
-                section.items.pop(position)
-                dropped[kind] += 1
-            if not section.items:
-                sections.remove(section)
-    semantic = [s for s in sections if s.kind == "semantic"]
-    while len(semantic) > 1 and over():
-        sections.remove(semantic.pop())
-        dropped["semantic"] += 1
+    _drop(sections, dropped, over)
     if over():
         raise RunError("llm_unavailable", f"The {node} context exceeds its input budget", 503)
     return Context(node, sections, dropped)
+
+
+def request_estimate(llm_request):
+    """Offline chars/4 estimate of the complete request: instructions, schemas, tools and
+    contents, plus IMAGE_TOKENS per inline image or file."""
+    config = llm_request.config
+    text = str(config.system_instruction or "")
+    for schema in (config.response_json_schema, config.response_schema):
+        if schema is not None:
+            text += json.dumps(schema, default=str) if isinstance(schema, dict) else schema.model_dump_json(exclude_none=True)
+    text += "".join(tool.model_dump_json(exclude_none=True) for tool in config.tools or [])
+    images = 0
+    for content in llm_request.contents or []:
+        for part in content.parts or []:
+            if part.inline_data or part.file_data:
+                images += 1
+            else:
+                text += part.model_dump_json(exclude_none=True)
+    return tokens(text) + IMAGE_TOKENS * images
+
+
+async def fit_request(context, llm_request, model, span, *, extra=""):
+    """Fit the complete request to the node's input budget before generation, then set it.
+
+    `context` (+ `extra`, e.g. a repair turn) is the instruction ADK built from the node's
+    provider; schemas, tools and contents are already on the request. Online, the model's
+    token counter counts the whole request (llm.count_tokens); offline models without one use
+    request_estimate. Over budget: drop in the assembly order, scaled by the measured
+    count/estimate ratio, and recount, at most MAX_COUNTS counts. Still over, nothing left to
+    drop, or a failed count: llm_unavailable, and the model is never called.
+    """
+    from dss.harness.llm import count_tokens
+    node, budget = context.node, BUDGETS[context.node]
+    instruction = str(llm_request.config.system_instruction or "")
+    # Keep anything ADK added around the provider's text (the identity line of a tool agent).
+    before, found, after = instruction.partition(str(context) + extra)
+    if not found:
+        before, after = "", ""
+    current, counted = context, 0
+    while True:
+        llm_request.config.system_instruction = before + current + extra + after
+        estimate = request_estimate(llm_request)
+        try:
+            count = await count_tokens(model, llm_request)
+        except Exception:
+            # Provider errors may echo request text or credentials: never surface them.
+            raise RunError("llm_unavailable", f"The {node} request could not be counted; check Settings", 503) from None
+        counted += count is not None
+        # Section counts stay estimates; request_tokens is the provider's count (None offline).
+        current.record(span, extra)
+        span.update(input_tokens_estimate=estimate, request_tokens=count, count_calls=counted)
+        actual = estimate if count is None else count
+        if actual <= budget:
+            return current
+        if counted >= MAX_COUNTS:
+            break
+        ratio, rest = actual / estimate, estimate - tokens(str(current))
+        fitted = current.refit(lambda text: (rest + tokens(text)) * ratio > budget)
+        if fitted.dropped == current.dropped:
+            break  # only mandatory sections are left
+        current = fitted
+    raise RunError("llm_unavailable", f"The {node} request exceeds its input budget", 503)
 
 
 def _system(node):

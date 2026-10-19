@@ -309,3 +309,13 @@ def test_run_executes_revised_spec_not_compiled_recipe(setup, client, monkeypatc
     assert seen == [expected] and expected != stale
     chart = json.loads(expected.split('\n')[4])
     assert chart['component_id'] == 'p1_revenue' and chart['title'] == 'Net revenue' and chart['w'] > 568
+
+
+async def test_revise_counts_the_whole_request(setup):
+    from test_context import assert_counted, counting
+    app = setup[0]
+    _, fake, _ = await run(setup, '', fake=counting(FakeLLM)(response=response([op('/pages/0/components/0/label', 'Revenue total')])))
+    with app.state.db.connect() as conn:
+        spans = json.loads(conn.execute("SELECT spans_json FROM traces WHERE node='revise'").fetchone()[0])
+    assert_counted(next(s for s in spans if s['node'] == 'revise'), fake)
+    assert fake.calls == 1

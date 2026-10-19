@@ -310,3 +310,14 @@ def test_engine_run_consolidates_in_the_background(thin, monkeypatch):
         time.sleep(.02)
     assert "Brief from the run." in fake.requests[0] and counter(app)["chats_since"] == 0
     assert [t["status"] for t in traces(app)] == ["ok"]
+
+
+async def test_consolidation_counts_the_whole_request(every_one, monkeypatch):
+    from test_context import assert_counted, counting
+    _, app = every_one
+    fake = counting(FactsLLM)(responses=[facts(("dark-theme", "User Preference", "Dark", "Prefers dark dashboards."))], requests=[])
+    use(app, monkeypatch, fake)
+    await finish(app, 1)
+    [trace] = traces(app)
+    assert trace["status"] == "ok" and fake.calls == 1
+    assert_counted(json.loads(trace["spans_json"])[0], fake)

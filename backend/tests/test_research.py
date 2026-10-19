@@ -268,3 +268,22 @@ def test_response_size_cap():
     collector = scraper.Collector(lambda *_: (200, {'content-type': 'text/csv'}, b'x' * (scraper.MAX_BYTES + 1)))
     assert not collector.collect(['https://example.com/'])
     assert collector.attempts[0]['status'] == 'failed'
+
+
+def test_research_counts_each_phase_without_extra_search_or_scraping(setup):
+    from test_context import assert_counted, counting
+    client, app, build_id, _, search, _ = setup
+    model = counting(ResearchLLM)(requests=[])
+    requests = []
+    def get(url, timeout):
+        requests.append(url)
+        return 200, {'content-type': 'text/csv'}, CSV
+    async def run():
+        return await app.state.harness.run('research', build_id, {'config': app.state.settings.get(),
+            'prompt': 'Player points', 'factory': app.state.bigquery_factory, 'getter': get}, llm=model)
+    client.portal.call(run)
+    with app.state.db.connect() as conn:
+        spans = json.loads(conn.execute("SELECT spans_json FROM traces WHERE node='research'").fetchone()[0])
+    for node in ('research_discover', 'research_select'):
+        assert_counted(next(s for s in spans if s['node'] == node), model)
+    assert model.calls == 2 and search.calls == 1 and len(requests) == 1 and len(model.counts) == 2

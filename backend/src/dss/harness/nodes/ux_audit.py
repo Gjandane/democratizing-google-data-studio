@@ -1,5 +1,4 @@
 """UX audit branch: one structured LLM call, findings formatted by code into one message."""
-import json
 from typing import Literal
 
 from google.adk.agents import LlmAgent
@@ -7,7 +6,7 @@ from google.adk.models.llm_response import LlmResponse
 from google.genai import types
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from dss.harness.context import BUDGETS, ux_audit_context
+from dss.harness.context import fit_request, ux_audit_context
 from dss.harness.guardrails import RunError, check_reply
 from dss.spec.models import DashboardSpec
 
@@ -69,15 +68,10 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
 
     async def before_model(callback_context, llm_request):
         trace.span('ux_audit')
-        context.record(trace.spans[-1])
-        schema = response_schema()
         llm_request.config.response_mime_type = 'application/json'
-        llm_request.config.response_json_schema = schema
+        llm_request.config.response_json_schema = response_schema()
         llm_request.contents = [types.Content(role='user', parts=[types.Part(text='Return the audit findings.')])]
-        size = len(str(llm_request.config.system_instruction)) + len(json.dumps(schema)) + len(llm_request.contents[0].model_dump_json())
-        trace.spans[-1]['input_tokens_estimate'] = (size + 3) // 4
-        if (size + 3) // 4 > BUDGETS['ux_audit']:
-            raise RunError('llm_unavailable', 'UX audit request exceeds its input budget', 503)
+        await fit_request(context, llm_request, model, trace.spans[-1])
 
     async def after_model(callback_context, llm_response):
         if llm_response.error_code:

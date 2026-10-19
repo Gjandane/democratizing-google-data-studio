@@ -229,3 +229,29 @@ def test_ux_audit_context_order_and_budget(app, build_id):
     with pytest.raises(RunError) as error:
         ux_audit_context(app.state.settings.get(), document, 'executive')
     assert error.value.status_code == 503
+
+
+async def test_audit_and_style_count_the_whole_request(setup):
+    from test_context import assert_counted, counting
+    from dss.harness.context import IMAGE_TOKENS, request_estimate
+    app, bid, _ = setup
+    seen = []
+
+    class Seen(Capture):
+        async def count_request_tokens(self, llm_request):
+            seen.append(llm_request.model_copy(deep=True))
+            return request_estimate(llm_request) // 2
+
+    _, audit_model = await audit(setup, '', counting(Capture)(response=findings(('p1_revenue', 'low')), requests=[]))
+    style_model = Seen(response=json.dumps(STYLE), requests=[])
+    await app.state.harness.run('style_extract', bid, {'config': app.state.settings.get(),
+        'images': [{'name': 'a.png', 'mime_type': 'image/png', 'content': png()}]}, llm=style_model)
+    with app.state.db.connect() as conn:
+        rows = conn.execute("SELECT node, spans_json FROM traces WHERE node IN ('ux_audit','style_extract')").fetchall()
+    spans = {node: next(s for s in json.loads(raw) if s['node'] == node) for node, raw in rows}
+    assert_counted(spans['ux_audit'], audit_model)
+    style = spans['style_extract']
+    # The image is in the counted request; offline its estimate adds IMAGE_TOKENS.
+    assert [p.inline_data.data for p in seen[0].contents[0].parts if p.inline_data] == [png()]
+    assert style['input_tokens_estimate'] > IMAGE_TOKENS and style['request_tokens'] == style['input_tokens_estimate'] // 2
+    assert audit_model.calls == 1 and style_model.calls == 1

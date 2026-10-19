@@ -477,3 +477,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: Bash heredoc here mangled backslashes in Python code (NUL byte written into jobs.py); see Known gotchas.
 - Left open: P3 case-collision renaming untested (Windows test FS ignores case) - src/dss/agent/jobs.py.
 - Next: Task 9.6 Enforce live input budgets using authoritative token counts.
+
+## 2026-10-19: Task 9.6 Enforce live input budgets using authoritative token counts
+- Status: done
+- Plan check: off
+- What changed: context.py gains `fit_request` (one guard every LLM node calls last in before_model), `request_estimate`, `Context.refit` and shared `_drop`; llm.py gains `count_tokens`/`counting_contents`. Interview, plan, spec, revise, ux_audit, style_extract, research (both phases), consolidate and judge use it; old per-node chars/4 checks removed.
+- Checks: Done-when offline command PASS (145); `uv run pytest -m live tests/live/test_backend_flow.py` PASS (100 s; plan counted 1884 vs est 1584, spec 6361 vs 5681; evidence `.blueprint/qa/final-audit/task-9.6/runs.json`); `uv run pytest` PASS (443, 4 deselected). Reviewer: one P2, no P0/P1.
+- Decisions: interview.py edited outside Files (real LLM node with a budget). Counter: injectable async `model.count_request_tokens(llm_request)`; ADK Gemini -> `aio.models.count_tokens` on contents with instruction/schema/tools folded first; other models -> None (offline estimate). Full BUDGETS apply to the counted request (RESERVES only shape assembly). Over budget: drop in assembly order scaled by count/estimate, recount, MAX_COUNTS=4 counts; refuse `llm_unavailable` when still over, nothing droppable or cap hit; count errors sanitized (`from None`). ADK's text around the provider instruction (identity line) kept. Span: sections/dropped (estimates), input_tokens_estimate, request_tokens (None offline), count_calls. IMAGE_TOKENS=1500 moved to context.py. Live evidence moved to task-9.6. No dependencies added; gotcha added to AGENTS.md.
+- Tried and failed: refusal test with a fixed counter expected all drops; ratio scaling drops gradually, so it hits the count cap instead (test split in two).
+- Gotchas: none beyond AGENTS.md.
+- Left open: P2 folded count is ~5% under billed prompt_token_count (8245 vs 8695); live test does not compare them; no safety margin - src/dss/harness/llm.py.
+- Next: Task 9.7 Bound retry attempts by the remaining 60-second deadline.

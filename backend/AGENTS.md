@@ -49,3 +49,4 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Recipe JSONL is written with ensure_ascii=False, so U+2028/U+0085 can sit inside a line: split recipe text on LF only, never str.splitlines().
 - POST /run recompiles recipe.jsonl from spec.json: test fixtures need spec.json, and a fixture recipe written with plain write_text on Windows is CRLF (non-canonical) and gets rewritten; pass newline="\n".
 - Bash heredocs (even quoted 'EOF') in this shell can collapse backslashes in Python source (\0 became a NUL byte); write code with backslashes via the Write/Edit tools.
+- Developer API count_tokens rejects system_instruction/tools/generation_config; llm.count_tokens folds them into contents, which counts ~5% under the billed prompt_token_count (live: 8245 vs 8695).

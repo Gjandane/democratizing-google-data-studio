@@ -1,6 +1,5 @@
 """Style extract branch: vision call to a validated style profile, written by code as style.md."""
 import asyncio
-import json
 from typing import Annotated
 
 from google.adk.agents import LlmAgent
@@ -9,11 +8,10 @@ from google.genai import types
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from dss.db import now
-from dss.harness.context import BUDGETS, style_context
+from dss.harness.context import fit_request, style_context
 from dss.harness.guardrails import RunError, check_reply
 
 Hex = Annotated[str, Field(pattern=r'^#[0-9A-Fa-f]{6}$')]
-IMAGE_TOKENS = 1500
 
 
 class StyleProfile(BaseModel):
@@ -90,17 +88,13 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
 
     async def before_model(callback_context, llm_request):
         trace.span('style_extract')
-        context.record(trace.spans[-1])
-        schema = response_schema()
         llm_request.config.response_mime_type = 'application/json'
-        llm_request.config.response_json_schema = schema
+        llm_request.config.response_json_schema = response_schema()
         text = 'Extract the style profile from these images.'
         llm_request.contents = [types.Content(role='user', parts=[types.Part(text=text), *[
             types.Part.from_bytes(data=image['content'], mime_type=image['mime_type']) for image in images]])]
-        size = len(str(llm_request.config.system_instruction)) + len(json.dumps(schema)) + len(text)
-        trace.spans[-1]['input_tokens_estimate'] = (size + 3) // 4 + IMAGE_TOKENS * len(images)
-        if (size + 3) // 4 > BUDGETS['style_extract']:
-            raise RunError('llm_unavailable', 'Style request exceeds its input budget', 503)
+        # The images are part of the counted request (IMAGE_TOKENS each when offline).
+        await fit_request(context, llm_request, model, trace.spans[-1])
 
     async def after_model(callback_context, llm_response):
         if llm_response.error_code:

@@ -93,3 +93,14 @@ async def test_missing_questions_and_oversized_context_fail_before_model(evaluat
     assert fake.calls == 0
     with db.connect() as conn:
         assert conn.execute("SELECT count(*) FROM traces WHERE status='error'").fetchone()[0] == 2
+
+
+async def test_judge_counts_the_whole_request(evaluation):
+    from test_context import assert_counted, counting
+    fake = counting(FakeLLM)(response='{"question_coverage":3,"catalog_fit":3,"layout_balance":3}')
+    await evaluate(*evaluation, llm=fake)
+    with evaluation[0].connect() as conn:
+        span = json.loads(conn.execute('SELECT spans_json FROM traces').fetchone()[0])[0]
+    assert_counted(span, fake)
+    assert fake.calls == 1
+    assert span['scores']['pass'] is True

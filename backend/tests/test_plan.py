@@ -198,3 +198,16 @@ async def test_invalid_or_unsafe_output(client, app, build_id, response, caplog)
     assert client.get(f"/api/builds/{build_id}").json()["stage"] == "interview"
     assert "test-key" not in caplog.text
     assert response not in caplog.text
+
+
+async def test_plan_and_spec_count_the_whole_request(client, app, build_id):
+    from test_context import assert_counted, counting
+    seed(app, build_id)
+    model = counting(FakeLLM)(response=json.dumps(PLAN))
+    await app.state.harness.run("plan", build_id,
+        {"config": app.state.settings.get(), "factory": lambda config: FakeBigQuery()}, llm=model)
+    with app.state.db.connect() as conn:
+        spans = json.loads(conn.execute("SELECT spans_json FROM traces WHERE node='plan'").fetchone()[0])
+    for node in ("plan", "spec"):
+        assert_counted(next(s for s in spans if s["node"] == node), model)
+    assert model.calls == 2 and len(model.counts) == 2  # counting adds no generation call

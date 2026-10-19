@@ -3,8 +3,13 @@ import json
 from pathlib import Path
 import pytest
 from dss.db import new_id, now
-from dss.harness.context import (BUDGETS, ORDER, SEPARATOR, Section, assemble, interview_context, plan_context,
-                                 revise_context, spec_context, tokens)
+from types import SimpleNamespace
+from google.adk.models.google_llm import Gemini
+from google.adk.models.llm_request import LlmRequest
+from google.genai import types
+from dss.harness.context import (BUDGETS, IMAGE_TOKENS, MAX_COUNTS, ORDER, SEPARATOR, Section, assemble, fit_request,
+                                 interview_context, plan_context, request_estimate, revise_context, spec_context, tokens)
+from dss.harness.llm import count_tokens, counting_contents
 from dss.harness.guardrails import RunError
 from dss.harness.nodes.intake import write_doc
 from dss.memory import episodic
@@ -273,3 +278,205 @@ def test_user_facts_missing_or_dangling(app, build_id, caplog, index, warned):
     context = plan_context(app.state.db, config, build_id)
     assert [s.kind for s in context.sections].count("semantic") == 2
     assert ("Unreadable user facts" in caplog.text) is warned
+
+
+class CountingLLM(FakeLLM):
+    """FakeLLM with an injected provider token counter: `factor` x the offline estimate, or `fixed`."""
+    factor: float = 1.0
+    fixed: int | None = None
+    count_error: str = ""
+    counts: list = []
+    seen: list = []
+
+    async def count_request_tokens(self, llm_request):
+        if self.count_error:
+            raise RuntimeError(self.count_error)
+        self.seen.append(str(llm_request.config.system_instruction))
+        value = self.fixed if self.fixed is not None else int(request_estimate(llm_request) * self.factor)
+        self.counts.append(value)
+        return value
+
+
+def counting(base, factor=1.5):
+    """`base` (an offline fake) with an injected counter returning `factor` x the estimate."""
+    class Counted(base):
+        counts: list = []
+
+        async def count_request_tokens(self, llm_request):
+            self.counts.append(int(request_estimate(llm_request) * factor))
+            return self.counts[-1]
+    return Counted
+
+
+def assert_counted(span, model):
+    """The authoritative count is recorded apart from the estimates."""
+    assert span["request_tokens"] in model.counts and span["count_calls"] == 1
+    assert isinstance(span["input_tokens_estimate"], int) and span["request_tokens"] != span["input_tokens_estimate"]
+    assert span["sections"] and all(isinstance(s["tokens"], int) for s in span["sections"])
+
+
+IDENTITY = 'You are an agent. Your internal name is "interview".'
+
+
+def online_request(context, extra=""):
+    """An ADK-shaped request: identity line, the provider's instruction, schema and one user turn."""
+    request = LlmRequest(model="gemini-test", config=types.GenerateContentConfig(
+        response_mime_type="application/json", response_json_schema={"type": "object", "title": "Out"}))
+    request.contents = [types.Content(role="user", parts=[types.Part(text="Go.")])]
+    request.config.system_instruction = IDENTITY + SEPARATOR + context + extra
+    return request
+
+
+def counted_to_fit(expected):
+    """A linear counter under which exactly `expected` fits, with half an entry of slack."""
+    estimate = request_estimate(online_request(assemble("interview", expected)))
+    return CountingLLM(factor=BUDGETS["interview"] / (estimate + 50), counts=[], seen=[])
+
+
+async def test_online_count_over_budget_drops_in_order_and_recounts():
+    expected = [s for s in unordered() if s.name != "past"]
+    del next(s for s in expected if s.name == "history").items[:2]
+    model = counted_to_fit(expected)
+    context = assemble("interview", unordered())
+    request, span = online_request(context), {}
+    assert context.dropped == {"past": 0, "history": 0, "semantic": 0}
+    assert request_estimate(request) <= BUDGETS["interview"]  # the estimate alone would send it
+    fitted = await fit_request(context, request, model, span)
+    assert fitted.dropped == {"past": 3, "history": 2, "semantic": 0}
+    assert kinds(fitted) == ["system", "skills", "semantic", "semantic", "profile", "docs", "history", "input"]
+    assert fitted.sections[-2].items == [json.dumps(f"m{i}{'x' * 396}") for i in (2, 3)]
+    assert model.counts[0] > BUDGETS["interview"] >= model.counts[1] and len(model.counts) == 2
+    assert request.config.system_instruction == IDENTITY + SEPARATOR + fitted
+    assert span["request_tokens"] == model.counts[-1] and span["count_calls"] == 2
+    assert span["input_tokens_estimate"] == request_estimate(request) and span["dropped"] == fitted.dropped
+    assert [s["tokens"] for s in span["sections"]] == [tokens(s.text) for s in fitted.sections]
+    assert len(context.sections) == 9 and context.dropped["past"] == 0  # the assembled context is unchanged
+
+
+async def test_online_count_drops_semantic_beyond_the_first_last():
+    model = counted_to_fit([s for s in unordered() if s.name not in ("past", "history", "second")])
+    context = assemble("interview", unordered())
+    fitted = await fit_request(context, online_request(context), model, {})
+    assert fitted.dropped == {"past": 3, "history": 4, "semantic": 1}
+    assert names(fitted) == ["system", "skills", "first", "profile", "docs", "input"]
+
+
+async def test_cjk_counted_over_budget_with_only_mandatory_sections_refuses():
+    # Audit sample: chars/4 estimated 225 tokens, the provider counted 501.
+    text = "每月的收入按地区分布" * 3000
+    context = assemble("ux_audit", [Section("system", "system", body="Audit."), Section("input", "input", "Task:", text)])
+    request = online_request(context)
+    model = CountingLLM(factor=501 / 225, counts=[], seen=[])
+    assert request_estimate(request) <= BUDGETS["ux_audit"] < model.factor * request_estimate(request)
+    span = {}
+    with pytest.raises(RunError, match="exceeds its input budget") as error:
+        await fit_request(context, request, model, span)
+    assert error.value.code == "llm_unavailable" and len(model.counts) == 1
+    assert span["request_tokens"] > BUDGETS["ux_audit"]
+
+
+async def test_still_too_large_after_every_drop_refuses():
+    mandatory = by_name(unordered(), "system", "skills", "first", "profile", "docs", "input")
+    model = counted_to_fit(mandatory)
+    model.factor *= 3  # even the mandatory sections alone are counted over budget
+    context = assemble("interview", unordered())
+    span = {}
+    with pytest.raises(RunError, match="exceeds its input budget"):
+        await fit_request(context, online_request(context), model, span)
+    assert len(model.counts) == 2 and span["request_tokens"] == model.counts[-1] > BUDGETS["interview"]
+    assert span["dropped"] == {"past": 3, "history": 4, "semantic": 1}
+    assert [s["name"] for s in span["sections"]] == ["system", "skills", "first", "profile", "docs", "input"]
+
+
+async def test_recounts_stop_at_the_count_cap():
+    # A counter that ignores drops: each recount shrinks only by the measured ratio, then refuses.
+    context = assemble("interview", unordered())
+    model = CountingLLM(fixed=BUDGETS["interview"] + 1, counts=[], seen=[])
+    span = {}
+    with pytest.raises(RunError, match="exceeds its input budget"):
+        await fit_request(context, online_request(context), model, span)
+    assert len(model.counts) == MAX_COUNTS and span["count_calls"] == MAX_COUNTS
+    assert span["dropped"]["past"] >= 1 and span["dropped"]["semantic"] == 0  # FTS hits go first
+
+
+async def test_count_cap_refuses_instead_of_counting_again(monkeypatch):
+    monkeypatch.setattr("dss.harness.context.MAX_COUNTS", 1)
+    context = assemble("interview", unordered())
+    model = CountingLLM(factor=100, counts=[], seen=[])
+    with pytest.raises(RunError, match="exceeds its input budget"):
+        await fit_request(context, online_request(context), model, {})
+    assert len(model.counts) == 1
+
+
+async def test_counting_failure_is_sanitized_and_refuses():
+    context = assemble("interview", unordered())
+    model = CountingLLM(count_error="count failed for test-key: Please help", counts=[], seen=[])
+    with pytest.raises(RunError) as error:
+        await fit_request(context, online_request(context), model, {})
+    assert error.value.code == "llm_unavailable" and "test-key" not in error.value.message
+    assert error.value.__suppress_context__ and error.value.__cause__ is None
+
+
+@pytest.mark.parametrize("fixed, failure", [(BUDGETS["interview"] + 1, ""), (None, "count failed for test-key")])
+async def test_interview_never_generates_over_budget_or_uncounted(app, build_id, caplog, fixed, failure):
+    profile(app, build_id)
+    model = CountingLLM(response="Which KPI?", fixed=fixed, count_error=failure, counts=[], seen=[])
+    with pytest.raises(RunError) as error:
+        await app.state.harness.run("interview", build_id,
+            {"config": app.state.settings.get(), "text": "Help our sales director"}, llm=model)
+    assert error.value.code == "llm_unavailable" and model.calls == 0
+    assert "test-key" not in caplog.text and "test-key" not in json.dumps(spans(app, "interview"))
+
+
+async def test_interview_records_the_authoritative_count(app, build_id):
+    profile(app, build_id)
+    model = counting(FakeLLM)(response="Which KPI?")
+    await app.state.harness.run("interview", build_id,
+        {"config": app.state.settings.get(), "text": "Help our sales director"}, llm=model)
+    assert_counted(next(s for s in spans(app, "interview") if s["node"] == "interview"), model)
+    assert model.calls == 1
+
+
+async def test_schema_tools_images_and_repair_participate():
+    context = assemble("interview", unordered())
+    request = online_request(context)
+    with_schema = request_estimate(request)
+    request.config.response_json_schema = None
+    assert request_estimate(request) < with_schema
+    request.config.response_json_schema = {"type": "object", "title": "Out"}
+    request.config.tools = [types.Tool(function_declarations=[types.FunctionDeclaration(
+        name="mark_ready_for_plan", description="Mark the interview complete. " * 20)])]
+    with_tools = request_estimate(request)
+    assert with_tools > with_schema
+    request.contents[0].parts.append(types.Part.from_bytes(data=b"\x89PNG-bytes", mime_type="image/png"))
+    assert request_estimate(request) == with_tools + IMAGE_TOKENS
+    head, *rest = counting_contents(request)
+    texts = [part.text for part in head.parts]
+    assert texts[0] == request.config.system_instruction and '"title": "Out"' in texts[1]
+    assert "mark_ready_for_plan" in texts[2] and rest == request.contents
+    assert rest[0].parts[1].inline_data.data == b"\x89PNG-bytes"
+    repair = "\nValidation errors:\n[\"overlap\"]\nReturn the complete repaired JSON object."
+    model, span = CountingLLM(counts=[], seen=[]), {}
+    await fit_request(context, online_request(context, repair), model, span, extra=repair)
+    assert model.seen[-1].endswith(repair) and span["repair_tokens"] == tokens(repair)
+
+
+async def test_gemini_counter_counts_the_folded_request_and_fakes_stay_offline():
+    calls = []
+
+    class Models:
+        async def count_tokens(self, **kwargs):
+            calls.append(kwargs)
+            return types.CountTokensResponse(total_tokens=321)
+
+    class Counted(Gemini):
+        @property
+        def api_client(self):
+            return SimpleNamespace(aio=SimpleNamespace(models=Models()))
+
+    request = online_request(assemble("interview", unordered()))
+    assert await count_tokens(Counted(model="gemini-test"), request) == 321
+    assert calls[0]["model"] == "gemini-test"
+    assert calls[0]["contents"][0].parts[0].text == request.config.system_instruction
+    assert calls[0]["contents"][1:] == request.contents
+    assert await count_tokens(FakeLLM(), request) is None

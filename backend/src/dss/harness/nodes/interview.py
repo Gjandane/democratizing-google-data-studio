@@ -1,6 +1,6 @@
 """Interview agent and its bounded, explicit readiness tool."""
 from google.adk.agents import LlmAgent
-from dss.harness.context import interview_context
+from dss.harness.context import fit_request, interview_context
 from dss.harness.guardrails import check_reply
 from dss.db import new_id
 
@@ -53,7 +53,8 @@ def make_agent(harness, build_id, payload, model, trace, model_error):
 
     async def before_model(callback_context, llm_request):
         trace.span("interview")
-        context.record(trace.spans[-1])
+        # Each turn (also the one after a tool call) is counted whole: tools and contents included.
+        await fit_request(context, llm_request, model, trace.spans[-1])
 
     # The start text is the harness's own instruction, not user terms: recency only.
     context = interview_context(harness.db, payload["config"], build_id, payload["text"],

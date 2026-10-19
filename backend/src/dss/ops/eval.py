@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from dss.config import Config, SettingsStore
 from dss.db import Database, new_id
-from dss.harness.context import judge_context
+from dss.harness.context import fit_request, judge_context
 from dss.harness.guardrails import RunError, check_reply
 from dss.harness.llm import ModelRouter
 from dss.harness.tracing import Trace
@@ -51,6 +51,9 @@ async def evaluate(db, config, build_id, *, llm=None):
         async def instructions(context_object):
             return context
 
+        async def before_model(callback_context, llm_request):
+            await fit_request(context, llm_request, model, trace.spans[-1])
+
         async def after_model(callback_context, llm_response):
             try:
                 if llm_response.error_code:
@@ -68,7 +71,8 @@ async def evaluate(db, config, build_id, *, llm=None):
         agent = LlmAgent(name='judge', model=model, mode='single_turn', instruction=instructions,
                          generate_content_config=types.GenerateContentConfig(response_mime_type='application/json',
                              response_json_schema=Scores.model_json_schema()),
-                         after_model_callback=after_model, on_model_error_callback=model_error)
+                         before_model_callback=before_model, after_model_callback=after_model,
+                         on_model_error_callback=model_error)
         sessions = InMemorySessionService()
         await sessions.create_session(app_name='dss', user_id='local', session_id=trace.run_id)
         runner = Runner(app_name='dss', node=Workflow(name='judge_run', edges=[('START', agent)]), session_service=sessions)

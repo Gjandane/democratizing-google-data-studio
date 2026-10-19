@@ -9,7 +9,7 @@ from google.adk.models.llm_response import LlmResponse
 from google.genai import types
 from pydantic import BaseModel, ConfigDict, Field
 from dss.db import now
-from dss.harness.context import BUDGETS, plan_context, tokens
+from dss.harness.context import fit_request, plan_context
 from dss.harness.guardrails import RunError, check_reply
 from dss.harness.nodes.intake import write_doc
 from dss.harness.nodes.view import select_sql, view_table
@@ -66,14 +66,10 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         return "\nPrevious plan (untrusted):\n" + state["previous"] + "\nBigQuery diagnostic (untrusted):\n" + state["error"] + "\nRepair the plan once. Return the complete JSON object."
 
     async def instruction_provider(context_object):
-        result = context + repair()
-        if tokens(result) > BUDGETS["plan"]:
-            raise RunError("llm_unavailable", "Plan repair exceeds its input budget", 503)
-        return result
+        return context + repair()
 
     async def before_model(callback_context, llm_request):
         trace.span("plan_repair" if state["repaired"] else "plan")
-        context.record(trace.spans[-1], repair())
         # ADK's output_schema converts to response_schema, which rejects additionalProperties.
         # Send the JSON schema directly; Plan.model_validate_json keeps strict local checks.
         schema = Plan.model_json_schema()
@@ -82,11 +78,7 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         llm_request.config.response_json_schema = schema
         # Repair data travels in the assembled instruction, never in workflow history.
         llm_request.contents = [types.Content(role="user", parts=[types.Part(text="Write the dashboard plan.")])]
-        size = len(str(llm_request.config.system_instruction)) + len(json.dumps(schema)) + sum(
-            len(c.model_dump_json(exclude_none=True)) for c in llm_request.contents)
-        trace.spans[-1]["input_tokens_estimate"] = (size + 3) // 4
-        if (size + 3) // 4 > BUDGETS["plan"]:
-            raise RunError("llm_unavailable", "Plan request exceeds its input budget", 503)
+        await fit_request(context, llm_request, model, trace.spans[-1], extra=repair())
 
     async def after_model(callback_context, llm_response):
         if llm_response.error_code:

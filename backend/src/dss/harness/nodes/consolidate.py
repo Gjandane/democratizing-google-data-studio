@@ -7,7 +7,6 @@ structured facts; code writes the OKF concepts, index.md and log.md under data/k
 """
 import asyncio
 from hashlib import sha1
-import json
 import logging
 import re
 from typing import Literal
@@ -23,7 +22,7 @@ from google.genai import types
 from pydantic import BaseModel, ConfigDict, Field
 
 from dss.db import new_id, now
-from dss.harness.context import BUDGETS, consolidate_context
+from dss.harness.context import consolidate_context, fit_request
 from dss.harness.guardrails import RunError, check_reply
 from dss.harness.nodes.intake import write_doc
 from dss.harness.tracing import Trace
@@ -241,15 +240,10 @@ async def consolidate(state, llm=None):
 
             async def before_model(callback_context, llm_request):
                 trace.span("consolidate")
-                context.record(trace.spans[-1])
-                schema = response_schema()
                 llm_request.config.response_mime_type = "application/json"
-                llm_request.config.response_json_schema = schema
+                llm_request.config.response_json_schema = response_schema()
                 llm_request.contents = [types.Content(role="user", parts=[types.Part(text="Return the consolidated facts.")])]
-                size = len(str(llm_request.config.system_instruction)) + len(json.dumps(schema)) + len(llm_request.contents[0].model_dump_json())
-                trace.spans[-1]["input_tokens_estimate"] = (size + 3) // 4
-                if (size + 3) // 4 > BUDGETS["consolidate"]:
-                    raise RunError("llm_unavailable", "Consolidation request exceeds its input budget", 503)
+                await fit_request(context, llm_request, model, trace.spans[-1])
 
             async def after_model(callback_context, llm_response):
                 if llm_response.error_code:

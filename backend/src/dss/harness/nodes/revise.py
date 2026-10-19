@@ -16,7 +16,7 @@ from google.genai import types
 from pydantic import BaseModel, ConfigDict, Field
 
 from dss.db import now
-from dss.harness.context import BUDGETS, revise_context
+from dss.harness.context import fit_request, revise_context
 from dss.harness.guardrails import RunError, check_reply
 from dss.harness.nodes.render import artifacts
 from dss.spec.models import DashboardSpec
@@ -182,15 +182,10 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
 
     async def before_model(callback_context, llm_request):
         trace.span('revise_repair' if state['repairs'] else 'revise')
-        context.record(trace.spans[-1], repair())
-        schema = response_schema()
         llm_request.config.response_mime_type = 'application/json'
-        llm_request.config.response_json_schema = schema
+        llm_request.config.response_json_schema = response_schema()
         llm_request.contents = [types.Content(role='user', parts=[types.Part(text='Return the comment patches in order.')])]
-        size = len(str(llm_request.config.system_instruction)) + len(json.dumps(schema)) + len(llm_request.contents[0].model_dump_json())
-        trace.spans[-1]['input_tokens_estimate'] = (size+3)//4
-        if (size+3)//4 > BUDGETS['revise']:
-            raise RunError('llm_unavailable', 'Revision request exceeds its input budget', 503)
+        await fit_request(context, llm_request, model, trace.spans[-1], extra=repair())
 
     async def after_model(callback_context, llm_response):
         if llm_response.error_code:

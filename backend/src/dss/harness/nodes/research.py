@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from dss.data.research import Collector, public_url
 from dss.db import now
-from dss.harness.context import research_context
+from dss.harness.context import fit_request, research_context
 from dss.harness.guardrails import RunError, check_reply
 from dss.harness.nodes.intake import perform, write_doc
 
@@ -98,9 +98,10 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                 state['calls'] += 1
             assembled = context(phase)
             trace.span('research_discover' if phase == 'DISCOVER' else 'research_select')
-            assembled.record(trace.spans[-1])
             # Replace accumulated ADK history; no search response or table rows flow to selection.
             llm_request.contents = [types.Content(role='user', parts=[types.Part(text='Follow the phase in working memory.')])]
+            # Counting uses no search and no scraper request; the search tool declaration is counted.
+            await fit_request(assembled, llm_request, model, trace.spans[-1])
         return callback
 
     def after(key):

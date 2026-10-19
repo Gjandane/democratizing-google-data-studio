@@ -12,10 +12,11 @@ from pydantic import SecretStr
 
 from dss.config import BACKEND_DIR, Config
 from dss.data.bigquery import BigQuery
+from dss.harness.context import BUDGETS
 from dss.main import create_app
 
 SAMPLE = Path(__file__).parents[1] / "data/small_sales.csv"
-EVIDENCE = BACKEND_DIR / ".blueprint/qa/final-audit/task-9.1"
+EVIDENCE = BACKEND_DIR / ".blueprint/qa/final-audit/task-9.6"
 
 
 def wait(app, seconds=300):
@@ -77,6 +78,13 @@ def test_interview_to_prototype(tmp_path):
         assert nodes[:3] == ["router", "plan", "view"]
         assert 1 <= sum(node in ("spec", "spec_repair") for node in nodes) <= 2, nodes
         assert nodes.index("render") > nodes.index("validate")
+        # Online requests carry the provider's count of the whole request, apart from the estimates.
+        counted = [span for span in json.loads(plan_trace["spans_json"]) if span["node"] in ("plan", "spec", "spec_repair")]
+        for span in counted:
+            assert isinstance(span["request_tokens"], int) and span["count_calls"] >= 1, span
+            assert 0 < span["request_tokens"] <= BUDGETS[span["node"].removesuffix("_repair")], span
+            assert isinstance(span["input_tokens_estimate"], int)
+        request_counts = {span["node"]: [span["request_tokens"], span["input_tokens_estimate"]] for span in counted}
 
         folder = config.data_dir / "builds" / build_id / "v1"
         view = yaml.safe_load((folder / "docs/derived-fields.md").read_text(encoding="utf-8").split("---", 2)[1])["view"]
@@ -101,5 +109,7 @@ def test_interview_to_prototype(tmp_path):
             browser.close()
     (EVIDENCE / "background_p1.png").write_bytes(background.content)
     (EVIDENCE / "runs.json").write_text(json.dumps({"build_id": build_id, "runs": runs, "plan_nodes": nodes,
-        "plan_tokens": [plan_trace["input_tokens"], plan_trace["output_tokens"]], "view_rows": len(rows)}, indent=2))
-    print(json.dumps({"build_id": build_id, "runs": runs, "plan_nodes": nodes, "view_rows": len(rows)}))
+        "plan_tokens": [plan_trace["input_tokens"], plan_trace["output_tokens"]],
+        "request_tokens_vs_estimate": request_counts, "view_rows": len(rows)}, indent=2))
+    print(json.dumps({"build_id": build_id, "runs": runs, "plan_nodes": nodes, "view_rows": len(rows),
+                      "request_tokens_vs_estimate": request_counts}))
