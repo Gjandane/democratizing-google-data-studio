@@ -181,3 +181,13 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none new (same class as the useLayoutEffect gotcha: state reported up through a passive effect lags the child's DOM by a commit).
 - Left open: P2 finished card stays pinned under later messages - activity.ts cardRun (from 6.1).
 - Next: program final audit (architect).
+
+## 2026-10-19: Audit (final)
+- Status: done
+- Verdict: DEFECTS (0 P0, 0 P1, 4 P2, P3s); Phase 7 added (7.1 run errors and the finished run card, M; 7.2 contrast and small UI fixes, S).
+- Checks rerun (first final audit, so everything): `npm test` 14 files / 221 tests PASS 4 of 4 full runs (424 flake fix d7a472a holds); `npm run typecheck` PASS; `npm run build` exit 0, base `/`, assets under `/assets/`, `localhost` only inside react-router/vfile code; 1.2 hex search none; 6.2 node-name search none; secrets: no .env in frontend or its git history; fresh screenshots screenshots/audit-{history,prototype,done}-{1280x800,1440x900}.png, no horizontal scroll.
+- Reviewer (blueprint-reviewer, opus high, with web-design-guidelines on src/): Review focus 3.1, 5.1, 6.1, 6.2 pass; no Non-goal built; package.json matches the verified table. P2: plan/interview/spec run errors never shown (useBuildStream.ts run.finished); Google Fonts @import vs the "only /api" rule; Trace "Error" pill ~4.3:1; finished run card pinned under later messages.
+- Decisions (user): fix all four P2s plus a quick P3 bundle (7.1, 7.2); Google Fonts kept, so the essentials' Never do and 5.1's Done when now name it as the one exception; the other P3s and earlier Left open items are known limitations in the PRD's Later list.
+- Docs: essentials Conventions gained the testing, guards, node-name, activity, focus/effect and settings-lock conventions from task Decisions and Known gotchas; UI design gained the "Activity" item plan 6.1 points to; the @types/react-dom row's extra cell removed. AGENTS.md Known gotchas: moved truncate, jest-dom, useLayoutEffect and mock knobs into the essentials, merged the sed -i line into line endings, split the cp1252 line.
+- Left open: typescript row Verified shows 7.0.2 (latest) while the range is `>=5.5 <6` and 5.9.3 is installed: not re-verified (needs `deps`).
+- Next: task 7.1.
