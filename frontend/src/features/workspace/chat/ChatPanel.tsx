@@ -206,7 +206,7 @@ export function ChatPanel({ build, chat }: { build: Build; chat: BuildStream }) 
           <span className="min-w-0 [overflow-wrap:anywhere]">
             {chat.runErrors.interview}
             {/* The server's text may not say what to do next: the fallback already does. */}
-            {chat.runErrors.interview !== RUN_ERROR_FALLBACK.interview && ' Send your answer again.'}
+            {chat.runErrors.interview !== RUN_ERROR_FALLBACK.interview && `${/[.!?]$/.test(chat.runErrors.interview) ? '' : '.'} Send your answer again.`}
           </span>
         </p>
       )}

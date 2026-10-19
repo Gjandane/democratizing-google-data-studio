@@ -28,11 +28,11 @@ function formatStart(iso: string): string {
 const sum = (traces: Trace[], pick: (trace: Trace) => number) => traces.reduce((total, trace) => total + pick(trace), 0);
 
 const COLUMNS: Column<Trace>[] = [
-  { id: 'node', header: 'Node', mono: true, cell: (t) => t.node },
+  { id: 'node', header: 'Node', mono: true, className: 'whitespace-nowrap', cell: (t) => t.node },
   { id: 'model', header: 'Model', mono: true, cell: (t) => t.model ?? '—' },
   { id: 'input', header: 'Input tokens', align: 'right', cell: (t) => count.format(t.input_tokens) },
   { id: 'output', header: 'Output tokens', align: 'right', cell: (t) => count.format(t.output_tokens) },
-  { id: 'latency', header: 'Latency', align: 'right', cell: (t) => formatLatency(t.latency_ms) },
+  { id: 'latency', header: 'Latency', align: 'right', className: 'whitespace-nowrap', cell: (t) => formatLatency(t.latency_ms) },
   {
     id: 'status',
     header: 'Status',

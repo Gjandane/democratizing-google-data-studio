@@ -1,5 +1,5 @@
 import { Sparkles } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { api } from '../../../api/client';
 import { ApiError, type Build, type Message, type SourceKind } from '../../../api/types';
 import { Button } from '../../../components/Button';
@@ -55,7 +55,11 @@ export function InterviewStage({
   const [planError, setPlanError] = useState<string | null>(null);
   const info = ARCHETYPE_INFO[build.archetype];
 
+  const inFlight = useRef(false);
+
   const generate = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setPlanning(true);
     setPlanError(null);
     try {
@@ -64,6 +68,7 @@ export function InterviewStage({
     } catch (error) {
       setPlanError(error instanceof ApiError ? error.message : "Couldn't start the plan. Try again.");
     } finally {
+      inFlight.current = false;
       setPlanning(false);
     }
   };
@@ -135,12 +140,12 @@ export function InterviewStage({
               : 'You can plan now, but answering a few more questions helps.'}
           </p>
         </div>
-        {planError && <ErrorState title="Couldn't start the plan" message={planError} onRetry={() => void generate()} />}
+        {planError && <ErrorState title="Couldn't start the plan" message={planError} onRetry={() => void generate()} retryDisabled={planning} />}
         {!planError && runErrors.plan && (
-          <ErrorState title="The plan didn't finish" message={runErrors.plan} onRetry={() => void generate()} retryLabel="Generate plan again" />
+          <ErrorState title="The plan didn't finish" message={runErrors.plan} onRetry={() => void generate()} retryDisabled={planning} retryLabel="Generate plan again" />
         )}
         {!planError && runErrors.spec && (
-          <ErrorState title="The spec didn't finish" message={runErrors.spec} onRetry={() => void generate()} retryLabel="Generate plan again" />
+          <ErrorState title="The spec didn't finish" message={runErrors.spec} onRetry={() => void generate()} retryDisabled={planning} retryLabel="Generate plan again" />
         )}
       </div>
     </div>

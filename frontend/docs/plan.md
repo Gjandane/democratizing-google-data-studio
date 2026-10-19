@@ -114,7 +114,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Done when: `npm test` passes with: `formatLatency(119600)` is "2 min 0 s" and `formatLatency(59960)` is not "60.0 s"; the trace error pill has class `text-text`, not `text-danger`; the Build result link and a markdown link each contain "(opens in a new tab)"; the done-build empty chat no longer contains "first question"; a search of src/ finds no "`comments` run"; `npm run typecheck` passes; manual: screenshot 7.2-trace-error at 1280x800.
 
 ## Phase 8: Audit fixes (final re-audit 2026-10-19)
-- [ ] 8.1 Retry guard, error punctuation, trace wrap and link hover
+- [x] 8.1 Retry guard, error punctuation, trace wrap and link hover
   - Goal: the Interview stage's "Generate plan again" (ErrorState action) can't post `/plan` twice: one in-flight guard covers it and the main "Generate plan" button, and the retry is disabled while the POST runs; the interview error suffix " Send your answer again." follows a sentence end (add ". " when the server text doesn't end in `.`, `!` or `?`); in the Trace table the latency cells and the total row ("Total, N runs", total latency) never wrap (`whitespace-nowrap` through the Column `className`, which the footer cells share); markdown links show hover feedback (`hover:text-primary-hover`).
   - Files: src/features/workspace/chat/InterviewStage.tsx, src/features/workspace/chat/ChatPanel.tsx, src/features/trace/TraceModal.tsx, src/features/workspace/chat/Markdown.tsx, tests/chat.test.tsx, tests/settings.test.tsx, screenshots/
   - Depends on: none

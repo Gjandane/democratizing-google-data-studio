@@ -263,6 +263,10 @@ describe('trace modal', () => {
     expect(totals.textContent).toContain('Total, 2 runs');
     expect(within(totals).getByText('18,130')).toBeTruthy();
     expect(within(totals).getByText('3,390')).toBeTruthy();
+    // Latency and the total row never wrap at 1280.
+    for (const cell of [within(rows[1] as HTMLElement).getByText('41.2 s'), within(totals).getByText('Total, 2 runs'), within(totals).getByText(/ s$| min /)]) {
+      expect(cell.classList.contains('whitespace-nowrap')).toBe(true);
+    }
   });
 
   it('shows errors, a missing model and updates totals for failed runs', async () => {

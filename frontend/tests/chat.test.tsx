@@ -195,6 +195,7 @@ describe('Chat panel', () => {
     expect(link.textContent).toContain('(opens in a new tab)');
     expect(link.target).toBe('_blank');
     expect(link.rel).toContain('noopener');
+    expect(link.classList.contains('hover:text-primary-hover')).toBe(true);
   });
 
   it('shows done-build copy when a done build has no messages', async () => {
@@ -306,6 +307,34 @@ describe('Run errors', () => {
     expect(document.querySelector('[data-draft="true"]')).toBeNull();
     await fire({ name: 'run.started', data: { run_id: 'r_i2', node: 'interview' } });
     expect(within(chat).queryByRole('alert')).toBeNull();
+  });
+
+  it('posts /plan once for two quick clicks on "Generate plan again" and disables it meanwhile', async () => {
+    const { ready, fire } = await setup();
+    await ready();
+    await screen.findByText(/Who will read this dashboard/);
+    await failPlan(fire, 'Gemini quota hit');
+    let finish: (value: { run_id: string }) => void = () => {};
+    const spy = vi.spyOn(api, 'generatePlan').mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    const retry = within(stageAlert() as HTMLElement).getByRole('button', { name: 'Generate plan again' }) as HTMLButtonElement;
+    fireEvent.click(retry);
+    fireEvent.click(retry);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(retry.disabled).toBe(true);
+    await act(async () => finish({ run_id: 'r_x' }));
+  });
+
+  it.each([
+    ['quota hit', 'quota hit. Send your answer again.'],
+    ['Model timed out.', 'Model timed out. Send your answer again.'],
+  ])('ends an interview error %j as a sentence before the next step', async (error, shown) => {
+    const { ready, fire } = await setup();
+    await ready();
+    await screen.findByText(/Who will read this dashboard/);
+    await fire({ name: 'run.started', data: { run_id: 'r_i', node: 'interview' } });
+    await fire({ name: 'run.finished', data: { run_id: 'r_i', node: 'interview', status: 'error', error } });
+    const chat = screen.getByRole('complementary', { name: 'Chat' });
+    expect(within(chat).getByRole('alert').textContent).toBe(shown);
   });
 
   it('the mock fails a plan back to the Interview stage with its error', async () => {

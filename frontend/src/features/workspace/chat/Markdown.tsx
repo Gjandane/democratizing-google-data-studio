@@ -10,7 +10,7 @@ const components: Components = {
   ),
   code: ({ node: _node, ...props }) => <code className="rounded-control bg-surface px-1 font-mono text-caption" {...props} />,
   a: ({ node: _node, children, ...props }) => (
-    <a className="text-primary underline" target="_blank" rel="noopener noreferrer" {...props}>
+    <a className="text-primary underline hover:text-primary-hover" target="_blank" rel="noopener noreferrer" {...props}>
       {children}
       <span className="sr-only"> (opens in a new tab)</span>
     </a>

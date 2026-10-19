@@ -222,3 +222,14 @@ context. Task status lives in docs/plan.md, not here.
 - Docs: essentials Conventions gained the run-card anchor rule and the `ready`-drops-running-runs test rule (7.1 Decisions and Gotchas); PRD Later gained 7.1's two Left open P3s as known limitations. AGENTS.md Known gotchas unchanged (7.x added none).
 - Left open: typescript Verified row still not re-verified (from the first final audit); lint warns the essentials exceed one page (6.9k chars) and the 5.1 entry's date is out of order.
 - Next: task 8.1, then a re-audit (architect).
+
+## 2026-10-19: Task 8.1 Retry guard, error punctuation, trace wrap and link hover
+- Status: done
+- Plan check: off
+- What changed: InterviewStage `generate` has a `useRef` in-flight guard and the three ErrorState retries get `retryDisabled={planning}`; ChatPanel adds "." before " Send your answer again." when the server text doesn't end in `.`, `!` or `?`; TraceModal Node and Latency columns carry `whitespace-nowrap` (footer shares it); markdown links get `hover:text-primary-hover`.
+- Checks: `npm test` PASS 14 files / 233 tests (new: retry once + disabled, two punctuation cases, link hover class, nowrap cells); `npm run typecheck` PASS; manual: yes, screenshots/8.1-trace-1280x800.png (trace list patched from the page to 3 runs): "2 min 43 s" and "Total, 3 runs" each on one line.
+- Decisions: new optional `retryDisabled` prop on src/components/ErrorState.tsx (outside Files): the retry button lives there and the prop is additive (default false). Built in-session.
+- Tried and failed: none
+- Gotchas: none new.
+- Left open: P3 ErrorState edited outside Files (recorded above); P3 the double-click test passes with `disabled` alone, the ref covers same-frame clicks.
+- Next: re-audit (architect).
