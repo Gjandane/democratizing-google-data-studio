@@ -278,3 +278,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: Not run: live Gemini check of the audit and style schemas (hex pattern in provider schema untested live).
 - Next: Task 7.2 LLM-judge eval script. Start with the ux_audit node's structured-output pattern and the traces table.
+
+## 2026-10-19: Task 7.2 LLM-judge eval script
+- Status: done
+- Plan check: off
+- What changed: added `python -m dss.ops.eval <build_id>`, a worker-model ADK Workflow scoring the current spec against questions and catalog guidance; prints score JSON and persists scores/version on one trace, including failed-run traces.
+- Checks: `uv run pytest tests/test_eval.py` PASS (13); `uv run pytest` PASS (321, 3 live deselected, 2 upstream warnings; collected before the final two added tests, which passed in the targeted run). CLI `--help` PASS. Read-only reviewer: no findings.
+- Decisions: context.py outside Files is required by the context-only assembly convention. Judge context budget 16000 estimated tokens, 1000 reserved; oversized/missing context fails before the model call. Strict integer question_coverage/catalog_fit/layout_balance scores 1-5; code computes pass iff all >=3. Current version is captured before evaluation and stored in the trace span. One call, no repair; no new dependencies or API changes.
+- Tried and failed: none.
+- Gotchas: none.
+- Left open: live Gemini evaluation not run.
+- Next: Task 7.3 Research mode, routine work. Start a new chat with gpt-6.1-sol at Light (low) and invoke blueprint-solution-builder.

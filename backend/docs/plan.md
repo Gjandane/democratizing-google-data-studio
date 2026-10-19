@@ -143,7 +143,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Depends on: 4.2
   - Size: M
   - Done when: `uv run pytest tests/test_audit_style.py` passes with FakeLLM: audit findings arrive as one assistant message naming component ids; an uploaded PNG yields `style.md` (`type: Style Profile`) with palette hex values; the spec context includes `style.md` when present.
-- [ ] 7.2 LLM-judge eval script
+- [x] 7.2 LLM-judge eval script
   - Goal: `uv run python -m dss.ops.eval <build_id>` scores a version's spec against a rubric (coverage of high-priority questions, catalog fit, layout balance) with the worker model and stores scores on the trace.
   - Files: src/dss/ops/__init__.py, src/dss/ops/eval.py, prompts/v1/judge.md, tests/test_eval.py
   - Depends on: 4.3

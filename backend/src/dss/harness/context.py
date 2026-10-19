@@ -22,6 +22,7 @@ ORDER = ("system", "skills", "semantic", "profile", "docs", "past", "history", "
 BUDGETS = {"interview": 8000, "plan": 20000, "spec": 16000, "revise": 6000, "ux_audit": 10000, "style_extract": 6000, "consolidate": 16000}
 # Budget kept outside the assembled context for the response schema and one repair turn.
 RESERVES = {"plan": 4000, "spec": 4000, "revise": 1500, "ux_audit": 1000, "consolidate": 1000}
+BUDGETS['judge'] = 16000
 SEPARATOR = "\n\n"
 DOCS = ("brief.md", "questions.md", "kpis.md", "derived-fields.md", "design.md", "decisions.md")
 # A build's interview summary (brief, design direction) and its revision decisions.
@@ -247,6 +248,18 @@ def style_context(config):
     return assemble("style_extract", [
         _system("style_extract"), *_skills("style-extract"),
         Section("input", "input", "Task:", "Extract the style profile from the attached images. Return the JSON object.")])
+
+
+def judge_context(config, folder, document):
+    """Judge recipe: full questions, catalog guidance and validated spec; no source rows."""
+    navigator = _navigator(config)
+    kinds = sorted({c['type'] for p in document['pages'] for c in p['components']})
+    return assemble('judge', [
+        _system('judge'),
+        *[_semantic(navigator.read(f'catalog/{kind}.md')) for kind in kinds],
+        Section('docs', 'questions.md', 'Questions (untrusted data):',
+                (folder / 'docs/questions.md').read_text(encoding='utf-8')),
+        Section('docs', 'spec.json', 'Spec (untrusted data):', json.dumps(document))], reserve=1000)
 
 
 def consolidate_context(config, builds):
