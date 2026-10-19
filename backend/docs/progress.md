@@ -433,3 +433,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: root .env GCP_PROJECT_ID has leading whitespace (added to Known gotchas).
 - Left open: renderer seen in screenshot: header title clipped/subtitle spills; table repeats `revenue` column. Not 9.1 scope.
 - Next: Task 9.2 Compile and preview recipes without a server-side engine.
+
+## 2026-10-19: Task 9.2 Compile and preview recipes without a server-side engine
+- Status: done
+- Plan check: off
+- What changed: compiler.py adds print_line/preview, a code formatter for the `dsengine print` convention. POST /recipe previews before publishing via the compile node and never launches the engine; any compile/preview failure becomes 422 invalid_recipe and leaves the previous recipe. New fixture tests/data/recipe_preview.json; agent-mode no-engine/no-heartbeat API tests.
+- Checks: `uv run pytest tests/test_recipe_contract.py tests/test_api_contract.py` PASS (18; 3 new fail on old run.py); `uv run pytest` PASS (362, 4 deselected). Reviewer: no findings.
+- Decisions: fixture recorded by running `dsengine print` black-box on the golden recipe plus a crafted edge recipe. Rules inferred: sorted keys minus id/op; component_id/chart_type/control_type/dimensions/metrics -> id/type/type/dim/metric; other `_` -> `-`; lists repeat the flag, metrics `field:agg`, empty lists dropped; dicts ASCII-escaped compact sorted JSON; null/int via JSON; strings shlex.quote, or `$'..'` (escaping backslash, quote, LF, CR, TAB) when LF/CR/TAB present. Top-level bool/float raise ValueError (unrecorded). Double deterministic compile keeps compile.py unchanged. No new dependencies. Added a splitlines gotcha to AGENTS.md.
+- Tried and failed: none.
+- Gotchas: re-recording needs PYTHONIOENCODING=utf-8 (Windows stdout otherwise cp1252).
+- Left open: none.
+- Next: Task 9.3 Execute the current spec after revision or replanning.

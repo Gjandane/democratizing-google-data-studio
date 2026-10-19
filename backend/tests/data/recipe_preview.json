@@ -1,0 +1,295 @@
+{
+ "recorded": "2026-10-19 from `PYTHONIOENCODING=utf-8 uv run --project ../engine dsengine print <recipe>`; stdout split on LF, CR stripped",
+ "golden": {
+  "recipe": "golden_recipe.jsonl",
+  "lines": [
+   "dsengine open-report",
+   "dsengine set-canvas --height 1800 --width 1200",
+   "dsengine set-background-image --h 1800 --path background_p1.png --w 1200 --x 0 --y 0",
+   "dsengine add-chart --type scorecard --id p1_scorecard --h 224 --metric revenue:sum --options '{\"compact_numbers\":true}' --title Revenue --w 568 --x 24 --y 124",
+   "dsengine set-style --id p1_scorecard --style '{\"colors\":[\"#1E40AF\",\"#0D9488\",\"#E11D48\"]}'",
+   "dsengine add-chart --breakdown region --type time_series --id p1_time_series --date-dimension sale_date --h 224 --metric revenue:avg --options '{}' --sort '{\"field\":\"sale_date\",\"order\":\"asc\"}' --title 'Revenue over time' --w 568 --x 608 --y 124",
+   "dsengine set-style --id p1_time_series --style '{\"colors\":[\"#1E40AF\",\"#0D9488\",\"#E11D48\"]}'",
+   "dsengine add-chart --type bar --id p1_bar --dim region --h 224 --metric revenue:max --metric units:min --options '{\"orientation\":\"horizontal\",\"stacked\":true}' --sort '{\"field\":\"revenue\",\"order\":\"desc\"}' --title 'Revenue by region' --w 568 --x 24 --y 404",
+   "dsengine set-style --id p1_bar --style '{\"colors\":[\"#1E40AF\",\"#0D9488\",\"#E11D48\"]}'",
+   "dsengine add-chart --type pie --id p1_pie --dim region --h 224 --metric revenue:sum --options '{\"donut\":true}' --title 'Regional share' --w 568 --x 608 --y 404",
+   "dsengine set-style --id p1_pie --style '{\"colors\":[\"#1E40AF\",\"#0D9488\",\"#E11D48\"]}'",
+   "dsengine add-chart --type table --id p1_table --dim region --dim category --h 224 --metric units:count --metric revenue:none --options '{\"rows_per_page\":20}' --title 'Sales detail' --w 568 --x 24 --y 684",
+   "dsengine set-style --id p1_table --style '{\"colors\":[\"#1E40AF\",\"#0D9488\",\"#E11D48\"]}'",
+   "dsengine add-chart --type pivot_table --id p1_pivot_table --dim region --dim category --h 224 --metric units:count_distinct --options '{\"column_dimensions\":[\"category\"],\"row_dimensions\":[\"region\"]}' --title 'Region by category' --w 568 --x 608 --y 684",
+   "dsengine set-style --id p1_pivot_table --style '{\"colors\":[\"#1E40AF\",\"#0D9488\",\"#E11D48\"]}'",
+   "dsengine add-chart --type geo_map --id p1_geo_map --dim country --h 224 --metric revenue:sum --options '{\"geo_type\":\"country\"}' --title 'Revenue by country' --w 568 --x 24 --y 964",
+   "dsengine set-style --id p1_geo_map --style '{\"colors\":[\"#1E40AF\",\"#0D9488\",\"#E11D48\"]}'",
+   "dsengine add-chart --type scatter --id p1_scatter --dim category --h 224 --metric revenue:sum --metric units:sum --options '{}' --title 'Revenue and units' --w 568 --x 608 --y 964",
+   "dsengine set-style --id p1_scatter --style '{\"colors\":[\"#1E40AF\",\"#0D9488\",\"#E11D48\"]}'",
+   "dsengine add-text --id p1_text --h 224 --text $'Sales \"overview\"\\nRevenue in pesos \u2014 caf\u00e9' --w 568 --x 24 --y 1244",
+   "dsengine add-image --id p1_image --h 224 --path images/logo.png --w 568 --x 608 --y 1244",
+   "dsengine add-control --id p1_date_range --type date_range --h 224 --w 568 --x 24 --y 1524",
+   "dsengine add-control --id p1_dropdown --type dropdown --field region --h 224 --w 568 --x 608 --y 1524",
+   "dsengine save-report",
+   "dsengine get-link"
+  ]
+ },
+ "edge": {
+  "recipe": [
+   {
+    "build_id": "b_123456789abc",
+    "canvas": {
+     "height": 900,
+     "width": 1200
+    },
+    "datasource": {
+     "connector": "bigQuery",
+     "dataset_id": "d",
+     "project_id": "p",
+     "table_id": "t"
+    },
+    "recipe_version": "1.0",
+    "report_name": "Edge",
+    "version": 1
+   },
+   {
+    "id": "s001",
+    "op": "open_report"
+   },
+   {
+    "id": "s002",
+    "name": "D\u00e9tails page",
+    "op": "add_page"
+   },
+   {
+    "id": "s003",
+    "name": "it's",
+    "op": "add_page"
+   },
+   {
+    "id": "s004",
+    "index": 2,
+    "op": "go_to_page"
+   },
+   {
+    "component_id": "t0",
+    "h": 10,
+    "id": "s005",
+    "op": "add_text",
+    "text": "a\tb",
+    "w": 10,
+    "x": 0,
+    "y": 0
+   },
+   {
+    "component_id": "t1",
+    "h": 10,
+    "id": "s006",
+    "op": "add_text",
+    "text": "a\rb",
+    "w": 10,
+    "x": 0,
+    "y": 0
+   },
+   {
+    "component_id": "t2",
+    "h": 10,
+    "id": "s007",
+    "op": "add_text",
+    "text": "a\u0007b\u0000c\u001b\u007f\u0085\u2028",
+    "w": 10,
+    "x": 0,
+    "y": 0
+   },
+   {
+    "component_id": "t3",
+    "h": 10,
+    "id": "s008",
+    "op": "add_text",
+    "text": "new\nline 'quote' \\ back",
+    "w": 10,
+    "x": 0,
+    "y": 0
+   },
+   {
+    "component_id": "t4",
+    "h": 10,
+    "id": "s009",
+    "op": "add_text",
+    "text": "it's \"q\" $HOME `x` !",
+    "w": 10,
+    "x": 0,
+    "y": 0
+   },
+   {
+    "component_id": "t5",
+    "h": 10,
+    "id": "s010",
+    "op": "add_text",
+    "text": "plain-text_1.2@x%+=:,/",
+    "w": 10,
+    "x": 0,
+    "y": 0
+   },
+   {
+    "component_id": "t6",
+    "h": 10,
+    "id": "s011",
+    "op": "add_text",
+    "text": "\u00fc\u2014\u00e9\u00a0",
+    "w": 10,
+    "x": 0,
+    "y": 0
+   },
+   {
+    "component_id": "t7",
+    "h": 10,
+    "id": "s012",
+    "op": "add_text",
+    "text": "\ud83d\ude00\nz",
+    "w": 10,
+    "x": 0,
+    "y": 0
+   },
+   {
+    "component_id": "t8",
+    "h": 10,
+    "id": "s013",
+    "op": "add_text",
+    "text": "\n\u0000\u0001\u0007\b\u000b\f\u001b\u001f\u007f\u0085\u2028\"$`!\t'",
+    "w": 10,
+    "x": 0,
+    "y": 0
+   },
+   {
+    "breakdown": null,
+    "chart_type": "bar",
+    "component_id": "c1",
+    "date_dimension": null,
+    "dimensions": [
+     "region name",
+     "\u00e9",
+     "a\nb",
+     "it's"
+    ],
+    "h": 10,
+    "id": "s014",
+    "metrics": [
+     {
+      "agg": "sum",
+      "field": "rev"
+     },
+     {
+      "agg": "avg",
+      "field": "rev name"
+     },
+     {
+      "agg": "max",
+      "field": "it's"
+     },
+     {
+      "agg": "min",
+      "field": "x\ny"
+     }
+    ],
+    "op": "add_chart",
+    "options": {
+     "label": "caf\u00e9's\n",
+     "list": [
+      1,
+      "\u00e9"
+     ],
+     "n": 1.5,
+     "stacked": false
+    },
+    "sort": null,
+    "title": null,
+    "w": 10,
+    "x": 0,
+    "y": 0
+   },
+   {
+    "chart_type": "pie",
+    "component_id": "c2",
+    "dimensions": [],
+    "h": 10,
+    "id": "s015",
+    "metrics": [],
+    "op": "add_chart",
+    "w": 10,
+    "x": 0,
+    "y": 0
+   },
+   {
+    "component_id": "k1",
+    "control_type": "date_range",
+    "field": null,
+    "h": 10,
+    "id": "s016",
+    "op": "add_control",
+    "w": 10,
+    "x": 0,
+    "y": 0
+   },
+   {
+    "component_id": "k2",
+    "control_type": "dropdown",
+    "field": "a b",
+    "h": 10,
+    "id": "s017",
+    "op": "add_control",
+    "w": 10,
+    "x": 0,
+    "y": 0
+   },
+   {
+    "component_id": "c1",
+    "id": "s018",
+    "op": "set_style",
+    "style": {
+     "bold": true,
+     "colors": [
+      "#000000"
+     ]
+    }
+   },
+   {
+    "component_id": "i1",
+    "h": 10,
+    "id": "s019",
+    "op": "add_image",
+    "path": "images/my logo.png",
+    "w": 10,
+    "x": 0,
+    "y": 0
+   },
+   {
+    "id": "s020",
+    "op": "save_report"
+   },
+   {
+    "id": "s021",
+    "op": "get_link"
+   }
+  ],
+  "lines": [
+   "dsengine open-report",
+   "dsengine add-page --name 'D\u00e9tails page'",
+   "dsengine add-page --name 'it'\"'\"'s'",
+   "dsengine go-to-page --index 2",
+   "dsengine add-text --id t0 --h 10 --text $'a\\tb' --w 10 --x 0 --y 0",
+   "dsengine add-text --id t1 --h 10 --text $'a\\rb' --w 10 --x 0 --y 0",
+   "dsengine add-text --id t2 --h 10 --text 'a\u0007b\u0000c\u001b\u007f\u0085\u2028' --w 10 --x 0 --y 0",
+   "dsengine add-text --id t3 --h 10 --text $'new\\nline \\'quote\\' \\\\ back' --w 10 --x 0 --y 0",
+   "dsengine add-text --id t4 --h 10 --text 'it'\"'\"'s \"q\" $HOME `x` !' --w 10 --x 0 --y 0",
+   "dsengine add-text --id t5 --h 10 --text plain-text_1.2@x%+=:,/ --w 10 --x 0 --y 0",
+   "dsengine add-text --id t6 --h 10 --text '\u00fc\u2014\u00e9\u00a0' --w 10 --x 0 --y 0",
+   "dsengine add-text --id t7 --h 10 --text $'\ud83d\ude00\\nz' --w 10 --x 0 --y 0",
+   "dsengine add-text --id t8 --h 10 --text $'\\n\u0000\u0001\u0007\b\u000b\f\u001b\u001f\u007f\u0085\u2028\"$`!\\t\\'' --w 10 --x 0 --y 0",
+   "dsengine add-chart --breakdown null --type bar --id c1 --date-dimension null --dim 'region name' --dim '\u00e9' --dim $'a\\nb' --dim 'it'\"'\"'s' --h 10 --metric rev:sum --metric 'rev name:avg' --metric 'it'\"'\"'s:max' --metric $'x\\ny:min' --options '{\"label\":\"caf\\u00e9'\"'\"'s\\n\",\"list\":[1,\"\\u00e9\"],\"n\":1.5,\"stacked\":false}' --sort null --title null --w 10 --x 0 --y 0",
+   "dsengine add-chart --type pie --id c2 --h 10 --w 10 --x 0 --y 0",
+   "dsengine add-control --id k1 --type date_range --field null --h 10 --w 10 --x 0 --y 0",
+   "dsengine add-control --id k2 --type dropdown --field 'a b' --h 10 --w 10 --x 0 --y 0",
+   "dsengine set-style --id c1 --style '{\"bold\":true,\"colors\":[\"#000000\"]}'",
+   "dsengine add-image --id i1 --h 10 --path 'images/my logo.png' --w 10 --x 0 --y 0",
+   "dsengine save-report",
+   "dsengine get-link"
+  ]
+ }
+}

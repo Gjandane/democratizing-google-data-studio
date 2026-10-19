@@ -46,3 +46,4 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - httpx string headers must be ASCII; use byte header values when testing non-ASCII credentials at the server boundary.
 <!-- blueprint-solution:end -->
 - Config does not strip root .env values and GCP_PROJECT_ID there has leading whitespace; live tests pass a stripped project through PUT /api/settings (or DSS_LIVE_GCP_PROJECT).
+- Recipe JSONL is written with ensure_ascii=False, so U+2028/U+0085 can sit inside a line: split recipe text on LF only, never str.splitlines().

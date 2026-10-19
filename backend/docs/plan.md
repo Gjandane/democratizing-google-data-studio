@@ -165,7 +165,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_plan.py tests/test_spec_node.py` passes, including assertions on the effective provider request (response_json_schema, no converted response_schema), local strict validation, sanitized malformed/secret output, and one SQL repair; `uv run pytest -m live tests/live/test_backend_flow.py` uploads the sample CSV, starts/answers the interview and reaches prototype through the unmodified API with real Gemini/BigQuery, no injected spec/FakeLLM, at most two spec calls for the sample, a working view SELECT and a 1200px background. Live runtime stays in a temporary folder; use a valid authorized GCP project without editing root .env. Save the run IDs and prototype screenshot. `uv run pytest` passes.
   - Review focus: provider compatibility must not bypass raw-output guards, strict Pydantic validation, token accounting, node order or the repair budget.
-- [ ] 9.2 Compile and preview recipes without a server-side engine
+- [x] 9.2 Compile and preview recipes without a server-side engine
   - Goal: hosted agent mode returns recipe preview with no installed engine and no connected agent, as required by the deployment and recipe fallback.
   - Spec: docs/architecture.md#Build consistency; docs/architecture.md#Recipe compiler
   - Files: src/dss/api/run.py, src/dss/recipe/compiler.py, tests/test_recipe_contract.py, tests/test_api_contract.py, tests/data/recipe_preview.json

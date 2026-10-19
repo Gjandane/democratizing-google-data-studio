@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from test_thin_slice import thin, load
 from test_execute import settle
+from test_recipe_contract import agent_client, no_engine, spec
 
 FIXTURES = Path(__file__).resolve().parents[2] / "contracts/fixtures/api"
 NULLABLE = {"spec_version": int, "report_url": str, "node": str, "model": str, "error": str, "build_id": str, "agent_last_seen": str}
@@ -56,6 +57,12 @@ def test_phase4_contract(thin):
     settle(client, app)
     check(client.get("/api/traces"), "traces.json")
     check(client.get(f"/api/traces?build_id={bid}"), "traces.json")
+
+
+def test_recipe_contract_in_agent_mode_without_engine(agent_client, spec):
+    client, app, folder = agent_client
+    (folder / "spec.json").write_text(spec.model_dump_json(), encoding="utf-8")
+    check(client.post(f"/api/builds/{spec.build_id}/recipe"), "recipe.json")
 
 
 def test_intake_and_action_contracts(thin, monkeypatch):

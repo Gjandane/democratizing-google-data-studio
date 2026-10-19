@@ -2,20 +2,27 @@
 import json
 from pathlib import Path
 import random
-import sys
+import subprocess
 
+from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
 import pytest
 
+from dss.config import Config
+from dss.db import now
 from dss.harness.guardrails import RunError
 from dss.harness.nodes.compile import perform
-from dss.recipe.compiler import compile_recipe
+from dss.main import create_app
+from dss.recipe.compiler import compile_recipe, preview, print_line
 from dss.spec.models import DashboardSpec, TYPES
 from dss.spec.validate import validate_spec
+from fakes import fake_models
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = json.loads((ROOT.parent / 'contracts/recipe.schema.json').read_text(encoding='utf-8'))
 GOLDEN = ROOT / 'tests/data/golden_recipe.jsonl'
+# Recorded from the engine's own `dsengine print`, not from this backend's formatter.
+RECORDED = json.loads((ROOT / 'tests/data/recipe_preview.json').read_text(encoding='utf-8'))
 
 
 @pytest.fixture
@@ -132,15 +139,52 @@ def test_op_id_capacity(spec, count):
         assert ops[-1]['id'] == 's999'
 
 
-def test_recipe_api_uses_current_spec(client, app, build_id, spec, monkeypatch):
-    monkeypatch.setenv('DSS_ENGINE_CMD', f'"{sys.executable}" "{ROOT / "tests/fake_engine.py"}"')
-    folder = app.state.settings.get().data_dir / 'builds' / build_id / 'v1'
-    folder.mkdir(parents=True)
+@pytest.fixture
+def no_engine(monkeypatch):
+    def refuse(*args, **kwargs):
+        raise AssertionError('recipe preview invoked a process')
+    monkeypatch.setenv('DSS_ENGINE_CMD', str(ROOT / 'missing-dsengine'))
+    for name in ('run', 'Popen', 'check_output'):
+        monkeypatch.setattr(subprocess, name, refuse)
+
+
+@pytest.fixture
+def agent_client(tmp_path, no_engine):
+    """Hosted agent mode: no installed engine and no agent heartbeat."""
+    app = create_app(Config(data_dir=tmp_path, engine_mode='agent', agent_token='t' * 24), model_lister=fake_models)
+    with TestClient(app) as client:
+        with app.state.db.connect() as conn:
+            conn.execute("INSERT INTO builds(id,title,archetype,mode,stage,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",
+                         ('b_123456789abc', 'Golden', 'executive', 'data', 'prototype', now(), now()))
+        folder = tmp_path / 'builds' / 'b_123456789abc' / 'v1'
+        folder.mkdir(parents=True)
+        assert not app.state.agent_jobs.connected
+        yield client, app, folder
+
+
+def test_preview_matches_recorded_engine_print():
+    golden = preview(GOLDEN.read_bytes().decode('utf-8'))
+    assert [op['op_id'] for op in golden] == [f's{i:03d}' for i in range(1, 26)]
+    assert [op['line'] for op in golden] == RECORDED['golden']['lines']
+    # Quoting, nulls, renamed and repeated flags, non-ASCII and U+2028 inside one line.
+    header, *ops = RECORDED['edge']['recipe']
+    assert [print_line(op) for op in ops] == RECORDED['edge']['lines']
+    text = ''.join(json.dumps(line, sort_keys=True, separators=(',', ':'), ensure_ascii=False) + '\n'
+                   for line in RECORDED['edge']['recipe'])
+    assert [op['line'] for op in preview(text)] == RECORDED['edge']['lines']
+
+
+@pytest.mark.parametrize('value', [True, 1.5, [1], [{'field': 'x'}]])
+def test_preview_rejects_unrecorded_argument_forms(value):
+    with pytest.raises(ValueError):
+        print_line({'id': 's001', 'op': 'add_text', 'bold': value})
+
+
+def test_recipe_api_uses_current_spec(agent_client, spec):
+    client, app, folder = agent_client
     (folder / 'spec.json').write_text(spec.model_dump_json(), encoding='utf-8')
-    with app.state.db.connect() as conn:
-        conn.execute("UPDATE builds SET stage='prototype' WHERE id=?", (build_id,))
     for _ in range(2):
-        response = client.post(f'/api/builds/{build_id}/recipe')
+        response = client.post('/api/builds/b_123456789abc/recipe')
         assert response.status_code == 200, response.text
         result = response.json()
         recipe_bytes = (folder / 'recipe.jsonl').read_bytes()
@@ -148,8 +192,34 @@ def test_recipe_api_uses_current_spec(client, app, build_id, spec, monkeypatch):
         header, *ops = validate_lines(recipe_bytes.decode('utf-8'))
         assert header['datasource']['project_id'] == 'public-source'
         assert header['report_name'] == spec.title and header['version'] == 1
-        assert result == {'op_count': len(ops), 'ops': [
-            {'op_id': op['id'], 'line': 'dsengine ' + op['op'].replace('_', '-')} for op in ops]}
+        assert result == {'op_count': 25, 'ops': [
+            {'op_id': f's{i:03d}', 'line': line} for i, line in enumerate(RECORDED['golden']['lines'], 1)]}
+        assert {op['op'] for op in ops} >= {'add_chart', 'add_text', 'add_image', 'add_control'}
+    assert GOLDEN.read_bytes() == compile_recipe(spec, 3).encode('utf-8')
     with app.state.db.connect() as conn:
-        traces = conn.execute('SELECT node,status FROM traces WHERE build_id=?', (build_id,)).fetchall()
+        traces = conn.execute('SELECT node,status FROM traces WHERE build_id=?', ('b_123456789abc',)).fetchall()
         assert [tuple(row) for row in traces] == [('recipe', 'ok'), ('recipe', 'ok')]
+    assert not app.state.agent_jobs.jobs and not app.state.agent_jobs.queue
+
+
+@pytest.mark.parametrize('failure', ['compile', 'preview'])
+def test_recipe_api_failure_publishes_nothing(agent_client, spec, failure, monkeypatch):
+    client, app, folder = agent_client
+    previous = b'previous complete recipe\n'
+    (folder / 'recipe.jsonl').write_bytes(previous)
+    if failure == 'compile':
+        next(c for c in spec.pages[0].components if c.type == 'image').image_path = None
+    else:
+        from dss.api import run
+        def broken(text):
+            raise KeyError('C:/secret/raw-detail')
+        monkeypatch.setattr(run, 'preview', broken)
+    (folder / 'spec.json').write_text(spec.model_dump_json(), encoding='utf-8')
+    response = client.post('/api/builds/b_123456789abc/recipe')
+    assert response.status_code == 422
+    assert response.json()['error']['code'] == 'invalid_recipe'
+    assert 'secret' not in response.text and 'Traceback' not in response.text
+    assert (folder / 'recipe.jsonl').read_bytes() == previous
+    assert not (folder / 'recipe.jsonl.tmp').exists()
+    with app.state.db.connect() as conn:
+        assert [tuple(row) for row in conn.execute('SELECT node,status FROM traces')] == [('recipe', 'error')]
