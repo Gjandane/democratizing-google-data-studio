@@ -205,7 +205,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_context.py tests/test_plan.py tests/test_revise.py tests/test_audit_style.py tests/test_consolidation.py tests/test_eval.py tests/test_research.py` passes offline with an injectable token counter: an online-shaped request estimated under budget but counted over budget drops in the specified order, preserves mandatory sections, recounts after drops and refuses generation if still too large; schema/tools/images/repair text participate; every real LLM node uses the guard and stores authoritative request counts separately from estimates; counting failure is sanitized and does not generate. FakeLLM remains network-free and generation/repair/search caps stay unchanged. `uv run pytest -m live tests/live/test_backend_flow.py` confirms actual counts on the live plan/spec path; `uv run pytest` passes.
   - Review focus: this task centralizes counting and request fitting; node changes are wiring to that guard. Preserve typed Context metadata, schema compatibility and all per-node call limits. No new dependency.
-- [ ] 9.7 Bound retry attempts by the remaining 60-second deadline
+- [x] 9.7 Bound retry attempts by the remaining 60-second deadline
   - Goal: the agent stops retrying within its documented budget even if a subsequent HTTP attempt stalls; no request starts at or after expiration.
   - Spec: docs/architecture.md#Build consistency
   - Files: src/dss/agent/client.py, tests/test_agent_client.py

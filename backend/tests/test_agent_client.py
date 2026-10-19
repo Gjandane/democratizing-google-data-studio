@@ -409,6 +409,146 @@ def test_backoff_doubles_and_429_or_5xx_retry_until_the_budget(tmp_path, monkeyp
     assert error.value.code == 1 and delays[:3] == [.05, .1, .2] and max(delays) == .2
 
 
+class Clock:
+    """The retry deadline's clock: backoff waits and slow attempts advance it, nothing sleeps."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, seconds):
+        self.now += seconds
+        return False  # stop.wait: not stopped
+
+
+def scripted(tmp_path, outcomes):
+    """An agent on a fake clock and a client whose attempts follow `outcomes`: (seconds, status or
+    exception), with each attempt's start time, query and read timeout recorded."""
+    clock, starts = Clock(), []
+    agent = client.Agent("http://127.0.0.1:1", TOKEN, tmp_path, ["dsengine"])
+    agent.clock, agent.stop.wait = clock, clock.advance
+    def handler(request):
+        starts.append((clock.now, dict(request.url.params), request.extensions["timeout"]["read"]))
+        seconds, outcome = outcomes.pop(0) if outcomes else (0, 503)
+        clock.advance(seconds)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return httpx.Response(outcome)
+    http = httpx.Client(base_url=agent.server, transport=httpx.MockTransport(handler),
+                        timeout=httpx.Timeout(client.HTTP_TIMEOUT_S, connect=client.CONNECT_TIMEOUT_S))
+    return agent, http, clock, starts
+
+
+def test_transport_failures_retry_until_success_before_the_deadline(tmp_path):
+    refused = httpx.ConnectError("refused")
+    agent, http, clock, starts = scripted(tmp_path, [(0, refused), (0, refused), (30, refused), (0, 204)])
+    assert agent.call(http, "GET", "/jobs/next", params={"wait": 25}).status_code == 204
+    # The first attempt long-polls with the ordinary timeout; retries only probe, bounded by what remains.
+    assert starts == [(0, {"wait": "25"}, 40), (1, {"wait": "0"}, 40), (3, {"wait": "0"}, 40),
+                      (37, {"wait": "0"}, 23)]
+
+
+def test_429_and_5xx_share_the_deadline_measured_from_the_first_failure(tmp_path):
+    # The first failure ends at 10 s, so the deadline is 70 s; slow attempts spend it like backoff does.
+    agent, http, clock, starts = scripted(tmp_path, [(10, 429), (10, 503), (10, 502), (10, 200)])
+    assert agent.call(http, "POST", "/heartbeat", json={}).status_code == 200
+    assert [start for start, *_ in starts] == [0, 11, 23, 37]
+    assert [timeout for *_, timeout in starts] == [40, 40, 40, 33]
+    agent, http, clock, starts = scripted(tmp_path, [(10, 429), (25, 503), (29, 500), (0, 200)])
+    with pytest.raises(client.AgentExit) as error:
+        agent.call(http, "POST", "/heartbeat", json={})
+    # The third attempt fails at 67 s: its 4 s backoff is cut to the 3 s left, so no fourth attempt.
+    assert [start for start, *_ in starts] == [0, 11, 38] and clock.now == 70
+    assert error.value.code == 1 and "Server unavailable for 60 s (HTTP 500)" in str(error.value)
+
+
+def test_no_attempt_starts_at_the_deadline(tmp_path):
+    agent, http, clock, starts = scripted(tmp_path, [])
+    with pytest.raises(client.AgentExit):
+        agent.call(http, "GET", "/jobs/r_000000000000/files/recipe.jsonl")
+    # Backoff 1, 2, 4, 8 then 10 s: the last wait is cut to the 5 s left and ends exactly at 60 s.
+    assert [start for start, *_ in starts] == [0, 1, 3, 7, 15, 25, 35, 45, 55] and clock.now == 60
+    assert starts[-1][2] == 5
+
+
+class StalledServer:
+    """A real socket server: the first request gets a 503, every later one a response whose header
+    trickles in forever, so no single httpx timeout phase ever expires."""
+
+    def __init__(self):
+        self.sock = socket.socket()
+        self.sock.bind(("127.0.0.1", 0))
+        self.sock.listen()
+        self.url = f"http://127.0.0.1:{self.sock.getsockname()[1]}"
+        self.first_failure, self.closed, self.done = None, threading.Event(), threading.Event()
+        threading.Thread(target=self.serve, daemon=True).start()
+
+    def serve(self):
+        accepted = 0
+        while not self.done.is_set():
+            try:
+                conn, _ = self.sock.accept()
+            except OSError:
+                return
+            accepted += 1
+            threading.Thread(target=self.answer, args=(conn, accepted == 1), daemon=True).start()
+
+    def answer(self, conn, fail):
+        with conn:
+            conn.recv(65536)
+            if fail:
+                conn.sendall(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                self.first_failure = time.monotonic()
+                return
+            try:
+                conn.sendall(b"HTTP/1.1 200 OK\r\n")
+                while not self.done.is_set():
+                    conn.sendall(b"X-Pad: a\r\n")
+                    time.sleep(.1)
+            except OSError:
+                self.closed.set()  # the agent dropped the stalled connection
+
+    def stop(self):
+        self.done.set()
+        self.sock.close()
+
+
+def test_stalled_retry_cannot_outlast_the_budget_and_stops_the_engine(tmp_path, wrapper, monkeypatch, caplog,
+                                                                      capfd):
+    monkeypatch.setenv("DSS_TEST_ENGINE_TRICKLE", "1")
+    for name, value in (("BACKOFF_S", .05), ("BACKOFF_MAX_S", .2), ("RETRY_BUDGET_S", 1.5)):
+        monkeypatch.setattr(client, name, value)
+    stalled, alive = StalledServer(), tmp_path / "alive"
+    agent = client.Agent(stalled.url, TOKEN, tmp_path / "data", [sys.executable, str(wrapper)])
+    folder = tmp_path / "data/agent" / JOB["build_id"] / "v1"
+    (folder / "screens").mkdir(parents=True)
+    try:
+        with agent.http() as http:
+            outcome = {}
+            def run():
+                try:
+                    agent.run_engine(http, JOB["run_id"], JOB, folder)
+                except client.AgentExit as error:
+                    outcome.update(error=error, ended=time.monotonic())
+            runner = threading.Thread(target=run, daemon=True)
+            runner.start()
+            runner.join(15)  # a regression fails here instead of hanging on the trickle
+            assert not runner.is_alive() and "error" in outcome
+            assert http.is_closed
+        assert stalled.first_failure and 1.5 <= outcome["ended"] - stalled.first_failure <= 1.5 + .5
+        assert "no answer in time" in str(outcome["error"])
+        assert stalled.closed.wait(5)
+        size = alive.stat().st_size
+        time.sleep(.5)
+        assert alive.stat().st_size == size  # engine and its child are gone
+    finally:
+        agent.stop.set()  # after a regression, ends the engine run that is still streaming
+        stalled.stop()
+    assert_no_token(caplog.text, *capfd.readouterr())
+
+
 @pytest.mark.parametrize("response,code", [
     (httpx.Response(200, text="<!doctype html>"), 1), (httpx.Response(401), 2),
     (httpx.Response(404, json={"error": {"code": "agent_mode_off", "message": "", "detail": {}}}), 2)])

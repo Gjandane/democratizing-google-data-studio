@@ -66,6 +66,7 @@ class Agent:
         self.status = {"chrome_running": False, "signed_in": False}
         self.lock = threading.Lock()
         self.stop = threading.Event()
+        self.clock = time.monotonic  # the retry deadline's clock (tests inject a fake)
         self.next_check = 0.0
         try:
             self.version = package_version("dss-backend")
@@ -96,11 +97,15 @@ class Agent:
                             timeout=httpx.Timeout(HTTP_TIMEOUT_S, connect=CONNECT_TIMEOUT_S))
 
     def call(self, http, method, path, *, retry=True, **kwargs):
-        """One agent request; network errors, 429 and 5xx retry with backoff for RETRY_BUDGET_S."""
-        failing_since, delay = None, BACKOFF_S
+        """One agent request; network errors, 429 and 5xx retry with backoff until RETRY_BUDGET_S after
+        the first failure. Backoff and every later attempt, stalled I/O included, share that deadline."""
+        deadline, delay, reason = None, BACKOFF_S, None
         while True:
             try:
-                response = http.request(method, "/api/agent" + path, **kwargs)
+                if deadline is None:
+                    response = http.request(method, "/api/agent" + path, **kwargs)
+                else:
+                    response = self.attempt(http, method, path, deadline, reason, kwargs)
                 if response.status_code < 500 and response.status_code != 429:
                     break
                 reason = f"HTTP {response.status_code}"
@@ -108,10 +113,10 @@ class Agent:
                 reason = type(error).__name__
             if not retry:
                 raise AgentExit(f"Server unavailable ({reason})")
-            failing_since = failing_since or time.monotonic()
-            remaining = failing_since + RETRY_BUDGET_S - time.monotonic()
+            deadline = deadline or self.clock() + RETRY_BUDGET_S
+            remaining = deadline - self.clock()
             if remaining <= 0:
-                raise AgentExit(f"Server unavailable for {RETRY_BUDGET_S} s ({reason}); exiting")
+                raise self.expired(reason)
             logger.warning("Server unavailable (%s); retrying in %.1f s", reason, min(delay, remaining))
             if self.stop.wait(min(delay, remaining)):
                 raise Stopped()
@@ -129,6 +134,40 @@ class Agent:
                 raise JobGone()
             raise JobError(code)
         return response
+
+    def expired(self, reason):
+        return AgentExit(f"Server unavailable for {RETRY_BUDGET_S} s ({reason}); exiting")
+
+    def attempt(self, http, method, path, deadline, reason, kwargs):
+        """A retry ends by the deadline whatever the server does: none starts at or after it, and one
+        that is still waiting then (connect, DNS or a trickling answer) is abandoned in its thread and
+        the client closed, so its connection goes; the caller's AgentExit then stops any engine."""
+        remaining = deadline - self.clock()
+        if remaining <= 0:
+            raise self.expired(reason)
+        if "wait" in kwargs.get("params", {}):
+            # A retried long poll only probes: waiting would outlast the remaining budget.
+            kwargs = {**kwargs, "params": {**kwargs["params"], "wait": 0}}
+        timeout = httpx.Timeout(min(HTTP_TIMEOUT_S, remaining), connect=min(CONNECT_TIMEOUT_S, remaining))
+        outcome, done = {}, threading.Event()
+        def send():
+            try:
+                outcome["response"] = http.request(method, "/api/agent" + path, timeout=timeout, **kwargs)
+            except BaseException as error:  # handed to the caller's thread
+                outcome["error"] = error
+            finally:
+                done.set()
+        threading.Thread(target=send, name="dss-agent-retry", daemon=True).start()
+        # Short waits keep Ctrl+C responsive on Windows.
+        while not done.wait(max(0.0, min(.5, deadline - self.clock()))):
+            if self.stop.is_set():
+                raise Stopped()
+            if self.clock() >= deadline:
+                http.close()
+                raise self.expired("no answer in time")
+        if "error" in outcome:
+            raise outcome["error"]
+        return outcome["response"]
 
     def check(self):
         """`dsengine check` feeds the heartbeat; only the idle main loop calls it, never during a run."""

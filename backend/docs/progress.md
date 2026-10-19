@@ -488,3 +488,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: P2 folded count is ~5% under billed prompt_token_count (8245 vs 8695); live test does not compare them; no safety margin - src/dss/harness/llm.py.
 - Next: Task 9.7 Bound retry attempts by the remaining 60-second deadline.
+
+## 2026-10-20: Task 9.7 Bound retry attempts by the remaining 60-second deadline
+- Status: done
+- Plan check: off
+- What changed: src/dss/agent/client.py: `call` sets one deadline at the first failure; every retry goes through new `attempt` (own daemon thread, refuses to start at/after the deadline, per-phase timeouts capped at the remainder, closes the client and raises AgentExit at the deadline). Injectable `Agent.clock`. Tests: fake-clock retry tests and a real trickling-header server test.
+- Checks: `uv run pytest tests/test_agent_client.py` PASS (17); `uv run pytest` PASS (447, 4 deselected); `git diff --check` PASS. Mutation: with the HEAD client the stall test hung >90 s (killed). Reviewer: no P0/P1; two P3s (stall-test timestamp race, unbounded hang on regression) fixed.
+- Decisions: first attempt stays inline with the 40 s timeout (long poll >35 s). A retried long poll probes with `wait=0` so a healthy 25 s poll can't overrun the remainder. Waits in <=0.5 s slices (Ctrl+C, stop). At expiry the shared client is closed (agent exits anyway); the abandoned worker ends on its capped timeouts or socket close. Heartbeat (retry=False) unchanged. No dependencies added.
+- Tried and failed: none.
+- Gotchas: none beyond AGENTS.md.
+- Left open: none.
+- Next: Task 10.1 Live token usage on the event stream.
