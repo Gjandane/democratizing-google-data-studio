@@ -59,8 +59,9 @@ SQLite `data/dss.sqlite`:
 - `builds(id, title, archetype, mode, stage, current_version, created_at, updated_at)`
 - `versions(build_id, n, status, spec_version, report_url, created_at)`
 - `sources(id, build_id, kind, name, bq_table, row_count, columns_json)`; kind adds `synthetic`
-- `synthetic_generations(generation_key, build_id, request_hash, run_id, source_id, state,
-  retry_ready, error_json, created_at)` (additive migration; ../contracts/synthetic-data.md)
+- `synthetic_generations(generation_key, build_id, request_hash, run_id, source_id, bq_table,
+  state, retry_ready, error_json, created_at)` (additive migration; ../contracts/synthetic-data.md
+  1.1: the only durable job record, backed up at once after reservation and registration)
 - `messages(id, build_id, role, text, node, created_at)` + `messages_fts` (FTS5 over text, external content)
 - `events(id, build_id, run_id, kind, payload_json, created_at)`
 - `traces(run_id, build_id, node, model, input_tokens, output_tokens, latency_ms, tool_calls, status, error, spans_json, started_at)`
@@ -323,7 +324,7 @@ Final-audit corrections (2026-10-19):
 ### Synthetic data
 - Problem: a reference can describe a dashboard without supplying its source data. Offer explicit
   synthetic generation instead of requiring a CSV before the app can proceed.
-- Source: ../contracts/synthetic-data.md 1.0. It specifies GenerationSpec, generators/relations,
+- Source: ../contracts/synthetic-data.md 1.1. It specifies GenerationSpec, generators/relations,
   API lifecycle, limits, storage and oracle. Implement a reusable Python generate_csv function
   and module CLI in data/synthetic.py; no model/cloud dependency for the local generator.
 - One bounded worker schema proposal uses recreate observations; fields/distributions/definitions
@@ -332,9 +333,13 @@ Final-audit corrections (2026-10-19):
 - API orchestration: synthetic_data.py -> code generation -> completed file/provenance -> existing
   intake extended with explicit BQ types -> registered synthetic Source. Schema proposals work
   in Connect with zero sources. Generation remains bounded and uses the existing action lock.
-- Generation table (Data model) holds key/hash/run/state/source; job status reads it, never SSE.
-  Manifests and startup reconciliation follow the contract (task 12.4; a simplification is a
-  pending change request at the program root, 2026-10-20).
+- Generation table (Data model) holds key/hash/run/source/table/state and is the only job
+  record; job status reads it, never SSE. Durability (contract 1.1, task 12.4): reservation and
+  registration each commit in one transaction, then call the existing backup routine at once
+  (same lock and dirty flag; best-effort: a failure logs a warning, the periodic backup retries)
+  before the 202 and before run.finished. Startup, before serving, turns every in-flight row into
+  failed `generation_interrupted`, cleans only that row's generated prefix and BigQuery table,
+  then sets retry_ready. No manifest files, no reconciliation pass.
 - Local output uses DSS_DATA_DIR/generated; hosted uses the existing GCS volume, with generation
   in local temp and metadata-last publication. Downloads authorize source ownership and only
   serve registered completed files. No new dependency, environment variable or bucket.
@@ -534,3 +539,4 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-19 | Closest supported recreation and evidence-backed feasibility required; explicit user substitutions, private versioned references | style-only; prompt-only capability checks; runtime web search | user scope decision and five-gap plan audit | change reference/capability 2026-10-19 |
 | 2026-10-19 | Synthetic schema/count/seed API and reusable Python generator; local folder or existing mounted GCS state | require user CSV; LLM emits rows; new storage service | user requested screenshot-only recreation with fake CSV generation | change synthetic-data 2026-10-19 |
 | 2026-10-20 | Plan delta audit: extraction inside the action's trace; app evidence from contracts; header-first image checks; explicit CSV null marker; 11.3/11.5/12.2 split | separate extraction run; manual engine review | one trace per action; engine files are another part's; reviewer findings | audit 2026-10-20 |
+| 2026-10-20 | Synthetic durability: generation table plus immediate best-effort DB backups after reservation and registration; startup fails in-flight jobs and cleans their own artifacts (synthetic-data.md 1.1) | immutable manifests + startup reconciliation; fail-closed 503 on backup failure | same POC guarantee on the existing backup path, no new files or error code | change 2026-10-20 (program root, user choice) |

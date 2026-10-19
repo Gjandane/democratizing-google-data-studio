@@ -253,3 +253,28 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none new.
 - Left open: none
 - Next: re-audit (architect).
+
+## 2026-10-19: Blueprint architect intake
+- Status: awaiting scope clarification.
+- Reviewed: frontend AGENTS.md, architecture essentials, plan, latest progress, PRD, package scripts, source/test layout, and blueprint-architect intake instructions.
+- Findings: all plan tasks through 9.1 are marked done; the prior progress entry requests a re-audit. PROJECT_BRIEF.md and _blueprint/ are absent; .blueprint/ contains existing checkpoint snapshots.
+- Decisions: asked whether this session covers the pending re-audit, a new frontend change, or conversion to the invoked skill's handoff format; no scope inferred from the skill invocation alone.
+- Checks: none run (orientation only); no product code or plan status changed.
+- Next: establish the requested outcome, then follow the applicable architect workflow.
+
+## 2026-10-19: Change reference images and capability verification (frontend)
+- Status: planned; scope confirmed, final plan review pending.
+- User decisions: both features required this hackathon; closest supported recreation of layout/chart choices/style using connected data, with explained substitutions.
+- What changed: API 1.3, dashboard-intent 1.0 and isolated shared fixtures; program/part PRDs, architecture/essentials and plans. Seven M tasks: backend 11.1-11.5, frontend 10.1, release 3.3. Existing task markers preserved. No product code changed in this planning session.
+- Audit: five original gaps and five delta integration findings addressed; focused recheck found no remaining P1 contradictions, then requested task split (applied as 11.3-11.5). Full report: program-root docs/reference-capability-audit.md. Draft remains pending user review per architect skill.
+- Decisions: dated product/app/data evidence; unknowns block; explicit durable substitutions; private replaceable reference sets per version; pending-comment recovery; distinct candidate views preserve old reports; required hosted acceptance redeploys tested source. No engine expansion or added dependency. New fixture folder avoids breaking legacy exhaustive API fixture inventories. Frontend full conventions/UI details moved into implementation-notes.md/reference-ui.md, essentials summarize.
+- Checks: root check_contracts.py 9/9 PASS; frontend npm test -- contract 31/31 PASS. Planning lint/stamp run; final counts recorded in scope audit. No new behavior claimed tested; its acceptance commands belong to builders.
+- Left open: seven sessions of M work may conflict with deadline; both remain required until user explicitly changes scope. Existing unrelated dirty source/deck files and historical progress entries preserved; no commit while draft review pending.
+- Next: complete existing in-progress backend 9.7 and existing 10.1, then backend 11.1-11.5; frontend 10.1; release 3.3. Existing release infrastructure may proceed independently.
+
+## 2026-10-20: Change gates after backend's task split (program root)
+- Status: done
+- What changed: backend split phases 11-12 (11.1-11.8, 12.1-12.5). 10.1 `Needs: backend 11.8` (was 11.5); 11.1 `Needs: backend 12.3` (was 12.2; user choice) with an `If:` line: when backend 12.5 isn't done, the label inside the backend-rendered prototype is left to release 3.3. Essentials: synthetic-data.md 1.1 (durability only; HTTP shapes unchanged). PRD deadline 2026-10-23 01:05 MPST.
+- Affects: 10.1, 11.1 gates; no task content beyond the `If:`.
+- Checks: `lint` frontend 0 errors; `program` 0 problems, 10.1 waits on backend 11.8.
+- Left open: plan audit still pending from the 2026-10-19 reference/capability change.

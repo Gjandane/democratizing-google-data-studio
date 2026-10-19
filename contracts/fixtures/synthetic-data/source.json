@@ -1,0 +1,17 @@
+{
+  "id": "s_000000000001",
+  "kind": "synthetic",
+  "name": "Synthetic sample data",
+  "bq_table": "example_project.example_dataset.sample_table",
+  "row_count": 1000,
+  "columns": [
+    {
+      "name": "region",
+      "type": "string",
+      "sample": [
+        "East",
+        "West"
+      ]
+    }
+  ]
+}

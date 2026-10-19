@@ -1,5 +1,8 @@
 # Plan: frontend
-Target: POC · Audit: done 2026-10-18 (18 findings across the program, 18 applied)
+Target: POC · Audit: pending 2026-10-19 (reference/capability change; earlier audits recorded in progress.md)
+Scope change 2026-10-19: reference/capability additions are pending delta review; historical
+Audit status above applies to earlier scope. See docs/reference-capability-audit.md at the program root.
+
 Markers: [ ] to do, [~] in progress, [x] done, [!] blocked. Only blueprint.py changes them.
 Sizes: S small, M a normal session, L needs a whole fresh session (never run unattended).
 
@@ -129,3 +132,26 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: S
   - Done when: `npm test` passes with tests/chat.test.tsx: after a failed plan run, a click on "Generate plan again" whose POST resolves leaves the button disabled with `aria-busy="true"` until `run.started {node:"plan"}` arrives, and a second click in that gap posts nothing (`/plan` posted once); a rejected POST leaves the retry enabled with the error shown; two `click()` calls inside one `act` post `/plan` once (the same-frame ref guard, not only `disabled`); interview error `"quota hit. "` shows "quota hit. Send your answer again." and `He said "stop."` shows `He said "stop." Send your answer again.`; the earlier "quota hit" and "Model timed out." cases still pass; tests/settings.test.tsx: the total row's label cell has no `font-mono` class while a Node body cell keeps it, and the 8.1 `whitespace-nowrap` asserts still pass; tests/components.test.tsx: ErrorState without the new prop renders a retry with no `aria-busy`; `npm run typecheck` passes; manual: screenshots 9.1-trace-1280x800 (total row in the body font, one line) and 9.1-retry-pending-1280x800 (retry with spinner), checked against the UI design section.
   - Review focus: the retry can never post `/plan` twice for one failed run, and can't stay disabled forever (a POST error, or a stage change without `run.started`, re-enables or removes it).
+
+## Phase 10: Required references and feasibility (change 2026-10-19)
+- [ ] 10.1 Reference modes and feasibility decisions
+  - Goal: expose image style/recreation from chat and stage panels, retained previews/removal and explicit supported-alternative decisions; prevent stale or blocked prototypes from being built.
+  - Spec: docs/reference-ui.md#Controls and states; ../contracts/dashboard-intent.md#Feasibility assessment
+  - Files: src/api/client.ts, src/api/types.ts, src/mocks/api.ts, src/features/workspace/connect/StylePanel.tsx, src/features/workspace/ReferencePanel.tsx, src/features/workspace/FeasibilityPanel.tsx, src/features/workspace/WorkspaceShell.tsx, src/features/workspace/chat/ChatPanel.tsx, src/features/workspace/chat/InterviewStage.tsx, src/features/workspace/chat/useBuildStream.ts, src/features/workspace/prototype/PrototypeStage.tsx, src/features/workspace/build/BuildStage.tsx, src/features/activity/presets.ts, tests/contract.test.ts, tests/references.test.tsx, tests/chat.test.tsx, tests/build.test.tsx, screenshots/
+  - Depends on: 9.1
+  - Size: M
+  - Needs: backend 11.8
+  - Done when: `npm test` and `npm run typecheck` pass: real contract fixture imports, mode/instructions upload, both entry points share state, retained reload/remove/replace, errors preserve prior set, decision IDs protect stale response races, unchecked -> Check feasibility -> ready recovers legacy builds; stale references can replan once resolved while Build stays off; blocked comments survive reload/reapply/discard, decisions never auto-build, reconnect/refetch recovers assessment, new nodes show useful activity. Manual at 1280x800 and 1440x900: capture all reference/feasibility states listed in essentials; complete keyboard upload/alternative/removal and live backend style/recreate/blocked-request flows, verify no overflow/focus loss and existing pin overlay alignment.
+  - Review focus: ../contracts/api.md 1.3 and dashboard-intent.md; distinguish product/app/data limitations; no unsupported success or silently accepted alternatives.
+
+## Phase 11: Screenshot-only synthetic data (change 2026-10-19)
+- [ ] 11.1 Synthetic schema review, generation and CSV download
+  - Goal: recreate without an uploaded CSV: choose sample data, review/edit schema/count/seed, generate, download and continue with synthetic provenance visible throughout.
+  - Spec: docs/reference-ui.md#Synthetic data controls; ../contracts/synthetic-data.md#HTTP workflow and provenance
+  - Files: src/api/client.ts, src/api/types.ts, src/mocks/api.ts, src/features/workspace/connect/ConnectStage.tsx, src/features/workspace/connect/SyntheticDataPanel.tsx, src/features/workspace/ReferencePanel.tsx, src/features/workspace/prototype/PrototypeStage.tsx, src/features/workspace/build/BuildStage.tsx, src/features/workspace/chat/useBuildStream.ts, src/features/activity/presets.ts, tests/contract.test.ts, tests/synthetic.test.tsx, screenshots/
+  - Depends on: 10.1
+  - Size: M
+  - Needs: backend 12.3
+  - Done when: `npm test` and `npm run typecheck` pass zero-source proposal access, schema/count/seed edit validation, manual schema, same-key retry, response loss/missed-event/reload status recovery, retry-ready cleanup, stale/error recovery, synthetic Source guard, CSV download, reconnect/provenance and no automatic build. Fixtures imported from contracts/fixtures/synthetic-data. Manual 1280x800 and 1440x900 screenshots cover the seven synthetic UI states; keyboard screenshot-only -> proposal -> generate -> interview -> prototype path works against backend without uploading CSV, with Synthetic labeling and no overflow/focus loss.
+  - Review focus: api.md 1.4 and synthetic-data.md; labels distinguish generated values from screenshot facts; no new design system or storage selector.
+  - If: backend 12.5 is not `[x]` yet -> the label inside the backend-rendered prototype is not checked here (the UI's own source/prototype labels still are); release 3.3 checks it. Note this under Left open.

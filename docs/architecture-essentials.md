@@ -1,6 +1,6 @@
 <!-- essentials-of: none (no architecture.md; this page is the architecture) -->
 # Architecture essentials: release
-One page, read at the start of every build session. POC: this page is the whole architecture of
+Read before building. POC: this page is the whole architecture of
 the root part. The whole system is described in docs/program.md.
 
 ## Stack
@@ -34,7 +34,7 @@ README.md                what, hosted demo, prerequisites, start, sign-in, agent
 ```
 
 ## Conventions
-- Run each part with the exact commands in that part's AGENTS.md, from that part's folder.
+- Run parts from their folders with AGENTS.md commands.
 - `e2e_flow1.py` talks only to the API (contracts/api.md): `--server` (default
   `http://localhost:8000`), header `X-DSS-Access-Code` from `DSS_ACCESS_CODE` when set; polls
   `GET /api/builds/{id}` every 2 s (timeout 10 min) instead of parsing SSE.
@@ -52,9 +52,11 @@ README.md                what, hosted demo, prerequisites, start, sign-in, agent
   background, black text, Google accents (#4285F4, #EA4335, #FBBC04, #34A853), Google Sans Flex
   (the template's font) vendored in deck/diagrams/fonts/ when its license allows, else Arial; no
   network requests.
-- Diagrams in README and deck use the component names of harness-architecture.md and the part names.
+- Diagram names match harness-architecture.md and part names.
 - Numbers on slides come only from deck/data/bench-*.json (written by e2e runs 2.2, 2.3, 3.2),
   with the run date; unbuilt features are tagged "planned".
+
+- Gate 3.3: reference/feasibility acceptance locally and hosted before demo/deck completion claims.
 
 ## Never do
 - Never edit engine/, backend/, frontend/ or contracts/; a fix there is a blocked task naming the part.
@@ -68,8 +70,10 @@ README.md                what, hosted demo, prerequisites, start, sign-in, agent
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
 | contracts/recipe.md | 1.0 | consumes (validates fixtures) | `uv run --project integration python integration/check_contracts.py` |
-| contracts/api.md | 1.2 | consumes (e2e, local and deployed) | `uv run --project integration python integration/e2e_flow1.py` |
+| contracts/api.md | 1.4 | consumes (e2e, local and deployed) | `uv run --project integration python integration/e2e_flow1.py` |
 | contracts/conventions.md | 1.1 | consumes | `uv run --project integration python integration/check_contracts.py` (every env name is in .env.example) |
+| contracts/dashboard-intent.md | 1.1 | consumes | `uv run --project integration python integration/check_contracts.py`; task 3.3 end-to-end |
+| contracts/synthetic-data.md | 1.1 | consumes | release 3.3 |
 
 ## Dependencies
 | Package | Registry | Version | Why | Verified |

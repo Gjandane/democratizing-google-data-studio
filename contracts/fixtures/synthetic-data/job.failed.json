@@ -1,0 +1,11 @@
+{
+  "generation_key": "sample_001",
+  "run_id": "r_000000000001",
+  "state": "failed",
+  "source_id": null,
+  "retry_ready": true,
+  "error": {
+    "code": "synthetic_load_failed",
+    "message": "Sample data could not be loaded. Retry is available."
+  }
+}

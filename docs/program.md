@@ -8,8 +8,9 @@ Written 2026-10-18.
   know their data (analysts, managers, students) can't turn their questions into a good dashboard.
 - Local user (one, no accounts): connects data or describes a topic, answers an interview,
   comments on a prototype, and gets a real Data Studio dashboard link.
-- Context: Google GCP hackathon (AI Builder Cup). Deadline **2026-10-20 01:05 MPST** (moved from
-  2026-10-19 01:05 on 2026-10-19; change 2026-10-19).
+- Context: Google GCP hackathon (AI Builder Cup). Deadline **2026-10-23 01:05 MPST** (moved from
+  2026-10-20 01:05 by the user on 2026-10-20, change 2026-10-20; earlier moved from 2026-10-19 01:05,
+  change 2026-10-19).
 - Hosted on Cloud Run in this version (change 2026-10-19): the app runs as one Cloud Run service
   behind a shared access code; the Data Studio build runs through a build agent on the user's
   machine, because the engine needs the signed-in Chrome profile.
@@ -26,10 +27,15 @@ Written 2026-10-18.
 - Target: POC (hackathon prototype). No auth, no scaling; tests on the core flows and the contracts only.
 - Goal: flow 1 works end to end for the demo; flows 2 and 3 after it.
 - Goal: data sources: local CSV upload, CSV in GCS, BigQuery (multiple tables). All of them land in
-  BigQuery; joins and derived fields live in one BigQuery view per build.
+  BigQuery; joins and derived fields live in one active BigQuery view per accepted spec.
 - Goal: 4 dashboard archetypes (executive, storytelling, operational, analytical) as skills.
-- Goal: style from picture: the user uploads screenshots of an existing dashboard; the model writes
-  a style concept file (OKF) that the design follows.
+- Goal (required, change 2026-10-19): reference images in style and recreate modes; recreate the
+  closest supported structure and design using connected data, with explained substitutions.
+- Goal (required): verify requests against native product evidence, app/engine coverage and data;
+  reject unsupported behavior and clarify unknowns before promising, rendering or building it.
+- Goal (required): screenshot-only builds can propose/edit a schema and generate a sample CSV
+  with row count/seed using a reusable Python API/CLI; store under DSS_DATA_DIR (hosted GCS volume),
+  load BigQuery and visibly label invented sample data in the UI and resulting dashboard.
 - Goal: closed component catalog, 12 types: scorecard, time series, bar/column, pie/donut, table,
   pivot table, geo map, scatter, text, image, date range control, dropdown control.
 - Goal: models through a Google API key (Gemini API): planner `gemini-4-argon`, worker
@@ -73,7 +79,9 @@ Written 2026-10-18.
 |---|---|---|---|---|
 | contracts/conventions.md | 1.1 | program | engine, backend, frontend, release | release: `uv run --project integration python integration/check_contracts.py` (the one root `.env.example` has every name); manual: each part's config reads these names, ports and paths |
 | contracts/recipe.md | 1.0 | backend (recipe), engine (events) | engine, backend, release | engine: `uv run pytest tests/test_contract.py`; backend: `uv run pytest tests/test_recipe_contract.py` |
-| contracts/api.md | 1.2 | backend | frontend, release | backend: `uv run pytest tests/test_api_contract.py`; frontend: `npm test -- contract`; both against contracts/fixtures/api/ |
+| contracts/api.md | 1.4 | backend | frontend, release | backend: `uv run pytest tests/test_api_contract.py`; frontend: `npm test -- contract`; both against contracts/fixtures/api/ |
+| contracts/dashboard-intent.md | 1.1 | backend | frontend, release | backend: capability/reference/feasibility tests; frontend: contract and reference tests; release: task 3.3 |
+| contracts/synthetic-data.md | 1.1 | backend | frontend, release | backend synthetic tests, frontend 11.1, release 3.3 |
 
 ## Delivery
 - Targets: one GitHub repo (this folder; the user pushes) and one Cloud Run service `dss` in the
@@ -110,16 +118,24 @@ Times are targets for 2026-10-19/20 (MPST). Backend runs in two sessions (A and 
 - Activity transparency (change 2026-10-19), first, before release 2.1: frontend 6.1 (activity strip and run checklist)
   now; backend 10.1 (`run.usage`) after backend's final-audit fixes 9.1-9.7 (it shares graph.py with
   9.6); no gate between them (frontend builds against `events.usage.sse`). Release 2.1-2.2 don't wait on them.
+- Required scope change 2026-10-19 (task IDs per backend's split, change 2026-10-20): backend 9.7
+  (done), backend 10.1, then backend 11.1-11.8 and 12.1-12.5; frontend 10.1 follows backend 11.8,
+  then frontend 11.1 follows backend 12.3 (synthetic API complete; the backend prototype label
+  from 12.5 is checked in release 3.3 if 12.5 lands later); release 3.3 follows backend 11.8,
+  12.4, 12.5 and frontend 11.1, i.e. all required feature work. These take precedence
+  over further stretch expansion; existing release infrastructure can continue.
+  Images and feasibility cannot be silently cut. If these gates threaten the deadline, report
+  the conflict for the user's scope decision. Earlier clock slots are historical targets.
 - Cut order if behind: activity transparency (frontend 6.1, backend 10.1; release is unaffected),
-  research mode (backend 7.3), screencast (engine 4.3), style-from-picture and
-  UX audit (backend 7.1), eval script (backend 7.2), history re-edit, consolidation (backend 6.2),
+  research mode (backend 7.3), screencast (engine 4.3), UX audit (backend 7.1 audit half),
+  eval script (backend 7.2), history re-edit, consolidation (backend 6.2),
   episodic depth (backend 6.1), then the agent client (backend 5.3). Without 5.3 the hosted app
   runs in agent mode with no agent: Build shows the offline panel, the live build is shown from
   the local app, and the deck takes release 4.2's local-only path. Backend 5.2 is the minimum for
   that fallback; Cloud Run without the engine can't build in local mode.
 - If engine chart ops slip: set `DSS_ALLOWED_TYPES` to the types the engine passes; the spec node
   and validator then only use those.
-- Must survive: CSV -> interview -> prototype -> one comment edit -> recipe -> live build -> link
+- Must survive: reference style/recreation and feasibility rejection (release 3.3), plus CSV -> interview -> prototype -> one comment edit -> recipe -> live build -> link
   (locally), and the same flow at the Cloud Run URL at least to the recipe.
 
 ## Integration checks
@@ -134,6 +150,9 @@ Times are targets for 2026-10-19/20 (MPST). Backend runs in two sessions (A and 
   with `dss-agent` running locally, flow 1 at the deployed service (access code from `.env`) prints
   a `https://datastudio.google.com/` link; with `dss-agent --dry-run` the same run reaches `done`
   without touching Data Studio.
+
+- Required image/capability acceptance: release 3.3 runs `integration/e2e_references.py --live`
+  locally and with `--server <Cloud Run URL>`; scenario oracle is dashboard-intent.md.
 
 ## Research facts (2026-10-18)
 - Data Studio API (`datastudio.googleapis.com/v1`) only searches assets and manages permissions:
@@ -188,3 +207,10 @@ Times are targets for 2026-10-19/20 (MPST). Backend runs in two sessions (A and 
 | 2026-10-19 | Activity transparency: a pinned strip in the chat column (preset phrase, elapsed, live tokens) and a preset step checklist per run; contracts/api.md 1.2 adds `run.usage` (running token totals per run) and lists the `node` values | frontend only (tokens after the run from /api/traces); rotating phrase without checklist; strip in the stage area | the user sees the agent working; real token counts cost one emit where tokens are already summed; presets need no backend detail | change 2026-10-19 (user choice) |
 | 2026-10-19 | `run.usage` example in a new fixture `events.usage.sse`; `events.sse` unchanged | add it to events.sse | the frontend validates events.sse at app load, so a new event there would break the app until frontend 6.1 lands | change 2026-10-19 (architect) |
 | 2026-10-18 | Plan audit: 18 findings, all applied (backend thin slice, engine must-have ops, DSS_ALLOWED_TYPES fallback, shared API fixtures, no --reload on Windows, model check, gates in the roadmap, recipe ops with ids, background_p<n>.png, view reuse, ready_for_plan tool, deps, edge cases, stage areas, renderer budget, flow 3 e2e, trims) | - | reviewer audit | program |
+
+| 2026-10-19 | Images: closest supported recreation plus style; both image references and capability checks required | style only; recreation later | user explicitly selected both required and closest supported recreation | change 2026-10-19 reference/capability audit |
+
+| 2026-10-19 | Screenshot-only synthetic data: schema/count/seed Python generator plus API; local directory or existing GCS volume | require CSV; LLM writes bulk rows; new bucket/client | user explicitly requests fake CSV generation when original data is unavailable | change synthetic-data 2026-10-19 |
+| 2026-10-20 | Deadline moved to 2026-10-23 01:05 MPST | keep 2026-10-20 01:05 | user request (exact time confirmed) | change 2026-10-20 |
+| 2026-10-20 | Cross-part gates follow backend's task split: frontend 10.1 needs backend 11.8, frontend 11.1 needs backend 12.3, release 3.3 needs backend 11.8, 12.4, 12.5 and frontend 11.1 | frontend 11.1 waits for backend 12.5 | frontend starts as soon as the synthetic API is complete; release 3.3 already checks the backend label | change 2026-10-20 (user choice) |
+| 2026-10-20 | synthetic-data.md 1.1: generation table plus immediate best-effort DB backups after reservation and after registration; startup fails in-flight jobs and cleans their own artifacts; replay stays idempotent | immutable manifests + startup reconciliation; fail-closed 503 on backup failure | same guarantee for the POC with the existing backup path, no new files or error code | change 2026-10-20 (user choice; backend audit finding 4) |

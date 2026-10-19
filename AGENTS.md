@@ -21,7 +21,7 @@ recipe. Each part below is its own project, with its own AGENTS.md, docs/ and pl
   contracts its AGENTS.md names and never edits them; only the architect, at this root, changes
   one.
 - docs/program.md holds the parts, their order and the gates between them (the `Needs:` fields).
-- Hard deadline 2026-10-20 01:05 MPST: no gold-plating; the cut order is in docs/program.md.
+- Hard deadline 2026-10-23 01:05 MPST: no gold-plating; the cut order is in docs/program.md.
 
 ## Known gotchas
 Traps that hit more than one part, one line each. The architect adds them.
@@ -63,4 +63,5 @@ Run from this folder in bash (Git Bash on Windows).
 Traps that cost an earlier session time and that the other docs don't cover, one line each. Builders add lines; the architect sorts them into the docs at the final audit.
 - `blueprint.py start` (folder mode) dies with PermissionError on `.chrome-profile/lockfile` while the engine's Chrome (CDP 9222) runs: close that Chrome first, then rerun start.
 - Diagram "planned" tags are hardcoded in deck/diagrams/*.html and go stale as parts finish tasks: recheck them against `blueprint.py program` and re-render before using the PNGs.
+- `PowerPoint.Application` here is WPS Office (wpp.exe), not MS PowerPoint: `Slide.Duplicate()` is a no-op, `FindBySlideID` returns null, `Close()` on a modified deck hangs (set `Saved=-1`); a killed build leaves `wpp.exe /Automation` blocking COM (RPC_E_CALL_REJECTED): stop that process only.
 <!-- blueprint-solution:end -->

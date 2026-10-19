@@ -1,0 +1,57 @@
+{
+  "generation_key": "sample_001",
+  "proposal_id": "proposal_example",
+  "spec": {
+    "schema_version": 1,
+    "row_count": 1000,
+    "seed": 42,
+    "columns": [
+      {
+        "name": "region",
+        "type": "string",
+        "nullable_fraction": 0,
+        "generator": {
+          "kind": "choice",
+          "values": [
+            "East",
+            "West"
+          ]
+        }
+      },
+      {
+        "name": "quantity",
+        "type": "integer",
+        "nullable_fraction": 0,
+        "generator": {
+          "kind": "integer",
+          "min": 1,
+          "max": 8
+        }
+      },
+      {
+        "name": "unit_price",
+        "type": "number",
+        "nullable_fraction": 0,
+        "generator": {
+          "kind": "decimal",
+          "min": 10,
+          "max": 100,
+          "decimals": 2
+        }
+      },
+      {
+        "name": "revenue",
+        "type": "number",
+        "nullable_fraction": 0,
+        "generator": {
+          "kind": "product",
+          "fields": [
+            "quantity",
+            "unit_price"
+          ],
+          "decimals": 2
+        }
+      }
+    ]
+  }
+}

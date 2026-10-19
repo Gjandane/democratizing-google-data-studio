@@ -1,0 +1,7 @@
+{
+  "id": "ref_example",
+  "mode": "recreate",
+  "instructions": "Use net sales for Revenue.",
+  "images": [{"id": "img_example", "name": "dashboard.png", "file": "reference_img_example.png"}],
+  "summary": "Three KPI cards above a time series and regional sales table."
+}

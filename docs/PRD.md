@@ -24,6 +24,12 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
    service per contracts/conventions.md#Cloud deployment; flow 1 passes against the deployed URL
    with the local build agent.
 
+7. Required: reference-image recreation/style and unsupported-request refusal pass task 3.3
+   locally and on the hosted API before release acceptance.
+
+8. Release acceptance proves screenshot-only -> generated CSV -> BigQuery -> labeled dashboard
+   locally and hosted, including persisted CSV download after service restart.
+
 ## Non-goals
 - No code in the parts: the release never edits engine/, backend/ or frontend/ (program rule).
 - No CI; no Terraform or other IaC beyond `deploy/deploy.sh`; no custom domain, IAP or second
@@ -46,8 +52,8 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
 | Dockerfile, deploy.sh | | |
 
 ## Constraints
-- Deadline 2026-10-20 01:05 MPST (moved 2026-10-19); deck draft early on 2026-10-19, final deck
-  and submission by 00:45 on 2026-10-20 (docs/program.md roadmap).
+- Deadline 2026-10-23 01:05 MPST (moved 2026-10-19 and 2026-10-20); deck draft early on 2026-10-19, final deck
+  and submission by 00:45 on 2026-10-23 (docs/program.md roadmap).
 - PowerPoint (for `deck/build_deck.ps1`) and Chrome on the build machine; the gcloud CLI signed in
   to the user's GCP project for the deploy.
 - Windows 11 with Git Bash and PowerShell; Python 3.12 + uv; Node 20+.
@@ -65,6 +71,14 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
 - License: MIT. The planning docs ship in the repo (they show the process to judges).
 - The release has its own tiny uv project in `integration/` (httpx, jsonschema) so its checks
   don't depend on another part's environment.
+
+- Reference/capability change 2026-10-19 defaults: one recreation screenshot or 1-3 style
+  images per version; explicit substitutions, curated capability evidence, existing dependencies.
+  Closest supported recreation and release priority are user decisions, not defaults.
+
+- Synthetic-data defaults (change 2026-10-19): 1,000 rows, seed 42; bounded stdlib generators;
+  local DSS_DATA_DIR or existing GCS-backed /data volume; one new synthetic dataset in an empty
+  build, no mixing with real data. User requested schema/count parameterization and sample CSVs.
 
 ## Open questions
 - none

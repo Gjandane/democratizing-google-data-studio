@@ -70,7 +70,7 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 | | live token totals on the event stream (`run.usage`, change 2026-10-19) | |
 
 ## Constraints
-- Deadline 2026-10-20 01:05 MPST (whole program); flow 1 ready for integration by about 14:00 on
+- Deadline 2026-10-23 01:05 MPST (moved 2026-10-20) (whole program); flow 1 ready for integration by about 14:00 on
   2026-10-19, cloud mode by about 18:00 (docs/program.md roadmap).
 - Python 3.12 + uv on Windows 11; Gemini API key; one GCP project with BigQuery; ADC login.
 - Contracts: ../contracts/api.md, ../contracts/recipe.md, ../contracts/conventions.md.

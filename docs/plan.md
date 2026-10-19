@@ -1,5 +1,8 @@
 # Plan: release
-Target: POC · Audit: done 2026-10-18 (18 findings across the program, 18 applied); change 2026-10-19 (deck from the cup template, Cloud Run; delta audit 33 findings, all applied)
+Target: POC · Audit: pending 2026-10-19 (reference/capability change; earlier audits recorded in progress.md)
+Scope change 2026-10-19: reference/capability additions are pending delta review; historical
+Audit status above applies to earlier scope. See docs/reference-capability-audit.md at the program root.
+
 Markers: [ ] to do, [~] in progress, [x] done, [!] blocked. Only blueprint.py changes them.
 Sizes: S small, M a normal session, L needs a whole fresh session (never run unattended).
 
@@ -18,7 +21,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Done when: `uv run --project integration python integration/render_diagrams.py` exits 0 and writes deck/img/<name>.png for every deck/diagrams/d*.html, each exactly 3680x1600 px (a 1840x800 CSS viewport at device scale 2, read from the PNG header), newer than its HTML and `_base.css`; two consecutive runs give identical PNG bytes for each diagram (no network fonts: the font is vendored or Arial; Chrome runs with `--virtual-time-budget=5000`); manual: open each PNG: no clipped or overlapping text, smallest label at least 14 CSS px, boxes and arrows aligned, a feature whose task isn't `[x]` in its part's plan (`blueprint.py program`) carries a small "planned" tag, and the content is: d1 user -> interview -> HTML prototype with comments -> compiled recipe -> real Data Studio dashboard; d2 flows 1 and 3 by stage (Connect, Interview, Plan, Prototype + comments, Build, Done; History -> new version) with the part that does each step; d3 the parts (frontend, backend, engine, release) with ports, contracts/ files and external services (Gemini API, BigQuery, Data Studio); d4 harness-architecture.md's run, working memory and three memory stores mapped to this build (procedural = skills/*.md, semantic = OKF bundle, episodic = SQLite + FTS5, consolidation after every 5 builds by the worker model, one trace per run, LLM Ops loop); d5 the ADK Workflow: START -> router(action) -> branches with LLM nodes interview, plan, spec, revise, consolidate (stretch: ux_audit, style_extract, research) and code nodes intake, view, validate, render, compile, execute, publish, the validate -> spec/revise repair loop (at most 2) and a guardrail at every exit, planner model on plan and spec only; d6 the token levers (spec as truth, grid layout, JSON-patch comments, compiled recipe, background image, per-node context recipes, model routing, OKF instead of RAG); d7 spec -> recipe.jsonl (three real lines from contracts/fixtures/recipe.sample.jsonl) -> `dsengine run` -> Playwright on the signed-in Chrome -> Data Studio, BigQuery view as the data source, the closed 12-type catalog; d8 Cloud Run service `dss` (backend + built frontend, one instance) with the GCS volume `/data`, Secret Manager, BigQuery via the runtime service account, Gemini API, the access code, and `dss-agent` + Chrome + `dsengine` on the user's machine pulling jobs to build in Data Studio.
   - If: Chrome isn't found -> the script takes `DSS_CHROME_PATH` from .env, then the standard install paths, and fails with a message naming both.
   - If: the template's font (Google Sans Flex) may not be redistributed or isn't available as a file -> use Arial in the diagrams and record it under Decisions.
-- [~] 1.3 Submission deck draft from the AI Builder Cup template
+- [x] 1.3 Submission deck draft from the AI Builder Cup template
   - Goal: `deck/build_deck.ps1` fills the cup's template with `deck/content.json` (every slide's text, images and speaker notes) and writes `deck/AI-Builder-Cup-Submission.pptx` and `.pdf`; the original template stays unchanged.
   - Files: deck/content.json, deck/build_deck.ps1, integration/check_deck.py
   - Depends on: 1.2
@@ -76,6 +79,19 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Done when: after `bash deploy/deploy.sh`, with `uv run --project backend dss-agent --server <URL> --dry-run` running locally, `uv run --project integration python integration/e2e_flow1.py --server <URL>` exits 0 with stage `done`; with the agent restarted without `--dry-run`, `uv run --project integration python integration/e2e_flow1.py --server <URL> --live` exits 0, prints a `https://datastudio.google.com/` link plus the seconds-per-stage table and token totals, and writes its bench JSON; manual: the same flow clicked through the UI at the URL reaches the link, and the Build stage shows the agent as connected.
   - If: the hosted run fails inside a part -> block this task with the part, the step and the API error body.
 
+- [ ] 3.3 Reference and refusal end-to-end acceptance
+  - Goal: prove required image modes and feasibility gates on the local and hosted API, with a real supported recreation and an impossible-for-this-app request refused before side effects.
+  - Spec: contracts/dashboard-intent.md#Required oracle cases; contracts/dashboard-intent.md#Scope
+  - Files: integration/e2e_references.py, integration/check_contracts.py, samples/reference-dashboard.png, samples/reference-expectations.json, deck/data/bench-references.json
+  - Depends on: 2.3; 3.2
+  - Size: M
+  - Needs: backend 11.8; backend 12.4; backend 12.5; frontend 11.1
+  - Done when: after backend 12.4, backend 12.5 and frontend 11.1, redeploy with the existing `bash deploy/deploy.sh` under the deployment approval already granted for 3.1/3.2 (if absent, STOP for deployment approval); record tested git revision or source digest and Cloud Run revision. `uv run --project integration python integration/e2e_references.py --server http://localhost:8000 --live` and the same command with the deployed URL exit 0: synthetic reference screenshot paired with ecommerce_sales.csv yields real bound components/theme/relative order in style and recreate modes; manual reference/prototype/finished-report comparison records differences and user-approved substitutions. Moving GPS request blocks before any view/recipe/engine side effect; ambiguous Revenue asks gross/net, explicit selection resumes; replacing/removing references blocks stale build; new version and changed allowlist recheck. Additional screenshot-only scenario (no uploaded CSV): propose/edit schema and row count, generate/download/reparse CSV, typed BigQuery intake, prototype and live report visibly labeled Synthetic sample data; repeat CSV download after hosted restart and verify checksum. Record modes, timing, assessment results, differences and run date in bench-references.json without secrets/private images. `uv run --project integration python integration/check_contracts.py` passes, including new fixture shapes and error cases.
+  - Review focus: both image modes and refusal are required; dry-run engine or prose-only model answers are not evidence of real recreation; localhost and hosted must follow identical rules.
+  - If: deployed build unavailable or a gate cannot finish by deadline -> report the failed requirement for user scope decision; never silently relabel this test optional.
+
+
+
 ## Phase 4: Delivery
 - [ ] 4.1 README
   - Goal: the root README for judges and for the user's own demo, local and hosted.
@@ -86,7 +102,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
 - [ ] 4.2 Deck snapshots, benchmark and links
   - Goal: finish the deck with real screenshots, measured numbers, the team details and the submission links.
   - Files: deck/content.json, deck/img/*.png, deck/AI-Builder-Cup-Submission.pptx, deck/AI-Builder-Cup-Submission.pdf, integration/check_deck.py
-  - Depends on: 1.3; 2.3
+  - Depends on: 1.3; 2.3; 3.3
   - Size: S
   - Done when: `uv run --project integration python integration/render_diagrams.py` re-renders the diagrams with the "planned" tags current, then `uv run --project integration python integration/check_deck.py` (without `--draft`) passes: no `TBD`; Team name, Team leader name and Problem Statement are filled; the links slide has an `https://github.com/` repo URL, a demo video URL and the Cloud Run URL (`https://*.run.app`) labeled as the final product link with "access code on request; builds need the owner's agent online"; Snapshots shows at least 3 screenshots of the hosted app (Interview, Prototype with pins, Build with ops ticking) and 1 of the finished Data Studio dashboard; every number on the Performance and cost slides equals a value in a deck/data/bench-*.json file, shown with its run date; the cost slide shows only token counts from traces (a dollar figure only with a cited price page and date) or is removed; manual: every screenshot is cropped so no account email, avatar, access code or token is visible; view the rendered slides as in 1.3.
   - STOP: ask the user for the team name, team leader name, GitHub repo URL and the 3-minute demo video link; never invent them.

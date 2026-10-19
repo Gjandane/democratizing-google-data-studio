@@ -1,0 +1,20 @@
+{
+  "id": "assessment_example",
+  "state": "blocked",
+  "input_digest": "example_digest",
+  "prototype_stale": false,
+  "issues": [
+    {
+      "id": "issue_gps",
+      "requirement": "Animate GPS points along a route.",
+      "status": "unsupported_app",
+      "reason": "This app's current recipe and engine do not support temporal GPS playback.",
+      "evidence": [
+        "contracts/recipe.md#Operations"
+      ],
+      "alternatives": [],
+      "resolution": "unresolved"
+    }
+  ],
+  "pending_comments": null
+}

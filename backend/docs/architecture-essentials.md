@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:48f21f5bc63a (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:9e4031a2a47d (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 One page, read at the start of every build session. A summary of docs/architecture.md, which
 wins if the two disagree.
@@ -63,7 +63,7 @@ tests/          offline fakes; tests/live/ explicitly marked live
 | ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.0 | provides recipes; consumes events | `uv run pytest tests/test_recipe_contract.py` |
 | ../contracts/conventions.md | 1.1 | consumes | manual: env names, ports, paths and IDs match |
 | ../contracts/dashboard-intent.md | 1.1 | provides | `uv run pytest tests/test_api_contract.py tests/test_feasibility.py` |
-| ../contracts/synthetic-data.md | 1.0 | provides | `uv run pytest tests/test_synthetic.py tests/test_synthetic_api.py` |
+| ../contracts/synthetic-data.md | 1.1 | provides | `uv run pytest tests -k synthetic` |
 
 ## Dependencies
 | Package | Registry | Version | Why | Verified |

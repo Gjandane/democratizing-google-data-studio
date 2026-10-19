@@ -26,6 +26,12 @@ view of the dashboard being built.
    phrase for what it's doing, the elapsed time and the live token count, plus a preset step
    checklist for multi-step runs.
 
+8. Required: reference mode/preview/removal UI and explicit feasibility decisions, showing
+   product versus app versus data limitations without silently changing user intent.
+
+9. Screenshot-only builds offer Generate sample data, schema/assumption review, row count/seed,
+   CSV download and persistent synthetic-data labeling.
+
 ## Non-goals
 - No auth or accounts (POC, one user): only the shared access code of ../contracts/api.md#Access.
 - No mobile layout: desktop only, 1280 px wide and up.
@@ -47,7 +53,7 @@ view of the dashboard being built.
 |---|---|---|
 | History, workspace shell, stepper, chat with streaming | Trace tab | mobile layout |
 | Connect: archetype, CSV upload, GCS/BQ form, sources table | UX audit button | multi-user |
-| Plan docs viewer | style-image upload | chart rendering in the client |
+| Plan docs viewer; reference modes and feasibility decisions | | chart rendering in the client |
 | Prototype click-to-comment, apply, reload | research-mode prompt | |
 | Build: recipe lines, live op status, link, engine sign-in | screencast panel | |
 | Settings modal; mock mode against fixtures | | |
@@ -55,7 +61,7 @@ view of the dashboard being built.
 | | activity strip and run checklist (change 2026-10-19) | |
 
 ## Constraints
-- Deadline 2026-10-20 01:05 MPST (whole program). Built against ../contracts/api.md with a mock
+- Deadline 2026-10-23 01:05 MPST (moved 2026-10-20) (whole program). Built against ../contracts/api.md with a mock
   until the backend is ready.
 - Same-origin via the Vite proxy (`/api` -> `http://localhost:8000`) so the iframe DOM is readable;
   on Cloud Run the backend serves the built app (`npm run build` -> `dist/`), same origin again.
@@ -70,6 +76,14 @@ view of the dashboard being built.
 - Routing with react-router (two routes: `/` History, `/builds/:id` Workspace).
 - Markdown in chat and docs via react-markdown; icons via lucide-react.
 - Desktop viewports only: 1280x800 and 1440x900; accessibility: AA contrast + visible focus.
+
+- Reference/capability change 2026-10-19 defaults: one recreation screenshot or 1-3 style
+  images per version; explicit substitutions, curated capability evidence, existing dependencies.
+  Closest supported recreation and release priority are user decisions, not defaults.
+
+- Synthetic-data defaults (change 2026-10-19): 1,000 rows, seed 42; bounded stdlib generators;
+  local DSS_DATA_DIR or existing GCS-backed /data volume; one new synthetic dataset in an empty
+  build, no mixing with real data. User requested schema/count parameterization and sample CSVs.
 
 ## Open questions
 - none

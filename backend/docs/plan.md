@@ -317,15 +317,14 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_synthetic_api.py tests/test_api_contract.py` passes with FakeLLM: a zero-source build with a recreate reference gets a locally validated Proposal (one call, <=12k counted input/6k output, no repair, <=20 assumptions of <=240 chars, no rows in context); style-only or no reference -> `422 synthetic_schema_unavailable`; generating with a stale proposal or reference -> `409 synthetic_proposal_stale`; a user-edited spec keeps the original assumptions plus an "edited by user" note. `uv run pytest` passes.
   - Review focus: proposal is a suggestion, never a reconstruction; no bulk rows from the model.
-- [ ] 12.4 Durable generation manifests and startup reconciliation
-  - Goal: immutable reservation/generated/committed manifests on the data volume make acknowledged jobs survive an older SQLite backup; startup reconciles them before serving.
+- [ ] 12.4 Immediate backups and interrupted-job recovery
+  - Goal: reservation and registration each trigger an immediate DB backup through the existing backup routine, so an acknowledged job survives container replacement; startup fails in-flight jobs and cleans only their own artifacts before serving.
   - Spec: ../contracts/synthetic-data.md#HTTP workflow and provenance; ../contracts/synthetic-data.md#Storage
   - Files: src/dss/api/synthetic_data.py, src/dss/main.py, src/dss/db.py, src/dss/harness/nodes/synthetic_generate.py, tests/test_synthetic_recovery.py
   - Depends on: 12.2
-  - Size: M
-  - Done when: `uv run pytest tests/test_synthetic_recovery.py` passes: container replacement (restart with an older SQLite copy) immediately after reservation and after registration restores job/source identity without a second source; interrupted uncommitted work is marked failed with only its own artifacts/table cleaned and `retry_ready` true afterwards; malformed/incomplete records never count as success; a committed record is never overwritten; response loss and missed SSE leave status readable. `uv run pytest` passes.
-  - Review focus: the manifest is the authority over an older backup; serialization with the periodic backup.
-  - If: the program root has simplified this contract section (change request 2026-10-20) before this task starts -> stop; the architect rewrites the task first.
+  - Size: S
+  - Done when: `uv run pytest tests/test_synthetic_recovery.py` passes with fake BigQuery and the backup pointed at a temp data dir: the 202 returns only after the reservation's backup finished, and run.finished only after the registration's; a restart restored from the backup taken right after reservation shows the job failed `generation_interrupted`, cleans only its own generated prefix and BigQuery table, then `retry_ready` true, and replaying the same key returns the original run_id; a restart from the backup after registration keeps the succeeded job and its single Source; a restart from a backup taken before the registration commit recovers as interrupted with no Source and no second source after retry; a failing immediate backup logs a warning, still returns 202 and leaves the dirty flag set; immediate and periodic backups never run at once; with `DSS_DB_PATH` inside `DSS_DATA_DIR` the immediate backup is a no-op. `uv run pytest` passes.
+  - Review focus: synthetic-data.md 1.1; reuse the existing backup routine and lock, no manifest files or new env var; cleanup never touches another job's artifacts.
 - [ ] 12.5 Synthetic label through prototype and report; live flow
   - Goal: an unremovable "Synthetic sample data" decoration whenever a participating source is synthetic, through spec, render, background, compile, revise and new versions; the live screenshot-only flow.
   - Spec: docs/architecture.md#Synthetic data

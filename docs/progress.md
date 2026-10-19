@@ -45,8 +45,37 @@ context. Task status lives in docs/plan.md, not here.
 - Left open: none
 - Next: Task 1.3 (deck draft from the cup template). Re-check planned tags against `blueprint.py program` first and re-render.
 
+## 2026-10-19: Task 1.3 Submission deck draft from the AI Builder Cup template
+- Status: done
+- Plan check: off
+- What changed: deck/content.json (every slide's text, image, notes), deck/build_deck.ps1 (COM fill, pptx + pdf, `-Png` QA renders), integration/check_deck.py (stdlib); deck/AI-Builder-Cup-Submission.pptx/.pdf (19 slides). Outside Files: stale "planned" tags fixed in deck/diagrams d1,d2,d3,d5,d7 (backend 3.2 done) and two tag overlaps (d2, d4), all PNGs re-rendered, as the 1.2 entry asked.
+- Checks: `build_deck.ps1` exit 0; `check_deck.py --draft` PASS 12/12 (non-draft exits 1 on 4 TBD slides, expected); mutations (swapped added slides, 1-word body, touched HTML) each FAIL as expected; locked output -> clear message, exit 1; Test (all) `check_contracts.py` PASS 9/9; manual: all 19 renders in deck/render/ viewed: no overflow, titles at template position, diagrams 678pt wide undistorted, body left-aligned.
+- Decisions: COM server is WPS Office (no MS PowerPoint): added slides via `Slides.InsertFromFile` from a temp copy of the template instead of `Duplicate()` (no-op in WPS); own slide-ID lookup; `Saved=-1` before Close; cost slide removed (no bench numbers yet; content.json `remove`); body 16pt Google Sans Flex in a new textbox at the title's left edge, bullets; Team Details kept from the template's own text (team Prisma, leader Jan Daniel Gonzalvo, typed into the template by the user), problem statement added; Future Development condensed from the template's 7 items to fit 90 words; WPS renders Google Sans Flex, so no substitution note needed here (MS PowerPoint without the font would substitute: README 4.1 should say so); text slides tag unbuilt features "planned".
+- Tried and failed: `Slide.Duplicate()` (silent no-op), `InsertFromFile` on the open template (E_FAIL, empties deck), `Font.Size = 16` int (InvalidCast).
+- Gotchas: in AGENTS.md Known gotchas (WPS COM).
+- Left open: P3 essentials still say "PowerPoint installed" (architect to update: WPS) - docs/architecture-essentials.md; P3 freshness check skips images without an HTML source (screenshots) - integration/check_deck.py
+- Next: Task 2.1 Start scripts.
+
 ## 2026-10-19: Change activity transparency (frontend, backend)
 - Status: done
 - What changed: user request: show what the agent is doing in the background (preset wording), elapsed time and tokens, like a coding agent's task list. contracts/api.md 1.1 -> 1.2 (`run.usage` event, `node` values), new fixture contracts/fixtures/api/events.usage.sse; program.md Contracts row, roadmap step and cut order (first to cut), two decision rows; new tasks backend 10.1 (S) and frontend 6.1 (M); release essentials Contracts row 1.2, release 2.3 gets an `If:` for the walkthrough. Fixed the 1.3 P3: essentials now say WPS Office.
 - Affects: release 2.3 (optional walkthrough check). Release 2.1-2.2 unchanged; Test (all) `check_contracts.py` PASS 9/9 with the new fixture.
 - Next: frontend 6.1 now; backend 10.1 after the backend final audit's fix tasks 9.1-9.7 (9.6 shares graph.py); release 2.1 in parallel.
+
+## 2026-10-19: Change reference images and capability verification (release/program)
+- Status: planned; scope confirmed, final plan review pending.
+- User decisions: both features required this hackathon; closest supported recreation of layout/chart choices/style using connected data, with explained substitutions.
+- What changed: API 1.3, dashboard-intent 1.0 and isolated shared fixtures; program/part PRDs, architecture/essentials and plans. Seven M tasks: backend 11.1-11.5, frontend 10.1, release 3.3. Existing task markers preserved. No product code changed in this planning session.
+- Audit: five original gaps and five delta integration findings addressed; focused recheck found no remaining P1 contradictions, then requested task split (applied as 11.3-11.5). Full report: program-root docs/reference-capability-audit.md. Draft remains pending user review per architect skill.
+- Decisions: dated product/app/data evidence; unknowns block; explicit durable substitutions; private replaceable reference sets per version; pending-comment recovery; distinct candidate views preserve old reports; required hosted acceptance redeploys tested source. No engine expansion or added dependency. New fixture folder avoids breaking legacy exhaustive API fixture inventories. Frontend full conventions/UI details moved into implementation-notes.md/reference-ui.md, essentials summarize.
+- Checks: root check_contracts.py 9/9 PASS; frontend npm test -- contract 31/31 PASS. Planning lint/stamp run; final counts recorded in scope audit. No new behavior claimed tested; its acceptance commands belong to builders.
+- Left open: seven sessions of M work may conflict with deadline; both remain required until user explicitly changes scope. Existing unrelated dirty source/deck files and historical progress entries preserved; no commit while draft review pending.
+- Next: complete existing in-progress backend 9.7 and existing 10.1, then backend 11.1-11.5; frontend 10.1; release 3.3. Existing release infrastructure may proceed independently.
+
+## 2026-10-20: Change cross-part gates, synthetic durability and deadline (release/program)
+- Status: done
+- User decisions: frontend 11.1 waits on backend 12.3; synthetic durability simplified, best-effort immediate backups; backend 12.4 rewritten as S; deadline 2026-10-23 01:05 MPST.
+- What changed: settled backend's change request (backend progress 2026-10-20). contracts/synthetic-data.md 1.1 (generation table plus immediate backups after reservation and registration; startup fails in-flight jobs; no manifests); dashboard-intent.md status line names backend 11.1-11.8; program.md deadline, required-sequence paragraph, contracts row and three decision-log rows; AGENTS.md program-block deadline; root/frontend/backend PRD deadlines. Release 3.3 `Needs: backend 11.8; backend 12.4; backend 12.5; frontend 11.1`, its Done when names 12.4/12.5. Frontend 10.1 -> backend 11.8, 11.1 -> backend 12.3. Backend 12.4 rewritten; architecture#Synthetic data updated and stamped.
+- Checks: `lint` 0 errors in release, backend and frontend; `program` 0 problems; waits: frontend 10.1 on backend 11.8, release 3.3 on backend 11.8/12.4/12.5 + frontend 11.1. No delta audit (POC target).
+- Left open: release and frontend plan audits still pending from 2026-10-19; root and frontend essentials are slightly over one page (existing).
+- Next: backend 10.1, then backend 11.x/12.x; frontend 10.1 after backend 11.8.
