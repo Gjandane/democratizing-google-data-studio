@@ -1,6 +1,7 @@
 """Bounded CSV intake and aggregate-only BigQuery source profiles."""
 import csv
 import io
+from hashlib import sha256
 import math
 import re
 import unicodedata
@@ -156,8 +157,32 @@ class BigQuery:
 
     def create_view(self, table, sql):
         self.ensure_dataset()
-        self.client.query(f"CREATE OR REPLACE VIEW {quoted(table_uri(table))} AS\n{sql}",
-                          location=self.config.bq_location).result(timeout=120)
+        self.client.query(f"CREATE VIEW {quoted(table_uri(table))} AS\n{sql}",
+                          job_id=self.view_job_id(table), location=self.config.bq_location).result(timeout=120)
+
+    @staticmethod
+    def view_job_id(table):
+        return 'dss_view_' + sha256(table.encode()).hexdigest()
+
+    def delete_view(self, table):
+        # A timed-out result() may still be executing in BigQuery. Keep ownership
+        # until its deterministic job is terminal, then remove the candidate.
+        try:
+            job = self.client.get_job(self.view_job_id(table), location=self.config.bq_location, timeout=30)
+        except Exception as exc:
+            if getattr(exc, 'code', None) == 404:
+                self.client.delete_table(table_uri(table), not_found_ok=True, timeout=30)
+                return False  # Submission may have been accepted but not observed yet.
+            raise
+        if not job.done(timeout=30):
+            job.cancel(timeout=30)
+            try:
+                job.result(timeout=30)
+            except Exception:
+                if not job.done(timeout=30):
+                    raise
+        self.client.delete_table(table_uri(table), not_found_ok=True, timeout=30)
+        return True
 
     def aggregate(self, sql):
         """Execute a renderer-built, bounded aggregate query (never sent to an LLM)."""

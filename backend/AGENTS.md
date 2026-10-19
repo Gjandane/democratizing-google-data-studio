@@ -54,3 +54,5 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Test modules share one import namespace: tests/live/ has an `__init__.py` so a live test may reuse an offline test's basename (tests/live/test_references.py vs tests/test_references.py); keep it.
 - Source column `type` is an API display type; feasibility uses `bq_type` and the view builder's `snake_names`/`date_like` projection to match real bindings.
 - Pending-comment staleness is derived from `pending_comments`; never fold it into general `prototype_stale`, or abandoning the batch cannot clear it.
+- Cloud SQLite backups can lag volume artifacts: preserve volume ownership/commit records when removing rollback files, or restart can delete a published resource.
+- BigQuery `QueryJob.result(timeout=...)` may leave the job running; retain candidate ownership until its deterministic job is terminal before retiring cleanup.

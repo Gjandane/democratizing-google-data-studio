@@ -25,6 +25,9 @@ async def perform(harness, build_id, run_id, payload, trace):
     with harness.db.connect() as conn:
         version = conn.execute('SELECT current_version FROM builds WHERE id=?', (build_id,)).fetchone()[0]
     folder = config.data_dir / 'builds' / build_id / f'v{version}'
+    candidate = payload.get('_publication')
+    if candidate:
+        folder = candidate.folder
     spec = DashboardSpec.model_validate_json((folder / 'spec.json').read_text(encoding='utf-8'))
     try:
         worker = asyncio.create_task(asyncio.to_thread(artifacts, spec, payload['factory'](config), folder))
@@ -40,8 +43,18 @@ async def perform(harness, build_id, run_id, payload, trace):
     except Exception:
         # Provider/Playwright diagnostics must not cross ADK's logging boundary.
         raise RunError('invalid_source', 'Prototype rendering failed; check data access and image assets', 422) from None
-    with harness.db.connect() as conn:
-        conn.execute("UPDATE builds SET stage='prototype',updated_at=? WHERE id=?", (now(), build_id))
+    if candidate:
+        from dss.spec.publication import build_lock
+        try:
+            async with build_lock(harness.db, build_id):
+                candidate.publish(spec)
+        except Exception:
+            raise RunError('invalid_source', 'Plan publication failed; try again', 422) from None
+        from dss.api.builds import build_response
+        await harness.emit(build_id, run_id, 'docs.updated', {'docs': build_response(harness.db, config, build_id)['docs']})
+    else:
+        with harness.db.connect() as conn:
+            conn.execute("UPDATE builds SET stage='prototype',updated_at=? WHERE id=?", (now(), build_id))
     await harness.emit(build_id, run_id, 'prototype.updated', {'spec_version': spec.spec_version})
     await harness.emit(build_id, run_id, 'stage.changed', {'stage': 'prototype'})
     return 'Prototype is ready.'

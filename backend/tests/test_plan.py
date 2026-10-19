@@ -40,6 +40,9 @@ class FakeBigQuery:
     def create_view(self, table, sql):
         self.views.append((table, sql))
 
+    def delete_view(self, table):
+        self.views[:] = [(name, sql) for name, sql in self.views if name != table]
+
     def aggregate(self, sql):
         return [{'m0': 100}]
 
@@ -132,7 +135,7 @@ async def test_plan_docs_and_repair(client, app, build_id, monkeypatch, errors):
             assert metadata["type"] == kind
         metadata = yaml.safe_load((docs / "derived-fields.md").read_text().split("---", 2)[1])
         assert metadata["fields"] == PLAN["fields"]
-        assert metadata["view"].endswith(f"dash_{build_id}_v1")
+        assert metadata["view"].endswith(f"dash_{build_id}_v1_{traces[0]['run_id']}")
         refs = [p["docs"] for k, p in published if k == "docs.updated"]
         assert len(refs) == 1 and len(refs[0]) == 7
 

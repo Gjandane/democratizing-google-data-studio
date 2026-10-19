@@ -583,3 +583,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: recorded in AGENTS.md.
 - Left open: none.
 - Next: Task 11.5 Stage candidate views and recover failed publication.
+
+## 2026-10-20: Task 11.5 Stage candidate views and recover failed publication
+- Status: done
+- Plan check: off
+- What changed: run-specific CREATE VIEW candidates; staged docs/spec/render bundle; serialized publication and HTTP reads; durable rollback and startup reconciliation.
+- Checks: `uv run pytest tests/test_publication.py tests/test_view_sql.py tests/test_plan.py tests/test_render.py` PASS (83, 2 live deselected); Test (all) `uv run pytest` PASS (626, 5 live deselected, 2 existing warnings); `git diff --check` PASS. Final read-only review: no findings.
+- Decisions: `payload['_publication']` carries Candidate; `.folder` supplies private spec/render inputs. Volume `.publications/r_*.json` records precede creation/promotion and commit; retained committed/restored records reconcile stale cloud SQLite backups. Build read locks span file streaming. Deterministic BigQuery job IDs retain ownership until CREATE is terminal. Outside Files: graph.py wires cleanup/cancellation and preserves prior stage. AGENTS.md records cloud-backup and QueryJob timeout traps. No dependencies added.
+- Tried and failed: review found SQLite-only durability, late CREATE and staging-registration gaps; fixed with regressions. Interim metadata-variable shadowing and invalid fixture ID corrected.
+- Gotchas: recorded in AGENTS.md.
+- Left open: none.
+- Next: Task 11.6 Gate interview and plan; use Candidate staging for preflight-approved plans.

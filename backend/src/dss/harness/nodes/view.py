@@ -72,5 +72,5 @@ def select_sql(sources, fields, joins):
     return sql
 
 
-def view_table(config, build_id, version):
-    return table_uri(f"{config.gcp_project_id}.{config.bq_dataset}.dash_{build_id}_v{version}")
+def view_table(config, build_id, version, run_id):
+    return table_uri(f"{config.gcp_project_id}.{config.bq_dataset}.dash_{build_id}_v{version}_{run_id}")

@@ -45,6 +45,8 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
             sources = [{'columns': json.loads(r[0]), 'bq_table': r[1]} for r in conn.execute('SELECT columns_json,bq_table FROM sources WHERE build_id=? ORDER BY rowid', (build_id,))]
             row = conn.execute('SELECT spec_version FROM versions WHERE build_id=? AND n=?', (build_id, build['current_version'])).fetchone()
         folder = config.data_dir / 'builds' / build_id / f"v{build['current_version']}"
+        if payload.get('_publication'):
+            folder = payload['_publication'].folder
         derived = parse_concept('derived-fields.md', (folder / 'docs/derived-fields.md').read_text(encoding='utf-8')).metadata
         selected = ([sources[0]] if sources else []) + [s for j in derived.get('joins', []) for s in sources if s['bq_table'] == j['table']]
         fields = datasource_fields(selected, derived.get('fields', []))
@@ -95,6 +97,8 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         temporary = folder / 'spec.json.tmp'
         temporary.write_text(spec.model_dump_json(indent=2), encoding='utf-8')
         temporary.replace(folder / 'spec.json')
+        if payload.get('_publication'):
+            return
         with harness.db.connect() as conn:
             conn.execute("UPDATE versions SET spec_version=?,status='draft' WHERE build_id=? AND n=?", (spec.spec_version, build_id, prepared['version']))
             conn.execute('UPDATE builds SET updated_at=? WHERE id=?', (now(), build_id))

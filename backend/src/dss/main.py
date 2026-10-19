@@ -59,6 +59,8 @@ def create_app(config=None, *, model_lister=None, bigquery_factory=None):
         app.state.engine_tasks = set()
         from dss.data.bigquery import BigQuery
         app.state.bigquery_factory = bigquery_factory or BigQuery
+        from dss.spec.publication import recover
+        await recover(app.state.db, app.state.settings.get(), app.state.bigquery_factory)
         from dss.harness.graph import AgentHarness
         app.state.harness = AgentHarness(app.state.db, app.state.bus, app.state.models)
         app.state.agent_jobs = AgentJobs(app.state)
@@ -91,6 +93,8 @@ def create_app(config=None, *, model_lister=None, bigquery_factory=None):
     app = FastAPI(lifespan=lifespan)
     app.state.config = config
     app.add_middleware(session.AccessMiddleware, config=config)
+    from dss.spec.publication import PublicationReads
+    app.add_middleware(PublicationReads)
     app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
     app.include_router(session.router)
     app.include_router(settings.router)

@@ -48,6 +48,7 @@ class AgentHarness:
         revise_state = None
         extra_state = None
         reference_before = None
+        publication_safe = True
         try:
             if action in ("reference_extract", "reference_delete"):
                 from dss.spec import references, requirements
@@ -267,7 +268,15 @@ class AgentHarness:
             raise RunError("llm_unavailable", "The model call failed; check Settings", 503) from None
         finally:
             try:
-                if action in ("plan", "spec") and status != "ok":
+                candidate = payload.get('_publication') if action == 'plan' and isinstance(payload, dict) else None
+                if candidate:
+                    from dss.spec.publication import finish
+                    publication_safe = await finish(candidate, payload['factory'])
+                    if status != 'ok':
+                        with self.db.connect() as connection:
+                            stage = connection.execute('SELECT stage FROM builds WHERE id=?', (build_id,)).fetchone()[0]
+                        await self.emit(build_id, run_id, 'stage.changed', {'stage': stage})
+                elif action in ("plan", "spec") and status != "ok":
                     with self.db.connect() as connection:
                         connection.execute("UPDATE builds SET stage='interview',updated_at=? WHERE id=?", (now(), build_id))
                     await self.emit(build_id, run_id, "stage.changed", {"stage": "interview"})
@@ -276,6 +285,7 @@ class AgentHarness:
                 await self.emit(build_id, run_id, "run.finished", {
                     "run_id": run_id, "node": action, "status": status, "error": error_message or error})
             finally:
-                self.active_builds.discard(build_id)
+                if publication_safe:
+                    self.active_builds.discard(build_id)
                 if runner is not None:
                     await runner.close()

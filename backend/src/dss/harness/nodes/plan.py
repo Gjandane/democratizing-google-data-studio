@@ -1,5 +1,4 @@
 """Structured planning agent, bounded SQL repair and durable OKF build docs."""
-import asyncio
 import json
 from typing import Literal
 from google.adk import Event
@@ -12,7 +11,8 @@ from dss.db import now
 from dss.harness.context import fit_request, plan_context
 from dss.harness.guardrails import RunError, check_reply
 from dss.harness.nodes.intake import write_doc
-from dss.harness.nodes.view import select_sql, view_table
+from dss.harness.nodes.view import select_sql
+from dss.spec.publication import Candidate, worker
 
 
 class Strict(BaseModel):
@@ -52,6 +52,7 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         sources = [{"bq_table": row["bq_table"], "columns": json.loads(row["columns_json"])}
                    for row in conn.execute("SELECT * FROM sources WHERE build_id=? ORDER BY rowid", (build_id,))]
     state = {"raw": "", "error": None, "repaired": False, "previous": "", "failure": None}
+    candidate = Candidate.begin(harness.db, config, build_id, version, run_id, payload)
     secret = config.google_api_key.get_secret_value()
 
     def diagnostic_text(exc):
@@ -107,10 +108,10 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
             raw = check_reply(state["raw"], (secret,))
             plan = Plan.model_validate_json(raw)
             sql = select_sql(sources, plan.fields, plan.joins)
-            table = view_table(config, build_id, version)
+            table = candidate.record()['table_name']
             service = payload["factory"](config)
             try:
-                await asyncio.to_thread(service.dry_run, sql)
+                await worker(service.dry_run, sql)
             except Exception as exc:
                 diagnostic = diagnostic_text(exc)
                 if not state["repaired"]:
@@ -118,11 +119,12 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                     return Event(actions=EventActions(route="repair"))
                 raise RunError("invalid_source", diagnostic, 422, {"reason": diagnostic}) from None
             try:
-                await asyncio.to_thread(service.create_view, table, sql)
+                candidate.creating()
+                await worker(service.create_view, table, sql)
             except Exception as exc:
                 diagnostic = diagnostic_text(exc)
                 raise RunError("invalid_source", diagnostic, 422, {"reason": diagnostic}) from None
-            docs = config.data_dir / "builds" / build_id / f"v{version}" / "docs"
+            docs = candidate.folder / 'docs'
             docs.mkdir(parents=True, exist_ok=True)
             bundle = {
                 "brief.md": ("Dashboard Brief", {}, plan.brief),
@@ -141,8 +143,6 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
             log = docs / "log.md"
             prior = log.read_text(encoding="utf-8").split("---", 2)[2] if log.exists() else "# Build log\n"
             write_doc(log, {"type": "Log", "title": "Build log"}, prior + f"\n- {now()}: plan and view updated.\n")
-            from dss.api.builds import build_response
-            await harness.emit(build_id, run_id, "docs.updated", {"docs": build_response(harness.db, config, build_id)["docs"]})
             return Event(actions=EventActions(route="success"))
         except RunError as exc:
             state["failure"] = exc

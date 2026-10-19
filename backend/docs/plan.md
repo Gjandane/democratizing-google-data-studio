@@ -259,7 +259,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_feasibility.py tests/test_api_contract.py` passes: decisions apply atomically (1-20 distinct issues; accept needs an offered alternative id, drop needs null); stale assessment ids get `409 feasibility_stale`; an accepted unchanged choice survives spec revalidation and a registry update without being re-asked; a changed mapping or invalid prerequisite blocks; a blocked ordered batch survives reload with its target IDs; `POST feasibility/reapply` rejects stale assessment/batch IDs (the accepted case is wired to revise in 11.7); abandoning removes only that batch's requirements/decisions; a new batch replaces the pending one and invalidates its decisions. Conformance validates nullable/populated pending_comments and empty/nonempty alternatives fixtures. `uv run pytest` passes.
   - Review focus: no silence-as-consent; durable choices bind to requirement meaning, not assessment id.
-- [ ] 11.5 Stage candidate views and recover failed publication
+- [x] 11.5 Stage candidate views and recover failed publication
   - Goal: replanning cannot change a view used by an older prototype/report; publish the new candidate view identity only with its validated spec and rendered artifacts.
   - Spec: docs/architecture.md#Plan publication; docs/architecture.md#BigQuery view
   - Files: src/dss/harness/nodes/plan.py, src/dss/harness/nodes/view.py, src/dss/harness/nodes/spec.py, src/dss/harness/nodes/render.py, src/dss/data/bigquery.py, src/dss/main.py, src/dss/spec/publication.py, tests/test_publication.py, tests/test_view_sql.py, tests/test_plan.py, tests/test_render.py
