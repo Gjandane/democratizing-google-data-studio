@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Literal
 
 from dotenv import dotenv_values
-from pydantic import BaseModel, ConfigDict, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 
@@ -25,6 +25,7 @@ class Config(BaseModel):
     agent_token: SecretStr = SecretStr("")
     engine_mode: Literal["local", "agent"] = "local"
     cloud_service: str = ""
+    consolidate_every: int = Field(default=5, ge=1)
 
     @classmethod
     def from_env(cls):
@@ -35,7 +36,7 @@ class Config(BaseModel):
                  "gcs_bucket": "GCS_BUCKET", "data_dir": "DSS_DATA_DIR", "db_path": "DSS_DB_PATH",
                  "static_dir": "DSS_STATIC_DIR", "access_code": "DSS_ACCESS_CODE",
                  "agent_token": "DSS_AGENT_TOKEN", "engine_mode": "DSS_ENGINE_MODE",
-                 "cloud_service": "K_SERVICE"}
+                 "cloud_service": "K_SERVICE", "consolidate_every": "DSS_CONSOLIDATE_EVERY"}
         values = {field: env[name] for field, name in names.items() if env.get(name) is not None}
         for field in ("data_dir", "db_path", "static_dir"):
             if values.get(field):

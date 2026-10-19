@@ -128,7 +128,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_episodic.py tests/test_context.py` passes: a similar-but-old message from another build and a recent one both come back, deduped; FTS special characters don't raise; sections come out in the specified order per node; an over-budget context drops FTS hits first, then the oldest messages, never the system prompt, skills or user input; section token counts land in the trace span; all earlier node tests still pass.
   - Review focus: Spec order and drop order exactly as written; no raw data rows in any context.
-- [ ] 6.2 Consolidation
+- [x] 6.2 Consolidation
   - Goal: after every `DSS_CONSOLIDATE_EVERY` builds reach `done`, the worker model distills episodes into OKF facts in `data/knowledge/user/`.
   - Spec: docs/architecture.md#Consolidation
   - Files: src/dss/harness/nodes/consolidate.py, src/dss/harness/nodes/publish.py, prompts/v1/consolidate.md, tests/test_consolidation.py

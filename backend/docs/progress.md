@@ -256,3 +256,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: P2 budgets use chars/4, not the API token counter (undercounts JSON/CJK) - src/dss/harness/context.py.
 - Next: Task 6.2 Consolidation. Start by reading docs/architecture.md#Consolidation; user facts are read by plan_context from `data/knowledge/user/` via list_folder("user").
+
+## 2026-10-19: Task 6.2 Consolidation
+- Status: done
+- Plan check: off
+- What changed: new consolidate node (consolidate.py, prompts/v1/consolidate.md); publish counts each done build and schedules consolidation in the background; config.py gains `consolidate_every` (DSS_CONSOLIDATE_EVERY, default 5); context.py gains the consolidate recipe.
+- Checks: `uv run pytest tests/test_consolidation.py` PASS (11); `uv run pytest` PASS (293, 3 live deselected, 2 upstream warnings); `git diff --check` PASS. Mutations (publish awaits consolidation; Previously dropped; reset to 0) each fail tests. Reviewer: no P0-P2; four P3s fixed.
+- Decisions: Outside Files: config.py (tests building Config(...) ignore the root .env's demo value 1) and context.py (context only from there). Own Workflow START -> LlmAgent -> write -> guardrail, one trace (node consolidate, build_id NULL), run events with build_id None; not graph.py's router. Counter incremented after build.finished under a lock shared with the snapshot (latest chats_since ok/partial build.finished events); reset subtracts the consumed count; failures keep it, so the next done build retries all. Builds without docs: no LLM call, counter consumed, trace span `skipped`. Inputs: brief.md + design.md + decisions.md (3000 chars each), newest first as droppable `past`; budget 16k, reserve 1k. Model returns {slug,type,title,statement}; code writes files: ASCII slugs, `updated` date, old statement under "## Previously" as `- <old updated>: <text>`; index.md lists `[title](slug.md) (type, updated): statement` with brackets stripped; log.md (`Change Log`) newest first. No dependencies added.
+- Tried and failed: none.
+- Gotchas: none beyond AGENTS.md.
+- Left open: P3 user/index.md grows without bound; past ~12k tokens every consolidation fails over budget - src/dss/harness/context.py. Not run: live Gemini check of the Facts schema.
+- Next: Task 7.1 UX audit and style from picture. Start with the spec_context in src/dss/harness/context.py (style.md goes there) and the revise node's structured-output pattern.

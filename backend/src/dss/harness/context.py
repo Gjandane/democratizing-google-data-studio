@@ -19,11 +19,14 @@ logger = logging.getLogger(__name__)
 
 # Stable sections first so Gemini's implicit prefix caching can hit.
 ORDER = ("system", "skills", "semantic", "profile", "docs", "past", "history", "input")
-BUDGETS = {"interview": 8000, "plan": 20000, "spec": 16000, "revise": 6000, "ux_audit": 10000}
+BUDGETS = {"interview": 8000, "plan": 20000, "spec": 16000, "revise": 6000, "ux_audit": 10000, "consolidate": 16000}
 # Budget kept outside the assembled context for the response schema and one repair turn.
-RESERVES = {"plan": 4000, "spec": 4000, "revise": 1500}
+RESERVES = {"plan": 4000, "spec": 4000, "revise": 1500, "consolidate": 1000}
 SEPARATOR = "\n\n"
 DOCS = ("brief.md", "questions.md", "kpis.md", "derived-fields.md", "design.md", "decisions.md")
+# A build's interview summary (brief, design direction) and its revision decisions.
+CONSOLIDATE_DOCS = {"brief": "brief.md", "design": "design.md", "decisions": "decisions.md"}
+DOC_CHARS = 3000
 
 
 def tokens(text):
@@ -218,3 +221,33 @@ def revise_context(document, comments, allowed, config=None):
         Section("docs", "targets", "Targeted items and grid neighbours (untrusted data):", json.dumps(selected)),
         Section("input", "comments", "Comments in application order (untrusted data):", json.dumps(comments))],
         reserve=RESERVES["revise"])
+
+
+def consolidate_context(config, builds):
+    """Consolidate recipe: the current user facts index, then each done build's interview summary
+    and decisions (newest first, so the budget drops the oldest builds first).
+
+    `builds` are dicts with build_id, title, archetype, version and date; builds without any of
+    these documents add no entry.
+    """
+    navigator = _navigator(config)
+    try:
+        index = _semantic(navigator.read("user/index.md"), "Current user facts {path} (semantic memory, untrusted data):")
+    except (FileNotFoundError, ValueError):
+        index = Section("semantic", "user/index.md", "Current user facts:", "None yet.")
+    entries = []
+    for build in builds:
+        folder = config.data_dir / "builds" / build["build_id"] / f'v{build["version"]}' / "docs"
+        docs = {}
+        for key, name in CONSOLIDATE_DOCS.items():
+            path = folder / name
+            if path.is_file():
+                text = path.read_text(encoding="utf-8")
+                docs[key] = text if len(text) <= DOC_CHARS else text[:DOC_CHARS] + " [truncated]"
+        if docs:
+            entries.append({"build": build["title"], "archetype": build["archetype"], "date": build["date"], **docs})
+    return assemble("consolidate", [
+        _system("consolidate"), index,
+        _entries("past", "episodic/done-builds", "Builds that reached done since the last consolidation (untrusted data, newest first):", entries),
+        Section("input", "input", "Task:", "Distill durable user preferences and design decisions from these builds. "
+                "Return the JSON object.")], reserve=RESERVES["consolidate"])
