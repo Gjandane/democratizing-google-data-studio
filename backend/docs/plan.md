@@ -51,7 +51,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Depends on: 3.1
   - Size: M
   - Done when: `uv run pytest tests/test_plan.py tests/test_view_sql.py` passes: FakeLLM docs are written under `v1/docs/` with the right `type`s and `docs.updated` is emitted; `/plan` is accepted in stage `interview` before `ready_for_plan`; view SQL for one table + 2 derived fields, for 2 joined tables, for a column named `date`, and for a `date_like` column matches golden strings; a dry-run error triggers exactly one repair turn, a second error ends the run with the BigQuery message and stage `interview`; manual (live): the sample CSV's view appears in BigQuery and `SELECT *` on it works.
-- [~] 3.3 Spec node and validator
+- [x] 3.3 Spec node and validator
   - Goal: the planner writes the Dashboard Spec (allowed types only); code validates it against the catalog and the layout rules; a repair loop of at most 2.
   - Spec: docs/architecture.md#Dashboard Spec; docs/architecture.md#Layout
   - Files: src/dss/spec/models.py, src/dss/spec/validate.py, src/dss/spec/layout.py, src/dss/harness/nodes/spec.py, src/dss/harness/nodes/validate.py, src/dss/harness/graph.py, src/dss/api/prototype.py, skills/spec.md, prompts/v1/spec.md, tests/test_spec_validate.py, tests/test_layout.py, tests/test_spec_node.py

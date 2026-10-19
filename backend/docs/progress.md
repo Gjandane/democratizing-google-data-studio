@@ -146,3 +146,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond Known gotchas.
 - Left open: required final live first/second-pass verification.
 - Next: Resume 3.3; rerun real Gemini sample and query the trace WHERE node='spec' to confirm <=2 spec calls, then run done and commit. Network clarification is pending; task remains [~].
+
+## 2026-10-19: Task 3.3 Spec node and validator
+- Status: done
+- Plan check: off
+- What changed: completed catalog-backed spec validation, bounded repair routing, persistence and GET /spec; finished final verification after connectivity recovered.
+- Checks: `uv run pytest tests/test_spec_validate.py tests/test_layout.py tests/test_spec_node.py -q` PASS (26); `uv run pytest -q` PASS (111, 1 live deselected). Real Gemini sample spec validates on its first call, confirmed from the spec trace. Read-only reviewer: no findings. Existing upstream warnings remain.
+- Decisions: catalog frontmatter owns limits and slot roles. Datasource matches the view projection. Full request capped at 16k estimated input tokens, including schema; unrelated workflow history excluded. Initial spec plus two repairs; plan allows five calls including SQL repair. Success stays at plan until task 4.1. No new dependencies. Gemini schema gotcha is recorded in AGENTS.md.
+- Tried and failed: initial response_schema rejected numeric literals; response_json_schema resolved it. Earlier final live repeats hit connectivity failures; the resumed live check passed.
+- Gotchas: none beyond Known gotchas.
+- Left open: none.
+- Next: Task 4.1 Prototype renderer and background. Start a new chat and invoke blueprint-solution-builder.
