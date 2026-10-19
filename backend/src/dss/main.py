@@ -6,7 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
 from fastapi.responses import JSONResponse
 
-from dss.api import builds, settings, prototype, run, dev, chat
+from dss.api import builds, settings, prototype, run, dev, chat, engine
 from dss.harness.nodes.execute import environment
 from dss.bus import EventBus
 from dss.config import Config, SettingsStore
@@ -43,6 +43,8 @@ def create_app(config=None, *, model_lister=None, bigquery_factory=None):
     app.include_router(chat.router)
     app.include_router(prototype.router)
     app.include_router(run.router)
+    app.include_router(engine.router)
+    app.include_router(engine.trace_router)
     if environment().get("DSS_DEV") == "1":
         app.include_router(dev.router)
 

@@ -201,3 +201,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none.
 - Left open: none.
 - Next: Task 4.4 Execute, publish, versions and engine endpoints, routine work. New chat, gpt-6.1-sol at Light (low), invoke blueprint-solution-builder.
+
+## 2026-10-19: Task 4.4 Execute, publish, versions and engine endpoints
+- Status: done
+- Plan check: off
+- What changed: extracted publish, fixed published/building version statuses and sign-in errors; added version creation, engine status/login, document/file reads and traces. Added fixture relay and endpoint contract checks.
+- Checks: `uv run pytest tests/test_execute.py tests/test_api_contract.py` PASS (7); `uv run pytest` PASS (168, 3 live deselected, 2 upstream warnings). Installed engine dry-run through API reached done/published. Read-only review: two P2 lock/cleanup findings fixed; follow-up no findings.
+- Decisions: versions copy spec/render inputs/docs, omit recipe/events/screens, and retain the datasource view. Login has a build-less Workflow/trace; check/login reserve the engine lock and await process-tree cleanup on cancellation. Main/graph wiring and the earlier thin-slice status assertion needed changes outside Files. No dependencies added. Added HTTP path-normalization gotcha to AGENTS.md.
+- Tried and failed: initial shape helper confused error objects with nullable trace errors; literal dot-dot test was normalized by the HTTP client. Corrected helper and used encoded path.
+- Gotchas: none beyond AGENTS.md.
+- Left open: none.
+- Next: Task 5.1 Cloud mode: static frontend, PORT, access code, DB backup; deep work due to its Spec. New chat, gpt-6.1-sol at high, invoke blueprint-solution-builder.

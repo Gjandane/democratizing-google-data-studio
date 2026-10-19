@@ -162,7 +162,7 @@ def test_failure_and_partial(thin, monkeypatch, flag, stage, status):
     assert client.post(f'/api/builds/{bid}/run').status_code == 202
     assert wait_done(client, bid)["stage"] == stage
     with app.state.db.connect() as conn:
-        assert conn.execute("SELECT status FROM versions WHERE build_id=?", (bid,)).fetchone()[0] == status
+        assert conn.execute("SELECT status FROM versions WHERE build_id=?", (bid,)).fetchone()[0] == ("published" if status == "partial" else status)
 
 
 def test_all_recipe_mappings():

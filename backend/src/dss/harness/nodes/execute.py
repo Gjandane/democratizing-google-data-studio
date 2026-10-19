@@ -10,7 +10,8 @@ from urllib.parse import urlparse
 
 from dotenv import dotenv_values
 from dss.config import BACKEND_DIR
-from dss.db import now
+from dss.harness.guardrails import RunError
+from dss.harness.nodes.publish import publish
 
 
 def environment():
@@ -57,6 +58,7 @@ async def execute(state, build_id, run_id, folder, version):
     loop = asyncio.get_running_loop()
     cancelled = threading.Event()
     processes = []
+    failure = []
     def worker():
         result = None
         process = subprocess.Popen(args, cwd=BACKEND_DIR, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, encoding="utf-8", start_new_session=os.name != "nt")
@@ -87,10 +89,13 @@ async def execute(state, build_id, run_id, folder, version):
                     elif event.get("event") == "run_finished":
                         result = event
             code = process.wait()
+            if code == 3:
+                failure.append(RunError("engine_not_signed_in", "Sign in to Data Studio before building", 424))
             if expired.is_set() or code != 0 or not result or result.get("status") not in ("ok", "partial"):
                 return {"status": "failed", "report_url": None}
             url = result.get("report_url")
             if url and (urlparse(url).scheme != "https" or urlparse(url).hostname not in ("datastudio.google.com", "lookerstudio.google.com")):
+                failure.append(RunError("invalid_report_url", "Engine returned an invalid report URL", 422))
                 return {"status": "failed", "report_url": None}
             return {"status": result["status"], "report_url": url}
         finally:
@@ -112,14 +117,9 @@ async def execute(state, build_id, run_id, folder, version):
         result = {"status": "failed", "report_url": None}
     except Exception:
         result = {"status": "failed", "report_url": None}
-    stage = "done" if result["status"] in ("ok", "partial") else "prototype"
-    with state.db.connect() as conn:
-        conn.execute("UPDATE builds SET stage=?,updated_at=? WHERE id=?", (stage, now(), build_id))
-        conn.execute("UPDATE versions SET status=?,report_url=? WHERE build_id=? AND n=?", (result["status"], result["report_url"], build_id, version))
-    await state.harness.emit(build_id, run_id, "stage.changed", {"stage": stage})
-    from dss.api.builds import build_response
-    await state.harness.emit(build_id, run_id, "build.updated", {"build": build_response(state.db, state.settings.get(), build_id)})
-    await state.harness.emit(build_id, run_id, "build.finished", {**result, "version": version})
+    await publish(state, build_id, run_id, version, result)
     if was_cancelled:
         raise asyncio.CancelledError
+    if failure:
+        raise failure[0]
     return json.dumps(result)

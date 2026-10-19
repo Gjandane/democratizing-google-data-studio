@@ -28,7 +28,7 @@ class AgentHarness:
         await self.bus.publish(build_id, kind, payload)
 
     async def run(self, action, build_id, payload=None, *, llm=None, run_id=None, reserved=False):
-        if not self.db.build_exists(build_id):
+        if build_id is not None and not self.db.build_exists(build_id):
             raise RunError("build_not_found", "Build not found", 404)
         if build_id in self.active_builds and not reserved:
             with self.db.connect() as connection:
@@ -51,13 +51,13 @@ class AgentHarness:
 
             async def router(node_input):
                 trace.span("router")
-                return Event(actions=EventActions(route=action if action in ("hello", "interview", "plan", "spec", "revise", "intake", "create_build", "load_spec", "recipe", "execute") else "unknown"))
+                return Event(actions=EventActions(route=action if action in ("hello", "interview", "plan", "spec", "revise", "intake", "create_build", "load_spec", "recipe", "execute", "versions", "engine_login") else "unknown"))
 
             async def code_node(node_input):
                 nonlocal code_error
                 trace.span(action)
                 try:
-                    if action in ("load_spec", "recipe", "execute"):
+                    if action in ("load_spec", "recipe", "execute", "versions", "engine_login"):
                         return await payload(run_id)
                     if action == "create_build":
                         return "Build created"
@@ -159,7 +159,7 @@ class AgentHarness:
                 workflow = Workflow(name="dss_run", edges=[
                     ("START", router), (router, {"spec": spec_agent}), (spec_agent, validate),
                     (validate, {"repair": spec_repair, "success": complete_spec}), (spec_repair, validate), (complete_spec, guardrail)])
-            elif action in ("intake", "create_build", "load_spec", "recipe", "execute"):
+            elif action in ("intake", "create_build", "load_spec", "recipe", "execute", "versions", "engine_login"):
                 workflow = Workflow(name="dss_run", edges=[
                     ("START", router), (router, {action: code_node}), (code_node, guardrail)])
             else:

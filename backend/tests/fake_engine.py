@@ -7,7 +7,25 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+command = sys.argv[1]
+if command in ("check", "login") and os.environ.get("DSS_FAKE_CONTROL_HANG") == command:
+    subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    Path(os.environ["DSS_FAKE_CONTROL_MARKER"]).touch()
+    time.sleep(60)
+if command == "check":
+    print(json.dumps({"chrome_running": True, "signed_in": True}))
+    sys.exit(0)
+if command == "login":
+    sys.exit(0)
 command, path, *flags = sys.argv[1:]
+if command == "run":
+    Path(path).with_name("fake-args.json").write_text(json.dumps(flags))
+    if os.environ.get("DSS_FAKE_EXIT") == "3":
+        sys.exit(3)
+    if os.environ.get("DSS_FAKE_FIXTURE") == "1":
+        time.sleep(.3)
+        print((Path(__file__).resolve().parents[2] / "contracts/fixtures/events.sample.jsonl").read_text(), end="", flush=True)
+        sys.exit(0)
 lines = [json.loads(line) for line in Path(path).read_text(encoding="utf-8").splitlines()]
 if command == "print":
     for op in lines[1:]:

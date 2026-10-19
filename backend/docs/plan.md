@@ -84,7 +84,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: S
   - Done when: `uv run pytest tests/test_recipe_contract.py` passes: a golden spec with all 12 types compiles to lines that each validate against ../contracts/recipe.schema.json (`header`, `op`); the output equals tests/data/golden_recipe.jsonl byte for byte on two runs; the header's table comes from `spec.datasource.table`; `POST /recipe` returns `ops` with sequential `op_id`s.
   - Review focus: ../contracts/recipe.md op arguments and order.
-- [ ] 4.4 Execute, publish, versions and engine endpoints
+- [x] 4.4 Execute, publish, versions and engine endpoints
   - Goal: the real build path: engine lock and timeout, relay, publish, new versions, engine status/login.
   - Files: src/dss/harness/nodes/execute.py, src/dss/harness/nodes/publish.py, src/dss/api/run.py, src/dss/api/engine.py, src/dss/api/builds.py, tests/test_execute.py, tests/fake_engine.py, tests/test_api_contract.py
   - Depends on: 4.3

@@ -44,4 +44,5 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Gemini numeric Literal constraints require response_json_schema; response_schema conversion raises "Literal values must be strings".
 - Gemini's generic `400 INVALID_ARGUMENT` does not identify the invalid field; isolate worker/model/schema compatibility with a minimal live request before attributing it to `Any` or unions.
 - The worker rejects the revise schema's nested `maxItems` (20 changes, 40 operations); omit provider array maxima but retain Pydantic limits; title revisions need the renderer's default 28px in context.
+- HTTP clients normalize literal `..` path segments before sending: use `%2e%2e` when testing the API's invalid-name guard.
 <!-- blueprint-solution:end -->

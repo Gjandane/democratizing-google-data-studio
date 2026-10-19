@@ -13,6 +13,39 @@ from dss.harness.guardrails import RunError
 router = APIRouter(prefix="/api/builds")
 
 
+def version_file(state, build_id, name, subfolder=""):
+    import re
+    from dss.api.prototype import current
+    _, folder = current(state, build_id)
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", name) or name in (".", ".."):
+        raise RunError("invalid_name", "Invalid file name", 400)
+    base = (folder / subfolder).resolve()
+    path = (base / name).resolve()
+    if not path.is_relative_to(base):
+        raise RunError("invalid_name", "Invalid file name", 400)
+    if not path.is_file():
+        raise RunError("not_found", "File not found", 404)
+    return path
+
+
+@router.get("/{build_id}/docs/{path}")
+def document(build_id: str, path: str, request: Request):
+    from fastapi.responses import FileResponse
+    return FileResponse(version_file(request.app.state, build_id, path, "docs"), media_type="text/markdown")
+
+
+@router.get("/{build_id}/files/{name}")
+def version_asset(build_id: str, name: str, request: Request):
+    from fastapi.responses import FileResponse
+    return FileResponse(version_file(request.app.state, build_id, name))
+
+
+@router.get("/{build_id}/files/screens/{name}")
+def screenshot(build_id: str, name: str, request: Request):
+    from fastapi.responses import FileResponse
+    return FileResponse(version_file(request.app.state, build_id, name, "screens"))
+
+
 class BuildCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     title: str = Field(default="Untitled dashboard", min_length=1, max_length=300)
@@ -80,6 +113,44 @@ def list_builds(request: Request):
 def get_build(build_id: str, request: Request):
     state = request.app.state
     return build_response(state.db, state.settings.get(), build_id)
+
+
+@router.post("/{build_id}/versions", status_code=201)
+async def new_version(build_id: str, request: Request):
+    import shutil
+    from dss.api.prototype import current, read_spec
+    state = request.app.state
+    build, folder = current(state, build_id)
+    if build["stage"] not in ("done", "prototype") or build_id in state.harness.active_builds:
+        raise RunError("wrong_stage", "A new version needs an idle prototype or completed build", 409,
+                       {"stage": build["stage"]})
+    document = read_spec(folder)
+    async def perform(run_id):
+        number = build["current_version"] + 1
+        destination = folder.parent / f"v{number}"
+        # Reuse deterministic render inputs and the existing view, never engine outputs.
+        def copy_inputs():
+            destination.mkdir()
+            for path in folder.iterdir():
+                if path.name in ("recipe.jsonl", "events.jsonl", "screens"):
+                    continue
+                if path.is_dir():
+                    shutil.copytree(path, destination / path.name)
+                else:
+                    shutil.copy2(path, destination / path.name)
+        import asyncio
+        await asyncio.to_thread(copy_inputs)
+        with state.db.connect() as conn:
+            conn.execute("INSERT INTO versions(build_id,n,status,spec_version,created_at) VALUES(?,?,'draft',?,?)",
+                         (build_id, number, document.spec_version, now()))
+            conn.execute("UPDATE builds SET current_version=?,stage='prototype',updated_at=? WHERE id=?",
+                         (number, now(), build_id))
+        await state.harness.emit(build_id, run_id, "stage.changed", {"stage": "prototype"})
+        result = build_response(state.db, state.settings.get(), build_id)
+        await state.harness.emit(build_id, run_id, "build.updated", {"build": result})
+        return json.dumps(result)
+    result = await state.harness.run("versions", build_id, perform)
+    return json.loads(result["reply"])
 
 
 async def intake_sources(request, build_id, sources):
