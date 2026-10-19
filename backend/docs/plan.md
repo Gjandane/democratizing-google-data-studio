@@ -120,7 +120,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: subprocess with an argument list and `cwd=backend/`; the HTTP timeout exceeds the long poll; the agent never runs two engines at once.
 
 ## Phase 6: Harness memory depth
-- [ ] 6.1 Episodic retrieval and working memory assembly
+- [x] 6.1 Episodic retrieval and working memory assembly
   - Goal: FTS5 relevance + recency retrieval and the per-node context assembler with budgets, wired into the interview, plan, spec and revise nodes.
   - Spec: docs/architecture.md#Episodic retrieval; docs/architecture.md#Working memory assembly
   - Files: src/dss/memory/episodic.py, src/dss/harness/context.py, src/dss/db.py, src/dss/harness/nodes/interview.py, src/dss/harness/nodes/plan.py, src/dss/harness/nodes/spec.py, src/dss/harness/nodes/revise.py, tests/test_episodic.py, tests/test_context.py

@@ -49,4 +49,5 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Uvicorn's graceful-shutdown timeout excludes lifespan teardown; bound backup waits separately and avoid non-daemon executor threads for volume I/O.
 - httpx string headers must be ASCII; use byte header values when testing non-ASCII credentials at the server boundary.
 - `uv run pytest` already runs in `backend/`: a test that a subprocess gets `cwd=backend/` must first chdir elsewhere, or it passes without the cwd.
+- The `app` fixture's `state.settings`/`db`/`harness` exist only once its lifespan runs: a test that uses `app` must also request `client` (or `build_id`).
 <!-- blueprint-solution:end -->

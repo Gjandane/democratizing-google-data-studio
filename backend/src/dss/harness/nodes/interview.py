@@ -53,8 +53,11 @@ def make_agent(harness, build_id, payload, model, trace, model_error):
 
     async def before_model(callback_context, llm_request):
         trace.span("interview")
+        context.record(trace.spans[-1])
 
-    context = interview_context(harness.db, payload["config"], build_id, payload["text"])
+    # The start text is the harness's own instruction, not user terms: recency only.
+    context = interview_context(harness.db, payload["config"], build_id, payload["text"],
+                                query="" if payload.get("start") else None)
     async def instruction_provider(context_object):
         # Callable instructions bypass ADK's {session_state} interpolation.
         return context

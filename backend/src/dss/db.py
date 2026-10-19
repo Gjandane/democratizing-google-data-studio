@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS sources (
 CREATE TABLE IF NOT EXISTS messages (
  id TEXT PRIMARY KEY, build_id TEXT NOT NULL REFERENCES builds(id), role TEXT NOT NULL,
  text TEXT NOT NULL, node TEXT, created_at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS messages_build ON messages(build_id);
 CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(text, content='messages', content_rowid='rowid');
 CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
  INSERT INTO messages_fts(rowid,text) VALUES(new.rowid,new.text); END;

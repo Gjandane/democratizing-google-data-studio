@@ -245,3 +245,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: P3 retry budget can stretch by one hung attempt (up to ~40 s) - src/dss/agent/client.py; P3 Ctrl+C on Windows may lag until an idle long poll returns (≤25 s), unverified - src/dss/agent/client.py.
 - Next: Task 6.1 Episodic retrieval and working memory assembly.
+
+## 2026-10-19: Task 6.1 Episodic retrieval and working memory assembly
+- Status: done
+- Plan check: off
+- What changed: episodic.py gained FTS5 relevance (`relevant`, `fts_query`), `merge` and `recall`; context.py is now one assembler (`Section`, `Context` str subclass with `sections`/`counts()`/`record()`, `assemble`, ORDER, BUDGETS) with interview/plan/spec/revise recipes; nodes record section tokens (plus `dropped`, `repair_tokens`) in their trace spans; db.py indexes messages(build_id).
+- Checks: `uv run pytest tests/test_episodic.py tests/test_context.py` PASS (45); `uv run pytest` PASS (282, 3 live deselected, 2 upstream warnings); `git diff --check` PASS. Mutations (drop order swapped, most-relevant hit dropped first, no sort, first concept droppable, start query restored) each fail tests. Reviewer: no P0/P1; four P3s fixed.
+- Decisions: tokens = chars/4 always. RESERVES outside context: plan 4k, spec 4k, revise 1.5k (old char limits kept). FTS = OR of quoted distinct lowercased non-stopword letter/digit terms (≤32), bm25 then newest; history = 12 messages before the saved input; interview start = recency only. Drops one entry at a time: past least-relevant first, history oldest first, semantic last first keeping the first; empty list sections omitted. Plan transcript = node None/interview. Spec catalog = allowed types named in kpis/questions (spaces, plurals), else all allowed, index order. Revise catalog = targeted components' types only. User facts = `user/` concepts minus index/log; unreadable ones skipped with a warning. Added an AGENTS.md gotcha. No dependencies added.
+- Tried and failed: revise-order test used `app` without `client` (lifespan not started); fixed.
+- Gotchas: none beyond AGENTS.md.
+- Left open: P2 budgets use chars/4, not the API token counter (undercounts JSON/CJK) - src/dss/harness/context.py.
+- Next: Task 6.2 Consolidation. Start by reading docs/architecture.md#Consolidation; user facts are read by plan_context from `data/knowledge/user/` via list_folder("user").

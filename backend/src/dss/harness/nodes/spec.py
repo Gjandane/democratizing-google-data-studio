@@ -4,7 +4,7 @@ from google.adk.agents import LlmAgent
 from google.adk.models.llm_response import LlmResponse
 from google.genai import types
 from dss.db import now
-from dss.harness.context import spec_context
+from dss.harness.context import BUDGETS, spec_context, tokens
 from dss.harness.guardrails import RunError, check_reply
 from dss.memory.semantic import parse_concept
 from dss.spec.models import DashboardSpec
@@ -59,18 +59,22 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
             allowed=allowed, questions=high_questions((folder / 'docs/questions.md').read_text(encoding='utf-8')),
             folder=folder, version=build['current_version'])
 
+    def repair():
+        if not state['errors']:
+            return ''
+        return '\nPrevious output (untrusted):\n' + state['raw'] + '\nValidation errors:\n' + json.dumps(state['errors']) + '\nReturn the complete repaired JSON object.'
+
     async def instruction_provider(context_object):
         prepare()
-        context = prepared['context']
-        if state['errors']:
-            context += '\nPrevious output (untrusted):\n' + state['raw'] + '\nValidation errors:\n' + json.dumps(state['errors']) + '\nReturn the complete repaired JSON object.'
-        if len(context) > 64000:
+        context = prepared['context'] + repair()
+        if tokens(context) > BUDGETS['spec']:
             raise RunError('llm_unavailable', 'Spec repair exceeds its input budget', 503)
         return context
 
     async def before_model(callback_context, llm_request):
         prepare()
         trace.span('spec_repair' if state['repairs'] else 'spec')
+        prepared['context'].record(trace.spans[-1], repair())
         schema = DashboardSpec.model_json_schema()
         schema['$defs']['Component']['properties']['type']['enum'] = sorted(prepared['allowed'])
         llm_request.config.response_mime_type = 'application/json'
@@ -80,7 +84,7 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         llm_request.contents = [types.Content(role='user', parts=[types.Part(text='Write the requested Dashboard Spec.')])]
         size = len(str(llm_request.config.system_instruction)) + len(json.dumps(schema)) + sum(len(c.model_dump_json(exclude_none=True)) for c in llm_request.contents)
         trace.spans[-1]['input_tokens_estimate'] = (size + 3) // 4
-        if size > 64000:
+        if (size + 3) // 4 > BUDGETS['spec']:
             raise RunError('llm_unavailable', 'Spec request exceeds its input budget', 503)
 
     async def after_model(callback_context, llm_response):

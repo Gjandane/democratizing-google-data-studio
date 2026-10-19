@@ -16,7 +16,7 @@ from google.genai import types
 from pydantic import BaseModel, ConfigDict, Field
 
 from dss.db import now
-from dss.harness.context import revise_context
+from dss.harness.context import BUDGETS, revise_context
 from dss.harness.guardrails import RunError, check_reply
 from dss.harness.nodes.render import artifacts
 from dss.spec.models import DashboardSpec
@@ -167,26 +167,29 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
     folder = config.data_dir / 'builds' / build_id / f'v{version}'
     original = DashboardSpec.model_validate_json((folder / 'spec.json').read_text(encoding='utf-8')).model_dump()
     allowed = allowed_types() & catalog().keys()
-    context = check_reply(revise_context(original, comments, allowed), (secret,))
+    context = check_reply(revise_context(original, comments, allowed, config), (secret,))
     questions_file = folder / 'docs/questions.md'
     questions = high_questions(questions_file.read_text(encoding='utf-8')) if questions_file.exists() else []
     state = {'raw':'', 'errors':'', 'repairs':0, 'failure':None, 'reply':'Revision did not finish.'}
 
+    def repair():
+        if not state['errors']:
+            return ''
+        return '\nPrevious output (untrusted):\n' + state['raw'] + '\nValidation diagnostics:\n' + state['errors'] + '\nReturn the complete repaired revision batch.'
+
     async def instruction_provider(context_object):
-        result = context
-        if state['errors']:
-            result += '\nPrevious output (untrusted):\n' + state['raw'] + '\nValidation diagnostics:\n' + state['errors'] + '\nReturn the complete repaired revision batch.'
-        return result
+        return context + repair()
 
     async def before_model(callback_context, llm_request):
         trace.span('revise_repair' if state['repairs'] else 'revise')
+        context.record(trace.spans[-1], repair())
         schema = response_schema()
         llm_request.config.response_mime_type = 'application/json'
         llm_request.config.response_json_schema = schema
         llm_request.contents = [types.Content(role='user', parts=[types.Part(text='Return the comment patches in order.')])]
         size = len(str(llm_request.config.system_instruction)) + len(json.dumps(schema)) + len(llm_request.contents[0].model_dump_json())
         trace.spans[-1]['input_tokens_estimate'] = (size+3)//4
-        if size > 24000:
+        if (size+3)//4 > BUDGETS['revise']:
             raise RunError('llm_unavailable', 'Revision request exceeds its input budget', 503)
 
     async def after_model(callback_context, llm_response):

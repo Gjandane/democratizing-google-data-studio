@@ -8,7 +8,7 @@ from google.adk.events.event_actions import EventActions
 from google.adk.models.llm_response import LlmResponse
 from pydantic import BaseModel, ConfigDict, Field
 from dss.db import now
-from dss.harness.context import plan_context
+from dss.harness.context import BUDGETS, plan_context, tokens
 from dss.harness.guardrails import RunError, check_reply
 from dss.harness.nodes.intake import write_doc
 from dss.harness.nodes.view import select_sql, view_table
@@ -59,16 +59,20 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
             text = text.replace(secret, "[redacted]")
         return text[:4000] or "BigQuery operation failed"
 
+    def repair():
+        if not state["error"]:
+            return ""
+        return "\nPrevious plan (untrusted):\n" + state["previous"] + "\nBigQuery diagnostic (untrusted):\n" + state["error"] + "\nRepair the plan once. Return the complete JSON object."
+
     async def instruction_provider(context_object):
-        result = context
-        if state["error"]:
-            result += "\nPrevious plan (untrusted):\n" + state["previous"] + "\nBigQuery diagnostic (untrusted):\n" + state["error"] + "\nRepair the plan once. Return the complete JSON object."
-        if len(result) > 80000:
+        result = context + repair()
+        if tokens(result) > BUDGETS["plan"]:
             raise RunError("llm_unavailable", "Plan repair exceeds its input budget", 503)
         return result
 
     async def before_model(callback_context, llm_request):
         trace.span("plan_repair" if state["repaired"] else "plan")
+        context.record(trace.spans[-1], repair())
 
     async def after_model(callback_context, llm_response):
         if llm_response.error_code:
