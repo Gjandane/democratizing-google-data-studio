@@ -9,9 +9,10 @@ import re
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from dss.db import new_id
+from dss.harness.guardrails import RunError
 from dss.data.bigquery import snake_names
 from dss.spec import capabilities, references
 
@@ -51,6 +52,7 @@ class Source(Strict):
     image_id: str | None = None
     item_id: str | None = None
     component_id: str | None = None
+    batch_id: str | None = None
 
 
 class Requirement(Strict):
@@ -88,6 +90,36 @@ class PendingComments(Strict):
     comments: list[PendingComment]
 
 
+class DecisionInput(Strict):
+    issue_id: str = Field(min_length=1)
+    action: Literal["accept_alternative", "drop"]
+    alternative_id: str | None
+
+    @model_validator(mode="after")
+    def check_action(self):
+        if (self.action == "accept_alternative") != bool(self.alternative_id):
+            raise ValueError("Accept needs an alternative id; drop needs null")
+        if self.action == "drop" and self.alternative_id is not None:
+            raise ValueError("Drop needs null")
+        return self
+
+
+class Decisions(Strict):
+    assessment_id: str = Field(min_length=1)
+    decisions: list[DecisionInput] = Field(min_length=1, max_length=MAX_ISSUES)
+
+    @model_validator(mode="after")
+    def distinct(self):
+        if len({d.issue_id for d in self.decisions}) != len(self.decisions):
+            raise ValueError("Choose each issue once")
+        return self
+
+
+class Reapply(Strict):
+    assessment_id: str = Field(min_length=1)
+    batch_id: str = Field(min_length=1)
+
+
 class Assessment(Strict):
     id: str | None = None
     state: Literal["unchecked", "blocked", "ready", "stale"] = "unchecked"
@@ -106,6 +138,8 @@ class Ledger(Strict):
     invalidated: bool = False
     scope_error: str | None = None
     verification: dict[str, list[dict]] = Field(default_factory=dict)
+    pending_comments: PendingComments | None = None
+    retired_sources: list[str] = Field(default_factory=list)
 
 
 def digest(value):
@@ -161,7 +195,9 @@ def inputs(db, build_id, folder):
 
 def input_digest(snapshot, ledger, checker):
     return digest({"inputs": snapshot, "requirements": [r.model_dump() for r in ledger.requirements],
-                   "decisions": ledger.decisions, "scope_error": ledger.scope_error, "registry_allowed": checker.digest()})
+                   "decisions": ledger.decisions, "scope_error": ledger.scope_error,
+                   "pending_comments": ledger.pending_comments.model_dump() if ledger.pending_comments else None,
+                   "retired_sources": ledger.retired_sources, "registry_allowed": checker.digest()})
 
 
 def schema(snapshot):
@@ -194,7 +230,14 @@ def schema(snapshot):
 
 
 def new_sources(snapshot, ledger):
-    return [s for s in snapshot["incoming"] if ledger.processed_sources.get(s["id"]) != digest(s)]
+    incoming = {s["id"]: s for s in snapshot["incoming"]}
+    if ledger.pending_comments:
+        batch = ledger.pending_comments
+        for i, comment in enumerate(batch.comments):
+            s = Source(id=f"{batch.id}:{i}", kind="comment", batch_id=batch.id, **comment.model_dump()).model_dump()
+            incoming[s["id"]] = s
+    return [s for s in incoming.values() if s["id"] not in ledger.retired_sources
+            and ledger.processed_sources.get(s["id"]) != digest(s)]
 
 
 def merge(ledger, snapshot, extraction):
@@ -258,9 +301,153 @@ def mapping_verdict(mapping, requirement, fields):
     return None
 
 
+def meaning(requirement):
+    """Authorization follows requested meaning, not a generated assessment or registry version."""
+    return digest(requirement.model_dump(exclude={"resolution"}))
+
+
+def _prerequisites(snapshot, needs, mappings):
+    fields = schema(snapshot)
+    names = {f for n in needs for f in n.fields.values()} | {m.field for m in mappings if m.field}
+    origins = {}
+    for source in snapshot["sources"]:
+        for col, name in zip(source["columns"], snake_names([c["name"] for c in source["columns"]])):
+            if name in names:
+                origins.setdefault(name, {"table": source.get("table"), "column": col})
+    if not snapshot["sources"]:
+        projection = (snapshot["spec"] or {}).get("datasource", {})
+        origins = {n: {"table": projection.get("table")} for n in names}
+    # Only a relevant derived definition binds a choice; unrelated definitions do not revoke it.
+    text = snapshot["definitions"].get("derived-fields.md", "")
+    metadata = yaml.safe_load(text.split("---", 2)[1]) if text.startswith("---") else {}
+    derived = {f["name"]: f for f in (metadata or {}).get("fields", []) if f["name"] in names}
+    return digest({"fields": {n: fields.get(n) for n in sorted(names)}, "origins": origins, "derived": derived})
+
+
+def _offers(requirement, slot, snapshot, checker):
+    """Small curated substitutions. Every field binding is named in the explicit choice."""
+    if not slot.startswith("need:"):
+        return []  # Undefined metrics need data/text through the interview, never an inferred definition.
+    need = requirement.needs[int(slot.split(":")[1])]
+    if need.capability not in {"animation.temporal_playback", "geo.lat_long_points", "refresh.realtime_streaming"}:
+        return []
+    fields, candidates = schema(snapshot), []
+    for field, kind in sorted(fields.items()):
+        if kind in {"DATE", "DATETIME", "TIMESTAMP"}:
+            candidates.append((f"Time series using {field} (no point playback or streaming)",
+                               [capabilities.Need(capability="chart.time_series", fields={"date_field": field})]))
+        if field in {"country", "region", "city"} and kind in {"GEO", "GEOGRAPHY"}:
+            candidates.append((f"Static {field} aggregate map using {field} (no point playback)", [
+                capabilities.Need(capability="chart.geo_map", fields={"geo_field": field}),
+                capabilities.Need(capability="option.geo_map.geo_type", value=field, fields={"geo_field": field})]))
+    offered = []
+    for label, needs in candidates:
+        if all(checker.need(n, fields).ok for n in needs):
+            payload = [n.model_dump() for n in needs]
+            aid = "alt_" + digest([requirement.id, meaning(requirement), slot, payload])[:24]
+            offered.append({"id": aid, "label": label, "needs": payload})
+    return offered[:MAX_ISSUES]
+
+
+def _bindings(snapshot, requirement):
+    return {c["id"]: {k: c.get(k) for k in ("type", "dimensions", "metrics", "date_dimension", "field", "options")}
+            for page in (snapshot["spec"] or {}).get("pages", []) for c in page.get("components", [])
+            if c["id"] in requirement.component_ids}
+
+
+def _matches(snapshot, requirement, needs, checker):
+    bindings = _bindings(snapshot, requirement)
+    if set(bindings) != set(requirement.component_ids):
+        return False
+    for c in bindings.values():
+        for n in needs:
+            cap = checker.registry.get(n.capability)
+            if cap is None:
+                return False
+            expected = cap.component_type or next((checker.registry.get(dep).component_type for dep in cap.requires
+                                                  if checker.registry.get(dep).component_type), None)
+            if expected and c["type"] != expected:
+                return False
+            for key, field in n.fields.items():
+                bound = c["date_dimension"] if key == "date_field" else (c["dimensions"] or [None])[0]
+                if bound != field:
+                    return False
+            if cap.id == "option.geo_map.geo_type" and (c["options"] or {}).get("geo_type") != n.value:
+                return False
+        bound = set(c["dimensions"] or []) | {m["field"] for m in c["metrics"] or []} | {c["date_dimension"], c["field"]}
+        for mapping in requirement.mappings:
+            if mapping.field and mapping.field not in bound:
+                return False
+            if mapping.aggregation and any(m["field"] == mapping.field and m["agg"] != mapping.aggregation for m in c["metrics"] or []):
+                return False
+    return True
+
+
+def revalidate_decisions(snapshot, ledger, checker):
+    """Seal a fulfilled choice so the superseded prototype cannot authorize a later mapping change."""
+    updated = ledger.model_copy(deep=True)
+    requirements = {r.id: r for r in updated.requirements}
+    for d in updated.decisions:
+        r = requirements.get(d.get("requirement_id"))
+        if not r or d["action"] != "accept_alternative" or d.get("applied") or d["meaning"] != meaning(r):
+            continue
+        needs = [capabilities.Need.model_validate(n) for n in d["alternative"]["needs"]]
+        if _matches(snapshot, r, needs, checker):
+            d["applied"] = True
+    return updated
+
+
+def _choice(requirement, slot, snapshot, ledger, checker):
+    for d in reversed(ledger.decisions):
+        if d.get("requirement_id") != requirement.id or d.get("meaning") != meaning(requirement):
+            continue
+        if d["action"] == "drop":
+            return d
+        if d["slot"] != slot:
+            continue
+        needs = [capabilities.Need.model_validate(n) for n in d["alternative"]["needs"]]
+        if not all(checker.need(n, schema(snapshot)).ok for n in needs):
+            return None
+        if d["prerequisites"] != _prerequisites(snapshot, needs, requirement.mappings):
+            return None
+        # A fresh choice authorizes repairing exactly its old prototype, without
+        # claiming that prototype already fulfills it. Once fulfilled, only the
+        # selected binding is authorized on subsequent spec revalidation.
+        if not _matches(snapshot, requirement, needs, checker):
+            if d.get("applied") or d.get("baseline") != _bindings(snapshot, requirement):
+                return None
+        return d
+    return None
+
+
+def _requirement_issues(snapshot, ledger, checker):
+    """Internal issue targets never come from client/model claims."""
+    fields, rows = schema(snapshot), []
+    for r in ledger.requirements:
+        verdicts = [(f"need:{i}", checker.need(n, fields)) for i, n in enumerate(r.needs)]
+        if not r.needs:
+            verdicts.append(("unknown", capabilities.Verdict("unknown", "No registered capability covers this requirement")))
+        verdicts += [(f"mapping:{i}", v) for i, m in enumerate(r.mappings) if (v := mapping_verdict(m, r, fields))]
+        for slot, v in verdicts:
+            if v.ok:
+                continue
+            reason = v.reason + ("; clarify the requested behavior" if v.status == "unknown" else "")
+            iid = "issue_" + digest([r.id, meaning(r), slot, v.capability, v.status, reason])[:24]
+            choice = _choice(r, slot, snapshot, ledger, checker)
+            resolution = ("dropped" if choice["action"] == "drop" else "accepted_alternative") if choice else "unresolved"
+            offers = _offers(r, slot, snapshot, checker)
+            rows.append((Issue(id=iid, requirement=r.text, status=v.status, reason=reason,
+                evidence=list(v.evidence), alternatives=[Alternative(id=o["id"], label=o["label"]) for o in offers],
+                resolution=resolution), r, slot, offers))
+            if len(rows) > MAX_ISSUES:
+                return rows  # Full verification retains all needs; public assessment is a scope refusal.
+    return rows
+
+
 def evaluate(snapshot, ledger, checker):
     """Pure bounded recomputation; does not call a model, write SQL or publish artifacts."""
-    fields, found = schema(snapshot), []
+    fields = schema(snapshot)
+    found = [row[0] for row in _requirement_issues(snapshot, ledger, checker)]
     def add(rid, text, verdict):
         if verdict.ok:
             return
@@ -268,16 +455,6 @@ def evaluate(snapshot, ledger, checker):
         reason = verdict.reason + ("; clarify the requested behavior" if verdict.status == "unknown" else "")
         found.append(Issue(id="issue_" + digest([rid, verdict.capability, verdict.status, reason])[:24], requirement=text,
                            status=verdict.status, reason=reason, evidence=list(verdict.evidence)))
-    for r in ledger.requirements:
-        # Resolutions are written by code in the explicit decision API, never by extraction.
-        if r.resolution == "dropped":
-            continue
-        for v in checker.requirement(capabilities.Requirement(id=r.id, needs=r.needs), fields):
-            add(r.id, r.text, v)
-        for m in r.mappings:
-            verdict = mapping_verdict(m, r, fields)
-            if verdict:
-                add(r.id, r.text, verdict)
     for page in (snapshot["spec"] or {}).get("pages", []):
         for component in page.get("components", []):
             for verdict in checker.component(component):
@@ -293,18 +470,22 @@ def evaluate(snapshot, ledger, checker):
         add("scope", "Assessment scope", capabilities.Verdict("needs_clarification", "More than 24 components; reduce the request scope"))
     if ledger.scope_error:
         add("scope", "Assessment scope", capabilities.Verdict("needs_clarification", ledger.scope_error))
-    if len(found) > MAX_ISSUES:
+    if len(found) > MAX_ISSUES or sum(len(i.alternatives) for i in found) > MAX_ISSUES:
         # No silent truncation: one scope issue represents the entire refusal; full ledger retained.
         found = [Issue(id="issue_scope", requirement="Assessment scope", status="needs_clarification",
                        reason="More than 20 issues; reduce the request scope and check again")]
-    return Assessment(id=new_id("assessment"), state="blocked" if found else "ready",
-        input_digest=input_digest(snapshot, ledger, checker), prototype_stale=ledger.prototype_stale, issues=found,
-        pending_comments=ledger.assessment.pending_comments if ledger.assessment else None)
+    return Assessment(id=new_id("assessment"), state="blocked" if any(i.resolution == "unresolved" for i in found) else "ready",
+        input_digest=input_digest(snapshot, ledger, checker), prototype_stale=ledger.prototype_stale or bool(ledger.pending_comments),
+        issues=found, pending_comments=ledger.pending_comments)
 
 
 def verification(snapshot, ledger, checker):
     """Retain the full code-owned proof, including support (the public issues omit it)."""
     fields, proof = schema(snapshot), {}
+    resolved = {}
+    for issue, target, slot, _ in _requirement_issues(snapshot, ledger, checker):
+        if issue.resolution != "unresolved":
+            resolved.setdefault(target.id, []).append((issue, slot))
     for r in ledger.requirements:
         rows = []
         for need in r.needs:
@@ -317,6 +498,9 @@ def verification(snapshot, ledger, checker):
             rows.append({"mapping": mapping.model_dump(), "status": verdict.status if verdict else "supported",
                          "reason": verdict.reason if verdict else "Original source defines this binding",
                          "source_id": r.source.id, "schema_type": fields.get(mapping.field), "component_ids": r.component_ids})
+        for issue, slot in resolved.get(r.id, []):
+            rows.append({"slot": slot, "resolution": issue.resolution,
+                         "decision": _choice(r, slot, snapshot, ledger, checker)})
         proof[r.id] = rows or [{"status": "unknown", "reason": "No registered capability covers this requirement"}]
     return proof
 
@@ -327,8 +511,100 @@ def get(snapshot, ledger, checker):
     changed = assessment.input_digest is not None and assessment.input_digest != input_digest(snapshot, ledger, checker)
     if changed or ledger.invalidated:
         assessment.state, assessment.id = "stale", None
-    assessment.prototype_stale = ledger.prototype_stale or bool(changed and snapshot["spec"])
+    assessment.prototype_stale = artifact_stale(snapshot, ledger, checker) or bool(ledger.pending_comments)
+    assessment.pending_comments = ledger.pending_comments
     return assessment
+
+
+def artifact_stale(snapshot, ledger, checker):
+    """General artifact staleness, separate from the removable pending-batch reason."""
+    previous = ledger.assessment.input_digest if ledger.assessment else None
+    return ledger.prototype_stale or bool(previous and previous != input_digest(snapshot, ledger, checker) and snapshot["spec"])
+
+
+def require_current(snapshot, ledger, checker, assessment_id):
+    current = get(snapshot, ledger, checker)
+    if not current.id or current.id != assessment_id or current.state in {"unchecked", "stale"}:
+        raise RunError("feasibility_stale", "Feasibility changed; check it again", 409)
+    return current
+
+
+def decide(snapshot, ledger, checker, body):
+    """Validate the entire request before changing a copy; never trust client alternative payloads."""
+    current = require_current(snapshot, ledger, checker, body.assessment_id)
+    targets = {i.id: (i, r, slot, offers) for i, r, slot, offers in _requirement_issues(snapshot, ledger, checker)}
+    visible = {i.id for i in current.issues if i.resolution == "unresolved"}
+    selected = []
+    for item in body.decisions:
+        if item.issue_id not in visible or item.issue_id not in targets:
+            raise RunError("invalid_request", "Choose an unresolved requirement issue from this assessment", 422)
+        issue, r, slot, offers = targets[item.issue_id]
+        alternative = next((o for o in offers if o["id"] == item.alternative_id), None)
+        if item.action == "accept_alternative" and alternative is None:
+            raise RunError("invalid_request", "Choose an offered alternative from this assessment", 422)
+        # Two issues of one requirement cannot simultaneously drop and substitute its intent.
+        if any(other[1].id == r.id and other[0].action != item.action and
+               "drop" in (other[0].action, item.action) for other in selected):
+            raise RunError("invalid_request", "Drop a requirement once, or choose its individual alternatives", 422)
+        selected.append((item, r, slot, alternative))
+    updated = ledger.model_copy(deep=True)
+    updated.prototype_stale |= artifact_stale(snapshot, ledger, checker)
+    for item, r, slot, alternative in selected:
+        needs = [capabilities.Need.model_validate(n) for n in alternative["needs"]] if alternative else []
+        updated.decisions = [d for d in updated.decisions if d.get("requirement_id") != r.id or
+                             (item.action != "drop" and d.get("slot") != slot and d.get("action") != "drop")]
+        updated.decisions.append({"requirement_id": r.id, "meaning": meaning(r), "slot": slot,
+            "action": item.action, "alternative": alternative,
+            "prerequisites": _prerequisites(snapshot, needs, r.mappings),
+            "evidence": [e for n in needs for e in checker.need(n, schema(snapshot)).evidence],
+            "issue_id": item.issue_id, "baseline": _bindings(snapshot, r),
+            "applied": _matches(snapshot, r, needs, checker) if alternative else False})
+        batch_owned = updated.pending_comments and r.source.batch_id == updated.pending_comments.id
+        if alternative and not _matches(snapshot, r, needs, checker) and snapshot["spec"] and not batch_owned:
+            updated.prototype_stale = True
+    updated.verification = verification(snapshot, updated, checker)
+    return updated, evaluate(snapshot, updated, checker)
+
+
+def abandon_pending(ledger):
+    """Remove exactly the pending batch, retaining unrelated intent, choices and stale reasons."""
+    updated = ledger.model_copy(deep=True)
+    if not updated.pending_comments:
+        return updated
+    batch_id = updated.pending_comments.id
+    removed = {r.id for r in updated.requirements if r.source.batch_id == batch_id or r.source.id.startswith(batch_id + ":")}
+    source_ids = {r.source.id for r in updated.requirements if r.id in removed}
+    source_ids |= {f"{batch_id}:{i}" for i in range(len(updated.pending_comments.comments))}
+    updated.retired_sources = list(dict.fromkeys(updated.retired_sources + sorted(source_ids)))
+    updated.requirements = [r for r in updated.requirements if r.id not in removed]
+    updated.decisions = [d for d in updated.decisions if d.get("requirement_id") not in removed]
+    updated.verification = {rid: rows for rid, rows in updated.verification.items() if rid not in removed}
+    updated.pending_comments = None
+    return updated
+
+
+def stage_comments(ledger, comments):
+    """11.7's revision preflight uses this copy before extraction; save only after assessment."""
+    # Use the same validation as POST /comments, including bounds and component ID syntax.
+    from dss.api.prototype import Comments
+    values = Comments.model_validate({"comments": comments})
+    updated = abandon_pending(ledger)
+    updated.pending_comments = PendingComments(id=new_id("batch"), comments=[PendingComment(**c.model_dump()) for c in values.comments])
+    return updated
+
+
+def validate_reapply(snapshot, ledger, checker, body):
+    current = require_current(snapshot, ledger, checker, body.assessment_id)
+    batch = ledger.pending_comments
+    if not batch or batch.id != body.batch_id:
+        raise RunError("feasibility_stale", "The pending comment batch changed; reload feasibility", 409)
+    if current.state != "ready":
+        raise RunError("feasibility_blocked", "Resolve pending intent before reapplying comments", 409,
+            {"assessment_id": current.id, "issue_ids": [i.id for i in current.issues if i.resolution == "unresolved"]})
+    ids = {c["id"] for p in (snapshot["spec"] or {}).get("pages", []) for c in p.get("components", []) + p.get("decorations", [])}
+    if any(c.component_id not in ids for c in batch.comments):
+        raise RunError("invalid_request", "A pending comment target no longer exists in the spec", 422)
+    return batch
 
 
 def save(folder, ledger, assessment=None):

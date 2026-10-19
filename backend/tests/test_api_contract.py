@@ -164,3 +164,33 @@ def test_feasibility_contract_states(thin, monkeypatch):
     _, a = assess(client, app, bid)
     assert a["state"] == "blocked" and a["issues"]
     conform(a)
+
+
+def test_feasibility_decisions_and_pending_contract(thin, monkeypatch):
+    """The fixture's nullable/empty slots also admit the populated contract shapes."""
+    from dss.spec import requirements as req
+    from test_feasibility import animated, pending, choose, accept
+    client, app, bid, folder = thin
+    fixture = json.loads((INTENT / "feasibility.json").read_text())
+    a = animated(thin, monkeypatch, with_spec=True)
+    alternative_shape = {"id": "alt_example", "label": "Time series using observed_at"}
+    populated = {**fixture, "issues": [{**fixture["issues"][0], "alternatives": [alternative_shape]}]}
+    shape(a, populated)
+    b = choose(client, bid, a, accept(a["issues"][0]))
+    assert b.status_code == 200
+    req.Assessment.model_validate(b.json())
+    shape(b.json(), populated)
+    a = pending(thin, [{"component_id": "p1_revenue", "text": "Animate this"}])
+    populated["pending_comments"] = {"id": "batch_example", "comments": [{"component_id": "p1_revenue", "text": "Animate this"}]}
+    shape(client.get(f"/api/builds/{bid}/feasibility").json(), populated)
+    req.Assessment.model_validate(a)
+    for result in (
+        client.post(f"/api/builds/{bid}/feasibility/reapply", json={"assessment_id": "old", "batch_id": "old"}),
+        client.delete(f"/api/builds/{bid}/feasibility/pending-comments", params={"assessment_id": "old"}),
+    ):
+        assert result.status_code == 409 and result.json()["error"]["code"] == "feasibility_stale"
+        assert result.json()["error"].keys() == {"code", "message", "detail"}
+    result = client.delete(f"/api/builds/{bid}/feasibility/pending-comments", params={"assessment_id": a["id"]})
+    assert result.status_code == 200
+    populated["pending_comments"] = None
+    shape(result.json(), populated)

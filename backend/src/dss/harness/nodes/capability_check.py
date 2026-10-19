@@ -96,8 +96,8 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                     return "Requirement extraction did not finish."
         if state["scope"]:
             candidate.scope_error = SCOPE_MESSAGE
-        previous = req.get(snapshot, ledger, checker)
-        candidate.prototype_stale |= previous.prototype_stale
+        candidate.prototype_stale |= req.artifact_stale(snapshot, ledger, checker)
+        candidate = req.revalidate_decisions(snapshot, candidate, checker)
         # Source changes occurring during the counted call cannot publish a fresh ID.
         fresh = req.inputs(harness.db, build_id, folder)
         if req.digest(fresh) != req.digest(snapshot) or Checker(load_registry()).digest() != checker.digest():

@@ -482,3 +482,326 @@ def test_plan_spec_revise_keep_ledger_as_mandatory_docs(thin, monkeypatch):
         sections = [s for s in context.sections if s.name == "requirements.json"]
         assert len(sections) == 1 and sections[0].kind == "docs" and sid in sections[0].text
         assert sid in context.refit(lambda text: True)  # Mandatory even when all droppable memory is removed.
+
+
+def choose(client, bid, assessment, *items):
+    return client.post(f"/api/builds/{bid}/feasibility/decisions", json={"assessment_id": assessment["id"], "decisions": list(items)})
+
+
+def drop(issue):
+    return {"issue_id": issue["id"], "action": "drop", "alternative_id": None}
+
+
+def accept(issue):
+    return {"issue_id": issue["id"], "action": "accept_alternative", "alternative_id": issue["alternatives"][0]["id"]}
+
+
+def animated(thin, monkeypatch, *, with_spec=False):
+    client, app, bid, folder = thin
+    if with_spec:
+        load(client, bid)
+    source(app, bid, observed_at="DATE", revenue="FLOAT", region="STRING")
+    sid = user(app, bid, "Animate GPS points along a route")
+    use_model(monkeypatch, app, extracted(sid, "animation.temporal_playback", "Animate GPS points along a route",
+                                         component_ids=["p1_revenue"]))
+    return check(client, app, bid)[1]
+
+
+def test_accept_is_explicit_durable_and_does_no_work(thin, monkeypatch):
+    client, app, bid, folder = thin
+    a = animated(thin, monkeypatch, with_spec=True)
+    assert a["state"] == "blocked" and a["issues"][0]["alternatives"]
+    assert "observed_at" in a["issues"][0]["alternatives"][0]["label"]
+    before = {p: p.read_bytes() for p in folder.iterdir() if p.is_file() and p.name != "requirements.json"}
+    with app.state.db.connect() as conn:
+        traces = conn.execute("SELECT count(*) FROM traces").fetchone()[0]
+    response = choose(client, bid, a, accept(a["issues"][0]))
+    assert response.status_code == 200, response.text
+    b = response.json()
+    assert b["state"] == "ready" and b["id"] != a["id"]
+    assert b["issues"][0]["resolution"] == "accepted_alternative"
+    assert client.get(f"/api/builds/{bid}/feasibility").json() == b
+    assert all(p.read_bytes() == value for p, value in before.items()) and not app.state.engine_tasks
+    with app.state.db.connect() as conn:
+        assert conn.execute("SELECT count(*) FROM traces").fetchone()[0] == traces
+    d = req.load(folder).decisions[0]
+    assert d["requirement_id"] and d["meaning"] and d["prerequisites"] and d["evidence"]
+    assert d["alternative"]["needs"][0]["fields"] == {"date_field": "observed_at"}
+    assert choose(client, bid, a, drop(a["issues"][0])).json()["error"]["code"] == "feasibility_stale"
+    _, b = check(client, app, bid)
+    assert b["state"] == "ready" and b["issues"][0]["resolution"] == "accepted_alternative"
+
+
+def test_choice_survives_spec_and_registry_but_rechecks_mapping_and_data(thin, monkeypatch):
+    client, app, bid, folder = thin
+    a = animated(thin, monkeypatch, with_spec=True)
+    assert choose(client, bid, a, accept(a["issues"][0])).status_code == 200
+    spec = json.loads((folder / "spec.json").read_text())
+    component = spec["pages"][0]["components"][0]
+    assert component["id"] == "p1_revenue"
+    component.update(type="time_series", date_dimension="observed_at")
+    (folder / "spec.json").write_text(json.dumps(spec))
+    registry = capabilities.load_registry().model_dump(mode="json")
+    registry["registry_version"] = "1.1"
+    registry["capabilities"][1]["label"] += " updated documentation"
+    updated = capabilities.Registry.model_validate(registry)
+    monkeypatch.setattr("dss.harness.nodes.capability_check.load_registry", lambda: updated)
+    monkeypatch.setattr("dss.api.feasibility.load_registry", lambda: updated)
+    assert client.get(f"/api/builds/{bid}/feasibility").json()["state"] == "stale"
+    _, b = check(client, app, bid)
+    assert b["state"] == "ready" and b["issues"][0]["resolution"] == "accepted_alternative"
+    component["date_dimension"] = "region"
+    (folder / "spec.json").write_text(json.dumps(spec))
+    _, b = check(client, app, bid)
+    assert b["state"] == "blocked" and b["issues"][0]["resolution"] == "unresolved"
+    # A fresh explicit choice permits repair of the old mapping, but does not publish it.
+    response = choose(client, bid, b, accept(b["issues"][0]))
+    assert response.status_code == 200 and response.json()["state"] == "ready" and response.json()["prototype_stale"]
+    component["date_dimension"] = "observed_at"
+    (folder / "spec.json").write_text(json.dumps(spec))
+    _, b = check(client, app, bid)
+    assert b["state"] == "ready" and req.load(folder).decisions[0]["applied"]
+    component["date_dimension"] = "region"
+    (folder / "spec.json").write_text(json.dumps(spec))
+    _, b = check(client, app, bid)
+    assert b["state"] == "blocked"  # Even returning to the originally authorized old prototype needs a new choice.
+    component["date_dimension"] = "observed_at"
+    (folder / "spec.json").write_text(json.dumps(spec))
+    with app.state.db.connect() as conn:
+        conn.execute("UPDATE sources SET columns_json=? WHERE build_id=?", (json.dumps([
+            {"name": "observed_at", "type": "STRING"}, {"name": "revenue", "type": "FLOAT"}, {"name": "region", "type": "STRING"}]), bid))
+    _, b = check(client, app, bid)
+    assert b["state"] == "blocked" and not b["issues"][0]["alternatives"]
+
+
+def test_requirement_meaning_and_allowlist_revoke_choice(thin, monkeypatch):
+    client, app, bid, folder = thin
+    a = animated(thin, monkeypatch)
+    choose(client, bid, a, accept(a["issues"][0]))
+    ledger = req.load(folder)
+    snapshot = req.inputs(app.state.db, bid, folder)
+    checker = capabilities.Checker(capabilities.load_registry())
+    changed = ledger.model_copy(deep=True)
+    changed.requirements[0].mappings = [req.Mapping(label="Revenue", field="revenue")]
+    assert req.evaluate(snapshot, changed, checker).state == "blocked"
+    narrowed = capabilities.Checker(checker.registry, allowed={"bar"})
+    assert req.evaluate(snapshot, ledger, narrowed).state == "blocked"
+    changed = copy.deepcopy(snapshot)
+    changed["sources"][0]["table"] = "p.d.replacement"
+    assert req.evaluate(changed, ledger, checker).state == "blocked"
+    registry = checker.registry.model_dump(mode="json")
+    cap = next(c for c in registry["capabilities"] if c["id"] == "chart.time_series")
+    cap["app"]["status"] = "unsupported"
+    assert req.evaluate(snapshot, ledger, capabilities.Checker(capabilities.Registry.model_validate(registry))).state == "blocked"
+
+
+def test_no_unsupported_or_inferred_alternative(thin, monkeypatch):
+    client, app, bid, folder = thin
+    sid = user(app, bid, "Animate GPS points")
+    source(app, bid, latitude="FLOAT", longitude="FLOAT", date_text="STRING")
+    use_model(monkeypatch, app, extracted(sid, "animation.temporal_playback"))
+    _, a = check(client, app, bid)
+    assert a["issues"][0]["alternatives"] == []
+    assert a["state"] == "blocked"
+
+
+@pytest.mark.parametrize("items", [[], ["duplicate"], ["missing"], ["drop_with_id"], ["accept_null"], ["accept_fake"], ["too_many"]])
+def test_decision_validation_is_atomic(thin, monkeypatch, items):
+    client, app, bid, folder = thin
+    a = animated(thin, monkeypatch)
+    valid = drop(a["issues"][0])
+    case = items[0] if items else "empty"
+    bad = {**valid, "issue_id": "unknown"}
+    body = {
+        "empty": [], "duplicate": [valid, valid], "missing": [valid, bad],
+        "drop_with_id": [{**valid, "alternative_id": "unexpected"}],
+        "accept_null": [{**valid, "action": "accept_alternative"}],
+        "accept_fake": [{**valid, "action": "accept_alternative", "alternative_id": "fake"}],
+        "too_many": [{**valid, "issue_id": str(i)} for i in range(21)]}[case]
+    before = {p: p.read_bytes() for p in folder.rglob("*") if p.is_file()}
+    result = choose(client, bid, a, *body)
+    assert result.status_code == 422, result.text
+    assert all(p.read_bytes() == value for p, value in before.items())
+    assert not app.state.harness.active_builds
+
+
+def test_twenty_distinct_decisions_and_no_implicit_consent(thin, monkeypatch):
+    client, app, bid, folder = thin
+    sid = user(app, bid, "Twenty explicit unsupported behaviors")
+    use_model(monkeypatch, app, *(extracted(sid, f"unknown.feature_{i}", text=f"Feature {i}") for i in range(20)))
+    _, a = check(client, app, bid)
+    assert len(a["issues"]) == 20
+    response = choose(client, bid, a, *(drop(i) for i in a["issues"][:-1]))
+    assert response.status_code == 200 and response.json()["state"] == "blocked"
+    a = response.json()
+    assert sum(i["resolution"] == "unresolved" for i in a["issues"]) == 1
+    # One atomic request may carry the maximum 20 choices on a fresh assessment.
+    ledger = req.load(folder)
+    ledger.decisions = []
+    snapshot, checker = req.inputs(app.state.db, bid, folder), capabilities.Checker(capabilities.load_registry())
+    req.save(folder, ledger, req.evaluate(snapshot, ledger, checker))
+    a = client.get(f"/api/builds/{bid}/feasibility").json()
+    response = choose(client, bid, a, *(drop(i) for i in a["issues"]))
+    assert response.status_code == 200 and response.json()["state"] == "ready"
+
+
+def pending(thin, comments, ledger=None):
+    """Exercise the persistence interface that comments/revise will call in 11.7."""
+    client, app, bid, folder = thin
+    snapshot = req.inputs(app.state.db, bid, folder)
+    ledger = req.stage_comments(ledger or req.load(folder), comments)
+    sources = req.new_sources(snapshot, ledger)
+    extraction = req.Extraction(requirements=[req.Extracted(**extracted(s["id"], "animation.temporal_playback", s["text"],
+        component_ids=[s["component_id"]] if s.get("component_id") else [])) for s in sources])
+    ledger = req.merge(ledger, snapshot, extraction)
+    checker = capabilities.Checker(capabilities.load_registry())
+    ledger.verification = req.verification(snapshot, ledger, checker)
+    a = req.evaluate(snapshot, ledger, checker)
+    req.save(folder, ledger, a)
+    return a.model_dump()
+
+
+def test_pending_reload_reapply_ids_replace_and_abandon(thin, monkeypatch):
+    client, app, bid, folder = thin
+    load(client, bid)
+    a = animated(thin, monkeypatch)
+    # Keep an unrelated requirement and its durable decision.
+    choose(client, bid, a, drop(a["issues"][0]))
+    original = req.load(folder).requirements[0].id
+    comments = [{"component_id": "p1_revenue", "text": "Animate this first"},
+                {"component_id": "p1_revenue", "text": "Then animate this second"}]
+    a = pending(thin, comments)
+    assert a["state"] == "blocked" and a["prototype_stale"]
+    assert a == client.get(f"/api/builds/{bid}/feasibility").json()
+    batch = a["pending_comments"]
+    assert batch["comments"] == comments
+    assert {r.source.batch_id for r in req.load(folder).requirements if r.id != original} == {batch["id"]}
+    # A recovery check must not turn the batch-only stale reason into a sticky global one.
+    _, a = check(client, app, bid)
+    assert a["prototype_stale"] and not req.load(folder).prototype_stale
+    url = f"/api/builds/{bid}/feasibility/reapply"
+    for assessment_id, batch_id in (("old", batch["id"]), (a["id"], "old")):
+        result = client.post(url, json={"assessment_id": assessment_id, "batch_id": batch_id})
+        assert result.status_code == 409 and result.json()["error"]["code"] == "feasibility_stale"
+    assert client.post(url, json={"assessment_id": a["id"], "batch_id": batch["id"]}).json()["error"]["code"] == "feasibility_blocked"
+    b = choose(client, bid, a, *(drop(i) for i in a["issues"] if i["resolution"] == "unresolved")).json()
+    assert b["state"] == "ready" and b["prototype_stale"]
+    assert client.post(url, json={"assessment_id": a["id"], "batch_id": batch["id"]}).json()["error"]["code"] == "feasibility_stale"
+    # Validation returns the ordered batch without applying it; 11.7 wires the revise action.
+    snapshot, ledger = req.inputs(app.state.db, bid, folder), req.load(folder)
+    assert req.validate_reapply(snapshot, ledger, capabilities.Checker(capabilities.load_registry()),
+        req.Reapply(assessment_id=b["id"], batch_id=batch["id"])).comments == req.PendingComments.model_validate(batch).comments
+    new = pending(thin, [{"component_id": "p1_revenue", "text": "A different request"}])
+    assert new["pending_comments"]["id"] != batch["id"] and new["state"] == "blocked"
+    assert len(req.load(folder).decisions) == 1  # Only the unrelated choice remains.
+    assert client.post(url, json={"assessment_id": new["id"], "batch_id": batch["id"]}).json()["error"]["code"] == "feasibility_stale"
+    before = (folder / "spec.json").read_bytes()
+    assert client.delete(f"/api/builds/{bid}/feasibility/pending-comments", params={"assessment_id": b["id"]}).json()["error"]["code"] == "feasibility_stale"
+    response = client.delete(f"/api/builds/{bid}/feasibility/pending-comments", params={"assessment_id": new["id"]})
+    assert response.status_code == 200, response.text
+    c = response.json()
+    assert c["pending_comments"] is None and c["state"] == "ready" and not c["prototype_stale"]
+    assert [r.id for r in req.load(folder).requirements] == [original]
+    assert len(req.load(folder).decisions) == 1 and (folder / "spec.json").read_bytes() == before
+    _, c = check(client, app, bid)
+    assert c["state"] == "ready" and c["pending_comments"] is None and not c["prototype_stale"]
+
+
+def test_abandon_keeps_other_issues_and_reference_staleness(thin, monkeypatch):
+    client, app, bid, folder = thin
+    load(client, bid)
+    sid = user(app, bid, "Unknown original request")
+    use_model(monkeypatch, app, extracted(sid, "unknown.behavior"))
+    check(client, app, bid)
+    ledger = req.load(folder)
+    ledger.prototype_stale = True  # An independent reference/spec stale reason.
+    a = pending(thin, [{"component_id": "p1_revenue", "text": "Animate"}], ledger)
+    result = client.delete(f"/api/builds/{bid}/feasibility/pending-comments", params={"assessment_id": a["id"]})
+    assert result.status_code == 200
+    assert result.json()["state"] == "blocked" and result.json()["prototype_stale"]
+    assert len(result.json()["issues"]) == 1 and len(req.load(folder).requirements) == 1
+
+
+def test_decisions_lock_and_write_failure_rollback(thin, monkeypatch):
+    client, app, bid, folder = thin
+    a = animated(thin, monkeypatch)
+    app.state.harness.active_builds.add(bid)
+    assert choose(client, bid, a, drop(a["issues"][0])).json()["error"]["code"] == "wrong_stage"
+    app.state.harness.active_builds.discard(bid)
+    before = {p: p.read_bytes() for p in folder.rglob("*") if p.is_file()}
+    real = Path.replace
+    def fail(path, target):
+        if path.name == "requirements.json.tmp":
+            raise OSError("injected decision save failure")
+        return real(path, target)
+    monkeypatch.setattr(Path, "replace", fail)
+    with pytest.raises(OSError, match="injected decision"):
+        choose(client, bid, a, drop(a["issues"][0]))
+    assert all(p.read_bytes() == value for p, value in before.items()) and not app.state.harness.active_builds
+
+
+def test_legacy_choice_is_bound_to_data_origin(thin, monkeypatch):
+    client, app, bid, folder = thin
+    load(client, bid)
+    spec = json.loads((folder / "spec.json").read_text())
+    spec["datasource"]["fields"].append({"name": "observed_at", "type": "DATE", "label": "Observed at", "role": "dimension"})
+    (folder / "spec.json").write_text(json.dumps(spec))
+    sid = user(app, bid, "Animate GPS points")
+    use_model(monkeypatch, app, extracted(sid, "animation.temporal_playback"))
+    _, a = check(client, app, bid)
+    assert choose(client, bid, a, accept(a["issues"][0])).json()["state"] == "ready"
+    spec["datasource"]["table"] = "p.d.another_table"
+    (folder / "spec.json").write_text(json.dumps(spec))
+    _, b = check(client, app, bid)
+    assert b["state"] == "blocked" and b["issues"][0]["resolution"] == "unresolved"
+
+
+def test_abandon_accepted_pending_alternative_clears_only_batch_staleness(thin, monkeypatch):
+    client, app, bid, folder = thin
+    load(client, bid)
+    source(app, bid, observed_at="DATE", revenue="FLOAT", region="STRING")
+    a = pending(thin, [{"component_id": "p1_revenue", "text": "Animate this"}])
+    b = choose(client, bid, a, accept(a["issues"][0]))
+    assert b.status_code == 200 and b.json()["state"] == "ready" and b.json()["prototype_stale"]
+    assert not req.load(folder).prototype_stale
+    use_model(monkeypatch, app)
+    _, a = check(client, app, bid)
+    assert not req.load(folder).prototype_stale
+    result = client.delete(f"/api/builds/{bid}/feasibility/pending-comments", params={"assessment_id": a["id"]})
+    assert result.status_code == 200 and result.json()["state"] == "ready" and not result.json()["prototype_stale"]
+
+
+def test_static_map_alternative_checks_inherited_type_and_binding():
+    checker = capabilities.Checker(capabilities.load_registry())
+    snapshot = {"sources": [], "incoming": [], "reference": None, "definitions": {}, "spec": {
+        "datasource": {"table": "p.d.view", "fields": [{"name": "country", "type": "GEO"}]},
+        "pages": [{"components": [{"id": "p1_map", "type": "geo_map", "dimensions": ["country"],
+                                     "options": {"geo_type": "country"}}]}]}}
+    ledger = req.Ledger(requirements=[req.Requirement(id="r1", source=req.Source(id="m", kind="message", text="Animate GPS"),
+        text="Animate GPS", component_ids=["p1_map"], needs=[capabilities.Need(capability="animation.temporal_playback")])])
+    a = req.evaluate(snapshot, ledger, checker)
+    assert len(a.issues[0].alternatives) == 1 and "Static country" in a.issues[0].alternatives[0].label
+    ledger.assessment = a
+    ledger, b = req.decide(snapshot, ledger, checker, req.Decisions(assessment_id=a.id,
+        decisions=[req.DecisionInput(**accept(a.issues[0].model_dump()))]))
+    assert b.state == "ready" and ledger.decisions[0]["applied"]
+    snapshot["spec"]["pages"][0]["components"][0]["options"]["geo_type"] = "city"
+    assert req.evaluate(snapshot, ledger, checker).state == "blocked"
+
+
+def test_decision_recompute_budget():
+    checker = capabilities.Checker(capabilities.load_registry())
+    snapshot = {"sources": [], "incoming": [], "reference": None, "definitions": {}, "spec": {
+        "datasource": {"table": "p.d.view", "fields": [{"name": "observed_at", "type": "DATE"}]},
+        "pages": [{"components": [{"id": f"c{i}", "type": "time_series", "date_dimension": "observed_at"} for i in range(24)]}]}}
+    ledger = req.Ledger(requirements=[req.Requirement(id=f"r{i}", source=req.Source(id="m", kind="message", text="Animate"),
+        text=f"Animate {i}", component_ids=[f"c{i % 24}"],
+        needs=[capabilities.Need(capability="animation.temporal_playback" if i < 20 else "chart.bar")]) for i in range(40)])
+    a = req.evaluate(snapshot, ledger, checker)
+    ledger.assessment = a
+    body = req.Decisions(assessment_id=a.id, decisions=[req.DecisionInput(**accept(i.model_dump())) for i in a.issues])
+    ledger, _ = req.decide(snapshot, ledger, checker, body)
+    started = time.perf_counter()
+    a = req.evaluate(snapshot, ledger, checker)
+    elapsed = time.perf_counter() - started
+    assert a.state == "ready" and elapsed < .1

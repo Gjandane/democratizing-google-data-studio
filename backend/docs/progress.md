@@ -572,3 +572,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: recorded in AGENTS.md.
 - Left open: none.
 - Next: Task 11.4 Explicit decisions and pending comment batches.
+
+## 2026-10-20: Task 11.4 Explicit decisions and pending comment batches
+- Status: done
+- Plan check: off
+- What changed: atomic decision API, validated alternatives and durable choices; ordered pending-batch persistence, replacement, selective abandonment and reapply guards.
+- Checks: `uv run pytest tests/test_feasibility.py tests/test_api_contract.py` PASS (71); Test (all) `uv run pytest` PASS (595, 5 live deselected, 2 warnings); `git diff --check` PASS. Decision-bearing 40-requirement/24-component recomputation passes <100ms. Final read-only review: no findings.
+- Decisions: choices bind requirement meaning/slot, selected needs/evidence/prerequisites, baseline bindings and applied flag. `revalidate_decisions` seals fulfilled bindings before refreshed assessment publication. `stage_comments` creates ordered `batch_id:index` sources; `abandon_pending` retires only that batch. Successful reapply and comment-route wiring remain 11.7; avoid duplicate extraction from episodic comments. Outside Files: capability_check.py propagates only `artifact_stale` and seals choices. AGENTS.md adds the pending-staleness gotcha. No dependencies added.
+- Tried and failed: review exposed old-prototype acceptance deadlock, missing legacy data origin and batch staleness leaking into the general flag; fixed with regressions.
+- Gotchas: recorded in AGENTS.md.
+- Left open: none.
+- Next: Task 11.5 Stage candidate views and recover failed publication.

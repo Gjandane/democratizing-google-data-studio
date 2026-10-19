@@ -251,7 +251,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_feasibility.py tests/test_api_contract.py` passes: a legacy build is `unchecked` and `POST feasibility/check` makes it ready (one trace, run events, no SQL/render/engine); unknown requests and ambiguous gross/net mapping block (needs_clarification); unsupported_app differs from native/data limits; replacing or deleting the reference set marks the assessment stale and `prototype_stale: true`; digest changes on reference/schema/spec/registry/allowed-types changes; GET never calls the model. Conformance loads ../contracts/fixtures/dashboard-intent and validates ready/blocked/stale/unchecked states. Extraction obeys the one-call, 12k/4k token and 40-requirement limits; model output cannot grant capability support. `uv run pytest` passes.
   - Review focus: ../contracts/dashboard-intent.md; code owns classification; requirement provenance kept.
-- [ ] 11.4 Explicit decisions and pending comment batches
+- [x] 11.4 Explicit decisions and pending comment batches
   - Goal: `POST feasibility/decisions`, durable requirement-scoped choices, persisted blocked comment batches with reapply-ID validation and `DELETE feasibility/pending-comments`.
   - Spec: docs/architecture.md#Capability verification; ../contracts/dashboard-intent.md#Feasibility assessment
   - Files: src/dss/api/feasibility.py, src/dss/spec/requirements.py, tests/test_feasibility.py, tests/test_api_contract.py
