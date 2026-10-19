@@ -189,7 +189,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: S
   - Done when: `uv run pytest tests/test_spec_validate.py tests/test_render.py tests/test_recipe_contract.py` passes: explicit order asc/desc on bar, table and time_series produces matching aggregate SQL and schema-valid recipe; absent sort preserves documented defaults; malformed order, unknown keys (including direction) and unknown fields fail validation before artifacts are published; all 12-type golden recipe bytes remain stable. `uv run pytest` passes.
   - Review focus: ../contracts/recipe.md add_chart.sort and recipe.schema.json; update request schema serialization safely if sort becomes a typed model.
-- [ ] 9.5 Package nested image assets for plain-name agent jobs
+- [x] 9.5 Package nested image assets for plain-name agent jobs
   - Goal: a valid image component with a version-relative path (including images/logo.png) can build through the agent without relaxing filename security.
   - Spec: docs/architecture.md#Build consistency; docs/architecture.md#Recipe compiler
   - Files: src/dss/agent/jobs.py, tests/test_agent_server.py, tests/test_agent_client.py

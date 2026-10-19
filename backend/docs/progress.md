@@ -466,3 +466,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none.
 - Left open: P2 revise LLM context/prompt never shows the Sort shape, so a sort comment may guess `direction` and fail validation - src/dss/harness/context.py, skills/prompts. Live check not run: spec provider schema now has `anyOf[$ref Sort, null]`; confirm with `uv run pytest -m live tests/live/test_backend_flow.py`.
 - Next: Task 9.5 Package nested image assets for plain-name agent jobs.
+
+## 2026-10-19: Task 9.5 Package nested image assets for plain-name agent jobs
+- Status: done
+- Plan check: off
+- What changed: `jobs.package(folder)` maps every recipe `path` to a plain transport name and builds a private recipe copy (bytes, snapshotted at prepare) with only renamed paths rewritten; `Job.inputs` holds name -> source Path or the recipe bytes; `Job.files == list(inputs)`. Download endpoint serves from `Job.inputs` after the unchanged `safe_file` guard. Tests: nested/same-basename/repeated/spaced images through the fake agent (server + real dss-agent client), 14 bad-path cases.
+- Checks: `uv run pytest tests/test_agent_server.py tests/test_agent_client.py` PASS (66; 3 new fail on old src); `uv run pytest` PASS (425, 4 deselected). Reviewer: two P3, no P0-P2.
+- Decisions: plain names travel unchanged; nested or case-colliding ones become `asset-<sha256(resolved version-relative posix path)[:16]>-<sanitized basename, last 64 chars>`; dedup by resolved source; casefold collision of a generated name -> 422. Bad path (absolute, `:`, NUL, empty/`.`/`..` part, either slash, resolves outside) -> 400 invalid_name; missing/non-file -> 422 invalid_recipe (both before reservation). Rewritten lines use the compiler's json.dumps options. Edited src/dss/api/agent.py (outside Files): download had to serve packaged bytes/source paths. Symlink-loop RuntimeError -> 422 (review P3). No new dependencies. AGENTS.md gotcha added.
+- Tried and failed: none.
+- Gotchas: Bash heredoc here mangled backslashes in Python code (NUL byte written into jobs.py); see Known gotchas.
+- Left open: P3 case-collision renaming untested (Windows test FS ignores case) - src/dss/agent/jobs.py.
+- Next: Task 9.6 Enforce live input budgets using authoritative token counts.

@@ -2,6 +2,7 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import json
+import os
 from pathlib import Path
 import time
 
@@ -429,3 +430,117 @@ def test_recipe_request_cannot_mutate_unreleased_job_files(remote):
     response = client.post(f"/api/builds/{bid}/recipe")
     assert response.status_code == 200
     assert "Changed mid-build" in (folder / "recipe.jsonl").read_text(encoding="utf-8")
+
+
+NESTED = {"images/logo.png": b"nested logo", "brand/logo.png": b"brand logo", "logo.png": b"plain logo",
+          "images/deep/My Logo (1).png": b"spaced logo"}
+
+
+def nested_inputs(folder):
+    for path, content in NESTED.items():
+        (folder / path).parent.mkdir(parents=True, exist_ok=True)
+        (folder / path).write_bytes(content)
+    paths = ["images/logo.png", "brand/logo.png", "images/logo.png", "logo.png",
+             "images/deep/My Logo (1).png", "background_p1.png"]
+    add_images(folder, *paths)
+    spec = DashboardSpec.model_validate_json((folder / "spec.json").read_text())
+    for i, image in enumerate(spec.pages[0].components[-len(paths):]):  # two per row: inside the canvas
+        image.grid.row, image.grid.col, image.grid.w, image.grid.h = 27 + 3 * (i // 2), 1 + 6 * (i % 2), 6, 2
+    (folder / "spec.json").write_text(spec.model_dump_json(), encoding="utf-8")
+
+
+def test_nested_images_package_to_plain_deduplicated_names(remote):
+    from dss.agent.jobs import PLAIN, package
+    client, app, bid, folder = remote
+    nested_inputs(folder)
+    originals = {path: (folder / path).read_bytes() for path in [*NESTED, "background_p1.png"]}
+    run_id, job = accept(remote)
+    canonical = compile_recipe(DashboardSpec.model_validate_json((folder / "spec.json").read_text()), 1)
+    assert (folder / "recipe.jsonl").read_bytes() == canonical.encode("utf-8")  # canonical bytes kept
+    files = job["files"]
+    assert files[0] == "recipe.jsonl" and len(files) == len(set(f.casefold() for f in files)) == 6
+    assert all(PLAIN.fullmatch(name) and name not in (".", "..") for name in files)
+    assert files[1] == "background_p1.png" and "logo.png" in files
+    downloaded = {name: client.get(f"/api/agent/jobs/{run_id}/files/{name}", headers=AUTH) for name in files}
+    assert all(response.status_code == 200 for response in downloaded.values())
+    shipped, original = downloaded["recipe.jsonl"].content.decode("utf-8"), canonical
+    assert shipped.endswith("\n") and len(shipped.split("\n")) == len(original.split("\n"))
+    sources = {}
+    for sent, kept in zip(shipped.split("\n"), original.split("\n")):
+        if not kept:
+            continue
+        sent_op, kept_op = json.loads(sent), json.loads(kept)
+        if "path" not in kept_op or PLAIN.fullmatch(kept_op["path"]):
+            assert sent == kept  # unrenamed lines keep their canonical bytes
+            continue
+        assert {**sent_op, "path": kept_op["path"]} == kept_op
+        sources.setdefault(kept_op["path"], set()).add(sent_op["path"])
+    # Repeated sources share one name; same basenames in other folders never collide.
+    assert all(len(names) == 1 for names in sources.values()) and len(sources) == 3
+    names = {path: names.pop() for path, names in sources.items()}
+    assert names["images/logo.png"] != names["brand/logo.png"]
+    for path, name in [*names.items(), ("logo.png", "logo.png"), ("background_p1.png", "background_p1.png")]:
+        assert downloaded[name].content == originals[path]
+    ops = [json.loads(line) for line in shipped.split("\n")[1:-1]]
+    assert sorted({op["path"] for op in ops if "path" in op}) == sorted(files[1:])
+    assert [op["path"] for op in ops if op["op"] == "add_image"].count(names["images/logo.png"]) == 2
+    # Deterministic: repackaging matches the shipped job byte for byte; the folder is untouched.
+    for _ in range(2):
+        again = package(folder)
+        assert list(again) == files and again["recipe.jsonl"] == shipped.encode("utf-8")
+    assert {path: (folder / path).read_bytes() for path in originals} == originals
+    assert not any(name.startswith("asset-") for name in (p.name for p in folder.rglob("*")))
+    post_events(client, run_id)
+    finish(client, run_id)
+    settle(client, app)
+    assert client.get(f"/api/builds/{bid}").json()["stage"] == "done"
+    assert (folder / "recipe.jsonl").read_bytes() == canonical.encode("utf-8")
+
+
+def outside_link(folder, tmp_path):
+    """A folder link inside the version that resolves outside it (a junction without symlink rights)."""
+    target = tmp_path / "outside"
+    target.mkdir()
+    (target / "x.png").write_bytes(b"outside")
+    try:
+        (folder / "linked").symlink_to(target, target_is_directory=True)
+    except OSError:
+        if os.name != "nt":
+            pytest.skip("symlinks are unavailable here")
+        import _winapi
+        _winapi.CreateJunction(str(target), str(folder / "linked"))
+    return "linked/x.png"
+
+
+@pytest.mark.parametrize("bad,code", [
+    ("../dss.sqlite", "invalid_name"), ("images/../../dss.sqlite", "invalid_name"),
+    ("images/../logo.png", "invalid_name"), (r"images\..\..\dss.sqlite", "invalid_name"),
+    ("./logo.png", "invalid_name"), ("images//logo.png", "invalid_name"), ("/etc/passwd", "invalid_name"),
+    ("C:/Windows/win.ini", "invalid_name"), ("C:logo.png", "invalid_name"), (r"\\host\share\x.png", "invalid_name"),
+    ("absolute", "invalid_name"), ("link", "invalid_name"), ("images", "invalid_recipe"),
+    ("images/missing.png", "invalid_recipe")])
+def test_bad_image_paths_reject_before_queueing(remote, tmp_path, bad, code):
+    client, app, bid, folder = remote
+    (folder / "images").mkdir()
+    (folder / "logo.png").write_bytes(b"logo")
+    good = (folder / "spec.json").read_text()
+    if bad == "absolute":
+        bad = str((tmp_path / "outside.png"))
+        (tmp_path / "outside.png").write_bytes(b"outside")
+    elif bad == "link":
+        bad = outside_link(folder, tmp_path)
+    add_images(folder, "logo.png", bad)
+    heartbeat(client)
+    response = client.post(f"/api/builds/{bid}/run")
+    assert response.status_code == (400 if code == "invalid_name" else 422), response.text
+    assert response.json()["error"]["code"] == code
+    assert client.get("/api/agent/jobs/next?wait=0", headers=AUTH).status_code == 204
+    assert not app.state.agent_jobs.running and not app.state.agent_jobs.jobs and not app.state.engine_tasks
+    assert not app.state.engine_busy and bid not in app.state.harness.active_builds
+    build = client.get(f"/api/builds/{bid}").json()
+    assert build["stage"] == "prototype" and build["versions"][0]["status"] != "building"
+    (folder / "spec.json").write_text(good, encoding="utf-8")
+    run_id, job = accept(remote)  # the stage and lock are still usable
+    assert job["files"] == ["recipe.jsonl", "background_p1.png"]
+    finish(client, run_id, 1)
+    settle(client, app)

@@ -49,6 +49,18 @@ if sys.argv[1] == "check":
     print(json.dumps({"chrome_running": True, "signed_in": False}))
     sys.exit(0)
 note("run_started")
+if os.environ.get("DSS_TEST_ENGINE_INPUTS"):
+    # What the engine sees: every op path, resolved next to the recipe like dsengine does.
+    recipe = sys.argv[2]
+    with open(recipe, encoding="utf-8", newline="") as text:
+        ops = [json.loads(line) for line in text.read().split("\n")[1:-1]]
+    seen = {}
+    for op in ops:
+        if "path" in op:
+            with open(os.path.join(os.path.dirname(recipe), op["path"]), "rb") as asset:
+                seen[op["id"]] = [op["path"], asset.read().decode("latin-1")]
+    with open(os.environ["DSS_TEST_ENGINE_INPUTS"], "w") as out:
+        json.dump(seen, out)
 if os.environ.get("DSS_TEST_ENGINE_TRICKLE"):
     # A child that inherits stdout: only a process-tree kill ends the pipe.
     child = "import sys, time\nwhile True:\n    open(sys.argv[1], 'a').write('c')\n    time.sleep(.05)"
@@ -327,6 +339,33 @@ def test_job_not_found_mid_job_kills_engine_tree_and_deletes_folder(server, wrap
         assert server.finished(retry)["stage"] == "done"
     assert result["code"] == 0
     assert f"Job {run_id} no longer exists" in caplog.text
+    assert_no_token(caplog.text, *capfd.readouterr())
+
+
+def test_nested_image_inputs_reach_the_engine_as_plain_files(server, wrapper, fast, tmp_path, monkeypatch,
+                                                             caplog, capfd):
+    from test_agent_server import nested_inputs
+    seen = tmp_path / "inputs.json"
+    monkeypatch.setenv("DSS_TEST_ENGINE_INPUTS", str(seen))
+    agent = client.Agent(server.url, TOKEN, tmp_path / "data", [sys.executable, str(wrapper)])
+    with running(agent):
+        bid, source = server.queue_build()
+        nested_inputs(source)
+        server.run(bid)
+        assert server.finished(bid)["stage"] == "done"
+    canonical = [json.loads(line) for line in
+                 (source / "recipe.jsonl").read_text(encoding="utf-8").split("\n")[1:-1]]
+    kept = {op["id"]: op["path"] for op in canonical if "path" in op}
+    assert "images/logo.png" in kept.values() and "brand/logo.png" in kept.values()  # canonical paths
+    inputs = json.loads(seen.read_text())
+    assert inputs.keys() == kept.keys()
+    for op_id, (name, content) in inputs.items():
+        assert client.NAME.fullmatch(name) and content == (source / kept[op_id]).read_bytes().decode("latin-1")
+    sent = {kept[op_id]: name for op_id, (name, _) in inputs.items()}
+    assert len(sent) == len(set(sent.values())) == 5  # one name per source, no collisions
+    folder = tmp_path / "data/agent" / bid / "v1"
+    assert sorted(path.name for path in folder.iterdir() if path.is_file() and path.suffix == ".png") == sorted(
+        sent.values())
     assert_no_token(caplog.text, *capfd.readouterr())
 
 

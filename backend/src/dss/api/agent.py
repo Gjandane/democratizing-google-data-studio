@@ -50,12 +50,15 @@ async def next_job(request: Request, wait: float = Query(default=25, ge=0, le=25
 @router.get("/jobs/{run_id}/files/{name:path}")
 async def download(run_id: str, name: str, request: Request):
     job = request.app.state.agent_jobs.get(run_id)
-    target = safe_file(job.folder, name)
-    if name not in job.data["files"]:
+    safe_file(job.folder, name)
+    if name not in job.inputs:
         raise RunError("invalid_name", "File is not a job input", 400)
-    if not target.is_file():
+    source = job.inputs[name]
+    if isinstance(source, bytes):  # the job's packaged recipe copy
+        return Response(source, media_type="application/octet-stream")
+    if not source.is_file():
         raise RunError("invalid_name", "Job input is unavailable", 400)
-    return FileResponse(target)
+    return FileResponse(source)
 
 
 @router.post("/jobs/{run_id}/events")

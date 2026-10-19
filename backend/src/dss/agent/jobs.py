@@ -2,7 +2,9 @@
 import asyncio
 from collections import deque
 from dataclasses import dataclass, field
+import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import time
@@ -15,11 +17,12 @@ from dss.harness.tracing import Trace
 
 HEARTBEAT_TTL_S = 30
 TIMEOUT_GRACE_S = 60
+PLAIN = re.compile(r"[A-Za-z0-9._-]+")
 
 
 def safe_file(folder, name):
     root = folder.resolve()
-    if not re.fullmatch(r"[A-Za-z0-9._-]+", name) or name in (".", ".."):
+    if not PLAIN.fullmatch(name) or name in (".", ".."):
         raise RunError("invalid_name", "Invalid file name", 400)
     target = (root / name).resolve()
     if not target.is_relative_to(root) or target == root:
@@ -27,10 +30,62 @@ def safe_file(folder, name):
     return target
 
 
+def recipe_input(root, name):
+    """A version-relative recipe path, resolved; absolute, traversal and escaping paths reject."""
+    parts = re.split(r"[\\/]", name)
+    if ":" in name or "\0" in name or any(part in ("", ".", "..") for part in parts):
+        raise RunError("invalid_name", "Invalid recipe input path", 400)
+    target = root.joinpath(*parts).resolve()
+    if not target.is_relative_to(root) or target == root:
+        raise RunError("invalid_name", "Invalid recipe input path", 400)
+    return target
+
+
+def package(folder):
+    """Plain transport names for every recipe input, and a private recipe copy that uses them.
+
+    Plain names travel unchanged; nested (or case-colliding) ones get a name derived from their
+    version-relative path, so it is stable across runs and distinct for same-basename assets.
+    Lines without a renamed input keep their canonical bytes; the version folder is untouched.
+    """
+    root = folder.resolve()
+    recipe = safe_file(folder, "recipe.jsonl")
+    text = recipe.read_bytes().decode("utf-8")  # no newline translation
+    lines = text.split("\n")  # LF only: U+2028 may sit inside a line
+    end = [lines.pop()] if lines[-1] == "" else []
+    inputs, names, used = {"recipe.jsonl": None}, {recipe: "recipe.jsonl"}, {"recipe.jsonl"}
+    for i, line in enumerate(lines[1:], 1):
+        op = json.loads(line)
+        if "path" not in op:
+            continue
+        name = op["path"]
+        if not isinstance(name, str):
+            raise ValueError("Invalid recipe path")
+        source = recipe_input(root, name)
+        if not source.is_file():
+            raise ValueError("Missing recipe input")
+        if source not in names:
+            plain = name if PLAIN.fullmatch(name) and name.casefold() not in used else None
+            if plain is None:
+                relative = source.relative_to(root).as_posix()
+                stem = re.sub(r"[^A-Za-z0-9._-]", "_", source.name)[-64:]
+                plain = f"asset-{hashlib.sha256(os.fsencode(relative)).hexdigest()[:16]}-{stem}"
+            if plain.casefold() in used:  # agent filesystems may ignore case
+                raise ValueError("Colliding recipe inputs")
+            names[source], inputs[plain] = plain, source
+            used.add(plain.casefold())
+        if names[source] != name:
+            op["path"] = names[source]
+            lines[i] = json.dumps(op, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    inputs["recipe.jsonl"] = "\n".join(lines + end).encode("utf-8")
+    return inputs
+
+
 @dataclass
 class Job:
     data: dict
     folder: Path
+    inputs: dict  # transport name -> source path, or the packaged recipe's bytes
     parser: EngineEvents
     completion: asyncio.Future
     settled: asyncio.Future
@@ -61,28 +116,16 @@ class AgentJobs:
         self.chrome_running, self.signed_in = chrome_running, signed_in
 
     def prepare(self, run_id, build_id, folder, version):
-        names = ["recipe.jsonl"]
         try:
-            recipe = safe_file(folder, "recipe.jsonl")
-            ops = [json.loads(line) for line in recipe.read_text(encoding="utf-8").splitlines()][1:]
-            for op in ops:
-                if "path" in op:
-                    name = op["path"]
-                    if not isinstance(name, str):
-                        raise ValueError("Invalid recipe path")
-                    if name not in names:
-                        names.append(name)
-            for name in names:
-                if not safe_file(folder, name).is_file():
-                    raise ValueError("Missing recipe input")
-        except (OSError, ValueError, TypeError):
+            inputs = package(folder)
+        except (OSError, ValueError, TypeError, RuntimeError):  # RuntimeError: symlink loop
             raise RunError("invalid_recipe", "Recipe inputs are missing or invalid", 422) from None
         env = environment()
         data = dict(run_id=run_id, build_id=build_id, version=version,
                     dry_run=env.get("DSS_ENGINE_DRY_RUN") == "1",
-                    timeout_s=int(env.get("DSS_ENGINE_TIMEOUT_S") or 600), files=names)
+                    timeout_s=int(env.get("DSS_ENGINE_TIMEOUT_S") or 600), files=list(inputs))
         loop = asyncio.get_running_loop()
-        return Job(data, folder, EngineEvents(self.state, folder), loop.create_future(), loop.create_future())
+        return Job(data, folder, inputs, EngineEvents(self.state, folder), loop.create_future(), loop.create_future())
 
     async def enqueue(self, job):
         async with self.changed:
