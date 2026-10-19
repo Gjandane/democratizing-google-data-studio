@@ -35,6 +35,8 @@ const BUILD_STEP_MS = isTest ? 0 : 1200;
 export type MockBuildOutcome = 'ok' | 'partial' | 'failed';
 /** A 503 the mock answers on every action of that kind, whatever the settings say. */
 export type MockServiceFault = 'llm_unavailable' | 'gcp_not_configured' | null;
+/** The chat-side runs the mock can fail (setMockRunFailure). */
+export type MockFailingNode = 'plan' | 'interview';
 
 /** The access code the mock accepts when the gate is on (setMockSession). */
 export const MOCK_ACCESS_CODE = 'mock-access-code';
@@ -50,6 +52,8 @@ interface MockState {
   buildOutcome: MockBuildOutcome;
   screencast: boolean;
   serviceFault: MockServiceFault;
+  /** Nodes whose next runs fail, with their `run.finished` error text (null: no text). */
+  runFailures: Partial<Record<MockFailingNode, string | null>>;
   nextSeq: number;
 }
 
@@ -67,6 +71,7 @@ function seed(): MockState {
     buildOutcome: 'ok',
     screencast: true,
     serviceFault: null,
+    runFailures: {},
     nextSeq: 0x1000,
   };
 }
@@ -114,6 +119,17 @@ export function setMockSettings(settings: Partial<Settings>): void {
 export function setMockServiceFault(fault: MockServiceFault): void {
   state.serviceFault = fault;
 }
+
+/**
+ * Makes every next `node` run fail with `error` as its `run.finished` text (null: no text), until
+ * reset with undefined. A failed plan goes back to the Interview stage. For tests and the dev server.
+ */
+export function setMockRunFailure(node: MockFailingNode, error: string | null | undefined): void {
+  if (error === undefined) delete state.runFailures[node];
+  else state.runFailures[node] = error;
+}
+
+const failureOf = (node: MockFailingNode) => () => (node in state.runFailures ? { error: state.runFailures[node] ?? null } : null);
 
 // ---------- Helpers ----------
 
@@ -189,7 +205,7 @@ function startRun(
   build: Build,
   node: string,
   steps: (runId: string) => Array<() => void> = () => [],
-  options: { stepMs?: number; error?: () => string | null; finishInSteps?: boolean } = {},
+  options: { stepMs?: number; failure?: () => { error: string | null } | null; finishInSteps?: boolean } = {},
 ): RunAccepted {
   const run_id = nextId('r');
   const buildId = build.id;
@@ -215,8 +231,8 @@ function startRun(
         ? []
         : [
             () => {
-              const error = options.error?.() ?? null;
-              emit(buildId, { name: 'run.finished', data: { run_id, node, status: error ? 'error' : 'ok', error } });
+              const failure = options.failure?.() ?? null;
+              emit(buildId, { name: 'run.finished', data: { run_id, node, status: failure ? 'error' : 'ok', error: failure?.error ?? null } });
             },
           ]),
     ],
@@ -441,14 +457,17 @@ export function createMockApi(): ApiClient {
         const reply = enough
           ? "Thanks, that's enough to plan. Select **Generate plan** when you're ready, or keep adding detail."
           : (fixtures.messages[2]?.text ?? 'Tell me more.');
-        const run = startRun(build, 'interview', () => [
-          ...streamAssistant(id, reply, 'interview'),
-          () => {
-            if (!enough) return;
-            build.ready_for_plan = true;
-            announce(build);
-          },
-        ]);
+        const failure = failureOf('interview');
+        const run = failure()
+          ? startRun(build, 'interview', () => [], { failure })
+          : startRun(build, 'interview', () => [
+              ...streamAssistant(id, reply, 'interview'),
+              () => {
+                if (!enough) return;
+                build.ready_for_plan = true;
+                announce(build);
+              },
+            ]);
         return { ...run, message_id: message.id };
       }),
 
@@ -461,7 +480,20 @@ export function createMockApi(): ApiClient {
           build.stage === 'connect' ? fixtures.error.error.message : `Planning isn't available while the build is in ${build.stage}.`,
         );
         requireModel();
+        const from = build.stage;
         setStage(build, 'plan');
+        const failure = failureOf('plan');
+        if (failure()) {
+          return startRun(
+            build,
+            'plan',
+            (runId) => [
+              () => emit(id, { name: 'node.progress', data: { run_id: runId, node: 'plan', text: 'Reading the data profile' } }),
+              () => setStage(build, from),
+            ],
+            { failure },
+          );
+        }
         return startRun(build, 'plan', (runId) => [
           ...fixtures.build.docs.map(
             (doc) => () => emit(id, { name: 'node.progress', data: { run_id: runId, node: 'plan', text: `Writing ${doc.path}` } }),

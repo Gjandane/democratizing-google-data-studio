@@ -1,15 +1,16 @@
-import { MessagesSquare, Send } from 'lucide-react';
+import { CircleAlert, MessagesSquare, Send } from 'lucide-react';
 import { useCallback, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { Build, Message } from '../../../api/types';
 import { ActivityStrip } from '../../activity/ActivityStrip';
 import { RunCard } from '../../activity/RunCard';
+import { cardCandidate } from '../../activity/activity';
 import { Button } from '../../../components/Button';
 import { EmptyState } from '../../../components/EmptyState';
 import { ErrorState } from '../../../components/ErrorState';
 import { TextArea } from '../../../components/Input';
 import { LoadingState, Spinner } from '../../../components/Spinner';
 import { Markdown } from './Markdown';
-import type { BuildStream } from './useBuildStream';
+import { RUN_ERROR_FALLBACK, type BuildStream } from './useBuildStream';
 
 /** Within this many pixels of the end counts as "reading the newest". */
 const NEAR_BOTTOM = 96;
@@ -145,9 +146,16 @@ export function ChatPanel({ build, chat }: { build: Build; chat: BuildStream }) 
       />
     );
   } else {
+    // The card sits in time order: after the messages known when its run started, so later ones
+    // render below it, and its place never moves while the run is live.
+    const at = Math.min(cardCandidate(activity)?.after ?? messages.length, messages.length);
     body = (
       <>
-        {messages.map((m) => (
+        {messages.slice(0, at).map((m) => (
+          <MessageBubble key={m.id} message={m} />
+        ))}
+        <RunCard activity={activity} onShow={onCardShow} />
+        {messages.slice(at).map((m) => (
           <MessageBubble key={m.id} message={m} />
         ))}
         {drafts.map((d) => (
@@ -179,11 +187,21 @@ export function ChatPanel({ build, chat }: { build: Build; chat: BuildStream }) 
         className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3"
       >
         {body}
-        {messages !== null && <RunCard activity={activity} onShow={onCardShow} />}
+        {empty && <RunCard activity={activity} onShow={onCardShow} />}
       </div>
       {messages !== null && status === 'connecting' && (
         <p role="status" className="px-3 pb-2 text-caption text-text-muted">
           Reconnecting…
+        </p>
+      )}
+      {chat.runErrors.interview && (
+        <p role="alert" className="flex items-start gap-1.5 px-3 pb-2 text-label text-danger">
+          <CircleAlert aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
+          <span className="min-w-0 [overflow-wrap:anywhere]">
+            {chat.runErrors.interview}
+            {/* The server's text may not say what to do next: the fallback already does. */}
+            {chat.runErrors.interview !== RUN_ERROR_FALLBACK.interview && ' Send your answer again.'}
+          </span>
         </p>
       )}
       <ActivityStrip activity={activity} />

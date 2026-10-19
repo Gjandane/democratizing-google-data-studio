@@ -105,6 +105,7 @@ function StageArea({
   planning,
   applying,
   commentsError,
+  runErrors,
   buildRun,
   stretchRuns,
   buildOpen,
@@ -121,6 +122,7 @@ function StageArea({
   planning: boolean;
   applying: boolean;
   commentsError: BuildStream['commentsError'];
+  runErrors: BuildStream['runErrors'];
   buildRun: BuildRun;
   stretchRuns: StretchRuns;
   buildOpen: boolean;
@@ -177,7 +179,7 @@ function StageArea({
         ) : build.stage === 'connect' ? (
           <ConnectStage build={build} onBuildChange={onBuildChange} stretchRuns={stretchRuns} />
         ) : build.stage === 'interview' ? (
-          <InterviewStage build={build} messages={messages} loadError={loadError} />
+          <InterviewStage build={build} messages={messages} loadError={loadError} runErrors={runErrors} />
         ) : build.stage === 'plan' ? (
           <PlanStage build={build} progress={progress} planning={planning} />
         ) : build.stage === 'prototype' ? (
@@ -219,7 +221,7 @@ function Workspace({ build, mainRef, onBuildChange }: { build: Build; mainRef: R
   return (
     <div className="grid min-h-0 grid-cols-[var(--layout-chat)_minmax(0,1fr)]">
       <ChatPanel build={build} chat={chat} />
-      <StageArea build={build} mainRef={mainRef} messages={chat.messages} loadError={chat.loadError} progress={chat.progress} planning={chat.planning} applying={chat.applying} commentsError={chat.commentsError} buildRun={chat.buildRun} stretchRuns={chat.stretchRuns} buildOpen={buildOpen} onBuildOpen={toggleBuild} pendingComments={pendingComments} onPendingChange={setPendingComments} onBuildChange={onBuildChange} />
+      <StageArea build={build} mainRef={mainRef} messages={chat.messages} loadError={chat.loadError} progress={chat.progress} planning={chat.planning} applying={chat.applying} commentsError={chat.commentsError} runErrors={chat.runErrors} buildRun={chat.buildRun} stretchRuns={chat.stretchRuns} buildOpen={buildOpen} onBuildOpen={toggleBuild} pendingComments={pendingComments} onPendingChange={setPendingComments} onBuildChange={onBuildChange} />
     </div>
   );
 }

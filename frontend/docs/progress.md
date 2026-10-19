@@ -191,3 +191,14 @@ context. Task status lives in docs/plan.md, not here.
 - Docs: essentials Conventions gained the testing, guards, node-name, activity, focus/effect and settings-lock conventions from task Decisions and Known gotchas; UI design gained the "Activity" item plan 6.1 points to; the @types/react-dom row's extra cell removed. AGENTS.md Known gotchas: moved truncate, jest-dom, useLayoutEffect and mock knobs into the essentials, merged the sed -i line into line endings, split the cp1252 line.
 - Left open: typescript row Verified shows 7.0.2 (latest) while the range is `>=5.5 <6` and 5.9.3 is installed: not re-verified (needs `deps`).
 - Next: task 7.1.
+
+## 2026-10-19: Task 7.1 Run errors and the finished run card
+- Status: done
+- Plan check: off
+- What changed: useBuildStream gains `runErrors` (plan/spec/interview `run.finished` error text, fallback `RUN_ERROR_FALLBACK`); InterviewStage shows plan/spec errors as ErrorState (role=alert, "Generate plan again"); ChatPanel shows the interview error above the composer and places the run card in time order; activity runs carry `after`; mock knob `setMockRunFailure(node, error)`.
+- Checks: `npm test` PASS 14 files / 228 tests (new: 5 in chat.test.tsx "Run errors", 2 card-order tests in activity.test.tsx; the pre-load anchor test fails on the unfixed code); `npm run typecheck` PASS; manual: yes, screenshots/7.1-interview-error-{1280x800,1440x900}.png, screenshots/7.1-card-later-message-{1280x800,1440x900}.png (headless Chrome over CDP, mock on 5199).
+- Decisions: card anchor = message count known synchronously at `run.started` (a ref mirrors every messages update), not created_at vs client clock (skew); `after: null` before the first load, filled with the loaded count when it lands. A plan `run.started` also clears spec and interview errors. Interview error from the server gets " Send your answer again." appended (fallback already says it). WorkspaceShell.tsx (outside Files): 4 lines passing `runErrors` to InterviewStage, its only caller. Built in-session, not delegated: small, intertwined change.
+- Tried and failed: none
+- Gotchas: a `ready` event drops running runs, so a test of "run started before the chat loaded" must fire `ready` first, then `run.started` before advancing timers.
+- Left open: P3 plan and spec errors can both show if spec fails inside a plan run - src/features/workspace/chat/InterviewStage.tsx; P3 anchor moves up one if a counted optimistic bubble's send fails mid-run - src/features/workspace/chat/useBuildStream.ts
+- Next: Task 7.2. Start by reading its Files in docs/plan.md.

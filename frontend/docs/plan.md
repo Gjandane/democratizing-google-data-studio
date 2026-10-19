@@ -99,7 +99,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: ../contracts/api.md 1.2 `node` list; StretchRoute 'audit' (an API route, not a node) unchanged.
 
 ## Phase 7: Audit fixes (final audit 2026-10-19)
-- [ ] 7.1 Run errors and the finished run card
+- [x] 7.1 Run errors and the finished run card
   - Goal: a failed `plan`, `interview` or `spec` run says why and what to do next: the `run.finished` error text (fallback when null: "The plan didn't finish. Try \"Generate plan\" again." for plan, a matching line for the others) shows where the user lands (Interview stage for plan and spec, the chat for interview) with role=alert, and clears on the next `run.started` of that node. The finished run checklist card no longer stays pinned at the end of the chat log: it sits in time order among the messages (after the last message created before its run started), so later messages render below it.
   - Files: src/features/workspace/chat/useBuildStream.ts, src/features/workspace/chat/InterviewStage.tsx, src/features/workspace/chat/ChatPanel.tsx, src/features/activity/activity.ts, src/features/activity/RunCard.tsx, src/mocks/api.ts, tests/chat.test.tsx, tests/activity.test.tsx, screenshots/
   - Depends on: none

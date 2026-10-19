@@ -8,6 +8,7 @@ import { Panel } from '../../../components/Panel';
 import { LoadingState } from '../../../components/Spinner';
 import { ARCHETYPE_INFO } from '../../history/NewBuildDialog';
 import { Markdown } from './Markdown';
+import type { RunErrors } from './useBuildStream';
 
 const KIND_LABELS: Record<SourceKind, string> = {
   upload: 'CSV upload',
@@ -38,7 +39,18 @@ function answersOf(messages: Message[]): Answer[] {
 const plural = (n: number, word: string) => `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`;
 
 /** The Interview stage area: sources, archetype, answers so far, and "Generate plan". */
-export function InterviewStage({ build, messages, loadError }: { build: Build; messages: Message[] | null; loadError?: string | null }) {
+export function InterviewStage({
+  build,
+  messages,
+  loadError,
+  runErrors = {},
+}: {
+  build: Build;
+  messages: Message[] | null;
+  loadError?: string | null;
+  /** A failed plan or spec run lands the user back here: say why. */
+  runErrors?: RunErrors;
+}) {
   const [planning, setPlanning] = useState(false);
   const [planError, setPlanError] = useState<string | null>(null);
   const info = ARCHETYPE_INFO[build.archetype];
@@ -124,6 +136,12 @@ export function InterviewStage({ build, messages, loadError }: { build: Build; m
           </p>
         </div>
         {planError && <ErrorState title="Couldn't start the plan" message={planError} onRetry={() => void generate()} />}
+        {!planError && runErrors.plan && (
+          <ErrorState title="The plan didn't finish" message={runErrors.plan} onRetry={() => void generate()} retryLabel="Generate plan again" />
+        )}
+        {!planError && runErrors.spec && (
+          <ErrorState title="The spec didn't finish" message={runErrors.spec} onRetry={() => void generate()} retryLabel="Generate plan again" />
+        )}
       </div>
     </div>
   );

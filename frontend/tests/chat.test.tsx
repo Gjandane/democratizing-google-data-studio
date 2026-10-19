@@ -7,7 +7,8 @@ import { ApiError, type Build, type BuildEvent, type Message } from '../src/api/
 import { ChatPanel } from '../src/features/workspace/chat/ChatPanel';
 import { InterviewStage } from '../src/features/workspace/chat/InterviewStage';
 import { useBuildStream } from '../src/features/workspace/chat/useBuildStream';
-import { resetMockState } from '../src/mocks/api';
+import { resetMockState, setMockRunFailure } from '../src/mocks/api';
+import { openMockBuildEvents } from '../src/mocks/events';
 
 beforeEach(() => resetMockState());
 afterEach(() => {
@@ -32,7 +33,11 @@ function Holder({ initial, open }: { initial: Build; open: OpenBuildEvents }) {
   return (
     <>
       <ChatPanel build={build} chat={chat} />
-      {build.stage === 'interview' && <InterviewStage build={build} messages={chat.messages} loadError={chat.loadError} />}
+      <main>
+        {build.stage === 'interview' && (
+          <InterviewStage build={build} messages={chat.messages} loadError={chat.loadError} runErrors={chat.runErrors} />
+        )}
+      </main>
     </>
   );
 }
@@ -225,6 +230,71 @@ describe('Interview stage', () => {
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain('The planner is offline.');
     expect(within(alert).getByRole('button', { name: 'Try again' })).toBeTruthy();
+  });
+});
+
+describe('Run errors', () => {
+  const failPlan = async (fire: (event: BuildEvent) => Promise<void> | void, error: string | null) => {
+    await fire({ name: 'stage.changed', data: { stage: 'plan' } });
+    await fire({ name: 'run.started', data: { run_id: 'r_plan', node: 'plan' } });
+    await fire({ name: 'run.finished', data: { run_id: 'r_plan', node: 'plan', status: 'error', error } });
+    await fire({ name: 'stage.changed', data: { stage: 'interview' } });
+  };
+  const stageAlert = () => within(screen.getByRole('main')).queryByRole('alert');
+
+  it('shows a failed plan run on the Interview stage and clears it on the next plan run', async () => {
+    const { ready, fire } = await setup();
+    await ready();
+    await screen.findByText(/Who will read this dashboard/);
+    await failPlan(fire, 'Gemini quota hit');
+    expect(stageAlert()?.textContent).toContain('Gemini quota hit');
+    expect(within(stageAlert() as HTMLElement).getByRole('button', { name: 'Generate plan again' })).toBeTruthy();
+    await fire({ name: 'run.started', data: { run_id: 'r_plan2', node: 'plan' } });
+    expect(stageAlert()).toBeNull();
+  });
+
+  it('falls back to a line naming "Generate plan" when the error has no text', async () => {
+    const { ready, fire } = await setup();
+    await ready();
+    await screen.findByText(/Who will read this dashboard/);
+    await failPlan(fire, null);
+    expect(stageAlert()?.textContent).toContain('Try "Generate plan" again.');
+  });
+
+  it('shows a failed spec run on the Interview stage; a new plan run clears it', async () => {
+    const { ready, fire } = await setup();
+    await ready();
+    await screen.findByText(/Who will read this dashboard/);
+    await fire({ name: 'run.started', data: { run_id: 'r_spec', node: 'spec' } });
+    await fire({ name: 'run.finished', data: { run_id: 'r_spec', node: 'spec', status: 'error', error: null } });
+    expect(stageAlert()?.textContent).toContain("The spec didn't finish.");
+    await fire({ name: 'run.started', data: { run_id: 'r_plan', node: 'plan' } });
+    expect(stageAlert()).toBeNull();
+  });
+
+  it('shows a failed interview run in the chat and clears it on the next interview run', async () => {
+    const { ready, fire } = await setup();
+    await ready();
+    await screen.findByText(/Who will read this dashboard/);
+    await fire({ name: 'run.started', data: { run_id: 'r_i', node: 'interview' } });
+    await fire({ name: 'message.delta', data: { message_id: 'm_draft', text: 'Half a' } });
+    await fire({ name: 'run.finished', data: { run_id: 'r_i', node: 'interview', status: 'error', error: 'The model timed out.' } });
+    const chat = screen.getByRole('complementary', { name: 'Chat' });
+    // The server's text plus what to do next.
+    expect(within(chat).getByRole('alert').textContent).toBe('The model timed out. Send your answer again.');
+    expect(document.querySelector('[data-draft="true"]')).toBeNull();
+    await fire({ name: 'run.started', data: { run_id: 'r_i2', node: 'interview' } });
+    expect(within(chat).queryByRole('alert')).toBeNull();
+  });
+
+  it('the mock fails a plan back to the Interview stage with its error', async () => {
+    setMockRunFailure('plan', 'Gemini quota hit');
+    const created = await api.createBuild({ archetype: 'executive', mode: 'data' });
+    await api.startInterview(created.id);
+    render(<Holder initial={await api.getBuild(created.id)} open={openMockBuildEvents} />);
+    await screen.findByText(/Who will read this dashboard/);
+    fireEvent.click(screen.getByRole('button', { name: 'Generate plan' }));
+    await waitFor(() => expect(stageAlert()?.textContent).toContain('Gemini quota hit'));
   });
 });
 

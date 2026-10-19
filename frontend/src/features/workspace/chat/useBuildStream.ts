@@ -29,6 +29,17 @@ export type StretchRuns = Partial<Record<StretchNode, NodeRun>>;
 const STRETCH_NODES: readonly string[] = ['style_extract', 'research', 'ux_audit'];
 const isStretchNode = (node: string): node is StretchNode => STRETCH_NODES.includes(node);
 
+/** The chat-side runs whose failure the user sees: plan and spec on the Interview stage, interview in the chat. */
+export type RunErrorNode = 'plan' | 'interview' | 'spec';
+export type RunErrors = Partial<Record<RunErrorNode, string>>;
+/** Shown when `run.finished` errors with `error: null`. */
+export const RUN_ERROR_FALLBACK: Readonly<Record<RunErrorNode, string>> = {
+  plan: 'The plan didn\'t finish. Try "Generate plan" again.',
+  spec: 'The spec didn\'t finish. Try "Generate plan" again.',
+  interview: "The assistant didn't reply. Send your answer again.",
+};
+const isRunErrorNode = (node: string): node is RunErrorNode => node in RUN_ERROR_FALLBACK;
+
 export interface BuildStream {
   /** Runs of this build seen on the stream since it opened (client-only; events aren't replayed). */
   activity: Activity;
@@ -47,6 +58,8 @@ export interface BuildStream {
   applying: boolean;
   /** Set when a `revise` run ends in error; `seq` changes on every failure, even an identical one. */
   commentsError: { seq: number; text: string } | null;
+  /** The error of the latest failed plan, spec or interview run; cleared when that node runs again. */
+  runErrors: RunErrors;
   /** The engine run of the build stage, folded from build.* and run.* events. */
   buildRun: BuildRun;
   status: StreamStatus;
@@ -66,7 +79,8 @@ const errorText = (error: unknown, fallback: string) => (error instanceof ApiErr
  * On every `ready` (first connect and each reconnect) it re-reads the build and the messages.
  */
 export function useBuildStream(build: Build, onBuildChange: (build: Build) => void, open?: OpenBuildEvents): BuildStream {
-  const [messages, setMessages] = useState<Message[] | null>(null);
+  const [messages, setMessageState] = useState<Message[] | null>(null);
+  const [runErrors, setRunErrors] = useState<RunErrors>({});
   const [loadError, setLoadError] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -87,6 +101,13 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
   const progressSeq = useRef(0);
   const errorSeq = useRef(0);
   const mounted = useRef(true);
+  /** The list as of the last update, read synchronously when a run starts (state may not have rendered yet). */
+  const messagesNow = useRef<Message[] | null>(null);
+  const setMessages = (change: (current: Message[] | null) => Message[]) => {
+    const next = change(messagesNow.current);
+    messagesNow.current = next;
+    setMessageState(next);
+  };
   useEffect(() => {
     latest.current = build;
     change.current = onBuildChange;
@@ -112,6 +133,12 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
           const ids = new Set(list.map((m) => m.id));
           return [...list, ...(current ?? []).filter((m) => !ids.has(m.id))];
         });
+        const loaded = messagesNow.current?.length ?? 0;
+        setActivityOf((a) =>
+          a.buildId === buildId && a.runs.some((r) => r.after === null)
+            ? { buildId, runs: a.runs.map((r) => (r.after === null ? { ...r, after: loaded } : r)) }
+            : a,
+        );
         const ids = new Set(list.map((m) => m.id));
         setDrafts((current) => current.filter((d) => !ids.has(d.id)));
       },
@@ -131,7 +158,9 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
   const onEvent = (event: BuildEvent) => {
     setBuildRun((r) => reduceBuildRun(r, event));
     const now = Date.now();
-    setActivityOf((a) => ({ buildId, runs: reduceActivity(a.buildId === buildId ? a.runs : [], event, now) }));
+    // null until the first load lands: the run's card then sits after the whole loaded history.
+    const known = messagesNow.current?.length ?? null;
+    setActivityOf((a) => ({ buildId, runs: reduceActivity(a.buildId === buildId ? a.runs : [], event, now, known) }));
     switch (event.name) {
       case 'ready':
         // Events aren't replayed: a run.finished missed while disconnected must not lock the stage.
@@ -184,6 +213,17 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
           const { node, run_id } = event.data;
           setStretchRuns((runs) => ({ ...runs, [node]: { run_id, status: 'running', error: null } }));
         }
+        if (isRunErrorNode(event.data.node)) {
+          const { node } = event.data;
+          // "Generate plan" retries the spec too and moves on from the interview, so it clears those errors as well.
+          const cleared: RunErrorNode[] = node === 'plan' ? ['plan', 'spec', 'interview'] : [node];
+          setRunErrors((errors) => {
+            if (!cleared.some((n) => n in errors)) return errors;
+            const rest = { ...errors };
+            for (const n of cleared) delete rest[n];
+            return rest;
+          });
+        }
         if (event.data.node === 'plan') setPlanning(true);
         if (event.data.node === 'revise') {
           setApplying(true);
@@ -199,6 +239,10 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
         if (isStretchNode(event.data.node)) {
           const { node, run_id, status, error } = event.data;
           setStretchRuns((runs) => ({ ...runs, [node]: { run_id, status: status === 'ok' ? 'ok' : 'error', error } }));
+        }
+        if (isRunErrorNode(event.data.node) && event.data.status === 'error') {
+          const { node, error } = event.data;
+          setRunErrors((errors) => ({ ...errors, [node]: error ?? RUN_ERROR_FALLBACK[node] }));
         }
         if (event.data.node === 'plan') setPlanning(false);
         if (event.data.node === 'revise') {
@@ -246,5 +290,5 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
     }
   };
 
-  return { activity, messages, loadError, drafts, progress, planning, applying, commentsError, buildRun, stretchRuns, status, reload: load, send, sendError };
+  return { activity, messages, loadError, drafts, progress, planning, applying, commentsError, runErrors, buildRun, stretchRuns, status, reload: load, send, sendError };
 }

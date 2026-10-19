@@ -24,6 +24,11 @@ export interface ActivityRun {
   labels: Readonly<Record<number, string>>;
   /** The step that was current when the run failed. */
   failedStep: number | null;
+  /**
+   * Chat messages known when the run started: its card sits after them, so later messages render
+   * below it. null while the chat's first load hasn't landed (the card then goes after all of it).
+   */
+  after: number | null;
 }
 
 export type Activity = readonly ActivityRun[];
@@ -41,7 +46,8 @@ export function currentStep(steps: readonly PresetStep[], elapsed: number): numb
 const update = (runs: Activity, runId: string, change: (run: ActivityRun) => ActivityRun): Activity =>
   runs.some((r) => r.runId === runId) ? runs.map((r) => (r.runId === runId ? change(r) : r)) : runs;
 
-export function reduceActivity(runs: Activity, event: BuildEvent, now: number): Activity {
+/** `messages` is how many chat messages are known as the event arrives, null before the first load (used by `run.started`). */
+export function reduceActivity(runs: Activity, event: BuildEvent, now: number, messages: number | null = null): Activity {
   switch (event.name) {
     case 'ready':
       // A run.finished missed while disconnected must not leave a run going forever.
@@ -57,6 +63,7 @@ export function reduceActivity(runs: Activity, event: BuildEvent, now: number): 
         ops: 0,
         labels: {},
         failedStep: null,
+        after: messages,
       };
       return [...runs.filter((r) => r.runId !== run.runId), run].slice(-KEEP_RUNS);
     }
@@ -103,9 +110,14 @@ export function stripRun(runs: Activity, now: number): ActivityRun | null {
   return run;
 }
 
+/** The newest run with steps: the one a checklist card can show, whether or not it shows yet. */
+export function cardCandidate(runs: Activity): ActivityRun | null {
+  return [...runs].reverse().find((r) => presetFor(r.node).steps) ?? null;
+}
+
 /** The run whose checklist card shows: the newest run with steps that outlasted the strip delay. */
 export function cardRun(runs: Activity, now: number): ActivityRun | null {
-  const run = [...runs].reverse().find((r) => presetFor(r.node).steps);
+  const run = cardCandidate(runs);
   if (!run || now - run.startedAt < SHOW_DELAY_MS || lasted(run) < SHOW_DELAY_MS) return null;
   return run;
 }

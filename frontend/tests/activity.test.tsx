@@ -254,6 +254,41 @@ describe('Run checklist card', () => {
     expect(labels[1]).toBe('Writing questions.md');
     expect(labels[0]).toBe('Reading the data profile');
   });
+
+  it('sits in time order: a message arriving after a finished plan card renders after it', async () => {
+    const { start, finish, fire } = await setup();
+    await start('plan');
+    await advance(400);
+    // A message during the live run goes below the card; the card never moves.
+    await fire({ name: 'message.done', data: { message: { id: 'm_live', role: 'system', text: 'Plan started', node: 'plan', created_at: '2026-10-19T09:00:00Z' } } });
+    await finish('plan');
+    await advance(60_000);
+    await fire({ name: 'message.done', data: { message: { id: 'm_later', role: 'assistant', text: 'A later question', node: 'interview', created_at: '2026-10-19T09:05:00Z' } } });
+    const order = Array.from(screen.getByRole('log').querySelectorAll<HTMLElement>('[data-run-card], [data-bubble]'));
+    const at = (el: Element | null) => order.indexOf(el as HTMLElement);
+    const later = screen.getByText('A later question').closest('[data-bubble]');
+    const live = screen.getByText('Plan started').closest('[data-bubble]');
+    expect(at(card())).toBeGreaterThan(0);
+    expect(at(live)).toBe(at(card()) + 1);
+    expect(at(later)).toBe(order.length - 1);
+    // The interview's earlier messages stay above the card.
+    expect(order.slice(0, at(card())).every((el) => el.hasAttribute('data-bubble'))).toBe(true);
+  });
+
+  it('a run that starts before the chat loads sits after the loaded history', async () => {
+    const created = await call(api.createBuild({ archetype: 'executive', mode: 'data' }));
+    await call(api.startInterview(created.id));
+    const build = await call(api.getBuild(created.id));
+    const { open, fire } = fakeStream();
+    render(<Holder initial={build} open={open} />);
+    // The run starts while the first message load is still in flight.
+    await fire({ name: 'ready', data: { build_id: build.id } });
+    await fire({ name: 'run.started', data: { run_id: 'r_early', node: 'plan' } });
+    await advance(400);
+    const order = Array.from(screen.getByRole('log').querySelectorAll<HTMLElement>('[data-run-card], [data-bubble]'));
+    expect(order.length).toBeGreaterThan(1);
+    expect(order[order.length - 1]).toBe(card());
+  });
 });
 
 describe('Mock mode', () => {
