@@ -50,4 +50,6 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - httpx string headers must be ASCII; use byte header values when testing non-ASCII credentials at the server boundary.
 - `uv run pytest` already runs in `backend/`: a test that a subprocess gets `cwd=backend/` must first chdir elsewhere, or it passes without the cwd.
 - The `app` fixture's `state.settings`/`db`/`harness` exist only once its lifespan runs: a test that uses `app` must also request `client` (or `build_id`).
+- Native Google Search hides individual fetches: budget its model calls separately from application HTTP requests; the research scraper counts redirects and failures.
+- BigQuery needs the actual project ID, not its display name (underscores are invalid); verify it before a paid research run reaches intake.
 <!-- blueprint-solution:end -->

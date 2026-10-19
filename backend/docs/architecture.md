@@ -311,7 +311,17 @@ Files per version: `data/builds/<id>/v<n>/` (../contracts/conventions.md).
 | Gemini API (`gemini-4-argon`, `gemini-3.8-flash`) | LLM nodes | `GOOGLE_API_KEY` | errors -> `llm_unavailable`; one retry on 429/5xx |
 | BigQuery | loads, profile, view, aggregates | ADC (`gcloud auth application-default login`) | errors surfaced with BigQuery's message |
 | GCS | CSV source URIs (read by BigQuery load jobs) | ADC | bad URI -> `422 invalid_source` |
-| Google Search (ADK tool) | research mode (stretch) | API key | capped 20 fetches per run |
+| Google Search (ADK tool) | research discovery (stretch) | API key | one model call; provider-internal fetches opaque |
+| Python table scraper (stdlib) | research CSV/HTML retrieval | none | 20 HTTP requests per run, redirects/failures included; no retries |
+
+Research budget refinement (task 7.3, approved by user 2026-10-19): discovery uses one
+Google Search model call. Code retrieves public CSV/HTML tables within the separate
+20-request cap. A second model call selects a table from title, URL, headers and row counts;
+scraped rows stay out of model context. Code normalizes headers/whitespace, removes exact
+duplicate rows and repeated headers, and writes the CSV and sources.md before existing
+intake registers a research source. Provenance records discovery citations and every
+attempted HTTP URL, including redirects and failures. The reusable Python scraper command
+shares the same limits and parser; it does not execute JavaScript or invent missing data.
 | dsengine (subprocess) | building the report | none | exit codes per ../contracts/recipe.md |
 | Cloud Run | hosting (one instance) | runtime service account (BigQuery Data Editor + Job User) is the ADC there | restart -> running agent job fails with `agent_timeout`; DB restored from the volume |
 | Secret Manager | `GOOGLE_API_KEY`, `DSS_ACCESS_CODE`, `DSS_AGENT_TOKEN` as env vars | Cloud Run (runtime SA: Secret Accessor) | too short or missing code/token -> the backend refuses to start on Cloud Run |

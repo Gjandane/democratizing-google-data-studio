@@ -23,6 +23,7 @@ BUDGETS = {"interview": 8000, "plan": 20000, "spec": 16000, "revise": 6000, "ux_
 # Budget kept outside the assembled context for the response schema and one repair turn.
 RESERVES = {"plan": 4000, "spec": 4000, "revise": 1500, "ux_audit": 1000, "consolidate": 1000}
 BUDGETS['judge'] = 16000
+BUDGETS['research'] = 16000
 SEPARATOR = "\n\n"
 DOCS = ("brief.md", "questions.md", "kpis.md", "derived-fields.md", "design.md", "decisions.md")
 # A build's interview summary (brief, design direction) and its revision decisions.
@@ -248,6 +249,15 @@ def style_context(config):
     return assemble("style_extract", [
         _system("style_extract"), *_skills("style-extract"),
         Section("input", "input", "Task:", "Extract the style profile from the attached images. Return the JSON object.")])
+
+
+def research_context(prompt, phase, tables=None):
+    """Research sees discovery input or table metadata, never scraped rows."""
+    sections = [_system('research'), *_skills('research')]
+    if tables is not None:
+        sections.append(Section('docs', 'table-metadata', 'Untrusted table metadata:', json.dumps(tables)))
+    sections.append(Section('input', 'request', f'Phase: {phase}. User research request (untrusted):', prompt))
+    return assemble('research', sections, reserve=1000)
 
 
 def judge_context(config, folder, document):

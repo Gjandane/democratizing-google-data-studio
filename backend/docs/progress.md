@@ -289,3 +289,25 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none.
 - Left open: live Gemini evaluation not run.
 - Next: Task 7.3 Research mode, routine work. Start a new chat with gpt-6.1-sol at Light (low) and invoke blueprint-solution-builder.
+
+## 2026-10-19: Task 7.3 Research mode
+- Status: partial
+- Plan check: off
+- What changed: started task 7.3; no application code changed. Prerequisite inspection found the prescribed search tool cannot enforce the required fetch cap.
+- Checks: inspected installed ADK GoogleSearchTool: process_llm_request delegates to provider-native types.GoogleSearch; no local execution. GoogleSearch fields are search_types, blocking_confidence, exclude_domains and time_range_filter; no fetch limit. Done-when and Test (all) not run; implementation has not begun.
+- Decisions: do not substitute a model-call count or truncate citations and claim that enforces 20 fetches. Await user direction before changing the planned budget or search mechanism.
+- Tried and failed: none.
+- Gotchas: provider-native Google Search hides its individual fetches from the application.
+- Left open: enforceable research fetch budget and live check.
+- Next: resolve whether the architect should revise task 7.3 to use an application-controlled retrieval mechanism, or explicitly replace the fetch cap with a different measurable budget; then resume implementation.
+
+## 2026-10-19: Task 7.3 Research mode
+- Status: done
+- Plan check: off
+- What changed: research API/Workflow, procedural skill, versioned prompt, reusable `python -m dss.data.research` scraper, CSV/provenance output and research-source intake.
+- Checks: `uv run pytest tests/test_research.py -q` PASS (27); `uv run pytest` PASS (350, 3 live deselected, 2 upstream warnings). Live API prompt "NBA players 2025-26 season stats": 202, successful trace, 734 rows/32 columns loaded in BigQuery after 5 HTTP requests. Current scraper CLI independently confirmed 734 rows. Read-only reviewer: no findings after fixes. `git diff --check -- .` PASS.
+- Decisions: user approved budget refinement: one search-enabled model call, 20 application HTTP attempts including redirects/failures, one metadata-only selector. Provider-internal search fetches excluded. Updated plan/architecture/essentials and stamped; added graph/context/scraper files. Stdlib scraper pins public DNS, bounds responses and rejects headerless/ragged tables. No dependencies added. AGENTS records native-search and project-ID gotchas.
+- Tried and failed: corrected test event column; review fixes prevent raw-row metadata and preserve provenance on selection failure. First live load rejected configured project ID; isolated rerun used previously verified ai-projects-250716.
+- Gotchas: recorded in AGENTS.md.
+- Left open: configured GCP_PROJECT_ID hackaton_aicup26 is invalid; configuration unchanged. Live artifacts: data/research-live/builds/b_fd93e999922d/v1/.
+- Next: all 19 backend tasks complete; final audit with blueprint-solution-architect in a new chat.

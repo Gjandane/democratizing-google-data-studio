@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:1ba778fa2eb8 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:c7cacf168636 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 One page, read at the start of every build session. A summary of docs/architecture.md, which
 wins if the two disagree.
@@ -47,6 +47,12 @@ tests/              offline: FakeLLM, FakeBigQuery, fake engine; tests/live/ mar
 - Contract tests compare responses with ../contracts/fixtures/api/ shapes (same keys and JSON types).
 - Tests use FakeLLM / FakeBigQuery / fake engine; tests never call Gemini, BigQuery or Chrome
   unless marked `live`.
+
+- Research budget (task 7.3, user approved 2026-10-19): one Google Search discovery model call,
+  at most 20 scraper HTTP requests including redirects and failures (no retries), and one
+  metadata-only table-selection model call. Google-internal fetches are not measurable and
+  are outside the scraper cap. Code extracts and cleans public CSV/HTML tables; no scraped
+  rows enter model prompts. Record discovery citations, attempted URLs and selected source in sources.md.
 
 ## Never do
 - No LangGraph, no vector store, no embeddings, no pandas.

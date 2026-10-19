@@ -207,6 +207,46 @@ async def events(build_id: str, request: Request):
     return EventSourceResponse(request.app.state.bus.stream(build_id), ping=15)
 
 
+class ResearchRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    prompt: str = Field(min_length=1, max_length=4000)
+
+
+@router.post('/{build_id}/research', status_code=202)
+async def research(build_id: str, body: ResearchRequest, request: Request):
+    import asyncio
+    from dss.api.prototype import current
+    from dss.harness.guardrails import check_reply
+    state = request.app.state
+    build, _ = current(state, build_id)
+    if (build['mode'] != 'research' or build['stage'] not in ('connect', 'interview') or
+            build_id in state.harness.active_builds):
+        raise RunError('wrong_stage', 'Research requires an idle research build in connect or interview', 409,
+                       {'stage': build['stage']})
+    if not body.prompt.strip():
+        raise bq.invalid('A research prompt is required')
+    config = state.settings.get()
+    if not config.gcp_project_id.strip():
+        raise RunError('gcp_not_configured', 'Set the GCP project in Settings before researching data', 503)
+    if not config.google_api_key.get_secret_value():
+        raise RunError('llm_unavailable', 'Set the Google API key in Settings', 503)
+    check_reply(body.prompt, tuple(getattr(config, name).get_secret_value()
+                                  for name in ('google_api_key', 'access_code', 'agent_token')))
+    run_id = new_id('r')
+    state.harness.active_builds.add(build_id)
+
+    async def background():
+        try:
+            await state.harness.run('research', build_id, {'config': config, 'prompt': body.prompt,
+                'factory': state.bigquery_factory}, run_id=run_id, reserved=True)
+        except RunError:
+            pass
+    task = asyncio.create_task(background())
+    state.engine_tasks.add(task)
+    task.add_done_callback(state.engine_tasks.discard)
+    return {'run_id': run_id}
+
+
 STYLE_IMAGE_BYTES = 5 * 1024 * 1024
 STYLE_MAGIC = ((b"\x89PNG\r\n\x1a\n", "image/png", (".png",)), (b"\xff\xd8\xff", "image/jpeg", (".jpg", ".jpeg")))
 

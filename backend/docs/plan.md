@@ -149,9 +149,9 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Depends on: 4.3
   - Size: S
   - Done when: `uv run pytest tests/test_eval.py` passes with FakeLLM: the score JSON has each rubric item 1-5 and a pass flag (all >= 3); the run writes one trace.
-- [ ] 7.3 Research mode
-  - Goal: `POST /research` runs a capped web research (google_search tool, at most 20 fetches) that writes a cleaned CSV plus `sources.md`, then intake loads it as a `research` source.
-  - Files: src/dss/harness/nodes/research.py, src/dss/api/builds.py, skills/research.md, prompts/v1/research.md, tests/test_research.py
+- [x] 7.3 Research mode
+  - Goal: `POST /research` discovers sources with one google_search model call, then an application-controlled scraper performs at most 20 HTTP requests (redirects and failed requests count; no retries). Google-internal search fetches are outside this cap. A second model call selects a scraped table using metadata only; code writes a cleaned CSV plus `sources.md`, then intake loads it as a `research` source. User approved this budget/workflow refinement on 2026-10-19.
+  - Files: src/dss/harness/nodes/research.py, src/dss/data/research.py, src/dss/harness/graph.py, src/dss/harness/context.py, src/dss/api/builds.py, skills/research.md, prompts/v1/research.md, tests/test_research.py
   - Depends on: 1.2; 3.1
   - Size: M
-  - Done when: `uv run pytest tests/test_research.py` passes with FakeLLM and a fake search tool: the run stops at 20 fetches, writes a CSV with a header row and `sources.md` listing every URL used, and registers a `research` source; manual (live): "NBA players 2025-26 season stats" yields a CSV with at least 20 rows.
+  - Done when: `uv run pytest tests/test_research.py` passes with FakeLLM and fake search/HTTP tools: scraper HTTP requests stop at 20 including redirects and failures; search runs at most once; raw scraped rows never enter model context; writes a CSV with a header row and `sources.md` listing every URL used, and registers a `research` source; manual (live): "NBA players 2025-26 season stats" yields a CSV with at least 20 rows.
