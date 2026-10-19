@@ -233,3 +233,12 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none new.
 - Left open: P3 ErrorState edited outside Files (recorded above); P3 the double-click test passes with `disabled` alone, the ref covers same-frame clicks.
 - Next: re-audit (architect).
+
+## 2026-10-19: Audit (final, re-audit after Phase 8)
+- Status: done
+- Verdict: DEFECTS (0 P0, 0 P1, 0 P2, 4 P3); user chose to fix all four: Phase 9 added (9.1 retry gap, punctuation edge cases, retry spinner and total-row font, S).
+- Checks rerun (re-audit: Test (all) plus 8.1 Done when; earlier tasks whose Files 8.1 touched, 2.2, 2.3, 3.3, 7.1, 7.2, are covered by the same `npm test`): `npm test` 14 files / 233 tests PASS; `npm run typecheck` PASS; `npm run build` exit 0; secrets: no .env on disk or in the frontend git history. Skipped: manual screenshot checks of tasks 8.1 didn't touch; the reviewer used screenshots/8.1-trace-1280x800.png.
+- Reviewer (blueprint-reviewer, opus high, with web-design-guidelines on the 8.1 UI files): 8.1 Goal and Done when all present and tested; ErrorState `retryDisabled` additive (12 other callers unchanged); no Non-goal built; package.json matches the verified table. P3: punctuation check misses trailing space and closing quote (ChatPanel.tsx:209); retry re-enabled between POST return and `run.started`, a second click flashes "Couldn't start the plan" (InterviewStage.tsx:70-73); disabled retry has no spinner or aria-busy (ErrorState.tsx:32); total row "Total, N runs" in Fira Code via the Node column's mono (TraceModal.tsx:31,125, pre-existing). Also: the 8.1 double-click test passes on `disabled` alone; 9.1's Done when adds a same-frame test.
+- Docs: 8.1's ErrorState `retryDisabled` decision is a component API detail, not folded into the essentials (already over one page). AGENTS.md Known gotchas unchanged (8.1 added none).
+- Left open: typescript Verified row still not re-verified; lint warnings (essentials length, 5.1 entry date order) unchanged.
+- Next: task 9.1, then a re-audit (architect).
