@@ -10,6 +10,9 @@ dependencies = [
   "httpx>=0.27", "pytest>=8.0", "pytest-asyncio>=0.23",
 ]
 
+[project.scripts]
+dss-agent = "dss.agent.client:main"
+
 [tool.uv]
 package = true
 

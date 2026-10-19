@@ -234,3 +234,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: none.
 - Next: Task 5.3 The dss-agent build agent; deep work because it implements the remote execution Spec. New chat, gpt-6.1-sol at high, invoke blueprint-solution-builder.
+
+## 2026-10-19: Task 5.3 The `dss-agent` build agent
+- Status: done
+- Plan check: off
+- What changed: added the `dss-agent` console script (src/dss/agent/client.py): heartbeat thread, idle-only `dsengine check`, long-poll loop, job download into `<data>/agent/<build_id>/v<n>/`, engine run with 1 s event batches, screenshot PUTs, finished report, 404 cleanup, retry/backoff exit. Live-uvicorn tests in tests/test_agent_client.py.
+- Checks: `uv run pytest tests/test_agent_client.py` PASS (12; stable over 3 runs); `uv run pytest` PASS (237, 3 live deselected, 2 upstream warnings); `git diff --check` PASS. Mutation check: dropping the engine `cwd` fails the screenshot test. Manual: port 8000 held by an unrelated user process, so ran the same command on 8765: real engine `--dry-run` via `uv run --project backend dss-agent` from the repo root took the dev sample build (placeholder background_p1.png; dev load-spec renders none) to done/published; token absent from logs. Reviewer: no P0/P1; P2 tests and four P3s fixed.
+- Decisions: reuses Config.from_env, engine_command, terminate_tree. Constants: heartbeat 10 s, check 60 s (poll wait shortened so checks land on time), poll 25 s, HTTP 40 s read/10 s connect, flush 1 s, retry budget 60 s from first failure, backoff 1-10 s doubling; transport errors, 429 and 5xx retry; 401/agent_mode_off/non-JSON poll exit 2/2/1. Jobs validated (ids, ints, plain file names) before any path use; existing version folder replaced; screenshots PUT before their batch; tokens redacted from events and stderr tail. http only for loopback; server URL without a path; hidden `--token` rejected without echo. Ctrl+C reports a best-effort failed finish. Fixed AGENTS.md agent command, added a gotcha. No dependencies added.
+- Tried and failed: first test run nested the agent data dir (test bug); fixed.
+- Gotchas: none beyond AGENTS.md.
+- Left open: P3 retry budget can stretch by one hung attempt (up to ~40 s) - src/dss/agent/client.py; P3 Ctrl+C on Windows may lag until an idle long poll returns (≤25 s), unverified - src/dss/agent/client.py.
+- Next: Task 6.1 Episodic retrieval and working memory assembly.

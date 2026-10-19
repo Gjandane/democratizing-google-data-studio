@@ -8,7 +8,7 @@ SSE API. Target: POC.
 Run from this folder (`backend/`) in bash.
 - Install: `uv sync && uv run playwright install chromium`
 - Run: `uv run uvicorn dss.main:app --port 8000`   (never `--reload`: it breaks subprocess and Playwright on Windows and kills running builds; Cloud Run runs `python -m dss.main`, which reads `$PORT`)
-- Build agent (after task 5.3): `uv run dss-agent --server <hosted URL>`   (any folder works; reads the root `.env` incl. `DSS_AGENT_TOKEN`; `--dry-run` for rehearsals)
+- Build agent (after task 5.3): `uv run dss-agent --server <hosted URL>` here; from the repo root `uv run --project backend dss-agent --server <hosted URL>` (plain `uv run dss-agent` outside `backend/` finds no script; reads the root `.env` incl. `DSS_AGENT_TOKEN`; `--dry-run` for rehearsals)
 - Test (all): `uv run pytest`   (each task's own check is its "Done when" in docs/plan.md; live tests run only with `-m live`)
 - Lint: none
 
@@ -48,4 +48,5 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Starlette StaticFiles normalizes paths with OS separators: normalize backslashes before checking the API boundary for SPA fallback on Windows.
 - Uvicorn's graceful-shutdown timeout excludes lifespan teardown; bound backup waits separately and avoid non-daemon executor threads for volume I/O.
 - httpx string headers must be ASCII; use byte header values when testing non-ASCII credentials at the server boundary.
+- `uv run pytest` already runs in `backend/`: a test that a subprocess gets `cwd=backend/` must first chdir elsewhere, or it passes without the cwd.
 <!-- blueprint-solution:end -->
