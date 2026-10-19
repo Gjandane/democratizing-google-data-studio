@@ -47,4 +47,5 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - HTTP clients normalize literal `..` path segments before sending: use `%2e%2e` when testing the API's invalid-name guard.
 - Starlette StaticFiles normalizes paths with OS separators: normalize backslashes before checking the API boundary for SPA fallback on Windows.
 - Uvicorn's graceful-shutdown timeout excludes lifespan teardown; bound backup waits separately and avoid non-daemon executor threads for volume I/O.
+- httpx string headers must be ASCII; use byte header values when testing non-ASCII credentials at the server boundary.
 <!-- blueprint-solution:end -->

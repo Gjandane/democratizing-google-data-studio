@@ -64,6 +64,8 @@ class SettingsStore:
     def get(self):
         with self.db.connect() as connection:
             values = dict(connection.execute("SELECT key,value FROM settings").fetchall())
+        if self.defaults.engine_mode == "agent":
+            values = {key: value for key, value in values.items() if key in ("planner_model", "worker_model")}
         return Config.model_validate({**self.defaults.model_dump(), **values})
 
     def update(self, values):

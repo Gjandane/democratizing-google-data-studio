@@ -1,0 +1,356 @@
+"""A scripted fake build agent exercises the real HTTP and Workflow lifecycle."""
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+import json
+from pathlib import Path
+import time
+
+from fastapi.testclient import TestClient
+import pytest
+
+from dss.config import Config
+from dss.db import Database, now
+from dss.main import create_app
+from dss.recipe.compiler import compile_recipe
+from dss.spec.models import DashboardSpec
+from fakes import fake_models
+from test_api_contract import check, shape, FIXTURES
+from test_execute import settle
+
+TOKEN = "fake-agent-token-at-least-24"
+CODE = "fake-access-code"
+AUTH = {"X-DSS-Agent-Token": TOKEN}
+EVENTS = [json.loads(line) for line in (FIXTURES.parent / "events.sample.jsonl").read_text().splitlines()]
+
+
+@pytest.fixture
+def remote(tmp_path, monkeypatch):
+    monkeypatch.setenv("DSS_ENGINE_TIMEOUT_S", "17")
+    monkeypatch.setenv("DSS_ENGINE_DRY_RUN", "1")
+    from dss.api import engine
+    async def no_local_engine(*args):
+        pytest.fail("agent mode invoked a local engine")
+    monkeypatch.setattr(engine, "control_command", no_local_engine)
+    app = create_app(Config(data_dir=tmp_path, engine_mode="agent", access_code=CODE,
+                            agent_token=TOKEN, google_api_key="fake-google-key", gcp_project_id="deployment"),
+                     model_lister=fake_models)
+    with TestClient(app, headers={"X-DSS-Access-Code": CODE}) as client:
+        bid = client.post("/api/builds", json={"archetype": "executive", "mode": "data"}).json()["id"]
+        folder = tmp_path / "builds" / bid / "v1"
+        folder.mkdir(parents=True, exist_ok=True)
+        spec = DashboardSpec.model_validate_json(Path("tests/data/thin_spec.json").read_text())
+        spec.build_id = bid
+        (folder / "recipe.jsonl").write_text(compile_recipe(spec, 1), encoding="utf-8")
+        (folder / "background_p1.png").write_bytes(b"fake-background")
+        with app.state.db.connect() as conn:
+            conn.execute("UPDATE builds SET stage='prototype' WHERE id=?", (bid,))
+        yield client, app, bid, folder
+
+
+def heartbeat(client, signed_in=True):
+    response = client.post("/api/agent/heartbeat", headers=AUTH,
+        json={"chrome_running": True, "signed_in": signed_in, "agent_version": "test"})
+    assert response.status_code == 200 and response.json() == {"ok": True}
+
+
+def accept(remote):
+    client, app, bid, folder = remote
+    heartbeat(client)
+    response = client.post(f"/api/builds/{bid}/run")
+    assert response.status_code == 202, response.text
+    job = client.get("/api/agent/jobs/next?wait=0", headers=AUTH)
+    assert job.status_code == 200, job.text
+    return response.json()["run_id"], job.json()
+
+
+def post_events(client, run_id, events=EVENTS):
+    response = client.post(f"/api/agent/jobs/{run_id}/events", headers=AUTH, json={"events": events})
+    assert response.status_code == 200, response.text
+
+
+def finish(client, run_id, code=0, stderr=""):
+    response = client.post(f"/api/agent/jobs/{run_id}/finished", headers=AUTH,
+                           json={"exit_code": code, "stderr_tail": stderr})
+    assert response.status_code == 200, response.text
+
+
+def records(app, run_id):
+    with app.state.db.connect() as conn:
+        return [(row["kind"], json.loads(row["payload_json"])) for row in
+                conn.execute("SELECT * FROM events WHERE run_id=? ORDER BY rowid", (run_id,))]
+
+
+def assert_failure(remote, run_id, error):
+    client, app, bid, folder = remote
+    settle(client, app)
+    build = client.get(f"/api/builds/{bid}").json()
+    assert build["stage"] == "prototype" and build["versions"][0]["status"] == "failed"
+    assert build["report_url"] is None
+    assert [data for kind, data in records(app, run_id) if kind == "build.finished"] == [
+        {"status": "failed", "report_url": None, "version": 1}]
+    with app.state.db.connect() as conn:
+        rows = conn.execute("SELECT status,error FROM traces WHERE run_id=?", (run_id,)).fetchall()
+    assert len(rows) == 1 and tuple(rows[0]) == ("error", error)
+
+
+def test_offline_heartbeat_status_and_fixture_completion(remote):
+    client, app, bid, folder = remote
+    response = client.post(f"/api/builds/{bid}/run")
+    assert response.status_code == 424 and response.json()["error"]["code"] == "agent_offline"
+    assert not app.state.engine_busy
+    assert client.get("/api/engine/status").json()["agent_last_seen"] is None
+    heartbeat(client, signed_in=False)
+    status = client.get("/api/engine/status").json()
+    assert status["mode"] == "agent" and status["agent_connected"] and not status["signed_in"]
+    app.state.agent_jobs.last_seen_clock -= 31
+    assert not client.get("/api/engine/status").json()["agent_connected"]
+    assert client.post(f"/api/builds/{bid}/run").status_code == 424
+    run_id, job = accept(remote)
+    shape(job, json.loads((FIXTURES / "agent_job.json").read_text()))
+    assert job == dict(run_id=run_id, build_id=bid, version=1, dry_run=True, timeout_s=17,
+                       files=["recipe.jsonl", "background_p1.png"])
+    response = client.post(f"/api/builds/{bid}/run")
+    assert response.status_code == 409 and response.json()["error"]["code"] == "engine_busy"
+    assert client.get("/api/agent/jobs/next?wait=0", headers=AUTH).status_code == 204
+    for name in job["files"]:
+        response = client.get(f"/api/agent/jobs/{run_id}/files/{name}", headers=AUTH)
+        assert response.status_code == 200 and response.content == (folder / name).read_bytes()
+    screenshot = b"\x89PNG\r\n\x1a\nfixture"
+    response = client.put(f"/api/agent/jobs/{run_id}/screens/s012_failed.png", headers=AUTH, content=screenshot)
+    assert response.status_code == 200
+    assert (folder / "screens/s012_failed.png").read_bytes() == screenshot
+    post_events(client, run_id, EVENTS[:8])
+    post_events(client, run_id, EVENTS[8:])
+    finish(client, run_id)
+    assert not app.state.engine_busy
+    build = client.get(f"/api/builds/{bid}").json()
+    assert build["stage"] == "done" and build["versions"][0]["status"] == "published"
+    assert build["report_url"] == EVENTS[-1]["report_url"]
+    actual = records(app, run_id)
+    assert [data for kind, data in actual if kind == "build.op"] == [e for e in EVENTS if e["event"] == "op_finished"]
+    assert [data for kind, data in actual if kind == "build.finished"] == [
+        {"status": EVENTS[-1]["status"], "report_url": EVENTS[-1]["report_url"], "version": 1}]
+    assert [json.loads(line) for line in (folder / "events.jsonl").read_text().splitlines()] == EVENTS
+    with app.state.db.connect() as conn:
+        assert conn.execute("SELECT status FROM traces WHERE run_id=?", (run_id,)).fetchone()[0] == "ok"
+    for method, suffix, kwargs in [("get", "files/recipe.jsonl", {}), ("post", "events", {"json": {"events": EVENTS}}),
+                                   ("put", "screens/a.png", {"content": b"x"}),
+                                   ("post", "finished", {"json": {"exit_code": 0, "stderr_tail": ""}})]:
+        response = getattr(client, method)(f"/api/agent/jobs/{run_id}/{suffix}", headers=AUTH, **kwargs)
+        assert response.status_code == 404 and response.json()["error"]["code"] == "job_not_found"
+
+
+@pytest.mark.parametrize("url", ["https://evil.example/report", "https://datastudio.google.com.evil.example/r",
+    "http://datastudio.google.com/r", "https://user@lookerstudio.google.com/r", "https://[invalid", 12])
+def test_invalid_url_never_persisted_and_releases_lock(remote, url):
+    client, app, bid, folder = remote
+    run_id, _ = accept(remote)
+    event = {**EVENTS[-1], "report_url": url}
+    post_events(client, run_id, [event])
+    assert_failure(remote, run_id, "invalid_report_url")
+    assert not (folder / "events.jsonl").read_text()
+    run_id, _ = accept(remote)
+    finish(client, run_id, 1)
+
+
+@pytest.mark.parametrize("code,status,url,error", [
+    (0, "ok", None, None), (0, "partial", "https://lookerstudio.google.com/reporting/test", None),
+    (3, "failed", None, "engine_not_signed_in"), (1, "failed", None, None), (2, "failed", None, None),
+])
+def test_exit_mapping(remote, code, status, url, error):
+    client, app, bid, folder = remote
+    run_id, _ = accept(remote)
+    post_events(client, run_id, [{**EVENTS[-1], "status": status, "report_url": url}])
+    finish(client, run_id, code)
+    if error:
+        assert_failure(remote, run_id, error)
+    else:
+        result = [data for kind, data in records(app, run_id) if kind == "build.finished"]
+        assert result == [{"status": status, "report_url": url, "version": 1}]
+
+
+def test_no_finish_event_is_failed(remote):
+    client, app, bid, folder = remote
+    run_id, _ = accept(remote)
+    finish(client, run_id)
+    assert client.get(f"/api/builds/{bid}").json()["stage"] == "prototype"
+
+
+def test_timeout_and_late_agent_then_retry(remote, monkeypatch):
+    client, app, bid, folder = remote
+    monkeypatch.setenv("DSS_ENGINE_TIMEOUT_S", "0")
+    import dss.agent.jobs as jobs
+    monkeypatch.setattr(jobs, "TIMEOUT_GRACE_S", .12)
+    run_id, _ = accept(remote)
+    settle(client, app)
+    assert_failure(remote, run_id, "agent_timeout")
+    assert client.post(f"/api/agent/jobs/{run_id}/events", headers=AUTH, json={"events": EVENTS}).status_code == 404
+    assert client.get("/api/agent/jobs/next?wait=0", headers=AUTH).status_code == 204
+    monkeypatch.setenv("DSS_ENGINE_TIMEOUT_S", "17")
+    retry, _ = accept(remote)
+    finish(client, retry, 1)
+
+
+def test_events_refresh_timeout_but_heartbeats_do_not(remote, monkeypatch):
+    client, app, bid, folder = remote
+    monkeypatch.setenv("DSS_ENGINE_TIMEOUT_S", "0")
+    import dss.agent.jobs as jobs
+    monkeypatch.setattr(jobs, "TIMEOUT_GRACE_S", .4)
+    run_id, _ = accept(remote)
+    time.sleep(.25)
+    post_events(client, run_id, [EVENTS[0]])
+    time.sleep(.25)
+    assert app.state.engine_busy
+    heartbeat(client)
+    settle(client, app)
+    assert_failure(remote, run_id, "agent_timeout")
+
+
+def test_queued_job_also_times_out(remote, monkeypatch):
+    client, app, bid, folder = remote
+    import dss.agent.jobs as jobs
+    monkeypatch.setattr(jobs, "TIMEOUT_GRACE_S", .1)
+    monkeypatch.setenv("DSS_ENGINE_TIMEOUT_S", "0")
+    heartbeat(client)
+    run_id = client.post(f"/api/builds/{bid}/run").json()["run_id"]
+    assert_failure(remote, run_id, "agent_timeout")
+    assert client.get("/api/agent/jobs/next?wait=0", headers=AUTH).status_code == 204
+
+
+def test_long_poll_and_two_agents_do_not_block_requests(remote):
+    client, app, bid, folder = remote
+    with ThreadPoolExecutor(2) as pool:
+        first = pool.submit(client.get, "/api/agent/jobs/next?wait=.4", headers=AUTH)
+        second = pool.submit(client.get, "/api/agent/jobs/next?wait=.4", headers=AUTH)
+        time.sleep(.05)
+        assert not first.done() and not second.done()
+        started = time.monotonic()
+        heartbeat(client)
+        assert client.get("/api/health").status_code == 200
+        assert time.monotonic() - started < .3
+        response = client.post(f"/api/builds/{bid}/run")
+        assert response.status_code == 202
+        responses = [first.result(timeout=3), second.result(timeout=3)]
+    assert sorted(response.status_code for response in responses) == [200, 204]
+    finish(client, response.json()["run_id"], 1)
+    assert client.get("/api/agent/jobs/next?wait=26", headers=AUTH).status_code == 422
+
+
+@pytest.mark.parametrize("method,suffix,kwargs", [
+    ("get", "jobs/next?wait=0", {}),
+    ("post", "heartbeat", {"json": {"chrome_running": True, "signed_in": True, "agent_version": "test"}}),
+    ("get", "jobs/missing/files/recipe.jsonl", {}),
+    ("put", "jobs/missing/screens/a.png", {"content": b"png"}),
+    ("post", "jobs/missing/events", {"json": {"events": EVENTS}}),
+    ("post", "jobs/missing/finished", {"json": {"exit_code": 0, "stderr_tail": ""}}),
+])
+def test_token_required_and_access_code_is_not_agent_auth(remote, method, suffix, kwargs):
+    client, *_ = remote
+    for headers in ({}, {"X-DSS-Agent-Token": CODE}, {"X-DSS-Agent-Token": "wrong-token"}):
+        response = getattr(client, method)("/api/agent/" + suffix, headers=headers, **kwargs)
+        assert response.status_code == 401 and response.json()["error"]["code"] == "agent_unauthorized"
+
+
+@pytest.mark.parametrize("suffix", ["%2e%2e/dss.sqlite", "%2e%2e", "screens/x.png", "bad%5cname.png", "not-listed.png"])
+def test_file_boundaries(remote, suffix):
+    client, app, bid, folder = remote
+    run_id, _ = accept(remote)
+    for method, segment in (("get", "files"), ("put", "screens")):
+        if segment == "screens" and suffix == "not-listed.png":
+            continue  # Any plain PNG name is allowed for screenshots.
+        response = getattr(client, method)(f"/api/agent/jobs/{run_id}/{segment}/{suffix}", headers=AUTH)
+        assert response.status_code == 400 and response.json()["error"]["code"] == "invalid_name"
+    finish(client, run_id, 1)
+
+
+def test_all_recipe_inputs_in_order_and_bad_inputs_fail_before_lock(remote):
+    client, app, bid, folder = remote
+    with (folder / "recipe.jsonl").open("a") as recipe:
+        for name in ("logo.png", "background_p1.png", "logo.png"):
+            recipe.write(json.dumps({"id": "s099", "op": "add_image", "path": name}) + "\n")
+    (folder / "logo.png").write_bytes(b"logo")
+    run_id, job = accept(remote)
+    assert job["files"] == ["recipe.jsonl", "background_p1.png", "logo.png"]
+    finish(client, run_id, 1)
+    with (folder / "recipe.jsonl").open("a") as recipe:
+        recipe.write(json.dumps({"op": "add_image", "path": "../dss.sqlite"}) + "\n")
+    response = client.post(f"/api/builds/{bid}/run")
+    assert response.status_code == 400 and response.json()["error"]["code"] == "invalid_name"
+    assert not app.state.engine_busy
+
+
+def test_secrets_redacted_from_events_and_stderr(remote, caplog):
+    client, app, bid, folder = remote
+    run_id, _ = accept(remote)
+    text = f"{TOKEN} {CODE} fake-google-key"
+    post_events(client, run_id, [{**EVENTS[2], "message": text}, EVENTS[-1]])
+    finish(client, run_id, 0, text)
+    serialized = json.dumps(records(app, run_id)) + (folder / "events.jsonl").read_text() + caplog.text
+    for secret in (TOKEN, CODE, "fake-google-key"):
+        assert secret not in serialized
+    assert "[redacted]" in serialized
+
+
+def test_login_settings_lock_and_deployment_overrides(remote):
+    client, app, bid, folder = remote
+    response = client.post("/api/engine/login")
+    assert response.status_code == 409 and response.json()["error"]["code"] == "login_on_agent"
+    for field in ("google_api_key", "gcp_project_id", "bq_dataset", "bq_location", "gcs_bucket"):
+        response = client.put("/api/settings", json={field: "changed", "worker_model": "new"})
+        assert response.status_code == 403 and response.json()["error"]["code"] == "settings_locked"
+    response = client.put("/api/settings", json={"planner_model": "planner", "worker_model": "worker"})
+    assert response.status_code == 200 and response.json()["worker_model"] == "worker"
+    app.state.settings.update({"gcp_project_id": "old-local-project", "google_api_key": "old-key"})
+    config = app.state.settings.get()
+    assert config.gcp_project_id == "deployment" and config.google_api_key.get_secret_value() == "fake-google-key"
+
+
+@pytest.mark.parametrize("mode,fixture", [("agent", "engine_status.json"), ("local", "engine_status.local.json")])
+def test_status_contract_variants(tmp_path, monkeypatch, mode, fixture):
+    from dss.api import engine
+    async def fake_check(*args):
+        return 0, '{"chrome_running": true, "signed_in": true}'
+    monkeypatch.setattr(engine, "control_command", fake_check)
+    app = create_app(Config(data_dir=tmp_path, engine_mode=mode, agent_token=TOKEN), model_lister=fake_models)
+    with TestClient(app) as client:
+        if mode == "agent":
+            heartbeat(client)
+        check(client.get("/api/engine/status"), fixture)
+        if mode == "local":
+            for method, path in (("get", "jobs/next"), ("post", "heartbeat"), ("put", "jobs/x/screens/a.png"), ("get", "unknown")):
+                response = getattr(client, method)("/api/agent/" + path, headers=AUTH)
+                assert response.status_code == 404 and response.json()["error"]["code"] == "agent_mode_off"
+
+
+def test_startup_recovers_interrupted_job_once(tmp_path):
+    db = Database(tmp_path / "dss.sqlite")
+    db.initialize()
+    bid, run_id = "b_123456789abc", "r_123456789abc"
+    with db.connect() as conn:
+        conn.execute("INSERT INTO builds(id,title,archetype,mode,stage,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",
+                     (bid, "Interrupted", "executive", "data", "build", now(), now()))
+        conn.execute("INSERT INTO versions(build_id,n,status,created_at) VALUES(?,1,'building',?)", (bid, now()))
+        conn.execute("INSERT INTO events VALUES(?,?,?,?,?,?)", ("e_test", bid, run_id, "run.started",
+                     json.dumps({"run_id": run_id, "node": "execute"}), now()))
+    for _ in range(2):
+        app = create_app(Config(data_dir=tmp_path, engine_mode="agent", agent_token=TOKEN), model_lister=fake_models)
+        with TestClient(app) as client:
+            assert_failure((client, app, bid, tmp_path), run_id, "agent_timeout")
+            assert client.get("/api/agent/jobs/next?wait=0", headers=AUTH).status_code == 204
+
+
+def test_shutdown_cancels_job_and_wakes_long_poll(remote):
+    client, app, bid, folder = remote
+    run_id, _ = accept(remote)
+    async def close():
+        poll = asyncio.create_task(app.state.agent_jobs.next(25))
+        await asyncio.sleep(.01)
+        await app.state.agent_jobs.close()
+        assert await asyncio.wait_for(poll, .5) is None
+        tasks = tuple(app.state.engine_tasks)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+    client.portal.call(close)
+    assert not app.state.engine_busy and not app.state.harness.active_builds
+    assert client.get(f"/api/builds/{bid}").json()["stage"] == "prototype"

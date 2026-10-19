@@ -49,12 +49,18 @@ async def run(build_id: str, request: Request):
         raise RunError("wrong_stage", "Another action is running", 409, {"stage": build["stage"]})
     if not (folder / "recipe.jsonl").is_file():
         raise RunError("wrong_stage", "Compile the recipe before running it", 409, {"stage": build["stage"]})
+    agent_mode = state.config.engine_mode == "agent"
+    if agent_mode and not state.agent_jobs.connected:
+        raise RunError("agent_offline", "Start the build agent before building", 424)
     run_id = new_id("r")
+    job = state.agent_jobs.prepare(run_id, build_id, folder, build["current_version"]) if agent_mode else None
     with state.db.connect() as conn:
         conn.execute("UPDATE versions SET status='building' WHERE build_id=? AND n=?", (build_id, build["current_version"]))
         conn.execute("UPDATE builds SET stage='build',updated_at=? WHERE id=?", (now(), build_id))
     state.engine_busy = True
     state.harness.active_builds.add(build_id)
+    if job:
+        await state.agent_jobs.enqueue(job)
     async def perform(actual_run_id):
         await state.harness.emit(build_id, actual_run_id, "stage.changed", {"stage": "build"})
         return await execute(state, build_id, actual_run_id, folder, build["current_version"])
@@ -64,7 +70,12 @@ async def run(build_id: str, request: Request):
         except RunError:
             pass
         finally:
-            state.engine_busy = False
+            try:
+                if job:
+                    await state.agent_jobs.release(job)
+            finally:
+                state.engine_busy = False
+                state.harness.active_builds.discard(build_id)
     task = asyncio.create_task(background())
     state.engine_tasks.add(task)
     task.add_done_callback(state.engine_tasks.discard)

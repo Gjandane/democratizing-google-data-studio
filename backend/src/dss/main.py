@@ -13,7 +13,8 @@ from fastapi.responses import JSONResponse
 from starlette.staticfiles import StaticFiles
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
-from dss.api import builds, settings, prototype, run, dev, chat, engine, session
+from dss.api import builds, settings, prototype, run, dev, chat, engine, session, agent
+from dss.agent.jobs import AgentJobs
 from dss.harness.nodes.execute import environment
 from dss.bus import EventBus
 from dss.config import Config, SettingsStore
@@ -60,6 +61,9 @@ def create_app(config=None, *, model_lister=None, bigquery_factory=None):
         app.state.bigquery_factory = bigquery_factory or BigQuery
         from dss.harness.graph import AgentHarness
         app.state.harness = AgentHarness(app.state.db, app.state.bus, app.state.models)
+        app.state.agent_jobs = AgentJobs(app.state)
+        if config.engine_mode == "agent":
+            await app.state.agent_jobs.recover()
         await app.state.models.refresh()
         stop_backup = asyncio.Event()
         backup_task = (asyncio.create_task(app.state.db.periodic_backup(stop_backup))
@@ -68,6 +72,10 @@ def create_app(config=None, *, model_lister=None, bigquery_factory=None):
             yield
         finally:
             try:
+                if config.engine_mode == "agent":
+                    await app.state.agent_jobs.close()
+                    for task in app.state.engine_tasks:
+                        task.cancel()
                 if app.state.engine_tasks:
                     await asyncio.gather(*app.state.engine_tasks, return_exceptions=True)
             finally:
@@ -92,6 +100,7 @@ def create_app(config=None, *, model_lister=None, bigquery_factory=None):
     app.include_router(run.router)
     app.include_router(engine.router)
     app.include_router(engine.trace_router)
+    app.include_router(agent.router)
     if environment().get("DSS_DEV") == "1":
         app.include_router(dev.router)
 

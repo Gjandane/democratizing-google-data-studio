@@ -223,3 +223,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: none.
 - Next: Task 5.2 Agent mode: job queue and agent endpoints; deep work due to its Spec. New chat, gpt-6.1-sol at high, invoke blueprint-solution-builder.
+
+## 2026-10-19: Task 5.2 Agent mode: job queue and agent endpoints
+- Status: done
+- Plan check: off
+- What changed: added the authenticated agent API, asynchronous FIFO, heartbeat status, job downloads/screenshots, inactivity expiry and restart recovery. Agent runs retain the Workflow, publish and trace lifecycle; local and remote events share EngineEvents.
+- Checks: `uv run pytest tests/test_agent_server.py` PASS (35); `uv run pytest` PASS (225, 3 live deselected, 2 upstream warnings); `git diff --check -- .` PASS. Independent read-only review: no findings.
+- Decisions: one-time polling uses an asyncio condition and FIFO; per-job locks serialize events, finish and expiry. Finished responses wait for publish/trace cleanup. Job files follow recipe path order, deduplicated after recipe.jsonl. Bad report URLs fail before persistence. Agent settings ignore saved deployment overrides; only models remain mutable. Shutdown wakes polls and cancels remote waits. Recovery finalizes interrupted runs without reissuing jobs. No dependencies added. Added the httpx header gotcha to AGENTS.md.
+- Tried and failed: non-ASCII string headers failed in the client before reaching authentication; used an ASCII wrong token. A deliberately tiny timeout also expired a retry before collection; restored its normal timeout.
+- Gotchas: none beyond AGENTS.md.
+- Left open: none.
+- Next: Task 5.3 The dss-agent build agent; deep work because it implements the remote execution Spec. New chat, gpt-6.1-sol at high, invoke blueprint-solution-builder.

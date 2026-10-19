@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from dss.harness.guardrails import RunError
 
 router = APIRouter(prefix="/api/settings")
 
@@ -23,6 +24,8 @@ def get_settings(request: Request):
 @router.put("")
 async def put_settings(body: SettingsUpdate, request: Request):
     values = body.model_dump(exclude_unset=True)
+    if request.app.state.config.engine_mode == "agent" and values.keys() - {"planner_model", "worker_model"}:
+        raise RunError("settings_locked", "Only models can be changed in agent mode", 403)
     if "google_api_key" in values:
         values["google_api_key"] = body.google_api_key.get_secret_value()
     request.app.state.settings.update(values)

@@ -59,6 +59,10 @@ async def control_command(command, timeout):
 @router.get("/status")
 async def status(request: Request):
     state = request.app.state
+    if state.config.engine_mode == "agent":
+        jobs = state.agent_jobs
+        return {"mode": "agent", "chrome_running": jobs.chrome_running, "signed_in": jobs.signed_in,
+                "agent_connected": jobs.connected, "agent_last_seen": jobs.last_seen}
     if state.engine_busy:
         data = getattr(state, "engine_status", {"chrome_running": False, "signed_in": False})
     else:
@@ -80,6 +84,8 @@ async def status(request: Request):
 @router.post("/login", status_code=202)
 async def login(request: Request):
     state = request.app.state
+    if state.config.engine_mode == "agent":
+        raise RunError("login_on_agent", "Run dsengine login on the build agent's machine", 409)
     if state.engine_busy:
         raise RunError("engine_busy", "Another engine action is in progress", 409)
     state.engine_busy = True
