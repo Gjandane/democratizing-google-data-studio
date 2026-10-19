@@ -6,7 +6,7 @@ from dsengine.ops import OpContext, OpResult, OperationError
 from dsengine.ops.charts import (
     _chart_box, _geometry, _locator, _place_chart, _poll, _source_fields,
 )
-from dsengine.ops.report import _place_component
+from dsengine.ops.report import _place_component, _prepare_image
 
 HANDLED_OPS = {"add_text", "add_image"}
 
@@ -121,17 +121,7 @@ def run(page: Any, op: Any, ctx: OpContext) -> OpResult:
         image.wait_for(state="visible", timeout=ctx.timeout_ms())
         _poll(page, ctx, lambda: image.evaluate("e => e.naturalWidth") > 0,
               "image did not finish loading")
-        _locator(page, ctx, "selection_mode").click(timeout=ctx.timeout_ms())
-        bounds = canvas.bounding_box()
-        page.mouse.click(bounds["x"] + 1, bounds["y"] + 1)
-        component.click(position={"x": 10, "y": 10}, timeout=ctx.timeout_ms())
-        setup = _locator(page, ctx, "setup_tab")
-        setup.wait_for(state="visible", timeout=ctx.timeout_ms())
-        setup.click(timeout=ctx.timeout_ms())
-        ratio = _locator(page, ctx, "image_preserve_ratio")
-        ratio.wait_for(state="visible", timeout=ctx.timeout_ms())
-        if ratio.get_attribute("aria-checked") == "true":
-            ratio.click(timeout=ctx.timeout_ms())
+        _prepare_image(page, component, ctx)
         _place_component(page, component, canvas, target)
     else:
         editor = _select_text(page, component, ctx)

@@ -98,7 +98,7 @@ tasks and require a separately specified scope/contract revision. Task statuses 
   - Size: S
   - Done when: `uv run pytest tests/test_executor.py` passes with strict keyboard/mouse fakes matching installed Playwright method signatures; regressions observe Escape and the empty-workspace click before the second attempt, no unsupported keyword arguments, and safe cleanup when canvas/page is absent. `uv run pytest` passes.
   - Review focus: final-audit P2 at executor.py:32,42-43; permissive mocks must not hide API signature errors.
-- [ ] 5.3 Scope and reuse background images across retries
+- [x] 5.3 Scope and reuse background images across retries
   - Goal: set_background_image addresses only its own newly created image, reuses it on retry, works beside ordinary images/other backgrounds, and meets arbitrary clamped recipe boxes without aspect-ratio distortion of the box.
   - Spec: docs/architecture.md#Recipe executor; docs/architecture.md#Live editor conventions
   - Files: src/dsengine/ops/report.py, src/dsengine/ops/text.py, src/dsengine/ops/style.py, tests/test_executor.py, tests/live/test_report_ops.py, knowledge/datastudio-ui/*.md

@@ -502,3 +502,258 @@ def test_timeout_skips_new_ops_but_attempts_save_and_link(fake_driver, monkeypat
     assert ("run", "get_link", "s004") in calls
     assert records[-1]["error_code"] == "timeout"
     assert records[-1]["status"] == "failed"
+
+
+class ImageHandle:
+    def __init__(self, name, box=(0, 0, 1200, 900), loaded=True):
+        self.name, self.box, self.loaded = name, box, loaded
+
+    def element_handle(self, *, timeout):
+        return self
+
+    def wait_for_selector(self, selector, *, state, timeout):
+        assert selector == "image_content" and state == "visible"
+        return self
+
+    def evaluate(self, expression):
+        if "naturalWidth" in expression:
+            return 1200 if self.loaded else 0
+        assert "offsetLeft" in expression
+        return self.box
+
+    def dispose(self):
+        pass
+
+
+class ImageCollection:
+    def __init__(self, page, *, charts=False):
+        self.page, self.charts = page, charts
+
+    @property
+    def items(self):
+        return [c for c in self.page.items if not self.charts or c.name == "chart"]
+
+    def count(self):
+        return len(self.items)
+
+    def nth(self, index):
+        return self.items[index]
+
+    def evaluate_all(self, expression, handle):
+        assert "indexOf(retained)" in expression
+        return self.items.index(handle) if handle in self.items else -1
+
+
+class ImagePage:
+    def __init__(self):
+        self.items = [ImageHandle("ordinary"), ImageHandle("text"),
+                      ImageHandle("control"), ImageHandle("chart")]
+        self.uploads = 0
+        self.selected = None
+        self.raise_after_upload = False
+
+    def locator(self, selector):
+        if selector in {"components", "chart_components"}:
+            return ImageCollection(self, charts=selector == "chart_components")
+        assert selector in {"image", "upload_image", "arrange", "order", "send_back"}
+        return ImageAction(self, selector)
+
+    @contextmanager
+    def expect_file_chooser(self, *, timeout):
+        from types import SimpleNamespace
+        yield SimpleNamespace(value=self)
+
+    def set_files(self, path, *, timeout):
+        self.uploads += 1
+        self.items.append(ImageHandle(f"background{self.uploads}"))
+        if self.raise_after_upload:
+            self.raise_after_upload = False
+            raise RuntimeError("transient file chooser failure after upload")
+
+
+class ImageAction:
+    def __init__(self, page, key):
+        self.page, self.key = page, key
+
+    def click(self, *, timeout):
+        if self.key == "send_back":
+            self.page.items.remove(self.page.selected)
+            self.page.items.insert(0, self.page.selected)
+
+    def hover(self, *, timeout):
+        assert self.key == "order"
+
+
+@pytest.fixture
+def background_driver(tmp_path, monkeypatch):
+    import time
+    from dsengine.ops import pages, report
+
+    recipe = make_recipe(tmp_path)
+    recipe.ops = [
+        Operation(id="s001", op="add_image", component_id="ordinary"),
+        Operation(id="s002", op="add_text", component_id="text"),
+        Operation(id="s003", op="add_control", component_id="control"),
+        Operation(id="s004", op="add_chart", component_id="chart"),
+        Operation(id="s005", op="set_background_image", path="background.png",
+                  x=0, y=0, w=400, h=400),
+        Operation(id="s006", op="set_background_image", path="background.png",
+                  x=1100, y=800, w=400, h=400),
+        Operation(id="s007", op="set_style", component_id="ordinary", style={}),
+    ]
+    (tmp_path / "background.png").write_bytes(b"fixture")
+    ctx = OpContext(recipe, {key: key for key in (
+        "components", "chart_components", "image", "upload_image", "arrange", "order",
+        "send_back", "image_content", "canvas")}, EventWriter(io.StringIO()), tmp_path,
+        time.monotonic() + 60, op_deadline=time.monotonic() + 20)
+    ctx.state = {"s001": {"component_index": 0, "target": (0, 0, 1200, 900)},
+                 "s002": {"component_index": 1, "target": (0, 0, 1200, 900)},
+                 "s003": {"control_index": 2, "target": (0, 0, 1200, 900)},
+                 "s004": {"chart_index": 0, "target": (0, 0, 1200, 900)}}
+    ctx.state["_source_fields"] = ["status", "id"]
+    page = ImagePage()
+    monkeypatch.setattr(pages, "current", lambda _page, _ctx: (1, 2))
+    monkeypatch.setattr(pages, "switch", lambda _page, _ctx, index: None)
+    monkeypatch.setattr(report, "_prepare_image", lambda _page, component, _ctx:
+                        setattr(_page, "selected", component))
+    monkeypatch.setattr(report, "_place_component", lambda _page, component, canvas, box:
+                        setattr(component, "box", box))
+    original_locator = report._locator
+    monkeypatch.setattr(report, "_locator", lambda p, c, key:
+                        object() if key == "canvas" else original_locator(p, c, key))
+    return page, ctx
+
+
+def test_background_retry_after_upload_keeps_one_scoped_component(background_driver):
+    from dsengine.ops import report
+
+    page, ctx = background_driver
+    page.raise_after_upload = True
+    op = ctx.recipe.ops[4]
+    with pytest.raises(RuntimeError, match="transient"):
+        report.run(page, op, ctx)
+    assert ctx.state[op.id]["upload_started"]
+    assert ctx.state[op.id]["page_index"] == 1
+    report.run(page, op, ctx)
+    report.verify(page, op, ctx)
+    assert page.uploads == 1 and len(page.items) == 5
+    assert page.items[0].name == "background1"
+    assert page.items[0].box == (0, 0, 400, 400)
+    assert page.items[1].name == "ordinary" and page.items[1].box == (0, 0, 1200, 900)
+
+
+def test_multiple_backgrounds_reindex_registry_and_clamp_box(background_driver):
+    from dsengine.ops import report, style
+
+    page, ctx = background_driver
+    ordinary, text, control, chart = page.items
+    for op in ctx.recipe.ops[4:6]:
+        report.run(page, op, ctx)
+        report.verify(page, op, ctx)
+    assert page.uploads == 2 and len(page.items) == 6
+    assert [c.name for c in page.items[:2]] == ["background2", "background1"]
+    assert page.items[0].box == (1100, 800, 100, 100)
+    assert ctx.state["s005"]["component_index"] == 1
+    assert ctx.state["s006"]["component_index"] == 0
+    assert ctx.state["s002"]["component_index"] == 3
+    assert ctx.state["s003"]["control_index"] == 4
+    assert ctx.state["s004"]["chart_index"] == 0
+    for component_id, expected in [("ordinary", ordinary), ("text", text),
+                                    ("control", control), ("chart", chart)]:
+        op = Operation(id="s007", op="set_style", component_id=component_id, style={})
+        # Style lookup must retain the intended creator after both paint-order changes.
+        expected.wait_for = lambda **kwargs: None
+        component, _ = style.component_for(page, op, ctx)
+        assert component is expected
+
+
+def test_background_verification_rejects_an_unrelated_first_image(background_driver):
+    from dsengine.ops import OperationError, report
+
+    page, ctx = background_driver
+    op = ctx.recipe.ops[4]
+    report.run(page, op, ctx)
+    page.items.insert(0, page.items.pop(1))
+    ctx.op_deadline = 0
+    with pytest.raises(OperationError, match="did not verify"):
+        report.verify(page, op, ctx)
+
+
+def test_background_retry_reuses_creation_after_send_to_back(background_driver):
+    from dsengine.ops import report
+
+    page, ctx = background_driver
+    op = ctx.recipe.ops[4]
+    report.run(page, op, ctx)
+    retained = ctx.state[op.id]["component"]
+    report.run(page, op, ctx)
+    report.verify(page, op, ctx)
+    assert page.uploads == 1 and len(page.items) == 5
+    assert ctx.state[op.id]["component"] is retained
+    assert ctx.state["s001"]["component_index"] == 1
+
+
+@pytest.mark.parametrize("checked", [True, False])
+def test_image_setup_disables_aspect_ratio_only_when_enabled(tmp_path, monkeypatch, checked):
+    from types import SimpleNamespace
+    from dsengine.ops import report
+
+    calls = []
+    class Control:
+        def __init__(self, key):
+            self.key = key
+
+        def click(self, *, timeout):
+            calls.append(("control", self.key))
+
+        def wait_for(self, *, state, timeout):
+            assert state == "visible"
+
+        def get_attribute(self, name):
+            assert name == "aria-checked"
+            return str(checked).lower()
+
+    controls = {k: Control(k) for k in ("selection_mode", "setup_tab", "image_preserve_ratio")}
+    controls["canvas"] = FakeCanvas()
+    monkeypatch.setattr(report, "_locator", lambda page, ctx, key: controls[key])
+    component = SimpleNamespace(click=lambda *, position, timeout: calls.append(("image", position)))
+    page = SimpleNamespace(mouse=FakeMouse(calls))
+    report._prepare_image(page, component, cleanup_context(tmp_path))
+    assert calls == [("control", "selection_mode"), ("click", 188, 140),
+                     ("image", {"x": 10, "y": 10}), ("control", "setup_tab")] + (
+                         [("control", "image_preserve_ratio")] if checked else [])
+
+
+def test_background_reordering_leaves_other_pages_registry_untouched(background_driver):
+    from dsengine.ops import report
+
+    page, ctx = background_driver
+    ctx.state["other_page"] = {"page_index": 2, "component_index": 99}
+    report.run(page, ctx.recipe.ops[4], ctx)
+    assert ctx.state["other_page"] == {"page_index": 2, "component_index": 99}
+
+
+def test_image_is_resized_before_moving_to_clamped_canvas_edge(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from dsengine.ops import report
+
+    calls, drags = [], []
+    component = ImageHandle("background", (0, 0, 333, 250))
+    component.bounding_box = lambda: dict(zip(("x", "y", "width", "height"),
+        (200 + component.box[0], 100 + component.box[1], *component.box[2:])))
+    canvas = FakeCanvas()
+
+    def drag(page, start, end):
+        drags.append((start, end))
+        x, y, w, h = component.box
+        if start == (200 + x + w, 100 + y + h):
+            assert x + w <= 1200 and y + h <= 900, "resize handle must be inside the canvas"
+            component.box = (x, y, end[0] - 200 - x, end[1] - 100 - y)
+        else:
+            component.box = (x + end[0] - start[0], y + end[1] - start[1], w, h)
+
+    monkeypatch.setattr(report, "_drag", drag)
+    page = SimpleNamespace(mouse=FakeMouse(calls))
+    report._place_component(page, component, canvas, (1100, 800, 100, 100))
+    assert drags == [((533, 350), (300, 200)), ((250, 150), (1350, 950))]
+    assert component.box == (1100, 800, 100, 100)

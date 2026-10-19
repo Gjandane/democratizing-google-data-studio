@@ -150,8 +150,17 @@ The chart target is [24,120,560,300]; image target [0,0,1200,900].
 `image` -> `upload_image` opens a native file chooser; handle it with
 Playwright's expect_file_chooser/set_files. The upload adds an image component
 automatically. Wait for its image naturalWidth before manipulating it.
-Choose Arrange -> Order -> Send to back. Verify the image is the first
-component in DOM paint order and inspect the saved screenshot. A blob preview
+Disable Preserve Aspect Ratio in this image's Setup panel before resizing to an
+arbitrary recipe rectangle. Resize before moving an uploaded image to a canvas
+edge: moving its default-size box there first can hide the resize handle beyond
+the canvas. Retain the newly appended component before waiting
+for its image to load; scope image_content under that component, since ordinary
+images and earlier backgrounds can already exist. Retain a pending upload too:
+retry must not open another chooser after set_files may have inserted the image.
+Choose Arrange -> Order -> Send to back. Verify this exact retained component
+is first in DOM paint order, then refresh page-local component/control/chart
+indices by element identity: moving a background changes the indices used by
+later set_style operations. Leave other pages' indices alone. Inspect the saved screenshot. A blob preview
 alone does not establish persistence: check the saved view too.
 
 ## Saving

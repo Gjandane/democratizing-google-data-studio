@@ -229,3 +229,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none.
 - Left open: none.
 - Next: task 5.3 Scope and reuse background images across retries; start with retained image ownership and the live report-op regressions.
+
+## 2026-10-19: Task 5.3 Scope and reuse background images across retries
+- Status: done
+- Plan check: off
+- What changed: retained/scoped backgrounds and pending uploads; refreshed page-local registry indices after reordering; shared image ratio handling; added regressions and editor guidance.
+- Checks: `uv run pytest tests/test_executor.py` PASS (44); `uv run pytest -m live tests/live/test_report_ops.py` PASS (2, 56.45s); `uv run pytest` PASS (117, 10 deselected, 5.90s); `git diff --check -- .` PASS. Final reviewer: no findings. Inspected `C:/Users/gjand/AppData/Local/Temp/pytest-of-gjand/pytest-448/test_backgrounds_reuse_upload_0/backgrounds_saved.png`: reopened images loaded, correct order, ±4 px boxes, isolated style change. Median op 2.281s; nine ops 26.527s.
+- Decisions: retain upload intent before set_files and element identity before loading; reindex only owning-page entries. Resize before moving to keep edge handles accessible. AGENTS.md records mixed cache types. No dependencies added.
+- Tried and failed: cached field list broke registry iteration; filtered dictionaries. Edge placement hid resize handles; reversed resize/move. Text fixture snapped 5 px; moved away from guide. User restored interrupted sign-in manually.
+- Gotchas: none beyond recorded guidance.
+- Left open: none.
+- Next: task 5.4 Recheck live acceptance after audit fixes; run original live gates and screencast/budget checks.

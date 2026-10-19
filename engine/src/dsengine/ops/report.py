@@ -162,21 +162,23 @@ def _place_component(page: Any, component: Any, canvas: Any,
     if bounds is None or canvas_bounds is None:
         raise OperationError("image component or canvas is not visible")
 
-    start = (bounds["x"] + bounds["width"] / 2,
-             bounds["y"] + bounds["height"] / 2)
-    page.mouse.click(*start)
-    if (x, y) != target[:2]:
-        destination = (start[0] + target[0] - x, start[1] + target[1] - y)
-        _drag(page, start, destination)
-
+    # Resize while the newly uploaded image is still inside the canvas. Moving
+    # first can put its resize handle outside the canvas (edge-clamped boxes).
     if (width, height) != target[2:]:
+        page.mouse.click(bounds["x"] + bounds["width"] / 2,
+                         bounds["y"] + bounds["height"] / 2)
+        resize_start = (bounds["x"] + bounds["width"], bounds["y"] + bounds["height"])
+        resize_end = (bounds["x"] + target[2], bounds["y"] + target[3])
+        _drag(page, resize_start, resize_end)
+    x, y, _, _ = _geometry(component)
+    if (x, y) != target[:2]:
         bounds = component.bounding_box()
         if bounds is None:
             raise OperationError("image component disappeared while placing it")
-        resize_start = (bounds["x"] + bounds["width"], bounds["y"] + bounds["height"])
-        resize_end = (canvas_bounds["x"] + target[0] + target[2],
-                      canvas_bounds["y"] + target[1] + target[3])
-        _drag(page, resize_start, resize_end)
+        start = (bounds["x"] + bounds["width"] / 2,
+                 bounds["y"] + bounds["height"] / 2)
+        destination = (start[0] + target[0] - x, start[1] + target[1] - y)
+        _drag(page, start, destination)
 
 
 def _background_box(op: Any, dimensions: tuple[int, int]) -> tuple[tuple[int, int, int, int], bool]:
@@ -191,68 +193,120 @@ def _background_box(op: Any, dimensions: tuple[int, int]) -> tuple[tuple[int, in
     return (x, y, width, height), clamped
 
 
+def _prepare_image(page: Any, component: Any, ctx: OpContext) -> None:
+    """Select this image's Setup panel and allow arbitrary recipe rectangles."""
+    _locator(page, ctx, "selection_mode").click(timeout=ctx.timeout_ms())
+    bounds = _locator(page, ctx, "canvas").bounding_box(timeout=ctx.timeout_ms())
+    if bounds is None:
+        raise OperationError("report canvas is not visible")
+    page.mouse.click(max(1, bounds["x"] - 12), bounds["y"] + 40)
+    component.click(position={"x": 10, "y": 10}, timeout=ctx.timeout_ms())
+    setup = _locator(page, ctx, "setup_tab")
+    setup.wait_for(state="visible", timeout=ctx.timeout_ms())
+    setup.click(timeout=ctx.timeout_ms())
+    ratio = _locator(page, ctx, "image_preserve_ratio")
+    ratio.wait_for(state="visible", timeout=ctx.timeout_ms())
+    if ratio.get_attribute("aria-checked") == "true":
+        ratio.click(timeout=ctx.timeout_ms())
+
+
+def _component_index(components: Any, retained: Any) -> int:
+    index = components.evaluate_all("(elements, retained) => elements.indexOf(retained)", retained)
+    if index < 0:
+        raise OperationError("retained component is no longer on its owning page")
+    return index
+
+
+def _send_background_back(page: Any, component: Any, ctx: OpContext) -> None:
+    from dsengine.ops import pages
+
+    pages.remember_components(page, ctx)
+    active, _ = pages.current(page, ctx)
+    # Indices are page-local paint order. Capture identity before changing that order,
+    # then refresh every affected registry entry, even if a menu action fails.
+    retained = []
+    for state in ctx.state.values():
+        if not isinstance(state, dict) or state.get("page_index") != active:
+            continue
+        for key in ("component_index", "control_index", "chart_index"):
+            if key in state:
+                collection = _locator(page, ctx, "chart_components" if key == "chart_index" else "components")
+                retained.append((state, key, collection, collection.nth(state[key]).element_handle(
+                    timeout=ctx.timeout_ms())))
+    components = _locator(page, ctx, "components")
+    try:
+        _locator(page, ctx, "arrange").click(timeout=ctx.timeout_ms())
+        _locator(page, ctx, "order").hover(timeout=ctx.timeout_ms())
+        _locator(page, ctx, "send_back").click(timeout=ctx.timeout_ms())
+        _poll(page, ctx, lambda: _component_index(components, component) == 0,
+              "background was not sent to the back")
+    finally:
+        for state, key, collection, handle in retained:
+            state[key] = _component_index(collection, handle)
+            handle.dispose()
+
+
 def _run_set_background_image(page: Any, op: Any, ctx: OpContext) -> OpResult:
+    from dsengine.ops import pages
+
     path = ctx.recipe.asset_path(op.path)
     if not path.is_file():
         raise OperationError("background image asset was not found")
-
+    state = ctx.state.setdefault(op.id, {"page_index": pages.current(page, ctx)[0]})
+    if pages.current(page, ctx)[0] != state["page_index"]:
+        pages.switch(page, ctx, state["page_index"])
     dimensions = ctx.canvas_dimensions or (ctx.recipe.header.canvas.width,
                                           ctx.recipe.header.canvas.height)
     target, clamped = _background_box(op, dimensions)
     if clamped:
         ctx.warn(f"{op.id}: background image box was clamped to the canvas")
-
+    state["target"] = target
     components = _locator(page, ctx, "components")
-    before = components.count()
-    _locator(page, ctx, "image").click(timeout=ctx.timeout_ms())
-    with page.expect_file_chooser(timeout=ctx.timeout_ms()) as chooser:
-        _locator(page, ctx, "upload_image").click(timeout=ctx.timeout_ms())
-    chooser.value.set_files(str(path), timeout=ctx.timeout_ms())
-
-    image_component = _locator(page, ctx, "image_component")
-    image_component.wait_for(state="visible", timeout=ctx.timeout_ms())
-    components_count = components.count()
-    if components_count != before + 1:
-        raise OperationError("background upload did not add exactly one image")
-    image_content = _locator(page, ctx, "image_content")
-    image_content.wait_for(state="visible", timeout=ctx.timeout_ms())
-    image_deadline = time.monotonic() + ctx.remaining_s()
-    while image_content.evaluate("e => e.naturalWidth") <= 0:
-        remaining = image_deadline - time.monotonic()
-        if remaining <= 0:
-            raise OperationError("background image did not finish loading")
-        page.wait_for_timeout(min(200, max(1, int(remaining * 1000))))
-
-    canvas = _locator(page, ctx, "canvas")
-    _place_component(page, image_component, canvas, target)
-    _locator(page, ctx, "arrange").click(timeout=ctx.timeout_ms())
-    _locator(page, ctx, "order").hover(timeout=ctx.timeout_ms())
-    _locator(page, ctx, "send_back").click(timeout=ctx.timeout_ms())
-    ctx.state[op.id] = {"target": target, "before": before}
+    state.setdefault("before", components.count())
+    before = state["before"]
+    if "component" not in state:
+        if not state.get("upload_started"):
+            _locator(page, ctx, "image").click(timeout=ctx.timeout_ms())
+            with page.expect_file_chooser(timeout=ctx.timeout_ms()) as chooser:
+                _locator(page, ctx, "upload_image").click(timeout=ctx.timeout_ms())
+            # Retain the pending creation too: an upload can succeed before its API
+            # call raises, so retry must wait for it rather than upload a duplicate.
+            state["upload_started"] = True
+            chooser.value.set_files(str(path), timeout=ctx.timeout_ms())
+        _poll(page, ctx, lambda: components.count() == before + 1,
+              "background upload did not add exactly one image")
+        state["component"] = components.nth(before).element_handle(timeout=ctx.timeout_ms())
+        state["component_index"] = before
+    component = state["component"]
+    _component_index(components, component)
+    image = component.wait_for_selector(ctx.selectors["image_content"],
+                                        state="visible", timeout=ctx.timeout_ms())
+    _poll(page, ctx, lambda: image.evaluate("e => e.naturalWidth") > 0,
+          "background image did not finish loading")
+    if (state.get("placed") and _geometry(component) == target
+            and _component_index(components, component) == 0):
+        return OpResult()
+    _prepare_image(page, component, ctx)
+    _place_component(page, component, _locator(page, ctx, "canvas"), target)
+    state["placed"] = True
+    _send_background_back(page, component, ctx)
     return OpResult()
 
 
 def _verify_set_background_image(page: Any, op: Any, ctx: OpContext) -> None:
-    state = ctx.state.get(op.id)
-    if not state:
+    state = ctx.state.get(op.id, {})
+    if "component" not in state or "target" not in state:
         raise OperationError("background image placement was not recorded")
-    component = _locator(page, ctx, "image_component")
-    image = _locator(page, ctx, "image_content")
+    component = state["component"]
+    image = component.wait_for_selector(ctx.selectors["image_content"],
+                                        state="visible", timeout=ctx.timeout_ms())
     components = _locator(page, ctx, "components")
-    deadline = min(ctx.op_deadline, time.monotonic() + max(0, ctx.timeout_ms() / 1000))
-    while True:
-        actual = _geometry(component)
-        target = state["target"]
-        first_is_image = components.first.locator(ctx.selectors["image_content"]).count() == 1
-        natural_width = image.evaluate("e => e.naturalWidth")
-        if (all(abs(found - expected) <= 4 for found, expected in zip(actual, target))
-                and first_is_image and natural_width > 0
-                and components.count() == state["before"] + 1):
-            return
-        remaining = min(deadline - time.monotonic(), ctx.remaining_s())
-        if remaining <= 0:
-            raise OperationError("background image placement did not verify")
-        page.wait_for_timeout(min(200, max(1, int(remaining * 1000))))
+    _poll(page, ctx, lambda: (
+        all(abs(a - e) <= 4 for a, e in zip(_geometry(component), state["target"]))
+        and _component_index(components, component) == 0
+        and image.evaluate("e => e.naturalWidth") > 0
+        and components.count() == state["before"] + 1
+    ), "background image placement did not verify")
 
 
 def _run_save_report(page: Any, op: Any, ctx: OpContext) -> OpResult:

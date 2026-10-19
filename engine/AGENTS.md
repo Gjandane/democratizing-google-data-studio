@@ -37,4 +37,5 @@ Environment quirks stay here; editor/code conventions live in
 `docs/architecture.md#Live editor conventions` and the essentials.
 - Git Bash is at `C:/Program Files/Git/bin/bash.exe` (outside PATH); use PowerShell for the blueprint script if the shell wrapper misquotes its absolute Windows path.
 - Live Data Studio can display Data Set Configuration Error even after field metadata loads; diagnose the underlying source separately from geometry/selector failures.
+- `OpContext.state` also stores the source-field list; registry walks must filter dictionary entries before reading component state.
 <!-- blueprint-solution:end -->
