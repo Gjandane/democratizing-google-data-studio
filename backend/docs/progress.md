@@ -168,3 +168,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none.
 - Left open: none.
 - Next: Task 4.2 Revise from comments. Start a new chat and invoke blueprint-solution-builder.
+
+## 2026-10-19: Task 4.2 Revise from comments
+- Status: partial
+- Plan check: off
+- What changed: attempted comments API, ADK revision branch, scoped RFC 6902 patches, one repair, staged render/persistence, decisions and regression tests. Two live failures triggered skill-required restore; implementation is recoverable in stash `blueprint: task 4.2 failed attempt 2026-10-19 09:37`.
+- Checks: before restore, `uv run pytest tests/test_revise.py` PASS (24); `uv run pytest` PASS (150, 3 live deselected). Manual live FAIL: comment accepted (202), worker returned `400 INVALID_ARGUMENT`; sample spec remains version 1. No final review performed.
+- Decisions: no plan/design changes. Added AGENTS.md diagnostic gotcha. Attempt used per-comment indexed patches, deterministic application order, identity-based scope with collision-justified neighbour moves, 6k input budget, and staging/rollback before publication. These choices remain unshipped.
+- Tried and failed: original Revision schema with Any value rejected live; explicit scalar/object/array anyOf value schema also rejected by minimal worker call. Provider gave no field-level diagnostic. Initial move test collided with source note; corrected fixture passed. Manual trace polling found /api/traces unavailable; query SQLite traces instead.
+- Gotchas: model/schema cause remains unisolated; API key was sanitized in diagnostics.
+- Left open: required live title-only revision and review.
+- Next: Restore the named stash, isolate the smallest accepted worker schema (including a plain-model control), then fix/retest and complete 4.2. Start a new chat and invoke blueprint-solution-builder.

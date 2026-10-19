@@ -42,4 +42,5 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - ADK interpolates braces in string instructions as session state; use callable instruction providers for assembled context containing user text.
 - ADK output_schema validation bypasses on_model_error_callback; guard and validate raw output in after_model_callback before ADK can log validation inputs.
 - Gemini numeric Literal constraints require response_json_schema; response_schema conversion raises "Literal values must be strings".
+- Gemini's generic `400 INVALID_ARGUMENT` does not identify the invalid field; isolate worker/model/schema compatibility with a minimal live request before attributing it to `Any` or unions.
 <!-- blueprint-solution:end -->
