@@ -90,13 +90,12 @@ async def test_revise_run_emits_usage(client, app, build_id, monkeypatch):
 
 
 async def test_audit_and_style_runs_emit_usage(client, app, build_id, audit_setup):
-    from test_audit_style import STYLE, findings, png
+    from test_audit_style import findings, reference, style_payload
     result = await app.state.harness.run("ux_audit", build_id, {"config": app.state.settings.get()},
                                          llm=FakeLLM(response=findings(("p1_revenue", "high"))))
     check_stream(app, build_id, result["run_id"], "ux_audit")
-    result = await app.state.harness.run("style_extract", build_id, {"config": app.state.settings.get(),
-        "images": [{"name": "a.png", "mime_type": "image/png", "content": png()}]}, llm=FakeLLM(response=json.dumps(STYLE)))
-    check_stream(app, build_id, result["run_id"], "style_extract")
+    result = await app.state.harness.run("reference_extract", build_id, style_payload(app), llm=FakeLLM(response=reference()))
+    check_stream(app, build_id, result["run_id"], "reference_extract")
 
 
 def test_research_run_emits_usage(research_setup, monkeypatch):

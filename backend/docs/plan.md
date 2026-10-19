@@ -234,7 +234,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_capabilities.py` passes: the test derives the list of recipe 1.0 types, options and style keys from ../contracts/recipe.schema.json (not a hand-written list) and asserts each has a registry classification; every `app` support record cites ../contracts/recipe.md or a file under ../contracts/fixtures/ that exercises it, and the test checks each cited path exists; undeclared keys, unknown evidence and animation reject; native support with no app evidence is unsupported_app; missing data is needs_data; unknowns cannot become ready; DSS_ALLOWED_TYPES only narrows support; measured evaluation of 40 requirements/24 components takes <=100ms excluding I/O. `uv run pytest` passes.
   - Review focus: ../contracts/dashboard-intent.md; official product sources vs contract/fixture app evidence; no model-authorized support and no runtime web-search dependency.
-- [ ] 11.2 Versioned references and structured image interpretation
+- [x] 11.2 Versioned references and structured image interpretation
   - Goal: implement style/recreate reference routes and retained per-version image sets; extract bounded layout/chart observations as well as styling, with legacy style-images compatibility.
   - Spec: docs/architecture.md#Reference interpretation; ../contracts/dashboard-intent.md#Reference set
   - Files: src/dss/api/builds.py, src/dss/harness/nodes/style_extract.py, src/dss/harness/nodes/reference_extract.py, src/dss/harness/context.py, src/dss/harness/graph.py, src/dss/spec/references.py, prompts/v1/reference_extract.md, skills/reference-extract.md, tests/test_references.py, tests/test_api_contract.py, tests/live/test_references.py

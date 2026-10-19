@@ -32,6 +32,17 @@ STYLE = {'palette': ['#1e40af', '#0d9488', '#F59E0B'], 'background': '#f1f5f9', 
          'text': '#0F172A', 'accent': '#1E40AF', 'font_family': 'Roboto', 'radius': 12, 'notes': 'Clean and blue.'}
 
 
+def reference(style=STYLE):
+    """A reference_extract reply with no observed elements (style-images is a reference alias)."""
+    return json.dumps({'style': style, 'element_count': 0, 'palette_notes': '', 'type_notes': '', 'spacing_notes': '', 'items': []})
+
+
+def style_payload(app):
+    return {'config': app.state.settings.get(), 'mode': 'style', 'instructions': '', 'reference_id': 'ref_0123456789ab',
+            'images': [{'id': 'img_0123456789ab', 'name': 'a.png', 'file': 'reference_img_0123456789ab.png',
+                        'mime_type': 'image/png', 'width': 1, 'height': 1, 'content': png()}]}
+
+
 class Capture(FakeLLM):
     requests: list = []
 
@@ -139,7 +150,7 @@ def post_style(client, bid, files):
 
 def test_style_upload_writes_style_md(setup, client, monkeypatch):
     app, bid, folder = setup
-    fake = Capture(response=json.dumps(STYLE), requests=[])
+    fake = Capture(response=reference(), requests=[])
     monkeypatch.setattr(app.state.models, 'llm_for', lambda node: fake)
     data = png()
     response = post_style(client, bid, [('files', ('Look.PNG', data, 'image/png'))])
@@ -155,14 +166,14 @@ def test_style_upload_writes_style_md(setup, client, monkeypatch):
     blobs = [p.inline_data for p in parts if p.inline_data]
     assert len(blobs) == 1 and blobs[0].mime_type == 'image/png' and blobs[0].data == data
     reply = messages(app.state.db, bid)[-1]
-    assert reply['node'] == 'style_extract' and '#1E40AF' in reply['text']
+    assert reply['node'] == 'reference_extract' and '#1E40AF' in reply['text']
     docs = client.get(f'/api/builds/{bid}').json()['docs']
     assert {'path': 'style.md', 'title': 'Style profile', 'type': 'Style Profile'} in docs
 
 
 def test_style_upload_unsafe_name_keeps_build_readable(setup, client, monkeypatch):
     app, bid, folder = setup
-    fake = Capture(response=json.dumps(STYLE), requests=[])
+    fake = Capture(response=reference(), requests=[])
     monkeypatch.setattr(app.state.models, 'llm_for', lambda node: fake)
     assert post_style(client, bid, [('files', ('Q3: a --- b #1.png', png(), 'image/png'))]).status_code == 202
     client.portal.call(drain, app)
@@ -171,17 +182,18 @@ def test_style_upload_unsafe_name_keeps_build_readable(setup, client, monkeypatc
     assert client.get(f'/api/builds/{bid}').status_code == 200
 
 
-@pytest.mark.parametrize('files', [
-    [('files', ('notes.txt', b'hello', 'text/plain'))],
-    [('files', ('fake.png', b'not a png', 'image/png'))],
-    [('files', ('swap.jpg', png(), 'image/jpeg'))],
-    [('files', ('big.png', png() + b'0' * (5 * 1024 * 1024), 'image/png'))],
-    [('files', (f'{i}.png', png(), 'image/png')) for i in range(4)],
+@pytest.mark.parametrize('files, status', [
+    ([('files', ('notes.txt', b'hello', 'text/plain'))], 422),
+    ([('files', ('fake.png', b'not a png', 'image/png'))], 422),
+    ([('files', ('swap.jpg', png(), 'image/jpeg'))], 422),
+    # Oversize bytes are 413 since the alias shares reference validation (dashboard-intent.md).
+    ([('files', ('big.png', png() + b'0' * (5 * 1024 * 1024), 'image/png'))], 413),
+    ([('files', (f'{i}.png', png(), 'image/png')) for i in range(4)], 422),
 ])
-def test_style_rejects_invalid_files(setup, client, files):
+def test_style_rejects_invalid_files(setup, client, files, status):
     app, bid, folder = setup
     response = post_style(client, bid, files)
-    assert response.status_code == 422 and response.json()['error']['code'] == 'invalid_source'
+    assert response.status_code == status and response.json()['error']['code'] == 'invalid_source'
     assert 'reason' in response.json()['error']['detail']
     with app.state.db.connect() as conn:
         assert conn.execute('SELECT count(*) FROM traces').fetchone()[0] == 0
@@ -199,10 +211,9 @@ def test_style_wrong_stage(setup, client):
 async def test_style_invalid_hex_writes_nothing(setup):
     app, bid, folder = setup
     bad = {**STYLE, 'accent': 'blue'}
-    fake = FakeLLM(response=json.dumps(bad))
+    fake = FakeLLM(response=reference(bad))
     with pytest.raises(RunError) as error:
-        await app.state.harness.run('style_extract', bid, {'config': app.state.settings.get(),
-            'images': [{'name': 'a.png', 'mime_type': 'image/png', 'content': png()}]}, llm=fake)
+        await app.state.harness.run('reference_extract', bid, style_payload(app), llm=fake)
     assert error.value.code == 'llm_unavailable'
     assert not (folder / 'docs/style.md').exists() and messages(app.state.db, bid) == []
 
@@ -243,14 +254,13 @@ async def test_audit_and_style_count_the_whole_request(setup):
             return request_estimate(llm_request) // 2
 
     _, audit_model = await audit(setup, '', counting(Capture)(response=findings(('p1_revenue', 'low')), requests=[]))
-    style_model = Seen(response=json.dumps(STYLE), requests=[])
-    await app.state.harness.run('style_extract', bid, {'config': app.state.settings.get(),
-        'images': [{'name': 'a.png', 'mime_type': 'image/png', 'content': png()}]}, llm=style_model)
+    style_model = Seen(response=reference(), requests=[])
+    await app.state.harness.run('reference_extract', bid, style_payload(app), llm=style_model)
     with app.state.db.connect() as conn:
-        rows = conn.execute("SELECT node, spans_json FROM traces WHERE node IN ('ux_audit','style_extract')").fetchall()
+        rows = conn.execute("SELECT node, spans_json FROM traces WHERE node IN ('ux_audit','reference_extract')").fetchall()
     spans = {node: next(s for s in json.loads(raw) if s['node'] == node) for node, raw in rows}
     assert_counted(spans['ux_audit'], audit_model)
-    style = spans['style_extract']
+    style = spans['reference_extract']
     # The image is in the counted request; offline its estimate adds IMAGE_TOKENS.
     assert [p.inline_data.data for p in seen[0].contents[0].parts if p.inline_data] == [png()]
     assert style['input_tokens_estimate'] > IMAGE_TOKENS and style['request_tokens'] == style['input_tokens_estimate'] // 2

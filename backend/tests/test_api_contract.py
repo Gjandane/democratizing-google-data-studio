@@ -103,3 +103,37 @@ def test_intake_and_action_contracts(thin, monkeypatch):
     component = client.get(f"/api/builds/{bid}/spec").json()["pages"][0]["components"][0]["id"]
     check(client.post(f"/api/builds/{bid}/comments", json={"comments":[{"component_id":component,"text":"Make it blue"}]}), "run_accepted.json", 202)
     finish()
+
+
+INTENT = Path(__file__).resolve().parents[2] / "contracts/fixtures/dashboard-intent"
+
+
+def test_reference_set_contract(thin, monkeypatch):
+    """dashboard-intent.md Reference set: exact ReferenceSet keys/types, 202/204, legacy alias, errors."""
+    from fakes import FakeLLM
+    from dss.spec import references
+    from test_audit_style import drain
+    from test_references import output, png
+    client, app, bid, folder = thin
+    monkeypatch.setattr(references, "decode", lambda images: None)
+    monkeypatch.setattr(app.state.models, "llm_for", lambda _: FakeLLM(response=output()))
+    fixture = json.loads((INTENT / "reference_set.json").read_text())
+    response = client.get(f"/api/builds/{bid}/reference-images")
+    assert response.status_code == 200 and response.json() is None
+    for path, data in (("reference-images", {"mode": "recreate", "instructions": "Use net sales for Revenue."}),
+                       ("style-images", {})):
+        check(client.post(f"/api/builds/{bid}/{path}", files=[("files", ("a.png", png(), "image/png"))], data=data),
+              "run_accepted.json", 202)
+        client.portal.call(drain, app)
+        result = client.get(f"/api/builds/{bid}/reference-images")
+        check(result, "../dashboard-intent/reference_set.json")
+        assert result.json()["images"][0]["file"].startswith("reference_img_")
+    for content, name, kind, status in ((png() + b"0" * references.MAX_FILE_BYTES, "a.png", "image/png", 413),
+                                        (b"text", "a.txt", "text/plain", 422)):
+        error = client.post(f"/api/builds/{bid}/reference-images", data={"mode": "recreate"}, files=[("files", (name, content, kind))])
+        # error.json's detail is wrong_stage's; upload errors carry detail.reason (existing invalid_source code).
+        assert error.status_code == status and error.json()["error"].keys() == {"code", "message", "detail"}
+        assert error.json()["error"]["code"] == "invalid_source" and isinstance(error.json()["error"]["detail"]["reason"], str)
+    deleted = client.delete(f"/api/builds/{bid}/reference-images")
+    assert deleted.status_code == 204 and client.get(f"/api/builds/{bid}/reference-images").json() is None
+    assert fixture.keys() == {"id", "mode", "instructions", "images", "summary"}
