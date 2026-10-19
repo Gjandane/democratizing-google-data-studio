@@ -1,6 +1,8 @@
 import { MessagesSquare, Send } from 'lucide-react';
-import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { Build, Message } from '../../../api/types';
+import { ActivityStrip } from '../../activity/ActivityStrip';
+import { RunCard } from '../../activity/RunCard';
 import { Button } from '../../../components/Button';
 import { EmptyState } from '../../../components/EmptyState';
 import { ErrorState } from '../../../components/ErrorState';
@@ -98,7 +100,7 @@ function Composer({ build, stream, onSent }: { build: Build; stream: BuildStream
 
 /** The chat column: message list (markdown, streamed drafts) and the composer. */
 export function ChatPanel({ build, chat }: { build: Build; chat: BuildStream }) {
-  const { messages, drafts, loadError, status } = chat;
+  const { messages, drafts, loadError, status, activity } = chat;
   const list = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const forceScroll = useRef(false);
@@ -116,7 +118,12 @@ export function ChatPanel({ build, chat }: { build: Build; chat: BuildStream }) 
       stick.current = true;
     }
     forceScroll.current = false;
-  }, [messages, drafts]);
+  }, [messages, drafts, activity]);
+
+  const onCardShow = useCallback(() => {
+    const el = list.current;
+    if (el && stick.current) el.scrollTop = el.scrollHeight;
+  }, []);
 
   const empty = messages !== null && messages.length === 0 && drafts.length === 0;
   const fresh = build.stage === 'connect';
@@ -172,12 +179,14 @@ export function ChatPanel({ build, chat }: { build: Build; chat: BuildStream }) 
         className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3"
       >
         {body}
+        {messages !== null && <RunCard activity={activity} onShow={onCardShow} />}
       </div>
       {messages !== null && status === 'connecting' && (
         <p role="status" className="px-3 pb-2 text-caption text-text-muted">
           Reconnecting…
         </p>
       )}
+      <ActivityStrip activity={activity} />
       <Composer
         build={build}
         stream={chat}

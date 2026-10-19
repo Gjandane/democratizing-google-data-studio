@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../../api/client';
 import { useBuildEvents, type OpenBuildEvents, type StreamStatus } from '../../../api/events';
 import { ApiError, type Build, type BuildEvent, type Message } from '../../../api/types';
+import { reduceActivity, type Activity } from '../../activity/activity';
 import { idleRun, reduceBuildRun, type BuildRun } from '../build/buildRun';
 
 export interface Draft {
@@ -29,6 +30,8 @@ const STRETCH_NODES: readonly string[] = ['style', 'research', 'audit'];
 const isStretchNode = (node: string): node is StretchNode => STRETCH_NODES.includes(node);
 
 export interface BuildStream {
+  /** Runs of this build seen on the stream since it opened (client-only; events aren't replayed). */
+  activity: Activity;
   /** Latest run of each stretch node; a 'running' entry is dropped on reconnect (events aren't replayed). */
   stretchRuns: StretchRuns;
   /** null while the first load runs. */
@@ -54,6 +57,7 @@ export interface BuildStream {
 }
 
 const LOCAL = 'local-';
+const NO_RUNS: Activity = [];
 
 const errorText = (error: unknown, fallback: string) => (error instanceof ApiError ? error.message : fallback);
 
@@ -72,6 +76,7 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
   const [commentsError, setCommentsError] = useState<{ seq: number; text: string } | null>(null);
   const [buildRun, setBuildRun] = useState<BuildRun>(idleRun);
   const [stretchRuns, setStretchRuns] = useState<StretchRuns>({});
+  const [activityOf, setActivityOf] = useState<{ buildId: string; runs: Activity }>({ buildId: build.id, runs: [] });
 
   const latest = useRef(build);
   const change = useRef(onBuildChange);
@@ -125,6 +130,8 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
 
   const onEvent = (event: BuildEvent) => {
     setBuildRun((r) => reduceBuildRun(r, event));
+    const now = Date.now();
+    setActivityOf((a) => ({ buildId, runs: reduceActivity(a.buildId === buildId ? a.runs : [], event, now) }));
     switch (event.name) {
       case 'ready':
         // Events aren't replayed: a run.finished missed while disconnected must not lock the stage.
@@ -209,6 +216,8 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
   };
 
   const status = useBuildEvents(buildId, onEvent, open);
+  // Another build's runs never show here.
+  const activity = activityOf.buildId === buildId ? activityOf.runs : NO_RUNS;
 
   const send = async (raw: string): Promise<boolean> => {
     const text = raw.trim();
@@ -237,5 +246,5 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
     }
   };
 
-  return { messages, loadError, drafts, progress, planning, applying, commentsError, buildRun, stretchRuns, status, reload: load, send, sendError };
+  return { activity, messages, loadError, drafts, progress, planning, applying, commentsError, buildRun, stretchRuns, status, reload: load, send, sendError };
 }

@@ -49,6 +49,7 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - The blueprint checkpoint zip skips every folder named `build/`, so `diff` and `restore` miss src/features/workspace/build/: review those files in full and back them up yourself before risky edits.
 - Modal returns focus to the `document.activeElement` at open: in a test call `button.focus()` before `fireEvent.click` to assert the return.
 - Git Bash `sed -i` rewrites a CRLF file as LF (whole-file `diff` hunk): edit with the Edit tool or Python `newline=''`.
+- Fake timers + mock API: mock `respond` uses `setTimeout(0)`, so `await api.x()` hangs under `vi.useFakeTimers`; wrap it (`await vi.runAllTimersAsync(); return promise`), see tests/activity.test.tsx `call`. A Python edit on Windows without `encoding='utf-8'` writes a new non-ASCII literal (`·`, `…`) as cp1252.
 
 ## Skills
 Use each skill only at its step, on that task's files. If one isn't installed in your tool, skip it and say so under Gotchas. The essentials' UI design section wins over a skill's generic advice.

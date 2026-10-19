@@ -193,10 +193,24 @@ function startRun(
 ): RunAccepted {
   const run_id = nextId('r');
   const buildId = build.id;
+  // Every mocked run reports growing token totals, before each step so run.finished follows the last.
+  let input = 0;
+  let output = 0;
+  const usage = () => {
+    input += 3120;
+    output += 455;
+    emit(buildId, { name: 'run.usage', data: { run_id, node, input_tokens: input, output_tokens: output } });
+  };
   schedule(
     [
-      () => emit(buildId, { name: 'run.started', data: { run_id, node } }),
-      ...steps(run_id),
+      () => {
+        emit(buildId, { name: 'run.started', data: { run_id, node } });
+        usage();
+      },
+      ...steps(run_id).map((step) => () => {
+        usage();
+        step();
+      }),
       ...(options.finishInSteps
         ? []
         : [

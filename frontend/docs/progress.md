@@ -148,3 +148,14 @@ context. Task status lives in docs/plan.md, not here.
 - What changed: the user asked for UI transparency like a coding agent's task list (what is happening, elapsed time, tokens), with preset wording. contracts/api.md is now 1.2: `run.usage {run_id, node, input_tokens, output_tokens}` (running totals) and the list of `node` values; new fixture contracts/fixtures/api/events.usage.sse (events.sse unchanged, so the app still loads). PRD goal 7 and Features, essentials UI design "Activity" and Contracts row updated.
 - Affects: new task 6.1 (activity strip and run checklist), built against the fixture; no gate on backend 10.1 (without it the strip shows phrase and time, no tokens). Until 6.1 is done, `npm test` fails one check (contract.test.ts "has a check for every fixture file": events.usage.sse); the app itself is unaffected (fixtures.ts imports files by name; unknown live events are ignored).
 - Next: task 6.1.
+
+## 2026-10-19: Task 6.1 Activity strip and run checklist
+- Status: done
+- Plan check: off
+- What changed: new src/features/activity/ (presets.ts phrases+steps per contract node, activity.ts reducer/selectors/clock/formatters, ActivityStrip.tsx above the composer, RunCard.tsx at the end of the chat log); useBuildStream returns `activity` (runs keyed by buildId); ChatPanel mounts both; types.ts `run.usage` + guard; mock startRun emits growing `run.usage` before each step; contract test covers events.usage.sse; tests/activity.test.tsx (16, fake timers).
+- Checks: `npm test` PASS (14 files, 221 tests); `npm run typecheck` PASS; `npm run build` exit 0; manual headless Chrome: log height same before/with strip (601/601 at 1280x800, 701/701 at 1440x900), strip + plan card mid-run and done yes; screenshots/6.1-activity-{running,done}-{1280x800,1440x900}.png.
+- Decisions: built myself, not delegated (design already settled while exploring). Clock lives in the strip/card (setTimeout to the next visible change, cleared every render/unmount), not in useBuildStream, so the workspace doesn't re-render each second. Strip slot always h-8 (no shift). Card = newest run with steps, shown once it outlasts 400 ms, stays after finish until the next stepped run; `aria-live="off"`; scrolls the log when it appears. Strip announces start phrase and end line once (sr-only status). Tokens floor to one decimal (92.5k). Legacy node names ('build','comments','style','audit') mapped to contract names in presets.ts ALIASES.
+- Tried and failed: none.
+- Gotchas: tests/agent-status.test.tsx "424 agent_offline" flakes ~1 in 6 on baseline too (not from this task).
+- Left open: P2 contract 1.2 node names (revise, style_extract, ux_audit, execute) not matched by useBuildStream/buildRun.ts/mocks - useBuildStream.ts; P2 finished card stays pinned under later messages - activity.ts cardRun; P2 agent-status flake - tests/agent-status.test.tsx.
+- Next: all frontend tasks done; next is the program's final audit (architect).

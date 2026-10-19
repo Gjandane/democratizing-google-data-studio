@@ -51,7 +51,7 @@ const jsonGuards: Record<string, Guard<unknown>> = {
 
 describe('shared fixtures match the contract', () => {
   it('has a check for every fixture file', () => {
-    const checked = [...Object.keys(jsonGuards), 'events.sse', 'prototype.sample.html'];
+    const checked = [...Object.keys(jsonGuards), 'events.sse', 'events.usage.sse', 'prototype.sample.html'];
     expect(Object.keys(fixture).sort()).toEqual(checked.sort());
   });
 
@@ -65,19 +65,33 @@ describe('shared fixtures match the contract', () => {
     sources.forEach((source, i) => expect(problemsOf(isSource, source, `${name} sources[${i}]`)).toEqual([]));
   });
 
-  it('events.sse: starts with ready, and every event matches its data shape', () => {
-    const events = parseSse(fixture['events.sse'] ?? '');
+  const names = new Set<string>();
+  it.each(['events.sse', 'events.usage.sse'])('%s: starts with ready, and every event matches its data shape', (file) => {
+    const events = parseSse(fixture[file] ?? '');
     expect(events[0]?.event).toBe('ready');
-    const names = new Set<string>();
     events.forEach(({ event, data }, i) => {
       const problems: string[] = [];
       const parsed = toBuildEvent(event, JSON.parse(data), problems);
       expect(parsed, `event #${i + 1} (${event}): ${problems.join('; ')}`).not.toBeNull();
       names.add(event);
     });
-    // Every event of the contract but the stretch screencast frame appears in the fixture.
+  });
+
+  it('the event fixtures cover every event but the stretch screencast frame', () => {
     const expected = Object.keys(buildEventGuards).filter((name) => name !== 'build.frame');
     expect([...names].sort()).toEqual(expected.sort());
+  });
+
+  it('events.usage.sse: run.usage totals only grow within a run, and run.finished follows the last one', () => {
+    const events = parseSse(fixture['events.usage.sse'] ?? '').map(({ event, data }) => ({ event, data: JSON.parse(data) as Record<string, unknown> }));
+    const usage = events.filter((e) => e.event === 'run.usage');
+    expect(usage.length).toBeGreaterThan(0);
+    for (let i = 1; i < usage.length; i++) {
+      expect(usage[i]!.data.input_tokens as number).toBeGreaterThanOrEqual(usage[i - 1]!.data.input_tokens as number);
+      expect(usage[i]!.data.output_tokens as number).toBeGreaterThanOrEqual(usage[i - 1]!.data.output_tokens as number);
+    }
+    const finished = events.findIndex((e) => e.event === 'run.finished');
+    expect(finished).toBeGreaterThan(events.lastIndexOf(usage[usage.length - 1]!));
   });
 
   it('prototype.sample.html: one canvas, flat data-cid roots with a label and a kind', () => {
@@ -139,6 +153,10 @@ describe('the guards reject what the contract forbids', () => {
   it('an unknown event name and malformed event data fail', () => {
     expect(toBuildEvent('build.deleted', {})).toBeNull();
     expect(toBuildEvent('message.delta', { message_id: 'm_000000000003' })).toBeNull();
+    const usage = { run_id: 'r_00000000000b', node: 'plan', input_tokens: 10, output_tokens: 2 };
+    expect(toBuildEvent('run.usage', usage)).toEqual({ name: 'run.usage', data: usage });
+    expect(toBuildEvent('run.usage', { ...usage, output_tokens: '2' })).toBeNull();
+    expect(toBuildEvent('run.usage', { run_id: 'r_00000000000b', node: 'plan', input_tokens: 10 })).toBeNull();
     expect(toBuildEvent('ready', { build_id: 'b_3f9a0c12d4e5' })).toEqual({ name: 'ready', data: { build_id: 'b_3f9a0c12d4e5' } });
   });
 });

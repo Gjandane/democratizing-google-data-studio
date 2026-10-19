@@ -436,6 +436,8 @@ export interface BuildEventMap {
   'stage.changed': { stage: Stage };
   'build.updated': { build: Build };
   'run.started': { run_id: string; node: string };
+  /** The run's token totals so far; they only grow within a run. */
+  'run.usage': { run_id: string; node: string; input_tokens: number; output_tokens: number };
   /** Short status line, e.g. "Writing questions.md". */
   'node.progress': { run_id: string; node: string; text: string };
   'run.finished': { run_id: string; node: string; status: 'ok' | 'error'; error: string | null };
@@ -461,6 +463,7 @@ export const buildEventGuards: { [K in BuildEventName]: Guard<M[K]> } = {
   'stage.changed': shape<M['stage.changed']>({ stage: isStage }),
   'build.updated': shape<M['build.updated']>({ build: isBuild }),
   'run.started': shape<M['run.started']>({ run_id: isString, node: isString }),
+  'run.usage': shape<M['run.usage']>({ run_id: isString, node: isString, input_tokens: isInt, output_tokens: isInt }),
   'node.progress': shape<M['node.progress']>({ run_id: isString, node: isString, text: isString }),
   'run.finished': shape<M['run.finished']>({
     run_id: isString,
