@@ -141,7 +141,13 @@ export function ChatPanel({ build, chat }: { build: Build; chat: BuildStream }) 
       <EmptyState
         icon={<MessagesSquare />}
         title="No messages yet"
-        description={fresh ? 'The interview starts here once you add a source.' : "The assistant's first question shows up here."}
+        description={
+          fresh
+            ? 'The interview starts here once you add a source.'
+            : build.stage === 'done'
+              ? 'No messages were kept for this build.'
+              : "The assistant's first question shows up here."
+        }
         className="my-auto"
       />
     );

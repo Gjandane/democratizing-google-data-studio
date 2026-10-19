@@ -9,7 +9,12 @@ const components: Components = {
     <pre className="overflow-x-auto rounded-control bg-surface p-2 text-caption [&:not(:first-child)]:mt-2 [&_code]:bg-transparent [&_code]:p-0" {...props} />
   ),
   code: ({ node: _node, ...props }) => <code className="rounded-control bg-surface px-1 font-mono text-caption" {...props} />,
-  a: ({ node: _node, ...props }) => <a className="text-primary underline" target="_blank" rel="noreferrer" {...props} />,
+  a: ({ node: _node, children, ...props }) => (
+    <a className="text-primary underline" target="_blank" rel="noopener noreferrer" {...props}>
+      {children}
+      <span className="sr-only"> (opens in a new tab)</span>
+    </a>
+  ),
   strong: ({ node: _node, ...props }) => <strong className="font-semibold" {...props} />,
 };
 

@@ -52,6 +52,7 @@ function ResultCard({ run }: { run: BuildRun }) {
           <a href={finished.report_url} target="_blank" rel="noopener noreferrer" className={`${buttonClass('primary', 'md')} mt-2`}>
             <ExternalLink aria-hidden="true" />
             Open in Data Studio
+            <span className="sr-only">(opens in a new tab)</span>
           </a>
         )}
       </div>

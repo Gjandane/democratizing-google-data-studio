@@ -186,6 +186,27 @@ describe('Chat panel', () => {
     expect((await screen.findByText('one')).tagName).toBe('STRONG');
     expect(screen.getAllByRole('listitem').length).toBeGreaterThanOrEqual(2);
   });
+
+  it('marks markdown links as opening in a new tab', async () => {
+    const { ready } = await setup();
+    vi.spyOn(api, 'listMessages').mockResolvedValue([message('m_link', 'assistant', 'See [the docs](https://example.com/docs).')]);
+    await ready();
+    const link = (await screen.findByRole('link', { name: /^the docs/ })) as HTMLAnchorElement;
+    expect(link.textContent).toContain('(opens in a new tab)');
+    expect(link.target).toBe('_blank');
+    expect(link.rel).toContain('noopener');
+  });
+
+  it('shows done-build copy when a done build has no messages', async () => {
+    const { build, ready, fire } = await setup();
+    vi.spyOn(api, 'listMessages').mockResolvedValue([]);
+    await ready();
+    await fire({ name: 'build.updated', data: { build: { ...build, stage: 'done' } } });
+    const empty = await screen.findByText('No messages yet');
+    const text = (empty.parentElement as HTMLElement).textContent ?? '';
+    expect(text).not.toContain('first question');
+    expect(text).toContain('No messages were kept for this build.');
+  });
 });
 
 describe('Interview stage', () => {

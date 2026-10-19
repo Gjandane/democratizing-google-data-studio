@@ -272,7 +272,10 @@ describe('trace modal', () => {
     vi.spyOn(api, 'listTraces').mockResolvedValue(traces);
     render(<TraceModal open onClose={() => {}} />);
     const table = await screen.findByRole('table');
-    expect(within(table).getByText('Error')).toBeTruthy();
+    const pill = within(table).getByText('Error');
+    // 4.5:1: text color on the soft danger fill, as DoneStage.
+    expect(pill.classList.contains('text-text')).toBe(true);
+    expect(pill.classList.contains('text-danger')).toBe(false);
     expect(within(table).getByText('Model timed out')).toBeTruthy();
     expect(within(table).getByText('—')).toBeTruthy();
     expect(within(table).getByText('Total, 1 run')).toBeTruthy();
@@ -306,5 +309,10 @@ describe('trace modal', () => {
     expect(formatLatency(800)).toBe('800 ms');
     expect(formatLatency(2300)).toBe('2.3 s');
     expect(formatLatency(125000)).toBe('2 min 5 s');
+    // Rounds before picking the unit: never "60 s".
+    expect(formatLatency(119600)).toBe('2 min 0 s');
+    expect(formatLatency(59960)).not.toBe('60.0 s');
+    expect(formatLatency(59960)).toBe('1 min 0 s');
+    expect(formatLatency(59940)).toBe('59.9 s');
   });
 });

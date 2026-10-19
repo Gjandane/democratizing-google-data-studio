@@ -202,3 +202,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: a `ready` event drops running runs, so a test of "run started before the chat loaded" must fire `ready` first, then `run.started` before advancing timers.
 - Left open: P3 plan and spec errors can both show if spec fails inside a plan run - src/features/workspace/chat/InterviewStage.tsx; P3 anchor moves up one if a counted optimistic bubble's send fails mid-run - src/features/workspace/chat/useBuildStream.ts
 - Next: Task 7.2. Start by reading its Files in docs/plan.md.
+
+## 2026-10-19: Task 7.2 Contrast and small UI fixes
+- Status: done
+- Plan check: off
+- What changed: Trace "Error" pill `text-text` on `bg-danger-soft`; `formatLatency` rounds to tenths before choosing the unit (119600 → "2 min 0 s", 59960 → "1 min 0 s"); Build result link and markdown links carry sr-only "(opens in a new tab)" (markdown rel now `noopener noreferrer`); PrototypeStage comment names `revise`; a done build with no messages says "No messages were kept for this build."
+- Checks: `npm test` PASS 14 files / 230 tests (new asserts in settings, build, chat tests); `npm run typecheck` PASS; search of src/ for "`comments` run": 0 hits; manual: yes, screenshots/7.2-trace-error-1280x800.png (trace listing patched from the page with one error run).
+- Decisions: link tests match `/^Open in Data Studio/` plus a textContent check, since the accessible name now includes the sr-only text.
+- Tried and failed: none
+- Gotchas: none new (sed -i CRLF flip already in Known gotchas; hit again, restored).
+- Left open: none from review (P3 directional copy fixed). Pre-existing: trace total row wraps "2 min 43 s" at 1280; markdown link has no hover state.
+- Next: Phase 7 done; all plan tasks [x].

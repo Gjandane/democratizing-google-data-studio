@@ -128,7 +128,8 @@ describe('Build stage result', () => {
     await fire(opEvent('s001', 'ok'));
     await fire(opEvent('s002', 'failed', 'nope'));
     await fire(finished('partial'));
-    const link = screen.getByRole('link', { name: 'Open in Data Studio' }) as HTMLAnchorElement;
+    const link = screen.getByRole('link', { name: /^Open in Data Studio/ }) as HTMLAnchorElement;
+    expect(link.textContent).toContain('(opens in a new tab)');
     expect(link.getAttribute('href')).toBe('https://lookerstudio.google.com/reporting/abc');
     expect(link.target).toBe('_blank');
     expect(link.rel).toContain('noopener');
@@ -148,7 +149,7 @@ describe('Build stage result', () => {
     const { fire } = await withRecipe();
     await fire(finished('ok'));
     expect(screen.getByText('Your dashboard is in Data Studio.')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Open in Data Studio' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: /^Open in Data Studio/ })).toBeTruthy();
     expect(screen.queryByText(/ops? failed/)).toBeNull();
   });
 

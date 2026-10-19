@@ -11,11 +11,13 @@ import { Table, type Column } from '../../components/Table';
 const count = new Intl.NumberFormat('en-US');
 const time = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
-/** 2300 -> "2.3 s"; under a second stays in ms. */
+/** 2300 -> "2.3 s", 119600 -> "2 min 0 s"; under a second stays in ms. Rounds before choosing the unit, so never "60.0 s". */
 export function formatLatency(ms: number): string {
   if (ms < 1000) return `${ms} ms`;
-  const seconds = ms / 1000;
-  return seconds < 60 ? `${seconds.toFixed(1)} s` : `${Math.floor(seconds / 60)} min ${Math.round(seconds % 60)} s`;
+  const tenths = Math.round(ms / 100);
+  if (tenths < 600) return `${(tenths / 10).toFixed(1)} s`;
+  const seconds = Math.round(ms / 1000);
+  return `${Math.floor(seconds / 60)} min ${seconds % 60} s`;
 }
 
 function formatStart(iso: string): string {
@@ -39,7 +41,7 @@ const COLUMNS: Column<Trace>[] = [
         <span className="rounded-control bg-success-soft px-1.5 py-0.5 text-caption font-medium text-success">OK</span>
       ) : (
         <span className="flex flex-col gap-0.5">
-          <span className="w-fit rounded-control bg-danger-soft px-1.5 py-0.5 text-caption font-medium text-danger">Error</span>
+          <span className="w-fit rounded-control bg-danger-soft px-1.5 py-0.5 text-caption font-medium text-text">Error</span>
           {t.error && <span className="max-w-64 text-caption text-text-muted">{t.error}</span>}
         </span>
       ),

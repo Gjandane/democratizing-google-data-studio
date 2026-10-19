@@ -13,7 +13,7 @@ import type { PendingComment, Target } from './types';
 
 interface PrototypeStageProps {
   build: Build;
-  /** A `comments` run is open (also true when another tab started it). */
+  /** A `revise` run is open (also true when another tab started it). */
   applying: boolean;
   commentsError: BuildStream['commentsError'];
   /** Run state of the UX audit, from the build's event stream. */
