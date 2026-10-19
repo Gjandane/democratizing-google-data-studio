@@ -6,7 +6,7 @@ from dss.harness.guardrails import RunError
 from dss.spec.validate import validate_spec
 
 
-def make_validator(state, *, allowed, high_priority, expected, trace, save):
+def make_validator(state, *, allowed, high_priority, expected, trace, save, verify=None):
     async def validate(node_input):
         trace.span('validate')
         raw = state['raw']
@@ -17,6 +17,8 @@ def make_validator(state, *, allowed, high_priority, expected, trace, save):
                 for key, required in expected.items():
                     if value.get(key) != required:
                         errors.append({'path': key, 'message': 'Must match the supplied build identity and datasource'})
+            if not errors and verify:
+                errors.extend(verify(value))
         except (ValueError, TypeError):
             value = None
             errors = [{'path': '', 'message': 'Expected a JSON DashboardSpec object'}]

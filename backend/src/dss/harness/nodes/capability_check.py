@@ -104,7 +104,12 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
             state["failure"] = RunError("feasibility_stale", "Inputs changed during assessment; check again", 409)
             return "Feasibility inputs changed."
         candidate.verification = req.verification(snapshot, candidate, checker)
-        assessment = req.evaluate(snapshot, candidate, checker)
+        assessment = req.evaluate(snapshot, candidate, checker, check_components=not payload.get('_intent_only'))
+        state['assessment'] = assessment
+        # An unchanged plan preflight is read-only. The successful candidate
+        # publishes its refreshed proof with its spec; failed plans keep the bundle.
+        if payload.get('_defer_assessment') and not pending and assessment.state == 'ready':
+            return 'Feasibility is ready.'
         req.save(folder, candidate, assessment)
         from dss.api.builds import build_response
         await harness.emit(build_id, run_id, "docs.updated", {"docs": build_response(harness.db, config, build_id)["docs"]})

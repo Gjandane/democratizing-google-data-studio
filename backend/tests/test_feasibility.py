@@ -230,6 +230,28 @@ def test_duplicate_descriptions_cannot_hide_an_unsupported_need(thin, monkeypatc
     assert len(req.load(folder).requirements[0].needs) == 2
 
 
+@pytest.mark.parametrize('reverse', [False, True])
+@pytest.mark.parametrize('capability', ['animation.temporal_playback', None])
+def test_clarification_keeps_merged_unsupported_or_unknown(thin, monkeypatch, reverse, capability):
+    client, app, bid, folder = thin
+    source(app, bid, gross_sales='FLOAT', net_sales='FLOAT')
+    first = user(app, bid, 'Show Revenue')
+    use_model(monkeypatch, app, extracted(first, mappings=[{'label': 'Revenue', 'field': None}]))
+    assert check(client, app, bid)[1]['state'] == 'blocked'
+    text = 'Revenue means net_sales. Animate GPS points.'
+    sid = user(app, bid, text)
+    rows = [extracted(sid, text=text, mappings=[{'label': 'Revenue', 'field': 'net_sales'}]),
+            extracted(sid, text=text, needs=[{'capability': capability}] if capability else [])]
+    use_model(monkeypatch, app, *(list(reversed(rows)) if reverse else rows))
+    _, a = check(client, app, bid)
+    assert a['state'] == 'blocked'
+    assert any(i['status'] == ('unsupported_app' if capability else 'unknown') for i in a['issues'])
+    ledger = req.load(folder)
+    assert ledger.requirements[0].mappings[0].field == 'net_sales'
+    merged = next(r for r in ledger.requirements if r.source.id == sid)
+    assert any(n.capability == (capability or 'unknown.unclassified') for n in merged.needs)
+
+
 def test_omitted_source_fails_closed(thin, monkeypatch):
     client, app, bid, folder = thin
     user(app, bid, "A requirement the model forgot")
@@ -530,6 +552,19 @@ def test_accept_is_explicit_durable_and_does_no_work(thin, monkeypatch):
     assert choose(client, bid, a, drop(a["issues"][0])).json()["error"]["code"] == "feasibility_stale"
     _, b = check(client, app, bid)
     assert b["state"] == "ready" and b["issues"][0]["resolution"] == "accepted_alternative"
+
+
+def test_existing_choices_survive_optional_clarification_provenance(thin, monkeypatch):
+    client, app, bid, folder = thin
+    a = animated(thin, monkeypatch)
+    assert choose(client, bid, a, accept(a['issues'][0])).status_code == 200
+    ledger = req.load(folder)
+    original = ledger.requirements[0]
+    # The exact meaning shape written by 11.4 before clarifications existed.
+    ledger.decisions[0]['meaning'] = req.digest(original.model_dump(exclude={'resolution', 'clarifications'}))
+    snapshot = req.inputs(app.state.db, bid, folder)
+    a = req.evaluate(snapshot, ledger, capabilities.Checker(capabilities.load_registry()))
+    assert a.state == 'ready' and a.issues[0].resolution == 'accepted_alternative'
 
 
 def test_choice_survives_spec_and_registry_but_rechecks_mapping_and_data(thin, monkeypatch):

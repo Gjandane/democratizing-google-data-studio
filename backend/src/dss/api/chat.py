@@ -64,6 +64,16 @@ async def plan(build_id: str, request: Request):
         stage = conn.execute("SELECT stage FROM builds WHERE id=?", (build_id,)).fetchone()[0]
     if stage not in ("interview", "prototype") or build_id in state.harness.active_builds:
         raise RunError("wrong_stage", "Planning is unavailable in this stage", 409, {"stage": stage})
+    from dss.api.prototype import current
+    from dss.spec.requirements import plan_preflight
+    _, folder = current(state, build_id)
+    try:
+        plan_preflight(state.db, build_id, folder)
+    except RunError as exc:
+        if exc.code == 'feasibility_blocked':
+            with state.db.connect() as conn:
+                conn.execute("UPDATE builds SET stage='interview',ready_for_plan=0 WHERE id=?", (build_id,))
+        raise
     run_id = new_id("r")
     state.harness.active_builds.add(build_id)
 

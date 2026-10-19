@@ -210,26 +210,27 @@ def check_span(span, first_kinds):
 
 
 async def test_interview_trace_span_has_section_tokens(app, build_id):
+    from test_interview import FakeLLM as InterviewLLM
     profile(app, build_id)
     episodic.save(app.state.db, build_id, "user", "Help our sales director")
     await app.state.harness.run("interview", build_id,
-        {"config": app.state.settings.get(), "text": "Help our sales director"}, llm=FakeLLM(response="Which KPI?"))
+        {"config": app.state.settings.get(), "text": "Help our sales director"}, llm=InterviewLLM(response="Which KPI?"))
     span = next(s for s in spans(app, "interview") if s["node"] == "interview")
-    check_span(span, ["system", "skills", "skills", "semantic", "semantic", "profile", "input"])
+    check_span(span, ["system", "skills", "skills", "semantic", "semantic", "profile", "docs", "input"])
     assert span["sections"][0]["tokens"] == tokens(Path("prompts/v1/interview.md").read_text(encoding="utf-8"))
 
 
 async def test_plan_and_spec_trace_spans_have_section_tokens(app, build_id, monkeypatch):
-    from test_plan import FakeLLM as PlanLLM, FakeBigQuery, PLAN, seed
+    from test_plan import IntentLLM, FakeBigQuery, PLAN, seed
     monkeypatch.setattr("dss.render.background.capture", lambda html, path, width, height: path.write_bytes(b"PNG"))
     seed(app, build_id)
     episodic.save(app.state.db, build_id, "user", "Help our sales director")
     service = FakeBigQuery()
     await app.state.harness.run("plan", build_id, {"config": app.state.settings.get(),
-        "factory": lambda config: service}, llm=PlanLLM(response=json.dumps(PLAN)))
+        "factory": lambda config: service}, llm=IntentLLM(response=json.dumps(PLAN), chart='scorecard', needs=[{'capability': 'chart.scorecard'}]))
     recorded = spans(app, "plan")
     check_span(next(s for s in recorded if s["node"] == "plan"),
-               ["system", "skills", "skills", "semantic", "semantic", "profile", "history"])
+               ["system", "skills", "skills", "semantic", "semantic", "profile", "docs", "history"])
     check_span(next(s for s in recorded if s["node"] == "spec"), ["system", "skills", "semantic"])
 
 

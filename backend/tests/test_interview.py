@@ -7,13 +7,47 @@ from google.genai import types
 from dss.harness.guardrails import RunError
 from dss.harness.context import interview_context
 from dss.memory import episodic
-from fakes import FakeLLM
+from fakes import FakeLLM as BaseFakeLLM
+
+
+class FakeLLM(BaseFakeLLM):
+    extraction_calls: int = 0
+    extra_capability: str | None = None
+    ambiguous: bool = False
+    extracted_source_ids: list[str] = []
+    empty_needs: bool = False
+
+    async def generate_content_async(self, llm_request, stream=False):
+        if (llm_request.config.response_json_schema or {}).get("title") == "Extraction":
+            self.calls += 1
+            self.extraction_calls += 1
+            context = llm_request.config.system_instruction
+            sources, _ = json.JSONDecoder().raw_decode(context.split("New sources (untrusted; preserve IDs):\n", 1)[1])
+            requirements = [{"source_id": source["id"], "text": source["text"],
+                             "needs": [] if self.empty_needs else [{"capability": "chart.scorecard"}]} for source in sources]
+            self.extracted_source_ids.extend(source["id"] for source in sources)
+            for item in requirements:
+                if self.extra_capability:
+                    item["needs"].append({"capability": self.extra_capability})
+                if self.ambiguous:
+                    item["mappings"] = [{"label": "Revenue", "field": "gross_sales", "aggregation": "sum"}]
+            yield LlmResponse(content=types.Content(role="model", parts=[types.Part(text=json.dumps({"requirements": requirements}))]))
+            return
+        async for event in super().generate_content_async(llm_request, stream):
+            yield event
 
 
 class ReadyLLM(FakeLLM):
+    interview_calls: int = 0
+
     async def generate_content_async(self, llm_request, stream=False):
+        if (llm_request.config.response_json_schema or {}).get("title") == "Extraction":
+            async for event in super().generate_content_async(llm_request, stream):
+                yield event
+            return
         self.calls += 1
-        if self.calls == 1:
+        self.interview_calls += 1
+        if self.interview_calls == 1:
             yield LlmResponse(content=types.Content(role="model", parts=[types.Part(
                 function_call=types.FunctionCall(name="mark_ready_for_plan", args={}))]))
         else:
@@ -33,6 +67,10 @@ class StreamingLLM(FakeLLM):
 
 class BracesLLM(FakeLLM):
     async def generate_content_async(self, llm_request, stream=False):
+        if (llm_request.config.response_json_schema or {}).get("title") == "Extraction":
+            async for event in super().generate_content_async(llm_request, stream):
+                yield event
+            return
         assert "Compare {revenue}" in llm_request.config.system_instruction
         yield LlmResponse(content=types.Content(role="model", parts=[types.Part(text="Which region matters most?")]))
 
@@ -73,7 +111,8 @@ async def test_start_and_turn(client, app, build_id, monkeypatch):
     with app.state.db.connect() as conn:
         rows = conn.execute("SELECT * FROM traces").fetchall()
         assert len(rows) == 2 and all(row["status"] == "ok" for row in rows)
-        assert [s["node"] for s in json.loads(rows[0]["spans_json"])] == ["router", "interview", "guardrail"]
+        assert [s["node"] for s in json.loads(rows[0]["spans_json"])] == ["router", "capability_check", "assess_capabilities", "interview", "guardrail"]
+    assert fake.extraction_calls == 1
 
 
 async def test_ready_tool(client, app, build_id, monkeypatch):
@@ -162,6 +201,94 @@ async def test_literal_braces(client, app, build_id):
     result = await app.state.harness.run("interview", build_id,
         {"config": app.state.settings.get(), "text": "Compare {revenue}", "start": True}, llm=BracesLLM())
     assert result["reply"] == "Which region matters most?"
+
+
+@pytest.mark.parametrize("capability,status", [("animation.temporal_playback", "unsupported_app"),
+                                                ("feature.telepathy", "unknown"),
+                                                (None, "needs_clarification")])
+async def test_message_capability_gate(client, app, build_id, monkeypatch, capability, status):
+    from test_plan import seed, FakeBigQuery
+    from dss.spec import requirements as req
+
+    seed(app, build_id)
+    if capability is None:
+        with app.state.db.connect() as conn:
+            conn.execute("UPDATE sources SET columns_json=? WHERE build_id=?", (json.dumps([
+                {"name": "gross_sales", "type": "number", "bq_type": "FLOAT", "sample": []},
+                {"name": "net_sales", "type": "number", "bq_type": "FLOAT", "sample": []},
+                {"name": "date", "type": "date", "bq_type": "DATE", "sample": []}]), build_id))
+    with app.state.db.connect() as conn:
+        conn.execute("UPDATE builds SET ready_for_plan=1 WHERE id=?", (build_id,))
+    fake = FakeLLM(extra_capability=capability, ambiguous=capability is None)
+    monkeypatch.setattr(app.state.models, "llm_for", lambda node: fake)
+    service = FakeBigQuery()
+    app.state.bigquery_factory = lambda config: service
+    message = "Show Revenue" if capability is None else "Show a Revenue scorecard and animate GPS points along a route"
+    response = client.post(f"/api/builds/{build_id}/messages", json={"text": message})
+    assert response.status_code == 202
+    await wait_done(app)
+    assert fake.extraction_calls == fake.calls == 1
+    assert fake.extracted_source_ids == [response.json()["message_id"]]
+    assessment = client.get(f"/api/builds/{build_id}/feasibility").json()
+    assert assessment["state"] == "blocked"
+    assert status in [issue["status"] for issue in assessment["issues"]]
+    assert client.get(f"/api/builds/{build_id}").json()["ready_for_plan"] is False
+    folder = app.state.settings.get().data_dir / "builds" / build_id / "v1"
+    ledger = req.load(folder)
+    assert ledger.requirements[0].source.id == response.json()["message_id"]
+    history = client.get(f"/api/builds/{build_id}/messages").json()
+    explanation = history[-1]["text"]
+    assert history[-1]["role"] == "assistant"
+    if status == "unsupported_app":
+        assert "alternative" in explanation.lower() and "time" in explanation.lower()
+    else:
+        assert "clarify" in explanation.lower()
+    with app.state.db.connect() as conn:
+        traces = conn.execute("SELECT * FROM traces WHERE build_id=?", (build_id,)).fetchall()
+    assert len(traces) == 1
+    assert "capability_check" in [span["node"] for span in json.loads(traces[0]["spans_json"])]
+    assert events(app, build_id)[-1][1]["status"] == "error"
+    blocked = client.post(f"/api/builds/{build_id}/plan")
+    assert blocked.status_code == 409
+    detail = blocked.json()["error"]["detail"]
+    assert detail["assessment_id"] == assessment["id"]
+    current = client.get(f"/api/builds/{build_id}/feasibility").json()
+    assert detail["assessment_id"] == current["id"]
+    assert set(detail["issue_ids"]) == {issue["id"] for issue in current["issues"] if issue["resolution"] == "unresolved"}
+    assert fake.calls == 1 and not service.views and not service.dry_runs
+
+
+@pytest.mark.parametrize('text,ready', [('Help our sales director', True), ('For the sales team', True),
+                                      ('Help our sales director and animate GPS points', False),
+                                      ('Help our sales director. Telepathic chart.', False)])
+async def test_audience_metadata_full_source_only(client, app, build_id, monkeypatch, text, ready):
+    from test_plan import seed, FakeBigQuery, FakeLLM as PlanLLM, PLAN
+    from dss.spec import requirements as req
+    seed(app, build_id)
+    fake = ReadyLLM(empty_needs=True)
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda node: fake)
+    response = client.post(f'/api/builds/{build_id}/messages', json={'text': text})
+    assert response.status_code == 202
+    await wait_done(app)
+    a = client.get(f'/api/builds/{build_id}/feasibility').json()
+    assert a['state'] == ('ready' if ready else 'blocked')
+    assert client.get(f'/api/builds/{build_id}').json()['ready_for_plan'] is ready
+    assert fake.extraction_calls == 1 and fake.interview_calls == (2 if ready else 0)
+    folder = app.state.settings.get().data_dir / 'builds' / build_id / 'v1'
+    ledger = req.load(folder)
+    assert ledger.requirements[0].source.id == response.json()['message_id']
+    if ready:
+        assert ledger.verification[ledger.requirements[0].id][0]['status'] == 'context'
+        fake = FakeLLM(response='The scorecard scope is clear.')
+        monkeypatch.setattr(app.state.models, 'llm_for', lambda node: fake)
+        client.post(f'/api/builds/{build_id}/messages', json={'text': 'Show a Revenue scorecard'})
+        await wait_done(app)
+        model = PlanLLM(response=json.dumps(PLAN))
+        monkeypatch.setattr(app.state.models, 'llm_for', lambda node: model)
+        app.state.bigquery_factory = lambda config: FakeBigQuery()
+        assert client.post(f'/api/builds/{build_id}/plan').status_code == 202
+        await wait_done(app)
+        assert events(app, build_id)[-1][1]['status'] == 'ok'
 
 
 @pytest.mark.parametrize("forbidden", ["test-key", "mark_ready_for_plan"])

@@ -267,7 +267,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_publication.py tests/test_view_sql.py tests/test_plan.py tests/test_render.py` passes with failure injection before view creation, after creation, after render and immediately before/after publication: only uncommitted candidate views are cleaned, prior view SQL/docs/spec/prototype stay consistent, successful publication points all artifacts at the candidate, restart recovery is idempotent, concurrent actions cannot observe mixed versions, legacy view names and new-version reuse still work. Superseded create-or-replace golden assertions are updated to the documented run-specific naming. `uv run pytest` passes.
   - Review focus: old report views are never overwritten or deleted; durable candidate ownership precedes creation; published state survives cleanup/restart.
-- [ ] 11.6 Gate interview and plan
+- [x] 11.6 Gate interview and plan
   - Goal: requirement extraction runs inside the interview and plan runs (same Workflow, same trace); interview explains unsupported requests and asks about ambiguous mappings; direct plan calls preflight before any view and publish through 11.5's candidate views.
   - Spec: docs/architecture.md#Capability verification; ../contracts/dashboard-intent.md#Enforcement
   - Files: src/dss/api/chat.py, src/dss/api/feasibility.py, src/dss/harness/context.py, src/dss/harness/graph.py, src/dss/harness/nodes/interview.py, src/dss/harness/nodes/plan.py, src/dss/harness/nodes/spec.py, src/dss/spec/validate.py, src/dss/spec/requirements.py, tests/test_feasibility.py, tests/test_plan.py, tests/test_interview.py

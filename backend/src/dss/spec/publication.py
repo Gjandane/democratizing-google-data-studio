@@ -141,6 +141,8 @@ class Candidate:
             raise ValueError('Spec must bind the owned candidate view')
         files = sorted(str(p.relative_to(self.folder).as_posix()) for p in (self.folder / 'docs').glob('*.md'))
         files += ['spec.json', 'aggregate-cache.json', 'background_p1.png', 'prototype.html']
+        if (self.folder / 'requirements.json').is_file():
+            files.append('requirements.json')
         for name in files:
             if not (self.folder / name).is_file():
                 raise ValueError('Incomplete candidate publication')

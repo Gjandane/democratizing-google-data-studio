@@ -46,13 +46,21 @@ class Plan(Strict):
 
 def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
     config = payload["config"]
-    context = plan_context(harness.db, config, build_id)
     with harness.db.connect() as conn:
         version = conn.execute("SELECT current_version FROM builds WHERE id=?", (build_id,)).fetchone()[0]
         sources = [{"bq_table": row["bq_table"], "columns": json.loads(row["columns_json"])}
                    for row in conn.execute("SELECT * FROM sources WHERE build_id=? ORDER BY rowid", (build_id,))]
-    state = {"raw": "", "error": None, "repaired": False, "previous": "", "failure": None}
-    candidate = Candidate.begin(harness.db, config, build_id, version, run_id, payload)
+    state = {"raw": "", "error": None, "repaired": False, "previous": "", "failure": None, "announced": False}
+    context = candidate = None
+
+    def prepare():
+        nonlocal context, candidate
+        if candidate is None:
+            # The same Workflow has now extracted and assessed the active intent.
+            context = plan_context(harness.db, config, build_id)
+            candidate = Candidate.begin(harness.db, config, build_id, version, run_id, payload)
+            with harness.db.connect() as conn:
+                conn.execute("UPDATE builds SET stage='plan',updated_at=? WHERE id=?", (now(), build_id))
     secret = config.google_api_key.get_secret_value()
 
     def diagnostic_text(exc):
@@ -67,9 +75,14 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         return "\nPrevious plan (untrusted):\n" + state["previous"] + "\nBigQuery diagnostic (untrusted):\n" + state["error"] + "\nRepair the plan once. Return the complete JSON object."
 
     async def instruction_provider(context_object):
+        prepare()
         return context + repair()
 
     async def before_model(callback_context, llm_request):
+        prepare()
+        if not state['announced']:
+            await harness.emit(build_id, run_id, 'stage.changed', {'stage': 'plan'})
+            state['announced'] = True
         trace.span("plan_repair" if state["repaired"] else "plan")
         # ADK's output_schema converts to response_schema, which rejects additionalProperties.
         # Send the JSON schema directly; Plan.model_validate_json keeps strict local checks.
@@ -105,6 +118,8 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
     async def view(node_input):
         trace.span("view")
         try:
+            from dss.spec import requirements as req
+            req.plan_preflight(harness.db, build_id, candidate.destination)
             raw = check_reply(state["raw"], (secret,))
             plan = Plan.model_validate_json(raw)
             sql = select_sql(sources, plan.fields, plan.joins)
@@ -118,6 +133,9 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                     state.update(error=diagnostic, previous=raw, repaired=True)
                     return Event(actions=EventActions(route="repair"))
                 raise RunError("invalid_source", diagnostic, 422, {"reason": diagnostic}) from None
+            # Dry-run is awaited: settings/registry may have narrowed while
+            # BigQuery checked the SELECT. CREATE needs a fresh intent gate.
+            req.plan_preflight(harness.db, build_id, candidate.destination)
             try:
                 candidate.creating()
                 await worker(service.create_view, table, sql)

@@ -63,6 +63,7 @@ class Requirement(Strict):
     mappings: list[Mapping] = Field(default_factory=list)
     component_ids: list[str] = Field(default_factory=list)
     resolution: Literal["unresolved", "accepted_alternative", "dropped"] = "unresolved"
+    clarifications: list[Source] = Field(default_factory=list)
 
 
 class Alternative(Strict):
@@ -255,6 +256,12 @@ def merge(ledger, snapshot, extraction):
         if existing is not None:
             # Repeated descriptions must not hide a second (possibly unsupported)
             # need. Preserve the union instead of retaining only the first row.
+            if bool(existing.needs) != bool(item.needs):
+                # An unclassified row cannot disappear into a supported row with
+                # an identical description. Code owns this unknown sentinel.
+                unknown = capabilities.Need(capability='unknown.unclassified')
+                if unknown not in existing.needs:
+                    existing.needs.append(unknown)
             existing.needs += [n for n in item.needs if n not in existing.needs]
             existing.mappings += [m for m in item.mappings if m not in existing.mappings]
             existing.component_ids = list(dict.fromkeys(existing.component_ids + item.component_ids))
@@ -265,6 +272,37 @@ def merge(ledger, snapshot, extraction):
     for sid, source in sources.items():
         if sid not in covered:
             updated.requirements.append(Requirement(id="req_" + digest(source)[:24], source=Source.model_validate(source), text=source["text"]))
+    # A later explicit field definition can clarify an earlier ambiguity, but
+    # cannot remove its capabilities or provenance. Model suggestions alone do not.
+    for item in extraction.requirements:
+        source = Source.model_validate(sources[item.source_id])
+        clarified, previous_needs = set(), []
+        for mapping in item.mappings:
+            proposed = Requirement(id='', source=source, text=item.text, mappings=[mapping])
+            if mapping_verdict(mapping, proposed, schema(snapshot)) or not _assignment(source.text, mapping):
+                continue
+            for previous in updated.requirements:
+                if previous.source.id == source.id:
+                    continue
+                for i, old in enumerate(previous.mappings):
+                    if _normal(old.label) != _normal(mapping.label):
+                        continue
+                    values = old.model_dump()
+                    values.update({k: v for k, v in mapping.model_dump().items() if v is not None})
+                    previous.mappings[i] = Mapping.model_validate(values)
+                    if source not in previous.clarifications:
+                        previous.clarifications.append(source)
+                    clarified.add(mapping.label)
+                    previous_needs.extend(previous.needs)
+        rid = 'req_' + digest({'source': source.model_dump(), 'text': item.text})[:24]
+        merged = next((r for r in updated.requirements if r.id == rid), None)
+        definition_only = len(item.mappings) == 1 and (assignment := _assignment(source.text, item.mappings[0])) and not source.text[assignment.end():].strip(' .;\r\n\t')
+        if (merged and definition_only and merged.mappings and all(m.label in clarified for m in merged.mappings)
+                and all(n in previous_needs for n in merged.needs)):
+            # A definition-only reply refines the original requirement. Keep its
+            # original grain/unit/aggregation instead of making an unconstrained
+            # duplicate that would demand a different chart binding.
+            updated.requirements = [r for r in updated.requirements if r.id != rid]
     if len(updated.requirements) > MAX_REQUIREMENTS:
         raise ValueError("Requirement scope exceeded")
     updated.processed_sources.update({sid: digest(s) for sid, s in sources.items()})
@@ -276,6 +314,28 @@ def _normal(text):
     return re.sub(r"[^a-z0-9]", "", text.lower())
 
 
+def audience_requirement(requirement):
+    """Code-owned, bounded interview metadata; never downgrade free-form behavior.
+
+    Match the ENTIRE original message. A suffix requesting an unknown feature
+    cannot become audience metadata merely because its prefix names a role.
+    """
+    if requirement.needs or requirement.mappings or requirement.source.kind != 'message':
+        return False
+    role = (r'(?:(?:sales|finance|marketing|operations|product|engineering|executive|leadership)\s+'
+            r'(?:director|manager|team|leaders?|analysts?)|ceo|cfo|cto|coo|executives?|analysts?|leadership)')
+    prefix = r'(?:(?:help|for|this is for|the dashboard is for|(?:the )?audience (?:is|:))\s+)?(?:our\s+|my\s+|the\s+|a\s+|an\s+)?'
+    return bool(re.fullmatch(prefix + role + r'[.!]?', ' '.join(requirement.source.text.strip().split()), re.I))
+
+
+def _assignment(text, mapping):
+    if not mapping.field:
+        return None
+    field_pattern, label_pattern = re.escape(mapping.field), re.escape(mapping.label)
+    return re.search(r"(?:^|[.;\n])\s*(?:please\s+)?(?:use\s+" + field_pattern + r"\s+(?:for|as)\s+" + label_pattern
+        + r"|" + label_pattern + r"\s*(?:means|is|uses|=|:)\s*" + field_pattern + r")(?=\s*(?:$|[,.;\n]))", text, re.I)
+
+
 def mapping_verdict(mapping, requirement, fields):
     field, label = mapping.field, _normal(mapping.label)
     if field is None:
@@ -284,9 +344,8 @@ def mapping_verdict(mapping, requirement, fields):
         return capabilities.Verdict("needs_data", f"Field {field} is not in the connected data")
     # Merely listing available fields is not a definition. Accept a direct positive
     # assignment clause, never an incidental mention (or a negated instruction).
-    field_pattern, label_pattern = re.escape(field), re.escape(mapping.label)
-    explicit = re.search(r"(?:^|[.;\n])\s*(?:please\s+)?(?:use\s+" + field_pattern + r"\s+(?:for|as)\s+" + label_pattern
-        + r"|" + label_pattern + r"\s*(?:means|is|uses|=|:)\s*" + field_pattern + r")(?=\s*(?:$|[,.;\n]))", requirement.source.text, re.I)
+    text = "\n".join(s.text for s in [requirement.source, *requirement.clarifications])
+    explicit = _assignment(text, mapping)
     if label != _normal(field) and not explicit:
         return capabilities.Verdict("needs_clarification", f"Confirm which field defines {mapping.label}; proposed {field} is not an explicit definition")
     terms = {"sum": ("sum", "summed", "total", "totals"), "avg": ("avg", "average", "mean"),
@@ -296,14 +355,16 @@ def mapping_verdict(mapping, requirement, fields):
         if value is None:
             continue
         candidates = terms.get(value, (value, value + "ly")) if name != "unit" else (value,)
-        if not any(re.search(r"(?<![a-z0-9_])" + re.escape(v) + r"(?![a-z0-9_])", requirement.source.text, re.I) for v in candidates):
+        if not any(re.search(r"(?<![a-z0-9_])" + re.escape(v) + r"(?![a-z0-9_])", text, re.I) for v in candidates):
             return capabilities.Verdict("needs_clarification", f"Confirm {name.replace('_', ' ')} {value} for {mapping.label}; it is not defined by the source")
     return None
 
 
 def meaning(requirement):
     """Authorization follows requested meaning, not a generated assessment or registry version."""
-    return digest(requirement.model_dump(exclude={"resolution"}))
+    # Empty optional provenance must not revoke pre-11.6 durable choices.
+    excluded = {'resolution'} | ({'clarifications'} if not requirement.clarifications else set())
+    return digest(requirement.model_dump(exclude=excluded))
 
 
 def _prerequisites(snapshot, needs, mappings):
@@ -356,6 +417,9 @@ def _bindings(snapshot, requirement):
 
 
 def _matches(snapshot, requirement, needs, checker):
+    if not requirement.component_ids:
+        return any(_component_fulfills(c, requirement, needs, checker, snapshot)
+                   for p in (snapshot['spec'] or {}).get('pages', []) for c in p.get('components', []))
     bindings = _bindings(snapshot, requirement)
     if set(bindings) != set(requirement.component_ids):
         return False
@@ -425,7 +489,7 @@ def _requirement_issues(snapshot, ledger, checker):
     fields, rows = schema(snapshot), []
     for r in ledger.requirements:
         verdicts = [(f"need:{i}", checker.need(n, fields)) for i, n in enumerate(r.needs)]
-        if not r.needs:
+        if not r.needs and not audience_requirement(r):
             verdicts.append(("unknown", capabilities.Verdict("unknown", "No registered capability covers this requirement")))
         verdicts += [(f"mapping:{i}", v) for i, m in enumerate(r.mappings) if (v := mapping_verdict(m, r, fields))]
         for slot, v in verdicts:
@@ -444,7 +508,7 @@ def _requirement_issues(snapshot, ledger, checker):
     return rows
 
 
-def evaluate(snapshot, ledger, checker):
+def evaluate(snapshot, ledger, checker, *, check_components=True):
     """Pure bounded recomputation; does not call a model, write SQL or publish artifacts."""
     fields = schema(snapshot)
     found = [row[0] for row in _requirement_issues(snapshot, ledger, checker)]
@@ -455,7 +519,7 @@ def evaluate(snapshot, ledger, checker):
         reason = verdict.reason + ("; clarify the requested behavior" if verdict.status == "unknown" else "")
         found.append(Issue(id="issue_" + digest([rid, verdict.capability, verdict.status, reason])[:24], requirement=text,
                            status=verdict.status, reason=reason, evidence=list(verdict.evidence)))
-    for page in (snapshot["spec"] or {}).get("pages", []):
+    for page in ((snapshot["spec"] or {}).get("pages", []) if check_components else []):
         for component in page.get("components", []):
             for verdict in checker.component(component):
                 add(component["id"], component.get("label", component["id"]), verdict)
@@ -477,6 +541,179 @@ def evaluate(snapshot, ledger, checker):
     return Assessment(id=new_id("assessment"), state="blocked" if any(i.resolution == "unresolved" for i in found) else "ready",
         input_digest=input_digest(snapshot, ledger, checker), prototype_stale=ledger.prototype_stale or bool(ledger.pending_comments),
         issues=found, pending_comments=ledger.pending_comments)
+
+
+def blocked(assessment):
+    return RunError("feasibility_blocked", explanation(assessment), 409,
+                    {"assessment_id": assessment.id,
+                     "issue_ids": [i.id for i in assessment.issues if i.resolution == "unresolved"]})
+
+
+def explanation(assessment):
+    parts = []
+    for issue in assessment.issues:
+        if issue.resolution != "unresolved":
+            continue
+        text = f"{issue.requirement}: {issue.reason}."
+        if issue.alternatives:
+            text += " Supported alternatives: " + "; ".join(a.label for a in issue.alternatives) + ". Choose explicitly before planning."
+        if issue.status in {"needs_clarification", "unknown"}:
+            text += " Please clarify the requested behavior or definition."
+        parts.append(text)
+    return "Feasibility needs attention. " + " ".join(parts)
+
+
+def plan_preflight(db, build_id, folder):
+    """Deterministic API gate; new intent is extracted inside the accepted Workflow."""
+    snapshot, ledger, checker = inputs(db, build_id, folder), load(folder), capabilities.Checker(capabilities.load_registry())
+    ledger = revalidate_decisions(snapshot, ledger, checker)
+    assessment = evaluate(snapshot, ledger, checker, check_components=False)
+    if assessment.state == "blocked":
+        current = get(snapshot, ledger, checker)
+        if current.state == 'blocked' and current.issues == assessment.issues:
+            raise blocked(current)
+        ledger.verification = verification(snapshot, ledger, checker)
+        save(folder, ledger, assessment)
+        raise blocked(assessment)
+
+
+def coverage_errors(snapshot, ledger, checker, *, bindings=None):
+    """Verify original intent against the candidate, never against a reduced model ledger."""
+    errors = []
+    assessment = evaluate(snapshot, ledger, checker)
+    for issue in assessment.issues:
+        if issue.resolution == "unresolved":
+            errors.append({"path": "requirements", "message": issue.reason})
+    components = [c for p in (snapshot["spec"] or {}).get("pages", []) for c in p.get("components", [])]
+    from dss.recipe.compiler import compile_recipe
+    from dss.spec.models import DashboardSpec
+    ops = [json.loads(line) for line in compile_recipe(DashboardSpec.model_validate(snapshot['spec']), 1).split('\n')[1:-1]]
+    for r in ledger.requirements:
+        if audience_requirement(r):
+            continue
+        choice = _choice(r, 'unknown', snapshot, ledger, checker)
+        if choice and choice['action'] == 'drop':
+            continue
+        needs = []
+        dropped = False
+        for i, need in enumerate(r.needs):
+            choice = _choice(r, f"need:{i}", snapshot, ledger, checker)
+            if choice and choice["action"] == "drop":
+                dropped = True
+                break
+            needs.extend([capabilities.Need.model_validate(n) for n in choice["alternative"]["needs"]]
+                         if choice else [need])
+        if dropped:
+            continue
+        candidates = [c for c in components if not r.component_ids or c["id"] in r.component_ids]
+        matches = [c for c in candidates if _component_fulfills(c, r, needs, checker, snapshot) and
+                   all(_recipe_fulfills(n, checker, [op for op in ops if op.get('component_id') in (None, c['id'])]) for n in needs)]
+        if not r.component_ids and not r.mappings and needs and all(
+                n.capability.startswith('layout.') and _recipe_fulfills(n, checker, ops) for n in needs):
+            continue
+        if not matches or (r.component_ids and {c["id"] for c in matches} != set(r.component_ids)):
+            errors.append({"path": "requirements." + r.id, "message": "Candidate spec does not fulfill requirement: " + r.text})
+        elif bindings is not None:
+            bindings[r.id] = [c['id'] for c in matches]
+    return errors
+
+
+def _recipe_fulfills(need, checker, ops):
+    """A registry capability must actually survive the deterministic compiler."""
+    cap = checker.registry.get(need.capability)
+    if cap is None or not cap.recipe:
+        return False
+    for locator in cap.recipe:
+        path, _, fixed = locator.partition('=')
+        keys = path.split('.')
+        operation, keys = keys[0], keys[1:]
+        if path == 'add_chart.sort':
+            keys.append('order')
+        if len(keys) > 1 and keys[0] == 'options':
+            keys = [keys[0], *keys[2:]]  # Registry options include their chart type.
+        expected = fixed if '=' in locator else need.value
+        found = False
+        for op in ops:
+            if op['op'] != operation:
+                continue
+            values = [op]
+            for key in keys:
+                values = [v[key] for value in values for v in (value if isinstance(value, list) else [value])
+                          if isinstance(v, dict) and key in v]
+            if not keys:
+                found = expected is None
+            else:
+                found = any(expected is None or (type(v) is type(expected) and v == expected) for v in values)
+            if found:
+                break
+        if not found:
+            return False
+    return True
+
+
+def _component_fulfills(component, requirement, needs, checker, snapshot):
+    """Check type, typed options, real bindings and metric semantics on the same component."""
+    if not needs or checker.component(component):
+        return False
+    for need in needs:
+        cap = checker.registry.get(need.capability)
+        if cap is None:
+            return False
+        expected = cap.component_type or next((checker.registry.get(dep).component_type for dep in cap.requires
+                                              if checker.registry.get(dep).component_type), None)
+        if expected and component["type"] != expected:
+            return False
+        for key, field in need.fields.items():
+            bound = component.get("date_dimension") if key == "date_field" else (component.get("dimensions") or [None])[0]
+            bucketed = key == 'date_field' and any(m.date_grain and _date_bucket(snapshot, bound, m.date_grain, field)
+                                                 for m in requirement.mappings)
+            if field != bound and not bucketed:
+                return False
+        for locator in cap.recipe:
+            if locator.startswith("add_chart.options."):
+                _, _, kind, key = locator.split(".")
+                if component["type"] != kind or key not in component.get("options", {}):
+                    return False
+                value = component["options"][key]
+                if need.value is not None and (type(value) is not type(need.value) or value != need.value):
+                    return False
+            elif locator == "add_chart.metrics.agg":
+                if not any(m["agg"] == need.value for m in component.get("metrics", [])):
+                    return False
+            elif locator.startswith("add_chart.") and "=" not in locator:
+                key = locator.split(".")[1]
+                value = component.get("label" if key == "title" else key)
+                if value is None or (need.value is not None and value != need.value and
+                                     not (key == "sort" and value.get("order") == need.value)):
+                    return False
+    bound = set(component.get("dimensions", [])) | {m["field"] for m in component.get("metrics", [])}
+    bound |= {component.get("date_dimension"), component.get("field"), component.get("breakdown")}
+    for mapping in requirement.mappings:
+        if mapping.field not in bound:
+            return False
+        metrics = [m for m in component.get("metrics", []) if m["field"] == mapping.field]
+        if mapping.aggregation and (not metrics or any(m["agg"] != mapping.aggregation for m in metrics)):
+            return False
+        if mapping.date_grain:
+            # Recipe 1.0 exposes no bucketing option: prove it in the selected
+            # derived date dimension, never by a chart label or planner prose.
+            date_field = component.get('date_dimension')
+            if (component['type'] != 'time_series' and date_field not in component.get('dimensions', [])) or not _date_bucket(snapshot, date_field, mapping.date_grain):
+                return False
+        # Unit is a source-defined metric meaning kept in the ledger; recipe 1.0
+        # has no display-unit setting. Never infer a currency conversion here.
+    return True
+
+
+def _date_bucket(snapshot, field, grain, source=None):
+    text = snapshot['definitions'].get('derived-fields.md', '')
+    metadata = yaml.safe_load(text.split('---', 2)[1]) if text.startswith('---') else {}
+    if not isinstance(metadata, dict) or metadata.get('view') != (snapshot['spec'] or {}).get('datasource', {}).get('table'):
+        return False
+    derived = next((f for f in metadata.get('fields', []) if f['name'] == field), None)
+    grain = {'daily': 'day'}.get(grain.lower(), grain.lower().removesuffix('ly'))
+    match = re.fullmatch(r'(?:date|timestamp|datetime)_trunc\s*\(\s*(?:`?t\d+`?\s*\.\s*)?`?([a-z_][a-z0-9_]*)`?\s*,\s*' + re.escape(grain) + r'\s*\)', derived['sql'], re.I) if derived else None
+    return bool(match and (source is None or match[1] == source))
 
 
 def verification(snapshot, ledger, checker):
@@ -501,7 +738,8 @@ def verification(snapshot, ledger, checker):
         for issue, slot in resolved.get(r.id, []):
             rows.append({"slot": slot, "resolution": issue.resolution,
                          "decision": _choice(r, slot, snapshot, ledger, checker)})
-        proof[r.id] = rows or [{"status": "unknown", "reason": "No registered capability covers this requirement"}]
+        proof[r.id] = rows or ([{'status': 'context', 'kind': 'audience', 'reason': 'Recognized audience metadata; no capability assertion', 'source_id': r.source.id}]
+                              if audience_requirement(r) else [{"status": "unknown", "reason": "No registered capability covers this requirement"}])
     return proof
 
 

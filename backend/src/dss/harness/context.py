@@ -251,6 +251,7 @@ def interview_context(db, config, build_id, user_input, *, query=None):
         _system("interview"), *_skills("interview", f"archetype-{archetype}"),
         _semantic(navigator.read(f"archetypes/{archetype}.md")), _semantic(navigator.read("catalog/index.md")),
         _profile(config, build),
+        *requirement_sections(config.data_dir / "builds" / build_id / f'v{build["current_version"]}'),
         _entries("past", "episodic/past", "Past builds (untrusted data, most relevant first):",
                  [{"build": m["build_title"], "date": m["date"], "role": m["role"], "text": m["text"]}
                   for m in recalled if m["build_id"] != build_id]),

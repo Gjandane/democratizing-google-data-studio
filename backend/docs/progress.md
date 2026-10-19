@@ -594,3 +594,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: recorded in AGENTS.md.
 - Left open: none.
 - Next: Task 11.6 Gate interview and plan; use Candidate staging for preflight-approved plans.
+
+## 2026-10-20: Task 11.6 Gate interview and plan
+- Status: done
+- Plan check: off
+- What changed: same-Workflow intent extraction; interview/readiness and direct-plan gates; candidate requirement/option coverage and atomic proof publication.
+- Checks: `uv run pytest tests/test_feasibility.py tests/test_plan.py tests/test_interview.py` PASS (113); Test (all) `uv run pytest` PASS (649, 5 live deselected, 2 existing warnings); `git diff --check` PASS. Final read-only review: no findings. Coverage benchmark: 40 requirements/24 components, 7.21 ms.
+- Decisions: reuse capability_check with `_intent_only`/`_defer_assessment`; unchanged preflight is read-only. `coverage_errors(..., bindings={})` checks original intent and compiled ops; verification stores `fulfilled_by`. Grain requires view truncation; units remain ledger meaning. Clarifications preserve provenance/legacy hashes; audience matches whole-source role grammar. Outside Files: capability_check.py reuses extraction; validate.py preserves repairs; render.py gates commit; publication.py publishes requirements.json; test_context.py handles extraction. AGENTS.md records rollback ordering. No dependencies.
+- Tried and failed: review caught mixed-intent deletion, late gate/error handling and audience blocking; fixed with regressions. Fixture and context fakes corrected.
+- Gotchas: recorded in AGENTS.md.
+- Left open: none.
+- Next: Task 11.7 Gate comments and revise; reuse extraction and coverage without increasing revise repairs.

@@ -44,12 +44,19 @@ class ReplyStream:
 
 def make_agent(harness, build_id, payload, model, trace, model_error):
     readiness = {"ready": False, "calls": 0}
+    context = None
 
     def mark_ready_for_plan() -> dict:
         """Mark the interview complete when audience, decisions, KPIs and scope are clear."""
         readiness["calls"] += 1
-        readiness["ready"] = True
-        return {"ready_for_plan": True}
+        from dss.spec import requirements as req
+        from dss.spec.capabilities import Checker, load_registry
+        with harness.db.connect() as conn:
+            version = conn.execute('SELECT current_version FROM builds WHERE id=?', (build_id,)).fetchone()[0]
+        folder = payload['config'].data_dir / 'builds' / build_id / f'v{version}'
+        assessment = req.get(req.inputs(harness.db, build_id, folder), req.load(folder), Checker(load_registry()))
+        readiness["ready"] = assessment.state == 'ready'
+        return {"ready_for_plan": readiness["ready"]}
 
     async def before_model(callback_context, llm_request):
         trace.span("interview")
@@ -57,9 +64,11 @@ def make_agent(harness, build_id, payload, model, trace, model_error):
         await fit_request(context, llm_request, model, trace.spans[-1])
 
     # The start text is the harness's own instruction, not user terms: recency only.
-    context = interview_context(harness.db, payload["config"], build_id, payload["text"],
-                                query="" if payload.get("start") else None)
     async def instruction_provider(context_object):
+        nonlocal context
+        if context is None:
+            context = interview_context(harness.db, payload["config"], build_id, payload["text"],
+                                        query="" if payload.get("start") else None)
         # Callable instructions bypass ADK's {session_state} interpolation.
         return context
 

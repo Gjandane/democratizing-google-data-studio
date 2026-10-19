@@ -47,7 +47,27 @@ async def perform(harness, build_id, run_id, payload, trace):
         from dss.spec.publication import build_lock
         try:
             async with build_lock(harness.db, build_id):
+                from dss.spec import requirements as req
+                from dss.spec.capabilities import Checker, load_registry
+                snapshot, checker = req.inputs(harness.db, build_id, folder), Checker(load_registry())
+                ledger = req.load(folder)
+                if req.new_sources(snapshot, ledger):
+                    raise RunError('feasibility_stale', 'Intent changed during planning; check feasibility again', 409)
+                assessment = req.evaluate(snapshot, ledger, checker)
+                if assessment.state == 'blocked':
+                    raise req.blocked(assessment)
+                bindings = {}
+                errors = req.coverage_errors(snapshot, ledger, checker, bindings=bindings)
+                if errors:
+                    raise RunError('invalid_request', 'Candidate no longer fulfills the active requirements', 422, {'errors': errors})
+                ledger = req.revalidate_decisions(snapshot, ledger, checker)
+                ledger.verification = req.verification(snapshot, ledger, checker)
+                for rid, ids in bindings.items():
+                    ledger.verification[rid].append({'fulfilled_by': ids})
+                req.save(folder, ledger, req.evaluate(snapshot, ledger, checker))
                 candidate.publish(spec)
+        except RunError:
+            raise
         except Exception:
             raise RunError('invalid_source', 'Plan publication failed; try again', 422) from None
         from dss.api.builds import build_response

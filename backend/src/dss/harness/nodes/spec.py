@@ -10,6 +10,8 @@ from dss.memory.semantic import parse_concept
 from dss.spec.models import DashboardSpec
 from dss.spec.validate import allowed_types, catalog, high_questions
 from dss.harness.nodes.validate import make_validator
+from dss.spec import requirements as req
+from dss.spec.capabilities import Checker, load_registry
 
 
 def datasource_fields(sources, derived):
@@ -94,6 +96,15 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
     async def save(value):
         spec = DashboardSpec.model_validate(value)
         folder = prepared['folder']
+        snapshot = req.inputs(harness.db, build_id, folder)
+        snapshot['spec'] = spec.model_dump()
+        checker = Checker(load_registry())
+        ledger = req.revalidate_decisions(snapshot, req.load(folder), checker)
+        ledger.prototype_stale, ledger.invalidated = False, False
+        ledger.verification = req.verification(snapshot, ledger, checker)
+        for rid, ids in prepared.get('bindings', {}).items():
+            ledger.verification[rid].append({'fulfilled_by': ids})
+        req.save(folder, ledger, req.evaluate(snapshot, ledger, checker))
         temporary = folder / 'spec.json.tmp'
         temporary.write_text(spec.model_dump_json(indent=2), encoding='utf-8')
         temporary.replace(folder / 'spec.json')
@@ -105,8 +116,13 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
 
     async def validate(node_input):
         prepare()
+        def verify(value):
+            snapshot = req.inputs(harness.db, build_id, prepared['folder'])
+            snapshot['spec'] = value
+            prepared['bindings'] = {}
+            return req.coverage_errors(snapshot, req.load(prepared['folder']), Checker(load_registry()), bindings=prepared['bindings'])
         return await make_validator(state, allowed=prepared['allowed'], high_priority=prepared['questions'],
-            expected=prepared['expected'], trace=trace, save=save)(node_input)
+            expected=prepared['expected'], trace=trace, save=save, verify=verify)(node_input)
 
     def agent(name):
         return LlmAgent(name=name, model=model, mode='single_turn', instruction=instruction_provider,
