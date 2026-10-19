@@ -106,7 +106,7 @@ tasks and require a separately specified scope/contract revision. Task statuses 
   - Size: M
   - Done when: `uv run pytest tests/test_executor.py` and `uv run pytest -m live tests/live/test_report_ops.py` pass. New regression coverage includes an ordinary image before the background, two background ops on one page, an injected transient failure after upload (retry does not increase component count), and the 1200x900 fixture placed in a square box; verify the intended background is behind other content, loaded, and within ±4 px after saving/reopening. After sending a background back, apply set_style to an earlier component and assert that only the intended component changes (paint-order changes must not invalidate the component registry). Keep the original five-op test. `uv run pytest` passes.
   - Review focus: final-audit P2 at report.py:205-218; scope image_content under the retained component and verify that component's paint order rather than any image's presence.
-- [~] 5.4 Recheck live acceptance after audit fixes
+- [x] 5.4 Recheck live acceptance after audit fixes
   - Goal: repeat all original live gates and the 20-op budget after tasks 5.1–5.3. Account/template/billing access was restored during the 2026-10-19 audit and the original nine live tests passed; preserve that behavior after repair. Diagnose first-query consent or data-access errors explicitly: an ok event with an error panel is not visual acceptance.
   - Spec: docs/architecture.md#Recipe executor; docs/architecture.md#Testing
   - Files: spikes/spike_one_chart.py, tests/live/test_report_ops.py, tests/live/test_charts_a.py, tests/live/test_golden.py, tests/live/test_charts_b.py, tests/live/test_misc_ops.py, knowledge/datastudio-ui/*.md

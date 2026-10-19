@@ -757,3 +757,59 @@ def test_image_is_resized_before_moving_to_clamped_canvas_edge(tmp_path, monkeyp
     report._place_component(page, component, canvas, (1100, 800, 100, 100))
     assert drags == [((533, 350), (300, 200)), ((250, 150), (1350, 950))]
     assert component.box == (1100, 800, 100, 100)
+
+
+def test_open_report_retains_fields_when_image_selection_clears_data_panel(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from dsengine.ops import OperationError, charts, report
+
+    fields = ["status", "sale_price", "created_at"]
+    ctx = cleanup_context(tmp_path)
+    ctx.open_url = "https://datastudio.google.com/reporting/create"
+    ctx.selectors = {key: key for key in ("field_buttons", "zoom_menu", "zoom_100", "canvas")}
+    controls = {
+        "field_buttons": SimpleNamespace(evaluate_all=lambda expression: list(fields)),
+        "zoom_menu": SimpleNamespace(click=lambda **kwargs: None),
+        "zoom_100": SimpleNamespace(click=lambda **kwargs: None),
+        "canvas": object(),
+    }
+    page = SimpleNamespace(
+        goto=lambda *args, **kwargs: None, set_viewport_size=lambda size: None,
+        locator=lambda selector: controls[selector],
+        url="https://datastudio.google.com/reporting/create",
+    )
+    monkeypatch.setattr(report, "_wait_for_editor", lambda page, ctx: None)
+    monkeypatch.setattr(report, "_wait_visible", lambda locator, ctx: None)
+    monkeypatch.setattr(executor.time, "monotonic", lambda: 100)
+    report.run(page, Operation(id="s001", op="open_report"), ctx)
+
+    fields.clear()  # Live image Setup removes source-field chips from the DOM.
+    charts._require_source_field(page, ctx, "sale_price")
+    charts._require_source_field(page, ctx, "created_at")
+    with pytest.raises(OperationError, match="field __missing__ not in data source"):
+        charts._require_source_field(page, ctx, "__missing__")
+
+
+def test_title_font_verification_waits_for_option_list_to_disappear(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from dsengine.ops import OperationError, style
+
+    ctx = cleanup_context(tmp_path)
+    creator = Operation(id="s001", op="add_chart", component_id="sales")
+    op = Operation(id="s002", op="set_style", component_id="sales", style={"font_size": 8})
+    ctx.recipe.ops = [creator, op]
+    ctx.state[op.id] = {"applied": {"font_size": 8}, "creator": creator.id}
+    labels = iter(["8px\n8px\n9px", "8px"])
+    title = SimpleNamespace(inner_text=lambda **kwargs: next(labels, "8px"))
+    waits = []
+    page = SimpleNamespace(wait_for_timeout=waits.append)
+    monkeypatch.setattr(style, "_locator", lambda page, ctx, key: title)
+    monkeypatch.setattr(executor.time, "monotonic", lambda: 100)
+    style.verify(page, op, ctx)
+    assert waits and all(wait <= 1000 for wait in waits)
+
+    # A different selected size must still fail, even if it contains "8px".
+    title.inner_text = lambda **kwargs: "18px"
+    ctx.op_deadline = 100
+    with pytest.raises(OperationError, match="title font_size did not verify"):
+        style.verify(page, op, ctx)

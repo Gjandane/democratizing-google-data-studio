@@ -70,7 +70,8 @@ def _open_saved(url, ops, tmp_path, *, complete):
                 expect(images).to_have_count(1, timeout=20000)
                 expect(page.locator(selectors["image_content"])).to_be_visible()
                 assert _geometry(images) == (0, 0, 1200, 900)
-                assert page.locator(selectors["image_content"]).evaluate("e => e.naturalWidth") == 1200
+                expect(page.locator(selectors["image_content"])).to_have_js_property(
+                    "naturalWidth", 1200, timeout=20000)
                 components = page.locator(selectors["components"])
                 assert components.first.locator(selectors["image_content"]).count() == 1
                 charts = page.locator(selectors["chart_components"]).filter(

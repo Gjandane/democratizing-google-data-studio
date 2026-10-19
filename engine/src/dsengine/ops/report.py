@@ -73,12 +73,17 @@ def _wait_for_editor(page: Any, ctx: OpContext) -> None:
 
 
 def _run_open_report(page: Any, op: Any, ctx: OpContext) -> OpResult:
+    from dsengine.ops.charts import _source_fields
+
     if not ctx.open_url:
         raise OperationError("report creation URL was not prepared")
     page.goto(ctx.open_url, wait_until="domcontentloaded",
               timeout=ctx.timeout_ms())
     page.set_viewport_size({"width": 1920, "height": 1200})
     _wait_for_editor(page, ctx)
+    # Images and source-less controls can clear the Data panel. Capture the
+    # report's immutable source while editor readiness guarantees field chips.
+    _source_fields(page, ctx)
 
     zoom_menu = _locator(page, ctx, "zoom_menu")
     zoom_menu.click(timeout=ctx.timeout_ms())

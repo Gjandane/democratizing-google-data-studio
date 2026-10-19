@@ -127,5 +127,8 @@ def verify(page: Any, op: Any, ctx: OpContext) -> None:
                 _poll(page, ctx, lambda: bool(text_styles(component, ctx)) and all(
                     s["size"] == value for s in text_styles(component, ctx)),
                     "text font_size did not verify")
-            elif _locator(page, ctx, "style_title_size").inner_text().strip() != f"{value}px":
-                raise OperationError("title font_size did not verify")
+            else:
+                # The combobox can include its closing option list briefly.
+                _poll(page, ctx, lambda: _locator(page, ctx, "style_title_size").inner_text(
+                    timeout=ctx.timeout_ms()).strip()
+                      == f"{value}px", "title font_size did not verify")

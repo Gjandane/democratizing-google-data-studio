@@ -259,3 +259,38 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none.
 - Left open: P1 image selection clears uncached fields; repeated misc s007 text timeout, consequential s015, s016 title-size failure.
 - Next: approve product-repair scope (report.py; investigate text.py/style.py), fix regressions, rerun acceptance.
+
+## 2026-10-19: Task 5.4 Recheck live acceptance after audit fixes (repair diagnostics)
+- Status: partial; final gates running.
+- Plan check: off
+- What changed: report.py captures source fields at readiness; style.py polls exact title-size readback; tests/test_executor.py adds both regressions.
+- Checks: logs/evidence under `.blueprint/check54fix/`.
+  - `uv run pytest tests/test_executor.py -k retains_fields`, `uv run pytest tests/test_executor.py -k title_font_selection`, `uv run pytest tests/test_executor.py -k title_font_verification`: each FAIL before its repair.
+  - `uv run pytest tests/test_executor.py`: PASS45, then46 (latest0.69s; `executor-final.log`).
+  - `uv run pytest -m live tests/live/test_golden.py --basetemp=.blueprint/check54fix/golden -x`: PASS3,187.12s; golden10/10,55.781s/median4.710s; screencast124 JPEG/146 valid events.
+  - `uv run python .blueprint/check54fix/diagnose_misc.py`: first19/20 FAIL; second PASS (`misc-diagnostic-2.log`).
+  - `uv run python .blueprint/check54fix/diagnose_title.py`: PASS5/5 (`title.log`).
+  - `uv run pytest -m live tests/live/test_misc_ops.py --basetemp=.blueprint/check54fix/misc`: FAIL19/20; repeated with `--basetemp=.blueprint/check54fix/misc-final`: PASS20/20,60.797s/median2.242s; three saved screenshots inspected.
+  - `uv run pytest`: PASS118/5.20s, then119/4.62s.
+- Decisions: user approved retention repair/regression scope; announced style.py repair for the same acceptance gate. No dependencies added.
+- Tried and failed: Escape alone did not wait for font-dropdown teardown; replaced with bounded exact-value polling.
+- Gotchas: editor observations recorded in knowledge.
+- Left open: final combined suite.
+- Next: finish live/offline gates, review, record completion.
+
+## 2026-10-19: Task 5.4 Recheck live acceptance after audit fixes
+- Status: done
+- Plan check: off
+- What changed: source-field retention, bounded exact font readback, regressions, live screencast/20-op acceptance, and saved-image readiness.
+- Checks: evidence under `.blueprint/check54fix/`.
+  - `uv run python spikes/spike_one_chart.py`: PASS; `spike.log`, `spike/evidence.json`, `spike/saved_view.png` inspected.
+  - `uv run pytest -m live tests/live/test_report_ops.py tests/live/test_charts_a.py tests/live/test_golden.py tests/live/test_charts_b.py tests/live/test_misc_ops.py --basetemp=.blueprint/check54fix/all`: FAIL2/11 (`all.log`), immediate image-width reads.
+  - Same command with `--basetemp=.blueprint/check54fix/final -v`: PASS11/448.76s (`final.log`). Golden10/10:38.016s/median3.0145s; 20-op20/20:45.578s/median1.562s. Screencast107 JPEG frames/129 schema-valid events between ops.
+  - `uv run pytest`: PASS119,11 deselected,4.72s (`offline-complete.log`).
+  - `git diff --check -- .`: PASS.
+- Evidence inspected: `all/test_backgrounds_reuse_upload_0/backgrounds_saved.png`, `all/test_five_chart_types_save_a_v0/saved_report.png`, `all/test_remaining_chart_types_and0/{saved_report,date_filtered}.png`, `final/test_golden_recipe_budget_0/saved_report.png`, `final/test_misc_ops0/page{1,2,3}.png`.
+- Decisions: retain exact assertions; wait up to20s for saved image width1200. Permitted incompatible-geo failure retained. Prerequisites: signed-in dedicated Chrome, copyable template, billing-enabled GCP project with BigQuery access; existing public source queries succeed.
+- Tried and failed: first combined run raced saved-image loading; condition wait fixed it.
+- Gotchas: none beyond recorded knowledge.
+- Left open: none. Final reviewer: no findings.
+- Next: engine final audit/retro with blueprint-solution-architect in a new chat.

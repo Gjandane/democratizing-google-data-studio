@@ -55,3 +55,7 @@ Use rendered innerText for multiline text; textContent joins block text without 
 
 Add a page inserts after current; switch to the last existing page before appending.
 Blank paragraphs use lone BR placeholders; logical text readback joins their block boundaries.
+
+After choosing a chart title font size, the combobox can briefly include all of
+the closing dropdown's option labels in innerText. Poll for the exact selected
+size within the existing op deadline; do not treat a substring match as proof.
