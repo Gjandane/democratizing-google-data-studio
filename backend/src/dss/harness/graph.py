@@ -124,11 +124,21 @@ class AgentHarness:
                 spec_agent, spec_repair, validate, spec_state = spec_branch(self, build_id, run_id, payload, spec_model, trace, model_error)
                 async def after_view(node_input):
                     return Event(actions=EventActions(route="failed" if plan_state["failure"] else "spec"))
+                async def render_prototype(node_input):
+                    nonlocal code_error
+                    if not spec_state['failure']:
+                        from dss.harness.nodes.render import perform
+                        try:
+                            return await perform(self, build_id, run_id, payload, trace)
+                        except RunError as exc:
+                            code_error = exc
+                    return 'Prototype rendering did not finish.'
                 workflow = Workflow(name="dss_run", edges=[
                     ("START", router), (router, {"plan": planner}), (planner, view),
                     (view, {"repair": repair, "success": after_view}), (repair, view),
                     (after_view, {"failed": complete, "spec": spec_agent}), (spec_agent, validate),
-                    (validate, {"repair": spec_repair, "success": complete}), (spec_repair, validate), (complete, guardrail)])
+                    (validate, {"repair": spec_repair, "success": render_prototype}), (spec_repair, validate),
+                    (render_prototype, guardrail), (complete, guardrail)])
             elif action == "spec":
                 from dss.harness.nodes.spec import make_branch as spec_branch
                 model = llm if llm is not None else self.models.llm_for("spec")

@@ -1,0 +1,119 @@
+{
+  "spec_version": 1,
+  "build_id": "b_123456789abc",
+  "title": "Sales overview",
+  "archetype": "executive",
+  "canvas": {
+    "width": 1200,
+    "height": 900
+  },
+  "grid": {
+    "columns": 12,
+    "row_height": 20,
+    "gutter": 16,
+    "margin": 24
+  },
+  "theme": {
+    "background": "#F1F5F9",
+    "surface": "#FFFFFF",
+    "text": "#0F172A",
+    "muted": "#64748B",
+    "accent": "#1E40AF",
+    "palette": [
+      "#1E40AF",
+      "#0D9488"
+    ],
+    "font_family": "Arial",
+    "radius": 8
+  },
+  "datasource": {
+    "table": "sample-project.dss_demo.small_sales",
+    "fields": [
+      {
+        "name": "region",
+        "type": "STRING",
+        "label": "Region",
+        "role": "dimension",
+        "default_agg": "none"
+      },
+      {
+        "name": "revenue",
+        "type": "FLOAT",
+        "label": "Revenue",
+        "role": "metric",
+        "default_agg": "sum"
+      }
+    ]
+  },
+  "pages": [
+    {
+      "index": 1,
+      "name": "Overview",
+      "height": 900,
+      "decorations": [
+        {
+          "id": "p1_title",
+          "kind": "title",
+          "grid": {
+            "col": 1,
+            "row": 1,
+            "w": 12,
+            "h": 4
+          },
+          "text": "Sales overview"
+        }
+      ],
+      "components": [
+        {
+          "id": "p1_revenue",
+          "type": "scorecard",
+          "label": "Revenue",
+          "grid": {
+            "col": 1,
+            "row": 6,
+            "w": 6,
+            "h": 7
+          },
+          "metrics": [
+            {
+              "field": "revenue",
+              "agg": "sum"
+            }
+          ]
+        },
+        {
+          "id": "p1_regions",
+          "type": "bar",
+          "label": "Revenue by region",
+          "grid": {
+            "col": 7,
+            "row": 6,
+            "w": 6,
+            "h": 15
+          },
+          "dimensions": [
+            "region"
+          ],
+          "metrics": [
+            {
+              "field": "revenue",
+              "agg": "sum"
+            }
+          ]
+        },
+        {
+          "id": "p1_note",
+          "type": "text",
+          "label": "Source note",
+          "text": "Sample sales data",
+          "grid": {
+            "col": 1,
+            "row": 23,
+            "w": 12,
+            "h": 3
+          }
+        }
+      ]
+    }
+  ]
+}

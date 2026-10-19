@@ -39,6 +39,15 @@ class FakeBigQuery:
     def create_view(self, table, sql):
         self.views.append((table, sql))
 
+    def aggregate(self, sql):
+        return [{'m0': 100}]
+
+
+@pytest.fixture(autouse=True)
+def offline_background(monkeypatch):
+    monkeypatch.setattr('dss.render.background.capture',
+        lambda html, path, width, height: path.write_bytes(b'PNG'))
+
 
 class RepairLLM(FakeLLM):
     async def generate_content_async(self, llm_request, stream=False):
@@ -109,6 +118,9 @@ async def test_plan_docs_and_repair(client, app, build_id, monkeypatch, errors):
         assert not (docs / "brief.md").exists()
     else:
         assert final["status"] == "ok"
+        assert client.get(f'/api/builds/{build_id}').json()['stage'] == 'prototype'
+        assert ('stage.changed', {'stage': 'prototype'}) in published
+        assert any(k == 'prototype.updated' for k, _ in published)
         assert len(service.views) == 1
         expected = {"index.md": "Index", "log.md": "Log", "data-profile.md": "BigQuery Table",
             "brief.md": "Dashboard Brief", "questions.md": "Business Questions",

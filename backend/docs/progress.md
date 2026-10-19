@@ -157,3 +157,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond Known gotchas.
 - Left open: none.
 - Next: Task 4.1 Prototype renderer and background. Start a new chat and invoke blueprint-solution-builder.
+
+## 2026-10-19: Task 4.1 Prototype renderer and background
+- Status: done
+- Plan check: off
+- What changed: full themed ECharts/HTML renderer, parallel aggregate queries/cache, decoration screenshots, prototype API data and plan-to-render graph wiring.
+- Checks: `uv run pytest tests/test_render.py` PASS (15); `uv run pytest` PASS (126, 3 live deselected); `uv run pytest tests/test_render.py -m live -s` PASS (2). Twelve queries plus actual capture: 1.01 s; repeat: zero new queries. Real BigQuery sample render: 3.42 s, browser total 224.48. All 12 types inspected; seven ECharts SVGs, no errors/fallbacks. Screenshots: `.blueprint/qa/{prototype,decoration,catalog}.png`. Reviewer: no findings.
+- Decisions: version-folder `aggregate-cache.json` keyed by SQL SHA256 survives layout-only revisions; API reads cached data without queries. Geography groups centroid GeoJSON and plots coordinates. Only time_series groups date_dimension. Worker finishes before cancellation releases build. Included graph/test doubles and anchored runtime ignore rule; previously ignored BigQuery module and sample fixtures now tracked. User supplied ai-projects-250716, saved through Settings; no dependencies added.
+- Tried and failed: invalid configured project blocked live upload; corrected setting resolved it. Review caught date grouping, geography and compact-layout defects; fixed and reverified.
+- Gotchas: none.
+- Left open: none.
+- Next: Task 4.2 Revise from comments. Start a new chat and invoke blueprint-solution-builder.

@@ -61,7 +61,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: the validator is the guardrail for the Data Studio fidelity promise: catalog limits read from knowledge/catalog frontmatter, not duplicated in code.
 
 ## Phase 4: Prototype, revise, recipe, build
-- [ ] 4.1 Prototype renderer and background
+- [x] 4.1 Prototype renderer and background
   - Goal: the full renderer (ECharts per type, theme, aggregate data in parallel with a cache) and `background_p1.png` from the decoration layer; stage `prototype` after plan.
   - Spec: docs/architecture.md#Prototype renderer; docs/architecture.md#Layout
   - Files: src/dss/render/prototype.py, src/dss/render/background.py, src/dss/harness/nodes/render.py, src/dss/data/bigquery.py, src/dss/api/prototype.py, tests/test_render.py
