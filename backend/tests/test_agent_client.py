@@ -109,7 +109,8 @@ class LiveServer:
         folder.mkdir(parents=True, exist_ok=True)
         spec = DashboardSpec.model_validate_json((ROOT / "tests/data/thin_spec.json").read_text())
         spec.build_id = bid
-        (folder / "recipe.jsonl").write_text(compile_recipe(spec, 1), encoding="utf-8")
+        (folder / "spec.json").write_text(spec.model_dump_json(), encoding="utf-8")
+        (folder / "recipe.jsonl").write_text(compile_recipe(spec, 1), encoding="utf-8", newline="\n")
         (folder / "background_p1.png").write_bytes(b"fake-background")
         with self.app.state.db.connect() as conn:
             conn.execute("UPDATE builds SET stage='prototype' WHERE id=?", (bid,))

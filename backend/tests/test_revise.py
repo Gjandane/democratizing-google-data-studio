@@ -39,19 +39,20 @@ class FakeBigQuery:
         return [{'region':'APAC', 'm0':224.48}]
 
 
-@pytest.fixture
-def setup(client, app, build_id, monkeypatch):
+def seed_revision(app, build_id, monkeypatch):
+    """A prototype ready for a real revision; shared with the agent-mode run tests."""
     config = app.state.settings.get()
     folder = config.data_dir / 'builds' / build_id / 'v1'
-    (folder / 'docs').mkdir(parents=True)
+    (folder / 'docs').mkdir(parents=True, exist_ok=True)
     spec = DashboardSpec.model_validate_json(Path('tests/data/thin_spec.json').read_text())
+    spec.build_id = build_id
     (folder / 'spec.json').write_text(spec.model_dump_json(),encoding='utf-8')
     (folder / 'prototype.html').write_text('previous prototype')
     (folder / 'background_p1.png').write_bytes(b'previous background')
     write_doc(folder/'docs/decisions.md', {'type':'Design Decisions'}, '# Decisions\n')
     with app.state.db.connect() as conn:
         conn.execute("UPDATE builds SET stage='prototype' WHERE id=?",(build_id,))
-        conn.execute("INSERT INTO versions(build_id,n,status,spec_version,created_at) VALUES(?,1,'draft',1,?)",(build_id,now()))
+        conn.execute("INSERT OR REPLACE INTO versions(build_id,n,status,spec_version,created_at) VALUES(?,1,'draft',1,?)",(build_id,now()))
     service = FakeBigQuery()
     aggregate_data(spec, service, folder)
     service.queries.clear()
@@ -62,6 +63,11 @@ def setup(client, app, build_id, monkeypatch):
     monkeypatch.setattr('dss.render.background.capture', capture)
     app.state.bigquery_factory = lambda config:service
     return app, build_id, folder, spec, service, captured
+
+
+@pytest.fixture
+def setup(client, app, build_id, monkeypatch):
+    return seed_revision(app, build_id, monkeypatch)
 
 
 def response(*patches):
@@ -259,3 +265,47 @@ def test_context_excludes_unrelated_items_and_limits_budget(setup):
     assert context.index('You revise')<context.index('# Revise')<context.index('Target catalog')<context.index('Comments in application order')
     with pytest.raises(RunError,match='budget'):
         revise_context(document,[{'component_id':'p1_revenue','text':'x'*24001}],{'scorecard'})
+
+
+# Label and geometry change on the commented scorecard, moving its neighbour clear.
+REVISED = [op('/pages/0/components/0/label','Net revenue'),op('/pages/0/components/0/grid/w',8),
+           op('/pages/0/components/1/grid/row',26)]
+
+
+def revise_through_api(client, app, bid, patch=REVISED):
+    """Publish a real revision through the comments API and wait for it to finish."""
+    import time
+    fake = FakeLLM(response=response(patch))
+    app.state.models.llm_for = lambda node: fake
+    accepted = client.post(f'/api/builds/{bid}/comments',json={'comments':[{'component_id':'p1_revenue','text':'Net, and wider'}]})
+    assert accepted.status_code == 202, accepted.text
+    for _ in range(500):
+        if not app.state.engine_tasks: break
+        time.sleep(.01)
+    assert not app.state.engine_tasks
+    with app.state.db.connect() as conn:
+        assert conn.execute('SELECT status FROM traces WHERE run_id=?',(accepted.json()['run_id'],)).fetchone()[0] == 'ok'
+    revised = DashboardSpec.model_validate_json((app.state.settings.get().data_dir/'builds'/bid/'v1'/'spec.json').read_text())
+    assert revised.spec_version == 2 and revised.pages[0].components[0].label == 'Net revenue'
+    return revised
+
+
+def test_run_executes_revised_spec_not_compiled_recipe(setup, client, monkeypatch):
+    import sys
+    from dss.recipe.compiler import compile_recipe
+    from test_execute import engine_inputs
+    from test_thin_slice import ROOT, wait_done
+    app,bid,folder,original,_,_ = setup
+    monkeypatch.setenv('DSS_ENGINE_CMD', f'"{sys.executable}" "{ROOT / "tests/fake_engine.py"}"')
+    monkeypatch.setenv('DSS_ENGINE_DRY_RUN', '1')
+    assert client.post(f'/api/builds/{bid}/recipe').status_code == 200
+    stale = (folder/'recipe.jsonl').read_text(encoding='utf-8')
+    revised = revise_through_api(client, app, bid)
+    assert (folder/'recipe.jsonl').read_text(encoding='utf-8') == stale  # revision never recompiles
+    seen = engine_inputs(monkeypatch)
+    assert client.post(f'/api/builds/{bid}/run').status_code == 202
+    assert wait_done(client, bid)['stage'] == 'done'
+    expected = compile_recipe(revised, 1)
+    assert seen == [expected] and expected != stale
+    chart = json.loads(expected.split('\n')[4])
+    assert chart['component_id'] == 'p1_revenue' and chart['title'] == 'Net revenue' and chart['w'] > 568

@@ -40,7 +40,8 @@ def remote(tmp_path, monkeypatch):
         folder.mkdir(parents=True, exist_ok=True)
         spec = DashboardSpec.model_validate_json(Path("tests/data/thin_spec.json").read_text())
         spec.build_id = bid
-        (folder / "recipe.jsonl").write_text(compile_recipe(spec, 1), encoding="utf-8")
+        (folder / "spec.json").write_text(spec.model_dump_json(), encoding="utf-8")
+        (folder / "recipe.jsonl").write_text(compile_recipe(spec, 1), encoding="utf-8", newline="\n")
         (folder / "background_p1.png").write_bytes(b"fake-background")
         with app.state.db.connect() as conn:
             conn.execute("UPDATE builds SET stage='prototype' WHERE id=?", (bid,))
@@ -263,17 +264,26 @@ def test_file_boundaries(remote, suffix):
     finish(client, run_id, 1)
 
 
+def add_images(folder, *paths):
+    """Image components below the thin layout; run recompiles them into add_image inputs."""
+    spec = DashboardSpec.model_validate_json((folder / "spec.json").read_text())
+    template = spec.pages[0].components[0].model_dump()
+    for i, path in enumerate(paths, len(spec.pages[0].components)):
+        grid = {**template["grid"], "row": 20 + 3 * i}  # rows 29-38 for i = 3..6: inside the canvas
+        spec.pages[0].components.append(type(spec.pages[0].components[0]).model_validate(
+            {**template, "id": f"p1_image{i}", "type": "image", "image_path": path, "grid": grid}))
+    (folder / "spec.json").write_text(spec.model_dump_json(), encoding="utf-8")
+
+
 def test_all_recipe_inputs_in_order_and_bad_inputs_fail_before_lock(remote):
     client, app, bid, folder = remote
-    with (folder / "recipe.jsonl").open("a") as recipe:
-        for name in ("logo.png", "background_p1.png", "logo.png"):
-            recipe.write(json.dumps({"id": "s099", "op": "add_image", "path": name}) + "\n")
+    add_images(folder, "logo.png", "background_p1.png", "logo.png")
     (folder / "logo.png").write_bytes(b"logo")
     run_id, job = accept(remote)
     assert job["files"] == ["recipe.jsonl", "background_p1.png", "logo.png"]
     finish(client, run_id, 1)
-    with (folder / "recipe.jsonl").open("a") as recipe:
-        recipe.write(json.dumps({"op": "add_image", "path": "../dss.sqlite"}) + "\n")
+    settle(client, app)
+    add_images(folder, "../dss.sqlite")
     response = client.post(f"/api/builds/{bid}/run")
     assert response.status_code == 400 and response.json()["error"]["code"] == "invalid_name"
     assert not app.state.engine_busy
@@ -354,3 +364,68 @@ def test_shutdown_cancels_job_and_wakes_long_poll(remote):
     client.portal.call(close)
     assert not app.state.engine_busy and not app.state.harness.active_builds
     assert client.get(f"/api/builds/{bid}").json()["stage"] == "prototype"
+
+
+def job_recipe(client, run_id):
+    response = client.get(f"/api/agent/jobs/{run_id}/files/recipe.jsonl", headers=AUTH)
+    assert response.status_code == 200
+    return response.content.decode("utf-8")
+
+
+def test_job_ships_recipe_of_revised_spec(remote, monkeypatch):
+    from test_revise import seed_revision, revise_through_api
+    client, app, bid, folder = remote
+    seed_revision(app, bid, monkeypatch)
+    assert client.post(f"/api/builds/{bid}/recipe").status_code == 200
+    stale = (folder / "recipe.jsonl").read_text(encoding="utf-8")
+    revised = revise_through_api(client, app, bid)
+    run_id, job = accept(remote)
+    shipped = job_recipe(client, run_id)
+    assert shipped == compile_recipe(revised, 1) and shipped != stale
+    chart = json.loads(shipped.split("\n")[4])
+    assert chart["component_id"] == "p1_revenue" and chart["title"] == "Net revenue" and chart["w"] > 568
+    post_events(client, run_id)
+    finish(client, run_id)
+    settle(client, app)
+    assert client.get(f"/api/builds/{bid}").json()["stage"] == "done"
+
+
+def test_refresh_failure_queues_no_job(remote):
+    client, app, bid, folder = remote
+    previous, good = (folder / "recipe.jsonl").read_bytes(), (folder / "spec.json").read_text()
+    add_images(folder, None)  # an image without a path cannot compile
+    heartbeat(client)
+    response = client.post(f"/api/builds/{bid}/run")
+    assert response.status_code == 422 and response.json()["error"]["code"] == "invalid_recipe"
+    assert client.get("/api/agent/jobs/next?wait=0", headers=AUTH).status_code == 204
+    assert not app.state.agent_jobs.running and not app.state.engine_tasks
+    assert not app.state.engine_busy and bid not in app.state.harness.active_builds
+    assert client.get(f"/api/builds/{bid}").json()["stage"] == "prototype"
+    assert (folder / "recipe.jsonl").read_bytes() == previous
+    (folder / "spec.json").write_text(good, encoding="utf-8")
+    run_id, _ = accept(remote)
+    assert job_recipe(client, run_id) == previous.decode("utf-8")
+    finish(client, run_id, 1)
+    settle(client, app)
+
+
+def test_recipe_request_cannot_mutate_unreleased_job_files(remote):
+    client, app, bid, folder = remote
+    run_id, _ = accept(remote)
+    shipped = job_recipe(client, run_id)
+    # The Workflow can publish (stage back to prototype) and drop its build lock before the
+    # request's finally releases the job; the agent may still be downloading in that window.
+    spec = DashboardSpec.model_validate_json((folder / "spec.json").read_text())
+    spec.pages[0].components[0].label = "Changed mid-build"
+    (folder / "spec.json").write_text(spec.model_dump_json(), encoding="utf-8")
+    with app.state.db.connect() as conn:
+        conn.execute("UPDATE builds SET stage='prototype' WHERE id=?", (bid,))
+    app.state.harness.active_builds.discard(bid)
+    response = client.post(f"/api/builds/{bid}/recipe")
+    assert response.status_code == 409 and response.json()["error"]["code"] == "wrong_stage"
+    assert job_recipe(client, run_id) == shipped
+    finish(client, run_id, 1)
+    settle(client, app)
+    response = client.post(f"/api/builds/{bid}/recipe")
+    assert response.status_code == 200
+    assert "Changed mid-build" in (folder / "recipe.jsonl").read_text(encoding="utf-8")

@@ -106,3 +106,108 @@ def test_control_lock_and_cancel(thin, monkeypatch, command):
             await asyncio.wait_for(task, 5)
         assert not app.state.engine_busy
     client.portal.call(exercise)
+
+
+def engine_inputs(monkeypatch):
+    """Record the recipe text the engine subprocess receives, at the moment it starts."""
+    from pathlib import Path
+    from dss.harness.nodes import execute as module
+    seen, real = [], module.subprocess.Popen
+    def popen(args, **kwargs):
+        recipe = [arg for arg in args if str(arg).endswith("recipe.jsonl")]
+        if recipe:
+            seen.append(Path(recipe[0]).read_text(encoding="utf-8"))
+        return real(args, **kwargs)
+    monkeypatch.setattr(module.subprocess, "Popen", popen)
+    return seen
+
+
+def test_unchanged_spec_run_is_deterministic(thin, monkeypatch):
+    client, app, bid, folder = thin
+    load(client, bid)
+    assert client.post(f"/api/builds/{bid}/recipe").status_code == 200
+    recipe = folder / "recipe.jsonl"
+    before, stamp = recipe.read_bytes(), recipe.stat().st_mtime_ns
+    seen = engine_inputs(monkeypatch)
+    for _ in range(2):
+        assert client.post(f"/api/builds/{bid}/run").status_code == 202
+        assert wait_done(client, bid)["stage"] == "done"
+        settle(client, app)
+        with app.state.db.connect() as conn:
+            conn.execute("UPDATE builds SET stage='prototype' WHERE id=?", (bid,))
+    assert seen == [before.decode("utf-8")] * 2
+    assert recipe.read_bytes() == before and recipe.stat().st_mtime_ns == stamp
+
+
+@pytest.mark.parametrize("breakage", ["uncompilable", "invalid_json"])
+def test_refresh_failure_starts_nothing(thin, monkeypatch, breakage):
+    from dss.spec.models import DashboardSpec
+    client, app, bid, folder = thin
+    load(client, bid)
+    assert client.post(f"/api/builds/{bid}/recipe").status_code == 200
+    previous, good = (folder / "recipe.jsonl").read_bytes(), (folder / "spec.json").read_text()
+    spec = DashboardSpec.model_validate_json(good)
+    if breakage == "uncompilable":
+        spec.pages[0].components[0].type, spec.pages[0].components[0].image_path = "image", None
+        (folder / "spec.json").write_text(spec.model_dump_json(), encoding="utf-8")
+    else:
+        (folder / "spec.json").write_text("{", encoding="utf-8")
+    seen = engine_inputs(monkeypatch)
+    response = client.post(f"/api/builds/{bid}/run")
+    assert response.status_code == 422 and response.json()["error"]["code"] == "invalid_recipe"
+    assert not seen and not app.state.engine_tasks
+    assert not app.state.engine_busy and bid not in app.state.harness.active_builds
+    build = client.get(f"/api/builds/{bid}").json()
+    assert build["stage"] == "prototype" and build["versions"][0]["status"] == "draft"
+    assert (folder / "recipe.jsonl").read_bytes() == previous and not (folder / "recipe.jsonl.tmp").exists()
+    (folder / "spec.json").write_text(good, encoding="utf-8")
+    assert client.post(f"/api/builds/{bid}/run").status_code == 202
+    assert wait_done(client, bid)["stage"] == "done"
+    assert seen == [previous.decode("utf-8")]
+
+
+async def test_replan_replaces_spec_before_run(client, app, build_id, monkeypatch):
+    import asyncio
+    import sys
+    from dss.recipe.compiler import compile_recipe
+    from dss.spec.models import DashboardSpec
+    import test_spec_node
+    from test_plan import FakeLLM, FakeBigQuery, PLAN
+    from test_thin_slice import ROOT
+    monkeypatch.setenv("DSS_ENGINE_CMD", f'"{sys.executable}" "{ROOT / "tests/fake_engine.py"}"')
+    monkeypatch.setenv("DSS_ENGINE_DRY_RUN", "1")
+    monkeypatch.setattr("dss.render.background.capture", lambda html, path, width, height: path.write_bytes(b"PNG"))
+    test_spec_node.spec_seed(app, build_id)
+    folder = app.state.settings.get().data_dir / "builds" / build_id / "v1"
+    service = FakeBigQuery()
+    app.state.bigquery_factory = lambda config: service
+    async def plan(label):
+        original = test_spec_node.response_for
+        def respond(request):
+            spec = original(request)
+            spec["pages"][0]["components"][0]["label"] = label
+            return spec
+        monkeypatch.setattr(test_spec_node, "response_for", respond)
+        fake = FakeLLM(response=json.dumps(PLAN))
+        monkeypatch.setattr(app.state.models, "llm_for", lambda node: fake)
+        assert client.post(f"/api/builds/{build_id}/plan").status_code == 202
+        for _ in range(500):
+            if not app.state.engine_tasks:
+                break
+            await asyncio.sleep(.01)
+        monkeypatch.setattr(test_spec_node, "response_for", original)
+        assert client.get(f"/api/builds/{build_id}").json()["stage"] == "prototype"
+    await plan("Revenue")
+    assert client.post(f"/api/builds/{build_id}/recipe").status_code == 200
+    stale = (folder / "recipe.jsonl").read_text(encoding="utf-8")
+    await plan("Replanned revenue")
+    replanned = DashboardSpec.model_validate_json((folder / "spec.json").read_text())
+    assert replanned.pages[0].components[0].label == "Replanned revenue"
+    seen = engine_inputs(monkeypatch)
+    assert client.post(f"/api/builds/{build_id}/run").status_code == 202
+    for _ in range(500):
+        if client.get(f"/api/builds/{build_id}").json()["stage"] != "build":
+            break
+        await asyncio.sleep(.02)
+    assert client.get(f"/api/builds/{build_id}").json()["stage"] == "done"
+    assert seen == [compile_recipe(replanned, 1)] and seen[0] != stale and "Replanned revenue" in seen[0]

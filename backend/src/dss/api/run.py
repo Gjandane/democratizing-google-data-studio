@@ -16,11 +16,23 @@ def require_prototype(build):
         raise RunError("wrong_stage", "This action needs a prototype", 409, {"stage": build["stage"]})
 
 
+def refresh(folder, version):
+    """Recompile from the current spec; a failure keeps the previous complete recipe."""
+    try:
+        spec = read_spec(folder)
+    except ValueError:
+        raise RunError("invalid_recipe", "Spec could not be compiled into a recipe", 422) from None
+    compile_current(spec, version, folder)
+
+
 @router.post("/{build_id}/recipe")
 async def recipe(build_id: str, request: Request):
     state = request.app.state
     build, folder = current(state, build_id)
     require_prototype(build)
+    # An agent job keeps serving this folder's files until it is released.
+    if any(job.data["build_id"] == build_id for job in state.agent_jobs.running.values()):
+        raise RunError("wrong_stage", "A build is still running for this version", 409, {"stage": build["stage"]})
     async def perform(run_id):
         # Preview in code (never the engine): hosted agent mode has none. Preview before
         # publishing so a failure leaves the previous recipe in place.
@@ -49,6 +61,10 @@ async def run(build_id: str, request: Request):
     agent_mode = state.config.engine_mode == "agent"
     if agent_mode and not state.agent_jobs.connected:
         raise RunError("agent_offline", "Start the build agent before building", 424)
+    # Revisions and replans replace spec.json without recompiling. Refresh synchronously before
+    # any reservation: no await separates the checks above from the lock, and a failure starts
+    # nothing and leaves stage, locks and the previous recipe as they were.
+    refresh(folder, build["current_version"])
     run_id = new_id("r")
     job = state.agent_jobs.prepare(run_id, build_id, folder, build["current_version"]) if agent_mode else None
     with state.db.connect() as conn:

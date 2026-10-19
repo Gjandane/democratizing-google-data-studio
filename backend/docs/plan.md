@@ -173,7 +173,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: S
   - Done when: `uv run pytest tests/test_recipe_contract.py tests/test_api_contract.py` passes: in agent mode, with engine invocation made to fail if attempted and no heartbeat, POST /recipe returns 200 with sequential ids, the contract shape and deterministic print-compatible lines for all 12 types; compare with an independently recorded preview fixture (not the formatter's own output); canonical golden recipe bytes remain unchanged; compile/preview failures publish no partial recipe and leak no raw exception. `uv run pytest` passes.
   - Review focus: engine-free preview preserves ../contracts/api.md's line convention; never add the engine to the cloud image or edit another part.
-- [ ] 9.3 Execute the current spec after revision or replanning
+- [x] 9.3 Execute the current spec after revision or replanning
   - Goal: a previously compiled recipe cannot execute stale chart labels, geometry, bindings or theme after the prototype changes.
   - Spec: docs/architecture.md#Build consistency; docs/architecture.md#Recipe compiler; docs/architecture.md#Revise
   - Files: src/dss/api/run.py, src/dss/harness/nodes/compile.py, tests/test_execute.py, tests/test_agent_server.py, tests/test_revise.py

@@ -11,7 +11,10 @@ def perform(spec: DashboardSpec, version: int, folder: Path) -> str:
         text = compile_recipe(spec, version)
     except ValueError:
         raise RunError("invalid_recipe", "Spec could not be compiled into a recipe", 422) from None
-    temporary = folder / "recipe.jsonl.tmp"
-    temporary.write_text(text, encoding="utf-8", newline="\n")
-    temporary.replace(folder / "recipe.jsonl")
+    target = folder / "recipe.jsonl"
+    # Unchanged bytes are left alone so a no-op refresh never rewrites the file.
+    if not target.is_file() or target.read_bytes() != text.encode("utf-8"):
+        temporary = folder / "recipe.jsonl.tmp"
+        temporary.write_text(text, encoding="utf-8", newline="\n")
+        temporary.replace(target)
     return text

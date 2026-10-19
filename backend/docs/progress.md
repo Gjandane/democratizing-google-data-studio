@@ -444,3 +444,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: re-recording needs PYTHONIOENCODING=utf-8 (Windows stdout otherwise cp1252).
 - Left open: none.
 - Next: Task 9.3 Execute the current spec after revision or replanning.
+
+## 2026-10-19: Task 9.3 Execute the current spec after revision or replanning
+- Status: done
+- Plan check: off
+- What changed: POST /run recompiles recipe.jsonl from the current spec.json before job prep/reservation (compile node writes only when bytes differ); POST /recipe refuses 409 wrong_stage while an agent job for the build is still registered. Tests: real revision then run (local engine input, agent job download), replan then run, refresh failure (uncompilable, invalid JSON) in both modes, unreleased-job guard, no-op determinism.
+- Checks: `uv run pytest tests/test_execute.py tests/test_agent_server.py tests/test_revise.py` PASS (75; 8 new/changed fail on old src); `uv run pytest` PASS (370, 4 deselected). Reviewer: no findings.
+- Decisions: refresh runs synchronously between run's checks and its reservation (no await, so atomic); missing spec stays 409 wrong_stage, invalid/uncompilable spec 422 invalid_recipe; run still needs a prior compile (409 if no recipe.jsonl). Guard reads agent_jobs.running because harness.run drops active_builds before the request releases the job. Edited tests/test_agent_client.py (outside Files): its fixture lacked spec.json. test_revise exposes seed_revision/revise_through_api for reuse. AGENTS.md gotcha added. No new dependencies.
+- Tried and failed: none.
+- Gotchas: test_timeout_and_late_agent_then_retry (0.12 s grace) failed once under load on old src; passed 3/3 reruns.
+- Left open: none.
+- Next: Task 9.4 Align sort validation, prototype SQL and recipe order.

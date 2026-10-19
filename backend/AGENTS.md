@@ -47,3 +47,4 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 <!-- blueprint-solution:end -->
 - Config does not strip root .env values and GCP_PROJECT_ID there has leading whitespace; live tests pass a stripped project through PUT /api/settings (or DSS_LIVE_GCP_PROJECT).
 - Recipe JSONL is written with ensure_ascii=False, so U+2028/U+0085 can sit inside a line: split recipe text on LF only, never str.splitlines().
+- POST /run recompiles recipe.jsonl from spec.json: test fixtures need spec.json, and a fixture recipe written with plain write_text on Windows is CRLF (non-canonical) and gets rewritten; pass newline="\n".
