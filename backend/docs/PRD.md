@@ -23,6 +23,12 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
    plan and spec; `gemini-3.8-flash` for the rest).
 5. History: every build keeps its versions; a new version starts from the latest spec.
 
+6. Required: style/recreate reference extraction and data reconciliation, with evidence-backed
+   feasibility gates before plan, prototype, recipe and execution (dashboard-intent.md 1.1).
+
+7. Screenshot-only builds: schema/row-count/seed driven Python CSV generation, exposed as a
+   reusable function/CLI and API; typed BigQuery intake, visible synthetic provenance.
+
 ## Non-goals
 - No user identities, accounts or multi-user isolation (POC, one shared access code).
 - No vector store or embeddings (OKF navigation + FTS5 instead).
@@ -32,6 +38,9 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 - No accounts: one shared access code, not users.
 - No LangGraph (ADK 2.0 Workflow only).
 - No CI; tests cover the core flow and the contracts only.
+
+- No pixel-identical screenshot clone, claimed recovery of original rows, new chart engine, custom community
+  visualization or animation in the reference/capability change.
 
 ## Core flows
 1. Create build -> upload CSV -> intake loads it to BigQuery and writes `data-profile.md`.
@@ -54,7 +63,7 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 |---|---|---|
 | API per ../contracts/api.md (except stretch routes) | consolidation into data/knowledge/user | vector store |
 | intake: CSV upload, GCS CSV, BigQuery tables; profile | UX audit node (ux-audit skill) | engine on Cloud Run |
-| interview, plan, spec, revise, render, compile, execute, publish nodes | style-from-picture node (vision) | LLM-judge release gate automation |
+| interview, plan, spec, revise, render, compile, execute, publish nodes; reference modes, feasibility, synthetic data | (style-from-picture now in reference modes) | LLM-judge release gate automation |
 | episodic memory, context assembly, traces | research mode (google_search, capped) | multi-user |
 | 4 archetype skills, 12-type catalog in OKF | LLM-judge eval script | |
 | cloud mode, access code, agent mode + `dss-agent` | | |
@@ -75,12 +84,20 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 - Interview runs one LLM turn per user message (stateless run per request) rather than a
   long-lived human-input node: simpler with REST; the episodic store holds the chat.
 - Graph: one ADK Workflow with an action router (interview_turn, plan, revise, build, audit,
-  style, research) so the whole harness is one graph for the slides.
+  style, research, references, feasibility check, synthetic proposal/generate) so the whole harness is one graph for the slides.
 - Consolidation N = 5 chats (a chat = one build reaching `done`), global (one local user).
 - Episodic retrieval: current build's last 12 messages + FTS5 top 3 from other builds.
 - Loop limits: at most 6 tool calls per LLM node turn; at most 2 spec repair loops.
 - Background PNG and prototype screenshot use Playwright's bundled Chromium (headless), separate
   from the engine's Chrome.
+
+- Reference/capability change 2026-10-19 defaults: one recreation screenshot or 1-3 style
+  images per version; explicit substitutions, curated capability evidence, existing dependencies.
+  Closest supported recreation and release priority are user decisions, not defaults.
+
+- Synthetic-data defaults (change 2026-10-19): 1,000 rows, seed 42; bounded stdlib generators;
+  local DSS_DATA_DIR or existing GCS-backed /data volume; one new synthetic dataset in an empty
+  build, no mixing with real data. User requested schema/count parameterization and sample CSVs.
 
 ## Open questions
 - none

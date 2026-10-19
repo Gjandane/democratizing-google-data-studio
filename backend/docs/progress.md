@@ -489,6 +489,16 @@ context. Task status lives in docs/plan.md, not here.
 - Left open: P2 folded count is ~5% under billed prompt_token_count (8245 vs 8695); live test does not compare them; no safety margin - src/dss/harness/llm.py.
 - Next: Task 9.7 Bound retry attempts by the remaining 60-second deadline.
 
+## 2026-10-19: Change reference images and capability verification (backend)
+- Status: planned; scope confirmed, final plan review pending.
+- User decisions: both features required this hackathon; closest supported recreation of layout/chart choices/style using connected data, with explained substitutions.
+- What changed: API 1.3, dashboard-intent 1.0 and isolated shared fixtures; program/part PRDs, architecture/essentials and plans. Seven M tasks: backend 11.1-11.5, frontend 10.1, release 3.3. Existing task markers preserved. No product code changed in this planning session.
+- Audit: five original gaps and five delta integration findings addressed; focused recheck found no remaining P1 contradictions, then requested task split (applied as 11.3-11.5). Full report: program-root docs/reference-capability-audit.md. Draft remains pending user review per architect skill.
+- Decisions: dated product/app/data evidence; unknowns block; explicit durable substitutions; private replaceable reference sets per version; pending-comment recovery; distinct candidate views preserve old reports; required hosted acceptance redeploys tested source. No engine expansion or added dependency. New fixture folder avoids breaking legacy exhaustive API fixture inventories. Frontend full conventions/UI details moved into implementation-notes.md/reference-ui.md, essentials summarize.
+- Checks: root check_contracts.py 9/9 PASS; frontend npm test -- contract 31/31 PASS. Planning lint/stamp run; final counts recorded in scope audit. No new behavior claimed tested; its acceptance commands belong to builders.
+- Left open: seven sessions of M work may conflict with deadline; both remain required until user explicitly changes scope. Existing unrelated dirty source/deck files and historical progress entries preserved; no commit while draft review pending.
+- Next: complete existing in-progress backend 9.7 and existing 10.1, then backend 11.1-11.5; frontend 10.1; release 3.3. Existing release infrastructure may proceed independently.
+
 ## 2026-10-20: Task 9.7 Bound retry attempts by the remaining 60-second deadline
 - Status: done
 - Plan check: off
@@ -499,3 +509,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: none.
 - Next: Task 10.1 Live token usage on the event stream.
+
+## 2026-10-20: Change synthetic data and audit of phases 10-12 (backend)
+- Status: done
+- What changed: user asked to continue the required sequence; deadline moved by the user to about 3 days from 2026-10-20 (program.md still says 01:05, to update at the root). Logged the synthetic-data addition (Phase 12, API 1.4, synthetic-data.md 1.0, dashboard-intent 1.1), which had no entry. Essentials regenerated (were stale), header encoding fixed, PRD scope cell filled.
+- Affects: 10.1 (5 more node files); 11.3 split into 11.3 assessment + 11.4 decisions/pending batches; old 11.4 -> 11.5; old 11.5 split into 11.6 interview/plan gate, 11.7 comments/revise gate, 11.8 recipe/run/versions + live; 12.2 split into 12.2 API/typed intake, 12.3 proposal, 12.4 manifests/reconciliation, 12.5 label + live.
+- Change request (program root): (a) cross-part gates now point at old IDs: frontend 10.1 `Needs: backend 11.5` should become 11.8; frontend 11.1 (after backend 12.2 in program.md) should become 12.3 (API complete) or 12.5; release 3.3 and program.md's required-sequence paragraph list the new IDs; (b) simplify synthetic-data.md manifests/startup reconciliation to the generation table plus an immediate backup after reservation and registration (accepted finding 4); task 12.4 stops if this lands first; (c) record the new deadline in program.md.
+- Next: Task 10.1 Live token usage on the event stream.
+
+## 2026-10-20: Audit
+- Delta audit (blueprint-reviewer, opus/high) of phases 10-12 and their architecture/PRD/essentials sections. 11 findings, all accepted and applied: P1 10.1 misses nodes that drop usage_metadata (verified in spec/revise/style_extract/ux_audit/research); P1 11.3/11.5/12.2 too big (split); P1 11.1 evidence unreadable from this part (now contracts + schema-derived coverage); P2 manifests heavy (change request, task isolated as 12.4); P2 extraction as second run (now a node in the action's trace); P2 11.2 tested staleness before 11.3 (moved); P2 Files gaps (chat.py, background.py, models.py, patch.py); P2 header-first image checks + APNG; P2 explicit CSV null marker + live case; P3 graph/data model/version citations; P3 12.1 contract fixtures and CLI input.
+- Left open: plan has 40 tasks (lint warning; user kept all scope); 12.2 Spec prints 8.5k chars (contract section is the source).

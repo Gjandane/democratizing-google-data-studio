@@ -58,7 +58,9 @@ backend/
 SQLite `data/dss.sqlite`:
 - `builds(id, title, archetype, mode, stage, current_version, created_at, updated_at)`
 - `versions(build_id, n, status, spec_version, report_url, created_at)`
-- `sources(id, build_id, kind, name, bq_table, row_count, columns_json)`
+- `sources(id, build_id, kind, name, bq_table, row_count, columns_json)`; kind adds `synthetic`
+- `synthetic_generations(generation_key, build_id, request_hash, run_id, source_id, state,
+  retry_ready, error_json, created_at)` (additive migration; ../contracts/synthetic-data.md)
 - `messages(id, build_id, role, text, node, created_at)` + `messages_fts` (FTS5 over text, external content)
 - `events(id, build_id, run_id, kind, payload_json, created_at)`
 - `traces(run_id, build_id, node, model, input_tokens, output_tokens, latency_ms, tool_calls, status, error, spans_json, started_at)`
@@ -82,9 +84,10 @@ Files per version: `data/builds/<id>/v<n>/` (../contracts/conventions.md).
   count, min/max, 3 samples; STRING columns whose samples parse as dates are flagged
   `date_like`) -> `data-profile.md`. GCS: load job from the `gs://` URI, same rules. BigQuery:
   profile in place, no copy.
-- **plan**: plan node (planner) writes build docs -> view node builds SQL, BigQuery dry run;
-  on error one repair turn with the error -> create view -> spec node (planner) -> validate
-  -> repair loop (<= 2) -> render -> background -> stage `prototype`.
+- **plan**: feasibility preflight -> plan docs staged -> SQL dry run (one repair) -> new
+  run-specific candidate view -> spec -> validation/repair (<=2) -> staged render/background ->
+  atomic publish of spec/artifacts with the candidate table identity -> prototype. Failure
+  cleans only the candidate and leaves prior docs/spec/view intact (Capability verification).
 - **revise**: comments -> revise node (worker) -> JSON patch -> validate (repair <= 1) -> render ->
   background -> `spec_version` + 1 -> `prototype.updated`.
 - **build**: take the global engine lock (else `409 engine_busy`) -> compile -> execute
@@ -183,8 +186,11 @@ Final-audit corrections (2026-10-19):
   model is missing, log a warning and use the worker model for plan and spec.
 - Inputs and outputs: `{action, build_id, payload}` -> SSE events, DB writes, one trace.
 - Rules: START -> router(action) -> the action's branch (Key flows). LLM nodes: interview, plan,
-  spec, revise, ux_audit, style_extract, research, consolidate. Code nodes: intake, view (SQL
-  build + dry run), validate, render, compile, execute, publish. The validate -> spec (or revise)
+  spec, revise, ux_audit, style_extract, research, consolidate, reference_extract,
+  capability_check, synthetic_schema. Code nodes: intake, view (SQL build + dry run), validate,
+  render, compile, execute, publish, synthetic_generate. Requirement extraction is a node inside
+  the triggering action's Workflow (interview, plan, revise, reference, feasibility check), never
+  a second run: one action, one trace, its tokens in that trace (audit 2026-10-20). The validate -> spec (or revise)
   edge is the only loop, conditional, at most 2 passes. Every branch ends at a guardrail node.
 - Edge cases: unknown action -> error, no LLM call; concurrent actions on one build -> the second
   gets `409 wrong_stage`.
@@ -246,6 +252,113 @@ Final-audit corrections (2026-10-19):
 - Oracle: test with FakeLLM and `DSS_CONSOLIDATE_EVERY=5`: 4 builds -> no write; 5th -> files written, counter reset, every
   file has parseable frontmatter with non-empty `type`.
 
+### Reference interpretation
+- Problem/objective: derive reviewable visual intent from screenshots, preserving the existing
+  deterministic spec -> prototype -> recipe path. Source rules: ../contracts/dashboard-intent.md
+  1.1 (Reference set and Required oracle cases); that contract owns API/lifecycle behavior.
+- Input: validated reference bytes, mode and instructions. Output: StyleProfile plus a bounded
+  ReferenceInterpretation: mode, canvas aspect ratio, palette/type/spacing notes, and up to 24
+  observed items {id, kind, label, box{x,y,w,h}, chart_candidate|null, metric_label|null,
+  unit|null, aggregation|null, date_grain|null, confidence:high|medium|low}. Box coordinates are
+  normalized to 0..1, positive dimensions, inside the image; null means unknown, never a guess.
+  kind is chart|control|decoration|unknown. Style mode does not import chart/data requirements.
+- Constraints: one recreation screenshot, one page, existing 1200px/12-column target; map relative
+  placement into that grid. Explain structural changes such as unsupported widgets and compression.
+  Screenshots with more than 24 elements must request a crop/simplification, not silently truncate.
+  Labels <=120 chars, notes <=1000, instructions <=2000; profile is local Pydantic-validated.
+- Budget: one worker vision generation, no repair loop, 12k full counted input / 4k output maximum;
+  use fit_request with images included. Reject over-budget requests before generation. No network
+  calls except existing model transport/counting. Original images and their text are untrusted.
+- Image checks, in order: streamed byte limits; signature/extension/MIME agree; width and height
+  read from the PNG IHDR / JPEG SOF header with stdlib before any decode (>20 MP rejects without
+  launching Chromium); PNG with an `acTL` chunk (APNG) rejects as animated; then Chromium decode.
+- Persist atomically per contract. New reference extraction replaces observations but preserves
+  old artifacts on failure; reference mode success requires explicit replan to affect a prototype.
+- Oracle: tests/test_references.py covers both modes, structured boxes, count/byte/pixel limits,
+  corrupt images, prompt-like image text, replacement rollback, deletion, reload and version copy.
+  A live synthetic screenshot proves actual image parts reach Gemini and extracted geometry/theme
+  reaches the deterministic spec. Do not claim pixel-identity based on that check.
+
+### Capability verification
+- Problem: an allowed chart type alone cannot prove that the requested behavior is implementable.
+  Objective: preserve every explicit requirement and explain unsupported/unknown work early.
+  Source of truth: ../contracts/dashboard-intent.md 1.1 (Capability evidence, assessment,
+  enforcement and oracle). Record product evidence separately from application/engine evidence.
+- Registry: knowledge/datastudio/capabilities.json, explicit version and dated records, validated
+  by Pydantic. Initial coverage is the recipe 1.0 surface plus negative animation/streaming/custom
+  widget cases. App support cites ../contracts/recipe.md, recipe.schema.json or a contract
+  fixture that exercises it (the engine's files are another part's); an option the schema accepts
+  with no such citation is unsupported_app. Tests derive coverage from recipe.schema.json.
+  Keep product sources in OKF product-limits.md and link the registry in knowledge indexes.
+- Input: user text, current requirements/decisions, reference interpretation, schema/definitions,
+  candidate spec and effective registry. Output: requirements.json plus Assessment/feasibility.md.
+  Internal requirement: id, source reference (message/comment/image item), text, capability ids,
+  proposed fields/unit/aggregation/grain, resolution and component bindings. Preserve provenance.
+- Extract with at most one worker generation per incoming message/comment batch/reference change,
+  as a node in that action's Workflow and trace (Graph);
+  input <=12k full counted tokens, output <=4k, max 40 requirements, max 20 issues/alternatives
+  total. Use full existing request guard; no unbounded retries, repairs or live searches. If limits
+  are exceeded, request a smaller scope and remain blocked. Deterministic recomputation performs
+  no model call; target <=100ms on 40 requirements and 24 components excluding disk/model time.
+- Keep the active requirement ledger and explicit decisions mandatory in plan/spec/revise contexts;
+  no dropping them as episodic context. Reconcile image metric names to real fields/definitions:
+  ambiguity requires user clarification; no automatic gross/net, sum/avg or grain substitutions.
+  Derive fields only through the existing SQL view pipeline once the intended definition is clear.
+- Registry validation rejects unknown keys, enum values and unsupported feature combinations,
+  including model attempts to place animation under a valid geo_map. Check fulfillment against the
+  original ledger so removing the unsupported option cannot masquerade as success.
+- Assess before SQL side effects, before publishing a spec/prototype and before compile/execute;
+  use the existing lock and staged rollback. Legacy builds start unchecked. Runtime registry,
+  data, reference, spec or allowlist changes invalidate the assessment; durable unchanged choices
+  survive if their prerequisites and selected capability remain valid. Persist blocked comment
+  batches for reload/reapply/abandon. Recovery uses explicit assessment/check, not model work in GET.
+  Offline agent status is still a separate run precondition, not a product limitation.
+- Supported behaviors must agree across renderer, compiler and engine. Decorative theme/background
+  flattening may match a reference; interactive charts must be real bound components. Never send
+  a whole reference screenshot as the resulting dashboard background to hide missing behavior.
+- Oracle: tests/test_capabilities.py and tests/test_feasibility.py exercise all eleven contract cases,
+  plus confirmed choices replayed against changed spec/registry and supported requests with no image.
+  Live plan smoke compares expected refusal/mapping to the persisted ledger, not prose alone.
+
+### Synthetic data
+- Problem: a reference can describe a dashboard without supplying its source data. Offer explicit
+  synthetic generation instead of requiring a CSV before the app can proceed.
+- Source: ../contracts/synthetic-data.md 1.0. It specifies GenerationSpec, generators/relations,
+  API lifecycle, limits, storage and oracle. Implement a reusable Python generate_csv function
+  and module CLI in data/synthetic.py; no model/cloud dependency for the local generator.
+- One bounded worker schema proposal uses recreate observations; fields/distributions/definitions
+  are suggestions with assumptions. User edits/accepts schema, row_count and seed; Python generates
+  rows deterministically. Never ask the LLM to emit bulk CSV or execute generated Python.
+- API orchestration: synthetic_data.py -> code generation -> completed file/provenance -> existing
+  intake extended with explicit BQ types -> registered synthetic Source. Schema proposals work
+  in Connect with zero sources. Generation remains bounded and uses the existing action lock.
+- Generation table (Data model) holds key/hash/run/state/source; job status reads it, never SSE.
+  Manifests and startup reconciliation follow the contract (task 12.4; a simplification is a
+  pending change request at the program root, 2026-10-20).
+- Local output uses DSS_DATA_DIR/generated; hosted uses the existing GCS volume, with generation
+  in local temp and metadata-last publication. Downloads authorize source ownership and only
+  serve registered completed files. No new dependency, environment variable or bucket.
+- Typed synthetic loading bypasses prepare_csv row dropping/renaming; verify exact row count.
+  Use declared schema, never autodetect; set the load's null marker explicitly to the empty
+  field so all-null columns and all-empty rows load as NULL, not '' or a parse error. Add
+  Source.kind=synthetic; preserve provenance through versions. Reference labels infer proposed
+  schema only, not original values; never silently supplement or overwrite a real dataset.
+- Enforce an unremovable Synthetic sample data decoration in the deterministic spec/render/
+  background/compile path for synthetic source participation. Its box is reserved by layout,
+  read-only to revise; image-based styling cannot hide it. UI also labels sources/prototype.
+  Keep source provenance authoritative when validating model output or old copied specs.
+- Budgets/oracle are contract sections Generator request/Acceptance oracle; offline generator
+  tests cover deterministic bytes and relationships, API tests fake model/BQ/storage; one live
+  screenshot-only path validates schema proposal, typed load and the final report label.
+
+### Plan publication
+- Ownership: nodes/plan.py, view.py, render.py and data/bigquery.py stage docs,
+  candidate view and rendered files. Persist candidate run ownership before creation; on failed
+  attempt/restart clean only abandoned candidate views, never published/legacy view identities.
+  Keep previous artifacts until new files/spec/table pointer are committed under the build lock.
+  No schema migration of old view names: accept existing table identities, use unique names only
+  for new attempts. This is superseding behavior for old create-or-replace SQL golden tests.
+
 ### Build docs
 - Problem: the plan node's output, the durable design brief (OKF bundle per version).
 - Rules: `data/builds/<id>/v<n>/docs/` holds `index.md`, `log.md`, `data-profile.md`
@@ -257,8 +370,9 @@ Final-audit corrections (2026-10-19):
 - Oracle: test asserts every doc parses and has its `type`.
 
 ### BigQuery view
-- Problem: one view per version that holds joins and derived fields, attached to the report.
-- Rules: `CREATE OR REPLACE VIEW <project>.<BQ_DATASET>.dash_<build_id>_v<n> AS SELECT <base
+- Problem: one active view per accepted spec holds joins and derived fields; old report views
+  remain stable. New plan attempts create a distinct candidate (change 2026-10-19).
+- Rules: new attempts use `CREATE VIEW <project>.<BQ_DATASET>.dash_<build_id>_v<n>_<run_id> AS SELECT <base
   columns>, <expr> AS <name> ... FROM <base> [LEFT JOIN ...]`, built from `derived-fields.md`
   frontmatter by code; every identifier backtick-quoted (reserved words such as `date`, `order`,
   `group` must work); field names snake_case and unique; `date_like` STRING columns exposed as
@@ -417,3 +531,6 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-19 | Fold task decisions into implementation conventions; preserve concurrent consolidation completions | reset all counters; direct artifact publication | retain verified concurrency, redaction, staging and cache behavior | tasks 1.1-7.3; final audit |
 | 2026-10-19 | Correct schema transport, engine-free preview, current-spec execution, sort parity and flat agent assets | accept isolated test passes as release evidence | live plan and cross-node checks failed despite 350 passing tests | final audit; tasks 9.1-9.5 |
 | 2026-10-19 | Enforce live token counts and whole-attempt retry deadline | waive original budgets for POC | explicit requirements; CJK estimate and retry loop violate them | final audit; tasks 9.6-9.7 |
+| 2026-10-19 | Closest supported recreation and evidence-backed feasibility required; explicit user substitutions, private versioned references | style-only; prompt-only capability checks; runtime web search | user scope decision and five-gap plan audit | change reference/capability 2026-10-19 |
+| 2026-10-19 | Synthetic schema/count/seed API and reusable Python generator; local folder or existing mounted GCS state | require user CSV; LLM emits rows; new storage service | user requested screenshot-only recreation with fake CSV generation | change synthetic-data 2026-10-19 |
+| 2026-10-20 | Plan delta audit: extraction inside the action's trace; app evidence from contracts; header-first image checks; explicit CSV null marker; 11.3/11.5/12.2 split | separate extraction run; manual engine review | one trace per action; engine files are another part's; reviewer findings | audit 2026-10-20 |

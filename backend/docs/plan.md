@@ -1,5 +1,6 @@
 # Plan: backend
-Target: POC · Audit: done 2026-10-18 (18 findings across the program, 18 applied)
+Target: POC · Audit: done 2026-10-20 (delta, phases 10-12: 11 findings, 11 applied; earlier audits in progress.md)
+
 Markers: [ ] to do, [~] in progress, [x] done, [!] blocked. Only blueprint.py changes them.
 Sizes: S small, M a normal session, L needs a whole fresh session (never run unattended).
 
@@ -216,9 +217,120 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
 
 ## Phase 10: Activity transparency (change 2026-10-19)
 - [ ] 10.1 Live token usage on the event stream
-  - Goal: every run on a build emits `run.usage` with its running token totals after each model response that reports usage, per ../contracts/api.md 1.2 (Event stream), so the frontend can show tokens climbing during the run.
-  - Files: src/dss/harness/graph.py, tests/test_usage_events.py
+  - Goal: every run on a build emits `run.usage` with its running token totals after each model response that reports usage, per ../contracts/api.md 1.2 (Event stream), so the frontend can show tokens climbing during the run; every LLM node keeps the provider's usage so traces stop reading 0.
+  - Files: src/dss/harness/graph.py, src/dss/harness/nodes/spec.py, src/dss/harness/nodes/revise.py, src/dss/harness/nodes/style_extract.py, src/dss/harness/nodes/ux_audit.py, src/dss/harness/nodes/research.py, tests/test_usage_events.py
   - Depends on: 9.6
   - Size: S
-  - Done when: `uv run pytest tests/test_usage_events.py` passes with FakeLLM: an interview turn (streamed) and a plan run each put at least one `run.usage` between `run.started` and `run.finished` on the build's stream; the totals never decrease within a run; the last `run.usage` equals the run's `traces` row (`input_tokens`, `output_tokens`); a streamed interview reply whose chunks carry usage is counted once, not per chunk; a `recipe` run (no model call) emits none; each payload has exactly the keys and JSON types of ../contracts/fixtures/api/events.usage.sse; Test (all) `uv run pytest` passes.
-  - Review focus: ../contracts/api.md 1.2 `run.usage`; one emit per model response; trace totals of non-streamed runs unchanged.
+  - Done when: `uv run pytest tests/test_usage_events.py` passes with FakeLLM responses that carry usage: each build action with a model call (interview turn streamed, plan incl. spec, revise, audit, style, research) puts at least one `run.usage` between `run.started` and `run.finished` on the build's stream, and its `traces` row has nonzero `input_tokens`/`output_tokens` equal to the last `run.usage` (fails today for spec/revise/style/audit/research, whose after_model callbacks drop `usage_metadata`); totals never decrease within a run; a streamed interview reply whose chunks carry usage is counted once, not per chunk; a `recipe` run (no model call) emits none; each payload has exactly the keys and JSON types of ../contracts/fixtures/api/events.usage.sse; Test (all) `uv run pytest` passes.
+  - Review focus: ../contracts/api.md 1.2 `run.usage`; one emit per model response; replaced LlmResponses keep `usage_metadata`.
+  - If: consolidate (build_id NULL, own Workflow) -> no `run.usage` (no build stream); its trace already counts usage.
+
+## Phase 11: Required references and feasibility (change 2026-10-19)
+- [ ] 11.1 Evidence-backed capability registry and deterministic checks
+  - Goal: classify native product, app/engine and data limits with dated evidence; reject unsupported feature combinations, including animation hidden under an allowed geo_map.
+  - Spec: docs/architecture.md#Capability verification; ../contracts/dashboard-intent.md#Capability evidence
+  - Files: src/dss/spec/capabilities.py, knowledge/datastudio/capabilities.json, knowledge/datastudio/product-limits.md, knowledge/datastudio/index.md, knowledge/datastudio/log.md, tests/test_capabilities.py
+  - Depends on: 3.3; 9.4
+  - Size: M
+  - Done when: `uv run pytest tests/test_capabilities.py` passes: the test derives the list of recipe 1.0 types, options and style keys from ../contracts/recipe.schema.json (not a hand-written list) and asserts each has a registry classification; every `app` support record cites ../contracts/recipe.md or a file under ../contracts/fixtures/ that exercises it, and the test checks each cited path exists; undeclared keys, unknown evidence and animation reject; native support with no app evidence is unsupported_app; missing data is needs_data; unknowns cannot become ready; DSS_ALLOWED_TYPES only narrows support; measured evaluation of 40 requirements/24 components takes <=100ms excluding I/O. `uv run pytest` passes.
+  - Review focus: ../contracts/dashboard-intent.md; official product sources vs contract/fixture app evidence; no model-authorized support and no runtime web-search dependency.
+- [ ] 11.2 Versioned references and structured image interpretation
+  - Goal: implement style/recreate reference routes and retained per-version image sets; extract bounded layout/chart observations as well as styling, with legacy style-images compatibility.
+  - Spec: docs/architecture.md#Reference interpretation; ../contracts/dashboard-intent.md#Reference set
+  - Files: src/dss/api/builds.py, src/dss/harness/nodes/style_extract.py, src/dss/harness/nodes/reference_extract.py, src/dss/harness/context.py, src/dss/harness/graph.py, src/dss/spec/references.py, prompts/v1/reference_extract.md, skills/reference-extract.md, tests/test_references.py, tests/test_api_contract.py, tests/live/test_references.py
+  - Depends on: 7.1; 9.6; 11.1
+  - Size: M
+  - Done when: `uv run pytest tests/test_references.py tests/test_api_contract.py` passes with real synthetic PNG/JPEG fixtures: both modes, exact response fixture shape, streaming byte limits, header width/height read before any Chromium decode (a >20 MP header rejects without launching Playwright), APNG (`acTL`) rejects, decode/signature checks, over-limit failures before generation, replacement rollback, authorized previews, remove/reload/version copy and legacy alias. One counted vision generation maximum; image instructions cannot execute actions. `uv run pytest -m live tests/live/test_references.py` confirms bounded structured geometry/style from a synthetic screenshot using the configured real model. `uv run pytest` passes.
+  - Review focus: ../contracts/api.md 1.3; ../contracts/dashboard-intent.md; retained images are private references, never recipe assets; unknown visual observations remain unknown.
+  - If: tests need prototype staleness -> out of scope; 11.3 builds Assessment and its stale marker.
+- [ ] 11.3 Requirement ledger, capability check and assessment API
+  - Goal: persist extracted requirements and data mappings; `GET feasibility` and `POST feasibility/check` with the capability_check node; reference/spec/registry changes make the assessment stale.
+  - Spec: docs/architecture.md#Capability verification; ../contracts/dashboard-intent.md#Feasibility assessment
+  - Files: src/dss/api/feasibility.py, src/dss/main.py, src/dss/harness/nodes/capability_check.py, src/dss/harness/context.py, src/dss/harness/graph.py, src/dss/spec/requirements.py, src/dss/api/builds.py, prompts/v1/capability_check.md, skills/capability-check.md, tests/test_feasibility.py, tests/test_api_contract.py
+  - Depends on: 11.1; 11.2
+  - Size: M
+  - Done when: `uv run pytest tests/test_feasibility.py tests/test_api_contract.py` passes: a legacy build is `unchecked` and `POST feasibility/check` makes it ready (one trace, run events, no SQL/render/engine); unknown requests and ambiguous gross/net mapping block (needs_clarification); unsupported_app differs from native/data limits; replacing or deleting the reference set marks the assessment stale and `prototype_stale: true`; digest changes on reference/schema/spec/registry/allowed-types changes; GET never calls the model. Conformance loads ../contracts/fixtures/dashboard-intent and validates ready/blocked/stale/unchecked states. Extraction obeys the one-call, 12k/4k token and 40-requirement limits; model output cannot grant capability support. `uv run pytest` passes.
+  - Review focus: ../contracts/dashboard-intent.md; code owns classification; requirement provenance kept.
+- [ ] 11.4 Explicit decisions and pending comment batches
+  - Goal: `POST feasibility/decisions`, durable requirement-scoped choices, persisted blocked comment batches with reapply-ID validation and `DELETE feasibility/pending-comments`.
+  - Spec: docs/architecture.md#Capability verification; ../contracts/dashboard-intent.md#Feasibility assessment
+  - Files: src/dss/api/feasibility.py, src/dss/spec/requirements.py, tests/test_feasibility.py, tests/test_api_contract.py
+  - Depends on: 11.3
+  - Size: M
+  - Done when: `uv run pytest tests/test_feasibility.py tests/test_api_contract.py` passes: decisions apply atomically (1-20 distinct issues; accept needs an offered alternative id, drop needs null); stale assessment ids get `409 feasibility_stale`; an accepted unchanged choice survives spec revalidation and a registry update without being re-asked; a changed mapping or invalid prerequisite blocks; a blocked ordered batch survives reload with its target IDs; `POST feasibility/reapply` rejects stale assessment/batch IDs (the accepted case is wired to revise in 11.7); abandoning removes only that batch's requirements/decisions; a new batch replaces the pending one and invalidates its decisions. Conformance validates nullable/populated pending_comments and empty/nonempty alternatives fixtures. `uv run pytest` passes.
+  - Review focus: no silence-as-consent; durable choices bind to requirement meaning, not assessment id.
+- [ ] 11.5 Stage candidate views and recover failed publication
+  - Goal: replanning cannot change a view used by an older prototype/report; publish the new candidate view identity only with its validated spec and rendered artifacts.
+  - Spec: docs/architecture.md#Plan publication; docs/architecture.md#BigQuery view
+  - Files: src/dss/harness/nodes/plan.py, src/dss/harness/nodes/view.py, src/dss/harness/nodes/spec.py, src/dss/harness/nodes/render.py, src/dss/data/bigquery.py, src/dss/main.py, src/dss/spec/publication.py, tests/test_publication.py, tests/test_view_sql.py, tests/test_plan.py, tests/test_render.py
+  - Depends on: 11.4; 9.3
+  - Size: M
+  - Done when: `uv run pytest tests/test_publication.py tests/test_view_sql.py tests/test_plan.py tests/test_render.py` passes with failure injection before view creation, after creation, after render and immediately before/after publication: only uncommitted candidate views are cleaned, prior view SQL/docs/spec/prototype stay consistent, successful publication points all artifacts at the candidate, restart recovery is idempotent, concurrent actions cannot observe mixed versions, legacy view names and new-version reuse still work. Superseded create-or-replace golden assertions are updated to the documented run-specific naming. `uv run pytest` passes.
+  - Review focus: old report views are never overwritten or deleted; durable candidate ownership precedes creation; published state survives cleanup/restart.
+- [ ] 11.6 Gate interview and plan
+  - Goal: requirement extraction runs inside the interview and plan runs (same Workflow, same trace); interview explains unsupported requests and asks about ambiguous mappings; direct plan calls preflight before any view and publish through 11.5's candidate views.
+  - Spec: docs/architecture.md#Capability verification; ../contracts/dashboard-intent.md#Enforcement
+  - Files: src/dss/api/chat.py, src/dss/api/feasibility.py, src/dss/harness/context.py, src/dss/harness/graph.py, src/dss/harness/nodes/interview.py, src/dss/harness/nodes/plan.py, src/dss/harness/nodes/spec.py, src/dss/spec/validate.py, src/dss/spec/requirements.py, tests/test_feasibility.py, tests/test_plan.py, tests/test_interview.py
+  - Depends on: 11.5; 9.6
+  - Size: M
+  - Done when: `uv run pytest tests/test_feasibility.py tests/test_plan.py tests/test_interview.py` passes oracle cases 1, 2, 4, 5, 6 (message and image) and 11 and the plan part of case 8 through the real API/graph with fake model/BigQuery: an interview turn with a requirement makes one trace (extraction node inside it) and does not signal ready_for_plan while issues are unresolved; `POST /plan` on a blocked build returns `409 feasibility_blocked` with `{assessment_id, issue_ids}` and creates no view; a spec that drops a requirement or sets `animate` on a geo_map is rejected, not stripped; a later spec/render failure keeps the previous view/spec/prototype. `uv run pytest` passes.
+  - Review focus: preflight before any BigQuery write; requirement coverage AND typed options enforced; spec repair budgets unchanged.
+- [ ] 11.7 Gate comments and revise
+  - Goal: comments are assessed before patching; a blocked batch leaves spec and recipe unchanged and is persisted; reapply runs the ordinary revise branch with confirmed decisions; revised specs are checked against requirements and the registry.
+  - Spec: docs/architecture.md#Capability verification; ../contracts/dashboard-intent.md#Enforcement
+  - Files: src/dss/api/prototype.py, src/dss/api/feasibility.py, src/dss/harness/graph.py, src/dss/harness/nodes/revise.py, src/dss/spec/requirements.py, src/dss/spec/validate.py, tests/test_feasibility.py, tests/test_revise.py
+  - Depends on: 11.6
+  - Size: M
+  - Done when: `uv run pytest tests/test_feasibility.py tests/test_revise.py` passes oracle cases 6 (comment), 7 (accept -> reapply -> changed spec keeps authorized intent; changed text invalidates) and 9 and 10 (blocked comments -> choose -> reload -> reapply; abandon discards only that batch): a blocked batch changes no spec, recipe or spec_version; a supported batch still revises in one trace; an empty revision clears staleness only when code verifies the confirmed intent is met; no partial comment application. `uv run pytest` passes.
+  - Review focus: no silent partial comment application; revise repair budget unchanged.
+- [ ] 11.8 Gate recipe, run and new versions; live flow
+  - Goal: recipe and run endpoints recheck the current spec and assessment before compile/queue/subprocess; new versions copy references and recompute; allowed-type changes and legacy builds go through the same gate; the live flow proves it end to end.
+  - Spec: docs/architecture.md#Capability verification; ../contracts/dashboard-intent.md#Enforcement
+  - Files: src/dss/api/run.py, src/dss/api/builds.py, src/dss/api/feasibility.py, src/dss/recipe/compiler.py, src/dss/spec/requirements.py, tests/test_feasibility.py, tests/test_api_contract.py, tests/live/test_backend_flow.py
+  - Depends on: 11.7; 9.3; 9.5
+  - Size: M
+  - Done when: `uv run pytest tests/test_feasibility.py tests/test_api_contract.py` passes all eleven ../contracts/dashboard-intent.md oracle cases (re-running 11.6/11.7's) plus: recipe/run on unchecked, stale, blocked or `prototype_stale` builds return `409 feasibility_blocked` and compile/queue/start nothing; a new version copies references and confirmed mappings, clears assessment ids and must recheck before recipe/run; narrowing DSS_ALLOWED_TYPES blocks a previously ready build; a supported no-image build and a legacy build recover via check. `uv run pytest -m live tests/live/test_backend_flow.py` additionally proves moving-GPS refusal, ambiguous revenue mapping clarified into a successful image-guided prototype, and the original core flow. `uv run pytest` passes.
+  - Review focus: no endpoint bypasses the gate; screenshots are never used as fake complete dashboards.
+
+## Phase 12: Screenshot-only synthetic data (change 2026-10-19)
+- [ ] 12.1 Parameterized deterministic CSV generator and CLI
+  - Goal: reusable network-free Python function and module CLI produce fake CSV from typed schema, row_count and seed, with bounded relations and reproducible output.
+  - Spec: ../contracts/synthetic-data.md#Generator request
+  - Files: src/dss/data/synthetic.py, tests/test_synthetic.py, tests/data/synthetic-spec.json
+  - Depends on: 1.1
+  - Size: M
+  - Done when: `uv run pytest tests/test_synthetic.py` passes every generator kind, lookup/product/null relationships, CSV quoting, explicit types, invalid ranges/dependencies/formula-like strings, exact rows, stable bytes and seed variation; it also loads ../contracts/fixtures/synthetic-data/ request fixtures and generates from their `spec`. CLI `uv run python -m dss.data.synthetic --request tests/data/synthetic-spec.json --output <new-temp-path>/sample.csv` (the request file is a GenerationSpec, not the HTTP body) exits 0 and matches expected header/rows/checksum; invalid schema or existing output exits nonzero without final partial file. A 100,000x10 valid case meets <=30s and <=128MiB additional memory; byte/cell limits fail without truncation. `uv run pytest` passes.
+  - Review focus: no eval/model/network in generator; versioned reproducibility; stdlib and approved Pydantic only.
+- [ ] 12.2 Synthetic generation API, typed intake and download
+  - Goal: an empty build accepts a manual GenerationSpec with row count and seed, generates the CSV, stores it locally or on the GCS volume, loads it to BigQuery with explicit types and registers a `synthetic` source; job status and CSV download endpoints.
+  - Spec: docs/architecture.md#Synthetic data; ../contracts/synthetic-data.md#HTTP workflow and provenance
+  - Files: src/dss/api/synthetic_data.py, src/dss/main.py, src/dss/db.py, src/dss/harness/graph.py, src/dss/harness/nodes/synthetic_generate.py, src/dss/harness/nodes/intake.py, src/dss/data/bigquery.py, tests/test_synthetic_api.py, tests/test_api_contract.py, tests/live/test_synthetic_flow.py
+  - Depends on: 12.1; 1.2
+  - Size: M
+  - Done when: `uv run pytest tests/test_synthetic_api.py tests/test_api_contract.py` passes with fake BigQuery and no model call: `POST /synthetic-data` with `proposal_id: null` on a zero-source build generates and registers `kind=synthetic`, name "Synthetic sample data"; same key + same request returns the original run_id (also after success), changed request -> `409 synthetic_request_conflict`; a build with sources -> `409 synthetic_requires_empty_build`; the load uses the declared schema (no autodetect) with an explicit null marker, keeps string IDs like "001", all-null columns and all-empty rows, and fails cleanly on a row-count mismatch; local and hosted storage paths with metadata written last; jobs/status endpoints read persisted state; CSV download rejects a wrong build/source; `synthetic-data.md` is written. Conformance loads ../contracts/fixtures/synthetic-data. `uv run pytest -m live tests/live/test_synthetic_flow.py` loads a generated CSV with one all-null column and all-empty rows to real BigQuery and checks types and the exact row count. `uv run pytest` passes.
+  - Review focus: ../contracts/api.md 1.4 and synthetic-data.md; never mix with or replace real sources; exact row count before registration.
+- [ ] 12.3 Screenshot schema proposal
+  - Goal: the synthetic_schema node proposes a GenerationSpec with assumptions from the current recreate-mode reference observations; proposal routes; a supplied proposal must be current.
+  - Spec: ../contracts/synthetic-data.md#HTTP workflow and provenance
+  - Files: src/dss/api/synthetic_data.py, src/dss/harness/graph.py, src/dss/harness/context.py, src/dss/harness/nodes/synthetic_schema.py, prompts/v1/synthetic_schema.md, skills/synthetic-schema.md, tests/test_synthetic_api.py, tests/test_api_contract.py
+  - Depends on: 12.2; 11.2
+  - Size: M
+  - Done when: `uv run pytest tests/test_synthetic_api.py tests/test_api_contract.py` passes with FakeLLM: a zero-source build with a recreate reference gets a locally validated Proposal (one call, <=12k counted input/6k output, no repair, <=20 assumptions of <=240 chars, no rows in context); style-only or no reference -> `422 synthetic_schema_unavailable`; generating with a stale proposal or reference -> `409 synthetic_proposal_stale`; a user-edited spec keeps the original assumptions plus an "edited by user" note. `uv run pytest` passes.
+  - Review focus: proposal is a suggestion, never a reconstruction; no bulk rows from the model.
+- [ ] 12.4 Durable generation manifests and startup reconciliation
+  - Goal: immutable reservation/generated/committed manifests on the data volume make acknowledged jobs survive an older SQLite backup; startup reconciles them before serving.
+  - Spec: ../contracts/synthetic-data.md#HTTP workflow and provenance; ../contracts/synthetic-data.md#Storage
+  - Files: src/dss/api/synthetic_data.py, src/dss/main.py, src/dss/db.py, src/dss/harness/nodes/synthetic_generate.py, tests/test_synthetic_recovery.py
+  - Depends on: 12.2
+  - Size: M
+  - Done when: `uv run pytest tests/test_synthetic_recovery.py` passes: container replacement (restart with an older SQLite copy) immediately after reservation and after registration restores job/source identity without a second source; interrupted uncommitted work is marked failed with only its own artifacts/table cleaned and `retry_ready` true afterwards; malformed/incomplete records never count as success; a committed record is never overwritten; response loss and missed SSE leave status readable. `uv run pytest` passes.
+  - Review focus: the manifest is the authority over an older backup; serialization with the periodic backup.
+  - If: the program root has simplified this contract section (change request 2026-10-20) before this task starts -> stop; the architect rewrites the task first.
+- [ ] 12.5 Synthetic label through prototype and report; live flow
+  - Goal: an unremovable "Synthetic sample data" decoration whenever a participating source is synthetic, through spec, render, background, compile, revise and new versions; the live screenshot-only flow.
+  - Spec: docs/architecture.md#Synthetic data
+  - Files: src/dss/spec/models.py, src/dss/spec/patch.py, src/dss/spec/validate.py, src/dss/spec/layout.py, src/dss/harness/nodes/spec.py, src/dss/harness/nodes/revise.py, src/dss/render/prototype.py, src/dss/render/background.py, src/dss/recipe/compiler.py, src/dss/api/builds.py, tests/test_synthetic_label.py, tests/test_render.py, tests/live/test_synthetic_flow.py
+  - Depends on: 12.3; 11.8
+  - Size: M
+  - Done when: `uv run pytest tests/test_synthetic_label.py tests/test_render.py` passes: a synthetic-source build's spec, prototype HTML, background.png and recipe all carry the label in a layout-reserved box; a revise patch or image style that removes, moves over or hides it is rejected; old copied specs get it back from source provenance; new versions keep it; a real-data build has none. `uv run pytest -m live tests/live/test_synthetic_flow.py` proves screenshot only -> proposal -> 1,000-row generated CSV -> typed BQ -> labeled prototype with no uploaded CSV, and that synthetic inputs still refuse GPS animation. `uv run pytest` passes.
+  - Review focus: label cannot be removed by a model patch or image style; no fabricated-original-data claims.
