@@ -212,3 +212,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: none.
 - Next: Task 5.1 Cloud mode: static frontend, PORT, access code, DB backup; deep work due to its Spec. New chat, gpt-6.1-sol at high, invoke blueprint-solution-builder.
+
+## 2026-10-19: Task 5.1 Cloud mode: static frontend, PORT, access code, DB backup
+- Status: done
+- Plan check: off
+- What changed: added shared-code/header and HMAC-cookie access, cloud startup guards, SPA serving, module server options, SQLite restore and serialized periodic/shutdown snapshots.
+- Checks: `uv run pytest tests/test_cloud_mode.py` PASS (22); `uv run pytest` PASS (190, 3 live deselected, 2 upstream warnings); `git diff --check -- .` PASS. Read-only review: P2 unbounded backup teardown fixed; follow-up no findings.
+- Decisions: runtime secrets are SecretStr and public settings use an allowlist. Agent namespace reserves its independent token gate for 5.2; settings locking stays there too. Cloud DB defaults to local temp and rejects a path inside the data directory. Committed-write generations preserve writes during snapshots. Unique local temp folders hold dss.bak; volume receives only copy/rename. Backup teardown shares a 3-second deadline and daemon workers avoid executor shutdown hangs. No dependencies added. Recorded Windows static-path and lifespan-timeout gotchas in AGENTS.md.
+- Tried and failed: first check exposed Windows backslashes bypassing the SPA API exclusion; normalized separators and reran successfully.
+- Gotchas: none beyond AGENTS.md.
+- Left open: none.
+- Next: Task 5.2 Agent mode: job queue and agent endpoints; deep work due to its Spec. New chat, gpt-6.1-sol at high, invoke blueprint-solution-builder.

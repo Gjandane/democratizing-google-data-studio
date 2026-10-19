@@ -1,12 +1,19 @@
 """Backend application entry point."""
 from contextlib import asynccontextmanager
+import asyncio
+import logging
+import os
+from pathlib import Path
+import tempfile
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
 from fastapi.responses import JSONResponse
+from starlette.staticfiles import StaticFiles
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
-from dss.api import builds, settings, prototype, run, dev, chat, engine
+from dss.api import builds, settings, prototype, run, dev, chat, engine, session
 from dss.harness.nodes.execute import environment
 from dss.bus import EventBus
 from dss.config import Config, SettingsStore
@@ -14,13 +21,35 @@ from dss.db import Database
 from dss.harness.guardrails import RunError
 from dss.harness.llm import ModelRouter
 
+SHUTDOWN_BACKUP_TIMEOUT_S = 3
+logger = logging.getLogger(__name__)
+
+
+class SPAFiles(StaticFiles):
+    async def get_response(self, path, scope):
+        # StaticFiles normalizes paths to backslashes on Windows.
+        url_path = path.replace("\\", "/")
+        if url_path == "api" or url_path.startswith("api/"):
+            raise HTTPException(404)
+        try:
+            return await super().get_response(path, scope)
+        except HTTPException as error:
+            if error.status_code != 404:
+                raise
+            return await super().get_response("index.html", scope)
+
 
 def create_app(config=None, *, model_lister=None, bigquery_factory=None):
     config = config or Config.from_env()
 
     @asynccontextmanager
     async def lifespan(app):
-        app.state.db = Database(config.db_path or config.data_dir / "dss.sqlite")
+        config.validate_cloud()
+        db_path = config.db_path or (Path(tempfile.gettempdir()) / "dss.sqlite" if config.cloud_service
+                                     else config.data_dir / "dss.sqlite")
+        if config.cloud_service and db_path.resolve().is_relative_to(config.data_dir.resolve()):
+            raise RuntimeError("Cloud Run requires DSS_DB_PATH outside DSS_DATA_DIR")
+        app.state.db = Database(db_path, config.data_dir)
         app.state.db.initialize()
         app.state.settings = SettingsStore(config, app.state.db)
         app.state.models = ModelRouter(app.state.settings, model_lister)
@@ -32,12 +61,30 @@ def create_app(config=None, *, model_lister=None, bigquery_factory=None):
         from dss.harness.graph import AgentHarness
         app.state.harness = AgentHarness(app.state.db, app.state.bus, app.state.models)
         await app.state.models.refresh()
-        yield
-        if app.state.engine_tasks:
-            import asyncio
-            await asyncio.gather(*app.state.engine_tasks, return_exceptions=True)
+        stop_backup = asyncio.Event()
+        backup_task = (asyncio.create_task(app.state.db.periodic_backup(stop_backup))
+                       if app.state.db.backup_path else None)
+        try:
+            yield
+        finally:
+            try:
+                if app.state.engine_tasks:
+                    await asyncio.gather(*app.state.engine_tasks, return_exceptions=True)
+            finally:
+                stop_backup.set()
+                if backup_task:
+                    try:
+                        async with asyncio.timeout(SHUTDOWN_BACKUP_TIMEOUT_S):
+                            await backup_task
+                            await app.state.db.async_backup(force=True)
+                    except TimeoutError:
+                        logger.warning("Database backup exceeded the shutdown budget")
 
     app = FastAPI(lifespan=lifespan)
+    app.state.config = config
+    app.add_middleware(session.AccessMiddleware, config=config)
+    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+    app.include_router(session.router)
     app.include_router(settings.router)
     app.include_router(builds.router)
     app.include_router(chat.router)
@@ -69,7 +116,15 @@ def create_app(config=None, *, model_lister=None, bigquery_factory=None):
                                       "message": "Request could not be handled", "detail": {}}},
                             status_code=error.status_code)
 
+    if config.static_dir:
+        app.mount("/", SPAFiles(directory=config.static_dir))
     return app
 
 
 app = create_app()
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8000")),
+                forwarded_allow_ips="*", timeout_graceful_shutdown=3)

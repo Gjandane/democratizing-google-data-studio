@@ -93,7 +93,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: subprocess read in a worker thread without blocking the event loop; argument list, no `shell=True`; the lock is released on every path.
 
 ## Phase 5: Cloud mode (Cloud Run)
-- [ ] 5.1 Cloud mode: static frontend, PORT, access code, DB backup
+- [x] 5.1 Cloud mode: static frontend, PORT, access code, DB backup
   - Goal: the same app runs on Cloud Run: serves the built frontend, listens on `$PORT`, gates `/api` with the shared access code, refuses to start unsafe on Cloud Run, and keeps SQLite on local disk with a backup on the `/data` volume.
   - Spec: docs/architecture.md#Cloud mode; ../contracts/api.md#Access; ../contracts/conventions.md#Cloud deployment
   - Files: src/dss/config.py, src/dss/main.py, src/dss/db.py, src/dss/api/session.py, tests/test_cloud_mode.py

@@ -1,6 +1,7 @@
 """Environment defaults resolved from the package, with a SQLite settings overlay."""
 import os
 from pathlib import Path
+from typing import Literal
 
 from dotenv import dotenv_values
 from pydantic import BaseModel, ConfigDict, SecretStr
@@ -19,6 +20,11 @@ class Config(BaseModel):
     gcs_bucket: str = ""
     data_dir: Path = BACKEND_DIR / "../data"
     db_path: Path | None = None
+    static_dir: Path | None = None
+    access_code: SecretStr = SecretStr("")
+    agent_token: SecretStr = SecretStr("")
+    engine_mode: Literal["local", "agent"] = "local"
+    cloud_service: str = ""
 
     @classmethod
     def from_env(cls):
@@ -26,9 +32,12 @@ class Config(BaseModel):
         names = {"google_api_key": "GOOGLE_API_KEY", "planner_model": "DSS_PLANNER_MODEL",
                  "worker_model": "DSS_WORKER_MODEL", "gcp_project_id": "GCP_PROJECT_ID",
                  "bq_dataset": "BQ_DATASET", "bq_location": "BQ_LOCATION",
-                 "gcs_bucket": "GCS_BUCKET", "data_dir": "DSS_DATA_DIR", "db_path": "DSS_DB_PATH"}
+                 "gcs_bucket": "GCS_BUCKET", "data_dir": "DSS_DATA_DIR", "db_path": "DSS_DB_PATH",
+                 "static_dir": "DSS_STATIC_DIR", "access_code": "DSS_ACCESS_CODE",
+                 "agent_token": "DSS_AGENT_TOKEN", "engine_mode": "DSS_ENGINE_MODE",
+                 "cloud_service": "K_SERVICE"}
         values = {field: env[name] for field, name in names.items() if env.get(name) is not None}
-        for field in ("data_dir", "db_path"):
+        for field in ("data_dir", "db_path", "static_dir"):
             if values.get(field):
                 values[field] = (BACKEND_DIR / values[field]).resolve()
             elif field in values:
@@ -36,8 +45,16 @@ class Config(BaseModel):
         return cls(**values)
 
     def public(self):
-        return {**self.model_dump(exclude={"google_api_key", "data_dir", "db_path"}),
+        return {**self.model_dump(include={"planner_model", "worker_model", "gcp_project_id",
+                                          "bq_dataset", "bq_location", "gcs_bucket"}),
                 "google_api_key_set": bool(self.google_api_key.get_secret_value())}
+
+    def validate_cloud(self):
+        if self.cloud_service:
+            if len(self.access_code.get_secret_value()) < 12:
+                raise RuntimeError("Cloud Run requires DSS_ACCESS_CODE of at least 12 characters")
+            if self.engine_mode == "agent" and len(self.agent_token.get_secret_value()) < 24:
+                raise RuntimeError("Cloud Run agent mode requires DSS_AGENT_TOKEN of at least 24 characters")
 
 
 class SettingsStore:

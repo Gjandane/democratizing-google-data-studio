@@ -45,4 +45,6 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Gemini's generic `400 INVALID_ARGUMENT` does not identify the invalid field; isolate worker/model/schema compatibility with a minimal live request before attributing it to `Any` or unions.
 - The worker rejects the revise schema's nested `maxItems` (20 changes, 40 operations); omit provider array maxima but retain Pydantic limits; title revisions need the renderer's default 28px in context.
 - HTTP clients normalize literal `..` path segments before sending: use `%2e%2e` when testing the API's invalid-name guard.
+- Starlette StaticFiles normalizes paths with OS separators: normalize backslashes before checking the API boundary for SPA fallback on Windows.
+- Uvicorn's graceful-shutdown timeout excludes lifespan teardown; bound backup waits separately and avoid non-daemon executor threads for volume I/O.
 <!-- blueprint-solution:end -->
