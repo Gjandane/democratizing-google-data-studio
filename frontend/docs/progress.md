@@ -170,3 +170,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none new.
 - Left open: P2 agent-status "424 agent_offline" flake (seen 3 of 4 full runs this session, more often than 6.1's ~1 in 6) - tests/agent-status.test.tsx; P2 finished card stays pinned under later messages - activity.ts cardRun (from 6.1).
 - Next: program final audit (architect).
+
+## 2026-10-19: Fix agent-status 424 flake (no plan task)
+- Status: done
+- Plan check: off
+- What changed: the bug was in the app, not the test. On `424 agent_offline` BuildStage only bumped `offlineSignal`; EnginePanel's passive effect then set its load (panel text "Build agent offline" committed) and its `report` effect told BuildStage one commit later. In between Build stayed enabled next to the offline panel, and `findByText` could resolve there. BuildStage.start now also marks its own `engine` offline (`mode: 'agent', agent_connected: false`) in the same batch, so Build turns off before the panel text appears. Test unchanged.
+- Checks: reproduced first, 2 of 6 isolated runs failed at agent-status.test.tsx:94. After fix: `npx vitest run tests/agent-status.test.tsx` 10 of 10 PASS (9 tests); `npm test` 3 of 3 PASS (14 files / 221 tests); `npm run typecheck` PASS.
+- Decisions: fixed the one-commit UI lag in the app over adding a `waitFor` in the test, which would have hidden a clickable Build button next to "agent offline". Not recorded as a plan task (no blueprint task existed for it).
+- Tried and failed: none.
+- Gotchas: none new (same class as the useLayoutEffect gotcha: state reported up through a passive effect lags the child's DOM by a commit).
+- Left open: P2 finished card stays pinned under later messages - activity.ts cardRun (from 6.1).
+- Next: program final audit (architect).

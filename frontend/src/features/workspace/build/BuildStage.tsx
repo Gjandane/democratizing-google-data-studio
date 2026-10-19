@@ -128,6 +128,8 @@ export function BuildStage({ build, run: streamRun }: { build: Build; run: Build
       setStarting(false);
       // The agent panel already says what to do about an offline agent.
       if (error instanceof ApiError && error.code === 'agent_offline') {
+        // Turn Build off in this render: the panel's own report arrives an effect later.
+        setEngine((current) => current && { ...current, mode: 'agent', agent_connected: false });
         setOfflineSignal((n) => n + 1);
         return;
       }
