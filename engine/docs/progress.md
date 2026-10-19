@@ -218,3 +218,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none.
 - Left open: none for this task.
 - Next: task 5.2 Make retry cleanup call the supported Playwright APIs; start with strict keyboard/mouse fakes and the existing operation/run budget.
+
+## 2026-10-19: Task 5.2 Make retry cleanup call the supported Playwright APIs
+- Status: done
+- Plan check: off
+- What changed: executor.py uses supported Escape/mouse calls and bounds canvas lookup by the remaining budget. test_executor.py exercises real cleanup with strict input fakes, retry ordering, unavailable page/canvas and deadline cases.
+- Checks: `uv run pytest tests/test_executor.py` PASS (36 passed, 0.66s); Test (all) `uv run pytest` PASS (109 passed, 9 live deselected, 5.06s); `git diff --check -- .` PASS. Read-only blueprint_reviewer: no findings.
+- Decisions: check remaining time before input because keyboard/mouse APIs have no timeout parameter; give bounding_box the remaining timeout and skip deselection after exhaustion. Preserve existing deadlines and finalizer bypass. No dependency or AGENTS.md changes. Live acceptance remains task 5.4.
+- Tried and failed: before the production fix, strict cleanup regressions exposed the unsupported calls and unbounded lookup (14 failed, 22 passed); the fix resolved all failures.
+- Gotchas: none.
+- Left open: none.
+- Next: task 5.3 Scope and reuse background images across retries; start with retained image ownership and the live report-op regressions.

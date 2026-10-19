@@ -29,18 +29,22 @@ def _safe_message(error: Exception) -> str:
 def reset_ui(page: Any, ctx: OpContext) -> None:
     """Clear transient selection state before the one permitted retry."""
     try:
-        page.keyboard.press("Escape", timeout=ctx.timeout_ms())
+        if ctx.remaining_s() <= 0:
+            return
+        # Keyboard/mouse input has no timeout parameter; check the budget first.
+        page.keyboard.press("Escape")
     except Exception:
         pass
     try:
+        if ctx.remaining_s() <= 0:
+            return
         canvas = ctx.locator(page, "canvas")
         if canvas.count() == 0 or not canvas.is_visible():
             return
-        box = canvas.bounding_box()
-        if box:
+        box = canvas.bounding_box(timeout=ctx.timeout_ms())
+        if box and ctx.remaining_s() > 0:
             # Click the empty workspace immediately to the left of the canvas.
-            page.mouse.click(max(1, box["x"] - 12), box["y"] + min(40, box["height"] / 2),
-                             timeout=ctx.timeout_ms())
+            page.mouse.click(max(1, box["x"] - 12), box["y"] + min(40, box["height"] / 2))
     except Exception:
         pass
 

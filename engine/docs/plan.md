@@ -90,7 +90,7 @@ tasks and require a separately specified scope/contract revision. Task statuses 
   - Size: S
   - Done when: `uv run pytest tests/test_executor.py tests/test_linking.py` passes with regressions proving a stopped browser is launched before sign-in checking, a running owned browser is reused, launch/ownership failures produce browser_error, and unsigned-in still exits 3. Dry-run and header-only recipes must not launch Chrome. `uv run pytest` passes.
   - Review focus: final-audit P1 at executor.py:124-136; do not automate sign-in or act on unrelated tabs.
-- [ ] 5.2 Make retry cleanup call the supported Playwright APIs
+- [x] 5.2 Make retry cleanup call the supported Playwright APIs
   - Goal: after a transient operation failure, Escape and canvas deselection actually run before retry, within the existing operation/run budget. Cleanup must remain best-effort if the page or canvas is unavailable.
   - Spec: docs/architecture.md#Recipe executor
   - Files: src/dsengine/executor.py, tests/test_executor.py

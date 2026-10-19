@@ -8,19 +8,47 @@ import pytest
 import dsengine.executor as executor
 from dsengine.chrome import ChromeConfig, ensure_browser
 from dsengine.events import EventWriter
-from dsengine.ops import OpResult
+from dsengine.ops import OpContext, OpResult
 from dsengine.recipe import Canvas, Datasource, Header, Operation, Recipe
 
 
 class FakeKeyboard:
-    def press(self, *_args, **_kwargs):
-        pass
+    def __init__(self, calls):
+        self.calls = calls
+
+    def press(self, key, *, delay=None):
+        self.calls.append(("press", key))
+
+
+class FakeMouse:
+    def __init__(self, calls):
+        self.calls = calls
+
+    def click(self, x, y, *, button=None, click_count=None, delay=None):
+        self.calls.append(("click", x, y))
+
+
+class FakeCanvas:
+    def count(self):
+        return 1
+
+    def is_visible(self):
+        return True
+
+    def bounding_box(self, *, timeout=None):
+        return {"x": 200, "y": 100, "width": 1200, "height": 900}
 
 
 class FakePage:
-    def __init__(self):
-        self.keyboard = FakeKeyboard()
+    def __init__(self, calls):
+        self.keyboard = FakeKeyboard(calls)
+        self.mouse = FakeMouse(calls)
+        self.canvas = FakeCanvas()
         self.closed = False
+
+    def locator(self, selector):
+        assert selector == "fake"
+        return self.canvas
 
     def set_viewport_size(self, _size):
         pass
@@ -84,8 +112,8 @@ def make_recipe(tmp_path, *names):
 
 @pytest.fixture
 def fake_driver(monkeypatch, tmp_path):
-    page = FakePage()
     calls = []
+    page = FakePage(calls)
     monkeypatch.setattr(executor, "load_selectors", lambda: {"canvas": "fake"})
     monkeypatch.setattr(executor, "build_url", lambda _header: "https://datastudio.google.com/reporting/create?test=1")
     monkeypatch.setattr(executor.chrome, "check", lambda _config: {"signed_in": True})
@@ -98,7 +126,6 @@ def fake_driver(monkeypatch, tmp_path):
         yield FakeBrowserContext(page)
 
     monkeypatch.setattr(executor.chrome, "attached", attach)
-    monkeypatch.setattr(executor, "reset_ui", lambda *_args: calls.append(("reset",)))
     stream = io.StringIO()
     return page, calls, EventWriter(stream), stream
 
@@ -154,7 +181,8 @@ def test_retries_once_screenshots_and_continues(fake_driver, monkeypatch, tmp_pa
     assert failed["screenshot"] == "s002_failed.png"
     assert (screens / "s002_failed.png").is_file()
     assert calls.count(("verify", "set_canvas", "s002")) == 2
-    assert calls.count(("reset",)) == 1
+    assert calls.count(("press", "Escape")) == 1
+    assert calls.count(("click", 188, 140)) == 1
     assert ("run", "save_report", "s003") in calls
     assert ("run", "get_link", "s004") in calls
     assert records[-1]["status"] == "partial"
@@ -175,6 +203,118 @@ def test_open_report_failure_aborts_with_exit_one(fake_driver, monkeypatch, tmp_
     assert records[-1]["status"] == "failed"
     assert records[-1]["error_code"] == "open_report_failed"
     assert not any(call[1] in {"save_report", "get_link"} for call in calls if len(call) > 1)
+
+
+@pytest.mark.parametrize("failure", ["fail_run", "fail_verify"])
+def test_cleanup_runs_before_second_attempt(fake_driver, monkeypatch, tmp_path, failure):
+    _page, calls, events, stream = fake_driver
+    install_handler(monkeypatch, calls, **{failure: {"s002": 1}})
+    recipe = make_recipe(tmp_path, "open_report", "set_canvas", "save_report", "get_link")
+
+    assert executor.run_recipe(recipe, events) == 0
+
+    failed_call = ("run" if failure == "fail_run" else "verify", "set_canvas", "s002")
+    first_attempt = calls.index(failed_call)
+    assert calls[first_attempt:first_attempt + 4] == [
+        failed_call, ("press", "Escape"), ("click", 188, 140),
+        ("run", "set_canvas", "s002"),
+    ]
+    assert read_events(stream)[-1]["status"] == "ok"
+
+
+def cleanup_context(tmp_path):
+    return OpContext(
+        recipe=make_recipe(tmp_path), selectors={"canvas": "fake"},
+        events=EventWriter(io.StringIO()), screens=tmp_path / "screens",
+        run_deadline=120, op_deadline=110,
+    )
+
+
+@pytest.mark.parametrize("unavailable", [
+    "page", "closed_page", "missing_selector", "missing_canvas", "hidden_canvas", "no_box",
+])
+def test_cleanup_is_safe_when_page_or_canvas_unavailable(monkeypatch, tmp_path, unavailable):
+    monkeypatch.setattr(executor.time, "monotonic", lambda: 100)
+    calls = []
+    page = FakePage(calls)
+    ctx = cleanup_context(tmp_path)
+    if unavailable == "page":
+        page = None
+    elif unavailable == "closed_page":
+        def closed(*_args, **_kwargs):
+            raise RuntimeError("page closed")
+        monkeypatch.setattr(page.keyboard, "press", closed)
+        monkeypatch.setattr(page, "locator", closed)
+    elif unavailable == "missing_selector":
+        ctx.selectors = {}
+    elif unavailable == "missing_canvas":
+        monkeypatch.setattr(page.canvas, "count", lambda: 0)
+    elif unavailable == "hidden_canvas":
+        monkeypatch.setattr(page.canvas, "is_visible", lambda: False)
+    else:
+        monkeypatch.setattr(page.canvas, "bounding_box", lambda *, timeout=None: None)
+
+    executor.reset_ui(page, ctx)
+
+    assert calls == ([] if unavailable in {"page", "closed_page"} else [("press", "Escape")])
+
+
+def test_cleanup_still_deselects_if_escape_fails(monkeypatch, tmp_path):
+    monkeypatch.setattr(executor.time, "monotonic", lambda: 100)
+    calls = []
+    page = FakePage(calls)
+
+    def fail_press(key, *, delay=None):
+        raise RuntimeError("keyboard unavailable")
+
+    monkeypatch.setattr(page.keyboard, "press", fail_press)
+    executor.reset_ui(page, cleanup_context(tmp_path))
+
+    assert calls == [("click", 188, 140)]
+
+
+@pytest.mark.parametrize("run_deadline, op_deadline, bypass, remaining_ms", [
+    (120, 110, False, 10000), (105, 110, False, 5000),
+    (99, 110, True, 10000), (120, 99, False, 0), (99, 110, False, 0),
+])
+def test_cleanup_uses_existing_budget(
+    monkeypatch, tmp_path, run_deadline, op_deadline, bypass, remaining_ms,
+):
+    monkeypatch.setattr(executor.time, "monotonic", lambda: 100)
+    calls = []
+    page = FakePage(calls)
+    ctx = cleanup_context(tmp_path)
+    ctx.run_deadline, ctx.op_deadline = run_deadline, op_deadline
+    ctx.bypass_run_deadline = bypass
+    timeouts = []
+
+    def bounding_box(*, timeout=None):
+        timeouts.append(timeout)
+        return FakeCanvas().bounding_box()
+
+    monkeypatch.setattr(page.canvas, "bounding_box", bounding_box)
+    executor.reset_ui(page, ctx)
+
+    assert timeouts == ([remaining_ms] if remaining_ms else [])
+    assert calls == ([("press", "Escape"), ("click", 188, 140)] if remaining_ms else [])
+    assert (ctx.run_deadline, ctx.op_deadline) == (run_deadline, op_deadline)
+
+
+def test_cleanup_does_not_click_after_canvas_lookup_exhausts_budget(monkeypatch, tmp_path):
+    now = [100]
+    monkeypatch.setattr(executor.time, "monotonic", lambda: now[0])
+    calls = []
+    page = FakePage(calls)
+
+    def bounding_box(*, timeout=None):
+        assert timeout == 10000
+        now[0] = 111
+        return FakeCanvas().bounding_box()
+
+    monkeypatch.setattr(page.canvas, "bounding_box", bounding_box)
+    executor.reset_ui(page, cleanup_context(tmp_path))
+
+    assert calls == [("press", "Escape")]
 
 
 @pytest.mark.parametrize(
