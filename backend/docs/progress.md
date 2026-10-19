@@ -413,8 +413,8 @@ context. Task status lives in docs/plan.md, not here.
 ## 2026-10-19: Change activity transparency (program root)
 - Status: done
 - What changed: the user asked for UI transparency (what the agent is doing, elapsed time, tokens). contracts/api.md is now 1.2: new event `run.usage {run_id, node, input_tokens, output_tokens}` (running totals per run) and the list of `node` values; new fixture contracts/fixtures/api/events.usage.sse. PRD Features, architecture.md (Agent run flow, decision row) and the essentials' Contracts row updated.
-- Affects: new task 9.1 (emit `run.usage` in graph.py). No gate: frontend 6.1 builds against the fixture in parallel. First in the program's cut order. 9.1 and fix task 8.6 both edit src/dss/harness/graph.py: never build them at the same time.
-- Next: the final audit's fix tasks 8.1-8.7, then 9.1.
+- Affects: new task 10.1 (emit `run.usage` in graph.py), after the final audit's fix tasks (Depends on 9.6). No gate: frontend 6.1 builds against the fixture in parallel. First in the program's cut order. 10.1 and fix task 9.6 both edit src/dss/harness/graph.py, and 9.6 reworks token counting, so 10.1 comes after it.
+- Next: the final audit's fix tasks 9.1-9.7, then 10.1.
 
 ### Final-audit reconciliation
 - A concurrent program-root change added activity task 8.1 and API 1.2 after the baseline

@@ -156,15 +156,6 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_research.py` passes with FakeLLM and fake search/HTTP tools: scraper HTTP requests stop at 20 including redirects and failures; search runs at most once; raw scraped rows never enter model context; writes a CSV with a header row and `sources.md` listing every URL used, and registers a `research` source; manual (live): "NBA players 2025-26 season stats" yields a CSV with at least 20 rows.
 
-## Phase 9: Activity transparency (change 2026-10-19)
-- [ ] 9.1 Live token usage on the event stream
-  - Goal: every run on a build emits `run.usage` with its running token totals after each model response that reports usage, per ../contracts/api.md 1.2 (Event stream), so the frontend can show tokens climbing during the run.
-  - Files: src/dss/harness/graph.py, tests/test_usage_events.py
-  - Depends on: 1.1
-  - Size: S
-  - Done when: `uv run pytest tests/test_usage_events.py` passes with FakeLLM: an interview turn (streamed) and a plan run each put at least one `run.usage` between `run.started` and `run.finished` on the build's stream; the totals never decrease within a run; the last `run.usage` equals the run's `traces` row (`input_tokens`, `output_tokens`); a streamed interview reply whose chunks carry usage is counted once, not per chunk; a `recipe` run (no model call) emits none; each payload has exactly the keys and JSON types of ../contracts/fixtures/api/events.usage.sse; Test (all) `uv run pytest` passes.
-  - Review focus: ../contracts/api.md 1.2 `run.usage`; one emit per model response; trace totals of non-streamed runs unchanged.
-
 ## Phase 9: Audit fixes
 - [ ] 9.1 Restore live planner schema compatibility
   - Goal: the normal interview-to-prototype path works with the real configured planner. Current plan/repair output_schema conversion sends unsupported additional_properties in response_schema and fails with provider 400 before writing docs.
@@ -222,3 +213,12 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: S
   - Done when: `uv run pytest tests/test_agent_client.py` passes: deterministic clock tests cover transport failures, 429/5xx and success before expiry; no new attempt starts at the deadline; a real local stalled server with a shortened retry budget cannot extend total retry time by the ordinary 40 s timeout (allow <=0.5 s scheduling tolerance); abort closes owned resources and kills an active engine; initial long-poll timeout remains >35 s, heartbeat and non-ASCII token protections still pass. `uv run pytest` passes.
   - Review focus: limit the whole stalled attempt, not just one timeout phase; backoff and requests consume the same deadline measured from first failure.
+
+## Phase 10: Activity transparency (change 2026-10-19)
+- [ ] 10.1 Live token usage on the event stream
+  - Goal: every run on a build emits `run.usage` with its running token totals after each model response that reports usage, per ../contracts/api.md 1.2 (Event stream), so the frontend can show tokens climbing during the run.
+  - Files: src/dss/harness/graph.py, tests/test_usage_events.py
+  - Depends on: 9.6
+  - Size: S
+  - Done when: `uv run pytest tests/test_usage_events.py` passes with FakeLLM: an interview turn (streamed) and a plan run each put at least one `run.usage` between `run.started` and `run.finished` on the build's stream; the totals never decrease within a run; the last `run.usage` equals the run's `traces` row (`input_tokens`, `output_tokens`); a streamed interview reply whose chunks carry usage is counted once, not per chunk; a `recipe` run (no model call) emits none; each payload has exactly the keys and JSON types of ../contracts/fixtures/api/events.usage.sse; Test (all) `uv run pytest` passes.
+  - Review focus: ../contracts/api.md 1.2 `run.usage`; one emit per model response; trace totals of non-streamed runs unchanged.
