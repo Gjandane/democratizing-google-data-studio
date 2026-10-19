@@ -46,12 +46,13 @@ class AgentHarness:
         plan_state = None
         spec_state = None
         revise_state = None
+        extra_state = None
         try:
             await self.emit(build_id, run_id, "run.started", {"run_id": run_id, "node": action})
 
             async def router(node_input):
                 trace.span("router")
-                return Event(actions=EventActions(route=action if action in ("hello", "interview", "plan", "spec", "revise", "intake", "create_build", "load_spec", "recipe", "execute", "versions", "engine_login") else "unknown"))
+                return Event(actions=EventActions(route=action if action in ("hello", "interview", "plan", "spec", "revise", "ux_audit", "style_extract", "intake", "create_build", "load_spec", "recipe", "execute", "versions", "engine_login") else "unknown"))
 
             async def code_node(node_input):
                 nonlocal code_error
@@ -149,6 +150,16 @@ class AgentHarness:
                     ('START', router), (router, {'revise':reviser}), (reviser, validate_revision),
                     (validate_revision, {'repair':repair, 'complete':complete}), (repair, validate_revision),
                     (complete, guardrail)])
+            elif action in ("ux_audit", "style_extract"):
+                if action == "ux_audit":
+                    from dss.harness.nodes.ux_audit import make_branch as extra_branch
+                else:
+                    from dss.harness.nodes.style_extract import make_branch as extra_branch
+                model = llm if llm is not None else self.models.llm_for(action)
+                trace.model = model.model
+                extra_agent, extra_finish, extra_state = extra_branch(self, build_id, run_id, payload, model, trace, model_error)
+                workflow = Workflow(name="dss_run", edges=[
+                    ("START", router), (router, {action: extra_agent}), (extra_agent, extra_finish), (extra_finish, guardrail)])
             elif action == "spec":
                 from dss.harness.nodes.spec import make_branch as spec_branch
                 model = llm if llm is not None else self.models.llm_for("spec")
@@ -192,9 +203,11 @@ class AgentHarness:
                 raise spec_state["failure"]
             if revise_state and revise_state['failure']:
                 raise revise_state['failure']
-            if action == 'revise':
+            if extra_state and extra_state['failure']:
+                raise extra_state['failure']
+            if action in ('revise', 'ux_audit', 'style_extract'):
                 from dss.memory import episodic
-                message = episodic.save(self.db, build_id, 'assistant', reply, 'revise')
+                message = episodic.save(self.db, build_id, 'assistant', reply, action)
                 await self.emit(build_id, run_id, 'message.done', {'message':message})
             if action == "hello":
                 with self.db.connect() as connection:
@@ -219,7 +232,7 @@ class AgentHarness:
             return {"run_id": run_id, "reply": reply}
         except RunError as exc:
             error = exc.code
-            if action in ("plan", "spec", "revise"):
+            if action in ("plan", "spec", "revise", "ux_audit", "style_extract"):
                 error_message = exc.message
             raise
         except asyncio.CancelledError:

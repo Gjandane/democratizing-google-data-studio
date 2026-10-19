@@ -267,3 +267,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: P3 user/index.md grows without bound; past ~12k tokens every consolidation fails over budget - src/dss/harness/context.py. Not run: live Gemini check of the Facts schema.
 - Next: Task 7.1 UX audit and style from picture. Start with the spec_context in src/dss/harness/context.py (style.md goes there) and the revise node's structured-output pattern.
+
+## 2026-10-19: Task 7.1 UX audit and style from picture
+- Status: done
+- Plan check: off
+- What changed: new ux_audit and style_extract nodes (+ skills, prompts); `POST /audit` (prototype.py) and `POST /style-images` (builds.py), both 202 + background run; context.py gains ux_audit_context, style_context and optional style.md in spec_context; graph.py routes both actions.
+- Checks: `uv run pytest tests/test_audit_style.py` PASS (17); `uv run pytest` PASS (310, 3 live deselected). Reviewer: P2 (filenames in frontmatter could break build_response) and P3 (dead assertion) fixed and rechecked.
+- Decisions: Outside Files: context.py, graph.py (required wiring). Built by a Sonnet worker from build notes. Audit: one LLM call, no repair; findings {component_id, severity high/medium/low, issue, suggestion} max 20; unknown ids dropped; code formats one assistant message, high first; none -> "UX audit: no issues found."; no user message saved. Style: 1-3 PNG/JPEG, 5 MB each, suffix must match magic bytes, else 422 invalid_source; file checks run before stage/busy checks (409 wrong_stage in plan/build or active). StyleProfile {palette 2-8 hex, background, surface, text, accent, font_family, radius 0-32, notes}; hex uppercased; style.md frontmatter holds profile + sanitized source names (`[A-Za-z0-9._-]`, dash runs collapsed); notes body only. Images not persisted; budget text-only 6000, 1500/image recorded in span. Provider schemas strip maxItems. No dependencies added.
+- Tried and failed: none.
+- Gotchas: none beyond AGENTS.md.
+- Left open: Not run: live Gemini check of the audit and style schemas (hex pattern in provider schema untested live).
+- Next: Task 7.2 LLM-judge eval script. Start with the ux_audit node's structured-output pattern and the traces table.

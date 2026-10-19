@@ -137,7 +137,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Done when: `uv run pytest tests/test_consolidation.py` passes: with N=5, 4 done builds write nothing; the 5th writes OKF files with non-empty `type`, updates `index.md`, prepends `log.md`, resets the counter; with N=1 each done build consolidates; a changed fact keeps "Previously" with the date; the publish response doesn't wait for it.
 
 ## Phase 7: Stretch (cut order: research first)
-- [ ] 7.1 UX audit and style from picture
+- [x] 7.1 UX audit and style from picture
   - Goal: `POST /audit` runs the ux_audit node (findings as an assistant message); `POST /style-images` runs style_extract (vision) and writes `style.md`, which the spec node then reads.
   - Files: src/dss/harness/nodes/ux_audit.py, src/dss/harness/nodes/style_extract.py, src/dss/api/prototype.py, src/dss/api/builds.py, skills/ux-audit.md, skills/style-extract.md, prompts/v1/ux_audit.md, prompts/v1/style_extract.md, tests/test_audit_style.py
   - Depends on: 4.2

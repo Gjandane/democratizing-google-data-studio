@@ -89,3 +89,24 @@ async def comments(build_id: str, body: Comments, request: Request):
     state.engine_tasks.add(task)
     task.add_done_callback(state.engine_tasks.discard)
     return {'run_id':run_id}
+
+
+@router.post('/{build_id}/audit', status_code=202)
+async def audit(build_id: str, request: Request):
+    state = request.app.state
+    build, folder = current(state, build_id)
+    if build['stage'] != 'prototype' or build_id in state.harness.active_builds:
+        raise RunError('wrong_stage', 'A UX audit requires an idle prototype', 409, {'stage':build['stage']})
+    read_spec(folder)
+    config = state.settings.get()
+    run_id = new_id('r')
+    state.harness.active_builds.add(build_id)
+    async def background():
+        try:
+            await state.harness.run('ux_audit', build_id, {'config':config}, run_id=run_id, reserved=True)
+        except RunError:
+            pass
+    task = asyncio.create_task(background())
+    state.engine_tasks.add(task)
+    task.add_done_callback(state.engine_tasks.discard)
+    return {'run_id':run_id}

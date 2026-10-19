@@ -1,3 +1,4 @@
+import re
 import json
 from typing import Literal
 
@@ -204,3 +205,56 @@ async def events(build_id: str, request: Request):
     if not request.app.state.db.build_exists(build_id):
         raise RunError("build_not_found", "Build not found", 404)
     return EventSourceResponse(request.app.state.bus.stream(build_id), ping=15)
+
+
+STYLE_IMAGE_BYTES = 5 * 1024 * 1024
+STYLE_MAGIC = ((b"\x89PNG\r\n\x1a\n", "image/png", (".png",)), (b"\xff\xd8\xff", "image/jpeg", (".jpg", ".jpeg")))
+
+
+def invalid_image(reason):
+    return RunError("invalid_source", "Style images must be PNG or JPEG files up to 5 MB", 422, {"reason": reason})
+
+
+@router.post("/{build_id}/style-images", status_code=202)
+async def style_images(build_id: str, request: Request, files: list[UploadFile] = File(...)):
+    import asyncio
+    from dss.api.prototype import current
+    state = request.app.state
+    build, _ = current(state, build_id)
+    try:
+        if not 1 <= len(files) <= 3:
+            raise invalid_image("Upload one to three images")
+        images = []
+        for file in files:
+            name = (file.filename or "").replace("\\", "/").rsplit("/", 1)[-1]
+            if file.size is not None and file.size > STYLE_IMAGE_BYTES:
+                raise invalid_image("Image exceeds 5 MB")
+            content = await file.read(STYLE_IMAGE_BYTES + 1)
+            if len(content) > STYLE_IMAGE_BYTES:
+                raise invalid_image("Image exceeds 5 MB")
+            kind = next((mime for magic, mime, suffixes in STYLE_MAGIC
+                         if name.lower().endswith(suffixes) and content.startswith(magic)), None)
+            if kind is None:
+                raise invalid_image("Only PNG and JPEG images are supported")
+            # Names land in style.md frontmatter; keep them plain so no YAML quoting or '---' appears.
+            images.append({"name": re.sub(r"-{2,}", "-", re.sub(r"[^A-Za-z0-9._-]+", "_", name)).strip("-") or "image",
+                           "mime_type": kind, "content": content})
+    finally:
+        for file in files:
+            await file.close()
+    if build["stage"] in ("plan", "build") or build_id in state.harness.active_builds:
+        raise RunError("wrong_stage", "Style images cannot be added while an action is running", 409, {"stage": build["stage"]})
+    config = state.settings.get()
+    run_id = new_id("r")
+    state.harness.active_builds.add(build_id)
+
+    async def background():
+        try:
+            await state.harness.run("style_extract", build_id, {"config": config, "images": images},
+                                    run_id=run_id, reserved=True)
+        except RunError:
+            pass
+    task = asyncio.create_task(background())
+    state.engine_tasks.add(task)
+    task.add_done_callback(state.engine_tasks.discard)
+    return {"run_id": run_id}

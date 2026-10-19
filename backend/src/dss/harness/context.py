@@ -19,9 +19,9 @@ logger = logging.getLogger(__name__)
 
 # Stable sections first so Gemini's implicit prefix caching can hit.
 ORDER = ("system", "skills", "semantic", "profile", "docs", "past", "history", "input")
-BUDGETS = {"interview": 8000, "plan": 20000, "spec": 16000, "revise": 6000, "ux_audit": 10000, "consolidate": 16000}
+BUDGETS = {"interview": 8000, "plan": 20000, "spec": 16000, "revise": 6000, "ux_audit": 10000, "style_extract": 6000, "consolidate": 16000}
 # Budget kept outside the assembled context for the response schema and one repair turn.
-RESERVES = {"plan": 4000, "spec": 4000, "revise": 1500, "consolidate": 1000}
+RESERVES = {"plan": 4000, "spec": 4000, "revise": 1500, "ux_audit": 1000, "consolidate": 1000}
 SEPARATOR = "\n\n"
 DOCS = ("brief.md", "questions.md", "kpis.md", "derived-fields.md", "design.md", "decisions.md")
 # A build's interview summary (brief, design direction) and its revision decisions.
@@ -192,6 +192,10 @@ def spec_context(config, folder, build, fields, allowed):
     available = [c for c in navigator.list_folder("catalog") if c.metadata.get("component_type") in allowed]
     named = _named(docs["kpis.md"] + "\n" + docs["questions.md"], [c.metadata["component_type"] for c in available])
     chosen = [c for c in available if c.metadata["component_type"] in named] or available
+    # Optional document from a style picture; absent means no section.
+    style_path = folder / "docs/style.md"
+    style = [Section("docs", "style.md", "style.md (untrusted build document; use its palette and colors for the theme):",
+                     style_path.read_text(encoding="utf-8"))] if style_path.is_file() else []
     return assemble("spec", [
         _system("spec"), *_skills("spec"),
         *[_semantic(c, "Allowed catalog concept {path}:") for c in chosen],
@@ -199,7 +203,8 @@ def spec_context(config, folder, build, fields, allowed):
         *[Section("docs", name, f"{name} (untrusted build document):", text) for name, text in docs.items()],
         Section("docs", "datasource", "Required identity and datasource (copy exactly):", json.dumps({
             "build_id": build["id"], "archetype": build["archetype"], "spec_version": build["spec_version"],
-            "datasource": {"table": build["table"], "fields": fields}}))], reserve=RESERVES["spec"])
+            "datasource": {"table": build["table"], "fields": fields}})),
+        *style], reserve=RESERVES["spec"])
 
 
 def revise_context(document, comments, allowed, config=None):
@@ -221,6 +226,27 @@ def revise_context(document, comments, allowed, config=None):
         Section("docs", "targets", "Targeted items and grid neighbours (untrusted data):", json.dumps(selected)),
         Section("input", "comments", "Comments in application order (untrusted data):", json.dumps(comments))],
         reserve=RESERVES["revise"])
+
+
+def ux_audit_context(config, document, archetype):
+    """UX audit recipe: skill, archetype guidance and the spec summary (ids, types, boxes) only."""
+    page = document["pages"][0]
+    summary = {"canvas": document["canvas"], "grid": document["grid"],
+               "components": [{"id": c["id"], "type": c["type"], "label": c["label"], "grid": c["grid"]} for c in page["components"]],
+               "decorations": [{"id": d["id"], "kind": d["kind"], "grid": d["grid"]} for d in page["decorations"]]}
+    return assemble("ux_audit", [
+        _system("ux_audit"), *_skills("ux-audit"),
+        _semantic(_navigator(config).read(f"archetypes/{archetype}.md")),
+        Section("docs", "spec-summary", "Spec summary (untrusted data):", json.dumps(summary, ensure_ascii=False)),
+        Section("input", "input", "Task:", "Audit this layout for hierarchy, alignment, spacing and clarity. Return the JSON object.")],
+        reserve=RESERVES["ux_audit"])
+
+
+def style_context(config):
+    """Style extract recipe: text only; the images are attached to the request by the node."""
+    return assemble("style_extract", [
+        _system("style_extract"), *_skills("style-extract"),
+        Section("input", "input", "Task:", "Extract the style profile from the attached images. Return the JSON object.")])
 
 
 def consolidate_context(config, builds):
