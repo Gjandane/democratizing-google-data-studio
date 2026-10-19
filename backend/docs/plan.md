@@ -226,7 +226,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: consolidate (build_id NULL, own Workflow) -> no `run.usage` (no build stream); its trace already counts usage.
 
 ## Phase 11: Required references and feasibility (change 2026-10-19)
-- [ ] 11.1 Evidence-backed capability registry and deterministic checks
+- [x] 11.1 Evidence-backed capability registry and deterministic checks
   - Goal: classify native product, app/engine and data limits with dated evidence; reject unsupported feature combinations, including animation hidden under an allowed geo_map.
   - Spec: docs/architecture.md#Capability verification; ../contracts/dashboard-intent.md#Capability evidence
   - Files: src/dss/spec/capabilities.py, knowledge/datastudio/capabilities.json, knowledge/datastudio/product-limits.md, knowledge/datastudio/index.md, knowledge/datastudio/log.md, tests/test_capabilities.py

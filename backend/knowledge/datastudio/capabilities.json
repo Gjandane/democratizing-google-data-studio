@@ -1,0 +1,1286 @@
+{
+ "registry_version": "1.0",
+ "verified": "2026-10-20",
+ "capabilities": [
+  {
+   "id": "chart.scorecard",
+   "kind": "chart_type",
+   "label": "Scorecard",
+   "recipe": [
+    "add_chart.chart_type=scorecard"
+   ],
+   "component_type": "scorecard",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/scorecard-reference"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/recipe.schema.json",
+     "../contracts/fixtures/recipe.sample.jsonl",
+     "knowledge/catalog/scorecard.md"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "chart.time_series",
+   "kind": "chart_type",
+   "label": "Time series chart",
+   "recipe": [
+    "add_chart.chart_type=time_series"
+   ],
+   "component_type": "time_series",
+   "data": [
+    {
+     "name": "date_field",
+     "types": [
+      "DATE",
+      "DATETIME",
+      "TIMESTAMP"
+     ]
+    }
+   ],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/time-series-reference"
+    ],
+    "verified": "2026-10-20",
+    "limits": {
+     "max_metrics": 5
+    }
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/recipe.schema.json",
+     "../contracts/fixtures/recipe.sample.jsonl",
+     "knowledge/catalog/time_series.md"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "chart.bar",
+   "kind": "chart_type",
+   "label": "Bar chart",
+   "recipe": [
+    "add_chart.chart_type=bar"
+   ],
+   "component_type": "bar",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/bar-chart-and-column-chart-reference"
+    ],
+    "verified": "2026-10-20",
+    "limits": {
+     "max_metrics_per_dimension": 20
+    }
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/recipe.schema.json",
+     "../contracts/fixtures/recipe.sample.jsonl",
+     "knowledge/catalog/bar.md"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "chart.pie",
+   "kind": "chart_type",
+   "label": "Pie chart",
+   "recipe": [
+    "add_chart.chart_type=pie"
+   ],
+   "component_type": "pie",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/pie-chart-reference"
+    ],
+    "verified": "2026-10-20",
+    "limits": {
+     "max_slices": 10
+    }
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/recipe.schema.json",
+     "../contracts/fixtures/recipe.sample.jsonl",
+     "knowledge/catalog/pie.md"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "chart.table",
+   "kind": "chart_type",
+   "label": "Table",
+   "recipe": [
+    "add_chart.chart_type=table"
+   ],
+   "component_type": "table",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/table-reference"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/recipe.schema.json",
+     "../contracts/fixtures/recipe.sample.jsonl",
+     "knowledge/catalog/table.md"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "chart.pivot_table",
+   "kind": "chart_type",
+   "label": "Pivot table",
+   "recipe": [
+    "add_chart.chart_type=pivot_table"
+   ],
+   "component_type": "pivot_table",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/pivot-table-reference"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/recipe.schema.json",
+     "knowledge/catalog/pivot_table.md"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "chart.geo_map",
+   "kind": "chart_type",
+   "label": "Geo chart",
+   "recipe": [
+    "add_chart.chart_type=geo_map"
+   ],
+   "component_type": "geo_map",
+   "data": [
+    {
+     "name": "geo_field",
+     "types": [
+      "GEO",
+      "GEOGRAPHY"
+     ]
+    }
+   ],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/geo-chart-reference"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/recipe.schema.json",
+     "knowledge/catalog/geo_map.md"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "chart.scatter",
+   "kind": "chart_type",
+   "label": "Scatter chart",
+   "recipe": [
+    "add_chart.chart_type=scatter"
+   ],
+   "component_type": "scatter",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/scatter-chart-reference"
+    ],
+    "verified": "2026-10-20",
+    "limits": {
+     "max_bubbles": 1000
+    }
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/recipe.schema.json",
+     "knowledge/catalog/scatter.md"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "control.date_range",
+   "kind": "control_type",
+   "label": "Date range control",
+   "recipe": [
+    "add_control.control_type=date_range"
+   ],
+   "component_type": "date_range",
+   "data": [
+    {
+     "name": "date_field",
+     "types": [
+      "DATE",
+      "DATETIME",
+      "TIMESTAMP"
+     ]
+    }
+   ],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/date-range-control"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/recipe.schema.json",
+     "../contracts/fixtures/recipe.sample.jsonl"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "control.dropdown",
+   "kind": "control_type",
+   "label": "Drop-down list control",
+   "recipe": [
+    "add_control.control_type=dropdown"
+   ],
+   "component_type": "dropdown",
+   "data": [
+    {
+     "name": "control_field",
+     "types": []
+    }
+   ],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/drop-down-list-and-fixed-size-list-control"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/recipe.schema.json"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "control.fixed_size_list",
+   "kind": "control_type",
+   "label": "Fixed-size list control",
+   "recipe": [],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/drop-down-list-and-fixed-size-list-control"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "unsupported",
+    "evidence": [
+     "../contracts/recipe.md#Ops"
+    ],
+    "verified": "2026-10-20",
+    "note": "The recipe offers only date_range and dropdown controls; other control types are unregistered"
+   }
+  },
+  {
+   "id": "element.text",
+   "kind": "element",
+   "label": "Text box",
+   "recipe": [
+    "add_text"
+   ],
+   "component_type": "text",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/add-text-images-lines-and-shapes-to-your-reports"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/recipe.schema.json",
+     "../contracts/fixtures/recipe.sample.jsonl"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "element.image",
+   "kind": "element",
+   "label": "Image",
+   "recipe": [
+    "add_image"
+   ],
+   "component_type": "image",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/add-text-images-lines-and-shapes-to-your-reports"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/recipe.schema.json"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "element.shape",
+   "kind": "element",
+   "label": "Lines and shapes",
+   "recipe": [],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/add-text-images-lines-and-shapes-to-your-reports"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "unsupported",
+    "evidence": [
+     "../contracts/recipe.md#Ops"
+    ],
+    "verified": "2026-10-20",
+    "note": "The recipe has no shape op; decorative shapes are flattened into the background image"
+   }
+  },
+  {
+   "id": "option.bar.orientation",
+   "kind": "option",
+   "label": "Bar orientation",
+   "recipe": [
+    "add_chart.options.bar.orientation"
+   ],
+   "requires": [
+    "chart.bar"
+   ],
+   "values": [
+    "vertical",
+    "horizontal"
+   ],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/bar-chart-and-column-chart-reference"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/fixtures/recipe.sample.jsonl"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "option.bar.stacked",
+   "kind": "option",
+   "label": "Stacked bars",
+   "recipe": [
+    "add_chart.options.bar.stacked"
+   ],
+   "requires": [
+    "chart.bar"
+   ],
+   "value_type": "bool",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/bar-chart-and-column-chart-reference"
+    ],
+    "verified": "2026-10-20",
+    "note": "Stacking is available only with a breakdown dimension"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "option.pie.donut",
+   "kind": "option",
+   "label": "Donut pie",
+   "recipe": [
+    "add_chart.options.pie.donut"
+   ],
+   "requires": [
+    "chart.pie"
+   ],
+   "value_type": "bool",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/pie-chart-reference"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/fixtures/recipe.sample.jsonl"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "option.pivot_table.row_dimensions",
+   "kind": "option",
+   "label": "Pivot row dimensions",
+   "recipe": [
+    "add_chart.options.pivot_table.row_dimensions"
+   ],
+   "requires": [
+    "chart.pivot_table"
+   ],
+   "value_type": "field_list",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/pivot-table-reference"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "option.pivot_table.column_dimensions",
+   "kind": "option",
+   "label": "Pivot column dimensions",
+   "recipe": [
+    "add_chart.options.pivot_table.column_dimensions"
+   ],
+   "requires": [
+    "chart.pivot_table"
+   ],
+   "value_type": "field_list",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/pivot-table-reference"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "option.geo_map.geo_type",
+   "kind": "option",
+   "label": "Geographic granularity",
+   "recipe": [
+    "add_chart.options.geo_map.geo_type"
+   ],
+   "requires": [
+    "chart.geo_map"
+   ],
+   "values": [
+    "country",
+    "region",
+    "city"
+   ],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/geo-chart-reference"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "option.table.rows_per_page",
+   "kind": "option",
+   "label": "Table rows per page",
+   "recipe": [
+    "add_chart.options.table.rows_per_page"
+   ],
+   "requires": [
+    "chart.table"
+   ],
+   "value_type": "int",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/table-reference"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/fixtures/recipe.sample.jsonl"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "option.scorecard.compact_numbers",
+   "kind": "option",
+   "label": "Compact numbers",
+   "recipe": [
+    "add_chart.options.scorecard.compact_numbers"
+   ],
+   "requires": [
+    "chart.scorecard"
+   ],
+   "value_type": "bool",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/scorecard-reference"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/fixtures/recipe.sample.jsonl"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "geo.lat_long_points",
+   "kind": "geo_granularity",
+   "label": "Latitude/longitude points (bubble map)",
+   "recipe": [],
+   "data": [
+    {
+     "name": "latitude",
+     "types": [
+      "FLOAT",
+      "FLOAT64",
+      "NUMERIC",
+      "BIGNUMERIC"
+     ]
+    },
+    {
+     "name": "longitude",
+     "types": [
+      "FLOAT",
+      "FLOAT64",
+      "NUMERIC",
+      "BIGNUMERIC"
+     ]
+    }
+   ],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/google-maps-reference"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "unsupported",
+    "evidence": [
+     "../contracts/recipe.md#Ops"
+    ],
+    "verified": "2026-10-20",
+    "note": "This app's geo_map offers only country, region and city granularity"
+   }
+  },
+  {
+   "id": "argument.metric_agg",
+   "kind": "argument",
+   "label": "Metric aggregation",
+   "recipe": [
+    "add_chart.metrics.agg"
+   ],
+   "values": [
+    "sum",
+    "avg",
+    "count",
+    "count_distinct",
+    "min",
+    "max",
+    "none"
+   ],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/aggregation"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/recipe.schema.json",
+     "../contracts/fixtures/recipe.sample.jsonl"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "argument.date_dimension",
+   "kind": "argument",
+   "label": "Date dimension",
+   "recipe": [
+    "add_chart.date_dimension"
+   ],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/time-series-reference"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/recipe.schema.json",
+     "../contracts/fixtures/recipe.sample.jsonl"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "argument.breakdown",
+   "kind": "argument",
+   "label": "Breakdown dimension",
+   "recipe": [
+    "add_chart.breakdown"
+   ],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/bar-chart-and-column-chart-reference",
+     "https://docs.cloud.google.com/data-studio/time-series-reference"
+    ],
+    "verified": "2026-10-20",
+    "note": "A breakdown dimension limits a bar chart to one metric"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/recipe.schema.json"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "argument.sort",
+   "kind": "argument",
+   "label": "Sort order",
+   "recipe": [
+    "add_chart.sort"
+   ],
+   "values": [
+    "asc",
+    "desc"
+   ],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/bar-chart-and-column-chart-reference",
+     "https://docs.cloud.google.com/data-studio/table-reference"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/recipe.schema.json",
+     "../contracts/fixtures/recipe.sample.jsonl"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "argument.title",
+   "kind": "argument",
+   "label": "Chart title",
+   "recipe": [
+    "add_chart.title"
+   ],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/bar-chart-and-column-chart-reference"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/recipe.schema.json",
+     "../contracts/fixtures/recipe.sample.jsonl"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "argument.control_field",
+   "kind": "argument",
+   "label": "Control field",
+   "recipe": [
+    "add_control.field"
+   ],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/drop-down-list-and-fixed-size-list-control"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/recipe.schema.json"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "argument.text_font_size",
+   "kind": "argument",
+   "label": "Text font size",
+   "recipe": [
+    "add_text.font_size"
+   ],
+   "requires": [
+    "element.text"
+   ],
+   "value_type": "int",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/add-text-images-lines-and-shapes-to-your-reports"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "unsupported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "src/dss/recipe/compiler.py"
+    ],
+    "verified": "2026-10-20",
+    "note": "The engine accepts it, but this app's spec and compiler never emit it"
+   }
+  },
+  {
+   "id": "argument.text_color",
+   "kind": "argument",
+   "label": "Text color",
+   "recipe": [
+    "add_text.color"
+   ],
+   "requires": [
+    "element.text"
+   ],
+   "value_type": "color",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/add-text-images-lines-and-shapes-to-your-reports"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "unsupported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "src/dss/recipe/compiler.py"
+    ],
+    "verified": "2026-10-20",
+    "note": "The engine accepts it, but this app's spec and compiler never emit it"
+   }
+  },
+  {
+   "id": "argument.text_bold",
+   "kind": "argument",
+   "label": "Bold text",
+   "recipe": [
+    "add_text.bold"
+   ],
+   "requires": [
+    "element.text"
+   ],
+   "value_type": "bool",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/add-text-images-lines-and-shapes-to-your-reports"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "unsupported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "src/dss/recipe/compiler.py"
+    ],
+    "verified": "2026-10-20",
+    "note": "The engine accepts it, but this app's spec and compiler never emit it"
+   }
+  },
+  {
+   "id": "argument.text_align",
+   "kind": "argument",
+   "label": "Text alignment",
+   "recipe": [
+    "add_text.align"
+   ],
+   "requires": [
+    "element.text"
+   ],
+   "values": [
+    "left",
+    "center",
+    "right"
+   ],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/add-text-images-lines-and-shapes-to-your-reports"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "unsupported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "src/dss/recipe/compiler.py"
+    ],
+    "verified": "2026-10-20",
+    "note": "The engine accepts it, but this app's spec and compiler never emit it"
+   }
+  },
+  {
+   "id": "style.colors",
+   "kind": "style",
+   "label": "Series colors",
+   "recipe": [
+    "set_style.style.colors"
+   ],
+   "value_type": "color_list",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/how-to-color-your-reports"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/recipe.schema.json",
+     "../contracts/fixtures/recipe.sample.jsonl"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "style.show_title",
+   "kind": "style",
+   "label": "Show chart title",
+   "recipe": [
+    "set_style.style.show_title"
+   ],
+   "value_type": "bool",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/add-text-images-lines-and-shapes-to-your-reports"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "unsupported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "src/dss/recipe/compiler.py"
+    ],
+    "verified": "2026-10-20",
+    "note": "The engine accepts it, but this app's spec and compiler never emit it"
+   }
+  },
+  {
+   "id": "style.font_size",
+   "kind": "style",
+   "label": "Chart title font size",
+   "recipe": [
+    "set_style.style.font_size"
+   ],
+   "value_type": "int",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/bar-chart-and-column-chart-reference"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "unsupported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "src/dss/recipe/compiler.py"
+    ],
+    "verified": "2026-10-20",
+    "note": "The engine accepts it, but this app's spec and compiler never emit it"
+   }
+  },
+  {
+   "id": "style.background",
+   "kind": "style",
+   "label": "Component background color",
+   "recipe": [
+    "set_style.style.background"
+   ],
+   "value_type": "color",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/bar-chart-and-column-chart-reference"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "unsupported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "src/dss/recipe/compiler.py"
+    ],
+    "verified": "2026-10-20",
+    "note": "The engine accepts it, but this app's spec and compiler never emit it"
+   }
+  },
+  {
+   "id": "style.border_color",
+   "kind": "style",
+   "label": "Component border color",
+   "recipe": [
+    "set_style.style.border_color"
+   ],
+   "value_type": "color",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/bar-chart-and-column-chart-reference"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "unsupported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "src/dss/recipe/compiler.py"
+    ],
+    "verified": "2026-10-20",
+    "note": "The engine accepts it, but this app's spec and compiler never emit it"
+   }
+  },
+  {
+   "id": "layout.canvas",
+   "kind": "layout",
+   "label": "Page canvas size",
+   "recipe": [
+    "set_canvas"
+   ],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/report-and-page-layout"
+    ],
+    "verified": "2026-10-20",
+    "limits": {
+     "max_width": 2000,
+     "max_height": 10000
+    }
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/recipe.schema.json",
+     "../contracts/fixtures/recipe.sample.jsonl"
+    ],
+    "verified": "2026-10-20",
+    "limits": {
+     "width": 1200
+    }
+   }
+  },
+  {
+   "id": "layout.background_image",
+   "kind": "layout",
+   "label": "Flattened background image",
+   "recipe": [
+    "set_background_image"
+   ],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/add-text-images-lines-and-shapes-to-your-reports"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/recipe.schema.json",
+     "../contracts/fixtures/recipe.sample.jsonl"
+    ],
+    "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "layout.multi_page",
+   "kind": "layout",
+   "label": "Multiple report pages",
+   "recipe": [
+    "add_page",
+    "go_to_page"
+   ],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/report-and-page-layout"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "unsupported",
+    "evidence": [
+     "src/dss/spec/models.py"
+    ],
+    "verified": "2026-10-20",
+    "note": "This app builds one page per dashboard"
+   }
+  },
+  {
+   "id": "interaction.cross_filter",
+   "kind": "interaction",
+   "label": "Chart cross-filtering",
+   "recipe": [],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/chart-cross-filtering"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "unsupported",
+    "evidence": [
+     "../contracts/recipe.md#Ops"
+    ],
+    "verified": "2026-10-20",
+    "note": "The recipe has no op that configures cross-filtering"
+   }
+  },
+  {
+   "id": "interaction.drill_down",
+   "kind": "interaction",
+   "label": "Drill down",
+   "recipe": [],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/add-drill-actions-to-charts"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "unsupported",
+    "evidence": [
+     "../contracts/recipe.md#Ops"
+    ],
+    "verified": "2026-10-20",
+    "note": "The recipe has no drill action or dimension hierarchy op"
+   }
+  },
+  {
+   "id": "animation.temporal_playback",
+   "kind": "animation",
+   "label": "Animated or time-lapse playback",
+   "recipe": [],
+   "native_product": {
+    "status": "unknown",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/google-maps-reference"
+    ],
+    "verified": "2026-10-20",
+    "note": "Native map docs describe no playback; that silence is not proof either way"
+   },
+   "app": {
+    "status": "unsupported",
+    "evidence": [
+     "../contracts/recipe.md#Ops"
+    ],
+    "verified": "2026-10-20",
+    "note": "This app's recipe and engine have no animation or temporal playback op"
+   }
+  },
+  {
+   "id": "refresh.data_freshness",
+   "kind": "refresh",
+   "label": "Scheduled data freshness",
+   "recipe": [],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/manage-data-freshness"
+    ],
+    "verified": "2026-10-20",
+    "limits": {
+     "min_minutes": 1
+    }
+   },
+   "app": {
+    "status": "unsupported",
+    "evidence": [
+     "../contracts/recipe.md#Ops"
+    ],
+    "verified": "2026-10-20",
+    "note": "The recipe cannot configure data freshness; Data Studio defaults apply"
+   }
+  },
+  {
+   "id": "refresh.realtime_streaming",
+   "kind": "refresh",
+   "label": "Real-time streaming updates",
+   "recipe": [],
+   "native_product": {
+    "status": "unknown",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/manage-data-freshness"
+    ],
+    "verified": "2026-10-20",
+    "note": "Documented freshness is cached refresh, at least every minute"
+   },
+   "app": {
+    "status": "unsupported",
+    "evidence": [
+     "../contracts/recipe.md#Ops"
+    ],
+    "verified": "2026-10-20",
+    "note": "The recipe and engine have no streaming refresh"
+   }
+  },
+  {
+   "id": "extension.community_visualization",
+   "kind": "extension",
+   "label": "Community (custom JavaScript) visualization",
+   "recipe": [],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://developers.google.com/data-studio/visualization"
+    ],
+    "verified": "2026-10-20"
+   },
+   "app": {
+    "status": "unsupported",
+    "evidence": [
+     "../contracts/recipe.md#Ops"
+    ],
+    "verified": "2026-10-20",
+    "note": "This app's recipe and engine cannot add community visualizations"
+   }
+  },
+  {
+   "id": "extension.embedded_content",
+   "kind": "extension",
+   "label": "Embedded web content or applications",
+   "recipe": [],
+   "native_product": {
+    "status": "unknown",
+    "evidence": []
+   },
+   "app": {
+    "status": "unsupported",
+    "evidence": [
+     "../contracts/recipe.md#Ops"
+    ],
+    "verified": "2026-10-20",
+    "note": "The recipe has no embed op"
+   }
+  }
+ ]
+}

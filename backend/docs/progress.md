@@ -539,3 +539,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: P2 consolidate/eval after_model drop usage_metadata, so their traces read 0 (plan's "already counts usage" is wrong) - src/dss/harness/nodes/consolidate.py:257, src/dss/ops/eval.py:66; P3 tokens of model calls returning invalid output are not counted - src/dss/harness/graph.py:193.
 - Next: Task 11.1 Evidence-backed capability registry and deterministic checks.
+
+## 2026-10-20: Task 11.1 Evidence-backed capability registry and deterministic checks
+- Status: done
+- Plan check: off
+- What changed: new src/dss/spec/capabilities.py (Pydantic Registry, evidence rules, Checker), knowledge/datastudio/capabilities.json (v1.0, 48 records), tests/test_capabilities.py; product-limits.md gains dated official sources and a registry section; datastudio index/log updated.
+- Checks: `uv run pytest tests/test_capabilities.py` PASS (32); Test (all) `uv run pytest` PASS (486, 4 deselected). Reviewer: no P0/P1; three P2 fixed (raw-dict shape keys, null option values, inherited data prerequisites), two P3 fixed.
+- Decisions: record = id, kind, label, recipe locators (e.g. `add_chart.options.geo_map.geo_type`), component_type, requires, values/value_type, separate `native_product` and `app` layers {status supported|unsupported|unknown, evidence, verified, limits, note}, `data` prerequisites {name, types}. Evidence: product = official docs URLs only; app supported must cite ../contracts/recipe.md, recipe.schema.json or fixtures; app exclusions may cite src/, knowledge/, tests/. Loader checks evidence format only (contracts may not ship in Cloud Run); the test checks existence. Classification order: product unsupported -> unsupported_product; DSS_ALLOWED_TYPES -> unsupported_app; app not supported -> unsupported_app; product not supported -> unknown; then requires, value, data (needs_data; unbound field with candidates -> needs_clarification). Interface for 11.3+: `Checker(registry, allowed=None)`, `.need/.requirement/.component/.assess`, `Need{capability,value,fields}`, `Requirement{id,needs}`, `Checker.digest()` (registry + allowlist). add_text args and set_style keys other than colors are app-unsupported (compiler never emits them). Plumbing ops open/save/get_link unclassified. Budget: 40 req/24 components best of 5 well under 100ms. No new dependencies. AGENTS.md: added the knowledge-index .json gotcha.
+- Tried and failed: none.
+- Gotchas: none beyond AGENTS.md.
+- Left open: none.
+- Next: Task 11.2 Versioned references and structured image interpretation.
