@@ -207,3 +207,14 @@ context. Task status lives in docs/plan.md, not here.
 - Evidence: `.blueprint/audit-20261019-resumed/` contains per-suite logs/evidence/screenshots, the first failed spike, the clean spike result and screencast summary. Earlier failing configuration runs remain in `.blueprint/audit-20261019/` and `.blueprint/audit-20261019-newaccount/`.
 - Left open: implementation of tasks 5.1–5.4; compatible-source geo proof and full report-building expansion are deferred in PRD.md. No new STOP or UNVERIFIED dependency before the first repair task.
 - Next: new engine build session for task 5.1 with blueprint-solution-builder; after Phase 5, return to the architect for a final re-audit. Program integration audit belongs at the program root after this part is ACCEPTED.
+
+## 2026-10-19: Task 5.1 Start the dedicated Chrome session before checking sign-in
+- Status: done
+- Plan check: off
+- What changed: executor.py calls ensure_browser before the sign-in check. test_executor.py covers cold startup, owned-browser reuse, unsigned-in exit 3, startup/ownership errors and browser-free early returns.
+- Checks: `uv run pytest tests/test_executor.py tests/test_linking.py` PASS (48 passed, 1.06s); Test (all) `uv run pytest` PASS (94 passed, 9 live deselected, 5.51s); `git diff --check -- .` PASS. Read-only blueprint_reviewer: no findings. Live acceptance remains task 5.4.
+- Decisions: reuse the existing ownership-validated startup helper; keep the check command read-only. No changes needed in chrome.py or test_linking.py. Startup regressions exercise the real ensure_browser helper with fake process/CDP boundaries. No dependency or AGENTS.md changes.
+- Tried and failed: before the production fix, the new regression suite failed as expected (7 failed, 41 passed): startup was skipped before sign-in checking. Adding the startup call resolved all failures.
+- Gotchas: none.
+- Left open: none for this task.
+- Next: task 5.2 Make retry cleanup call the supported Playwright APIs; start with strict keyboard/mouse fakes and the existing operation/run budget.

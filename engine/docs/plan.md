@@ -82,7 +82,7 @@ tasks and require a separately specified scope/contract revision. Task statuses 
   - Done when: `uv run pytest tests/test_screencast.py` passes (frames from a fake CDP session become schema-valid `frame` events, at most one per 400 ms); manual: a live run with `--screencast` prints frame events between op events.
 
 ## Phase 5: Audit fixes
-- [ ] 5.1 Start the dedicated Chrome session before checking sign-in
+- [x] 5.1 Start the dedicated Chrome session before checking sign-in
   - Goal: a live run starts a closed dedicated Chrome profile and then checks sign-in; preserve ownership checks and exit 3 for an actually unsigned-in profile. Missing Chrome and an occupied/unrecognized CDP port must retain useful browser errors.
   - Spec: docs/architecture.md#Recipe executor; docs/architecture.md#Key flows
   - Files: src/dsengine/executor.py, src/dsengine/chrome.py, tests/test_executor.py, tests/test_linking.py

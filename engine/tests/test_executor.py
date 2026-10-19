@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 import dsengine.executor as executor
+from dsengine.chrome import ChromeConfig, ensure_browser
 from dsengine.events import EventWriter
 from dsengine.ops import OpResult
 from dsengine.recipe import Canvas, Datasource, Header, Operation, Recipe
@@ -88,7 +89,9 @@ def fake_driver(monkeypatch, tmp_path):
     monkeypatch.setattr(executor, "load_selectors", lambda: {"canvas": "fake"})
     monkeypatch.setattr(executor, "build_url", lambda _header: "https://datastudio.google.com/reporting/create?test=1")
     monkeypatch.setattr(executor.chrome, "check", lambda _config: {"signed_in": True})
-    monkeypatch.setattr(executor.chrome.ChromeConfig, "from_env", lambda: "fake-config")
+    monkeypatch.setattr(executor.chrome, "ensure_browser", lambda _config: None)
+    config = ChromeConfig(tmp_path / "profile", 9222)
+    monkeypatch.setattr(executor.chrome.ChromeConfig, "from_env", lambda: config)
 
     @contextmanager
     def attach(_config):
@@ -206,8 +209,113 @@ def test_not_signed_in_exits_three_without_starting_ops(fake_driver, monkeypatch
     assert calls == []
 
 
+@pytest.mark.parametrize("running", [False, True])
+@pytest.mark.parametrize("signed_in", [False, True])
+def test_browser_is_started_or_reused_before_sign_in_check(
+    fake_driver, monkeypatch, tmp_path, running, signed_in
+):
+    page, calls, events, stream = fake_driver
+    install_handler(monkeypatch, calls)
+    config = executor.chrome.ChromeConfig.from_env()
+    version = {"webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/browser/test"}
+    startup = []
+    if running:
+        config.profile.mkdir()
+        config.marker.write_text(json.dumps({
+            "websocket": version["webSocketDebuggerUrl"], "port": config.port,
+        }))
+    versions = iter([version] if running else [None, version])
+    monkeypatch.setattr(executor.chrome, "_version", lambda _config: next(versions))
+    monkeypatch.setattr(executor.chrome, "_port_busy", lambda _config: False)
+    monkeypatch.setattr(executor.chrome, "chrome_path", lambda: "chrome.exe")
+
+    def launch(args, **_kwargs):
+        assert not running, "running owned browser must be reused"
+        startup.append("launch")
+        assert f"--user-data-dir={config.profile}" in args
+        assert f"--app={executor.chrome.STUDIO_URL}" in args
+
+    def check(actual_config):
+        assert actual_config == config
+        assert config.marker.is_file()
+        assert startup == ([] if running else ["launch"])
+        startup.append("check")
+        return {"chrome_running": True, "signed_in": signed_in}
+
+    monkeypatch.setattr(executor.chrome.subprocess, "Popen", launch)
+    monkeypatch.setattr(executor.chrome, "ensure_browser", ensure_browser)
+    monkeypatch.setattr(executor.chrome, "check", check)
+    recipe = make_recipe(tmp_path, "open_report", "save_report", "get_link")
+
+    assert executor.run_recipe(recipe, events) == (0 if signed_in else 3)
+    assert next(versions, None) is None
+    assert startup == (["check"] if running else ["launch", "check"])
+    assert read_events(stream)[-1]["error_code"] == (None if signed_in else "not_signed_in")
+    assert page.closed == signed_in
+    if not signed_in:
+        assert calls == []
+
+
+@pytest.mark.parametrize("failure, message", [
+    ("missing_chrome", "DSS_CHROME_PATH"),
+    ("launch_error", "Cannot start Chrome"),
+    ("busy_port", "DSS_CDP_PORT is busy"),
+    ("unrecognized_browser", "unrecognized browser"),
+    ("stale_marker", "unrecognized browser"),
+])
+def test_browser_startup_failures_remain_browser_errors(
+    fake_driver, monkeypatch, tmp_path, failure, message
+):
+    page, calls, events, stream = fake_driver
+    config = executor.chrome.ChromeConfig.from_env()
+    version = {"webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/browser/foreign"}
+    if failure == "stale_marker":
+        config.profile.mkdir()
+        config.marker.write_text(json.dumps({
+            "websocket": "ws://127.0.0.1:9222/devtools/browser/old", "port": config.port,
+        }))
+    monkeypatch.setattr(executor.chrome, "_version", lambda _config: (
+        version if failure in {"unrecognized_browser", "stale_marker"} else None
+    ))
+    monkeypatch.setattr(executor.chrome, "_port_busy", lambda _config: failure == "busy_port")
+    if failure == "missing_chrome":
+        monkeypatch.setenv("DSS_CHROME_PATH", str(tmp_path / "missing-chrome.exe"))
+    else:
+        monkeypatch.setattr(executor.chrome, "chrome_path", lambda: "chrome.exe")
+
+    def launch(*_args, **_kwargs):
+        assert failure == "launch_error", "must reject the port before launching"
+        raise OSError("cannot launch")
+
+    monkeypatch.setattr(executor.chrome.subprocess, "Popen", launch)
+    monkeypatch.setattr(executor.chrome, "ensure_browser", ensure_browser)
+    monkeypatch.setattr(executor.chrome, "check", lambda _config: pytest.fail("sign-in check"))
+    recipe = make_recipe(tmp_path, "open_report", "save_report", "get_link")
+
+    assert executor.run_recipe(recipe, events) == 1
+    records = read_events(stream)
+    assert [event["event"] for event in records] == ["run_started", "log", "run_finished"]
+    assert message in records[-2]["message"]
+    assert records[-1]["error_code"] == "browser_error"
+    assert calls == []
+    assert not page.closed
+
+
+def test_dry_run_never_starts_or_checks_browser(fake_driver, monkeypatch, tmp_path):
+    _page, calls, events, stream = fake_driver
+    monkeypatch.setattr(executor.chrome, "ensure_browser", lambda _config: pytest.fail("browser launch"))
+    monkeypatch.setattr(executor.chrome, "check", lambda _config: pytest.fail("browser check"))
+    recipe = make_recipe(tmp_path, "open_report", "save_report", "get_link")
+
+    assert executor.run_recipe(recipe, events, dry_run=True) == 0
+    assert read_events(stream)[-1]["status"] == "ok"
+    assert read_events(stream)[-1]["skipped"] == 3
+    assert calls == []
+
+
 def test_empty_recipe_succeeds_without_browser(fake_driver, monkeypatch, tmp_path):
     _page, calls, events, stream = fake_driver
+    monkeypatch.setattr(executor.chrome, "ensure_browser", lambda _config: pytest.fail("browser launch"))
     monkeypatch.setattr(executor.chrome, "check", lambda _config: pytest.fail("browser check"))
     recipe = make_recipe(tmp_path)
 
@@ -221,6 +329,7 @@ def test_missing_billing_project_fails_before_browser_check(fake_driver, monkeyp
     monkeypatch.setattr(executor, "build_url", lambda _header: (_ for _ in ()).throw(
         ValueError("GCP_PROJECT_ID is required before opening Chrome")))
     monkeypatch.setattr(executor.chrome, "check", lambda _config: pytest.fail("browser check"))
+    monkeypatch.setattr(executor.chrome, "ensure_browser", lambda _config: pytest.fail("browser launch"))
     recipe = make_recipe(tmp_path, "open_report", "save_report", "get_link")
 
     assert executor.run_recipe(recipe, events) == 1

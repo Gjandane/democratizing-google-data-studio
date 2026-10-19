@@ -123,6 +123,7 @@ def run_recipe(
 
     try:
         config = chrome.ChromeConfig.from_env()
+        chrome.ensure_browser(config)
         session = chrome.check(config)
     except chrome.ChromeError as error:
         events.error(str(error))
