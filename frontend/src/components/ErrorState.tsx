@@ -11,13 +11,15 @@ interface ErrorStateProps {
   retryLabel?: string;
   /** Disables the retry button while a retry is running. */
   retryDisabled?: boolean;
+  /** Shows the retry's spinner and aria-busy (and disables it) while the retried work runs. */
+  retryLoading?: boolean;
   /** More actions next to the retry button, e.g. a link back. */
   actions?: ReactNode;
   className?: string;
 }
 
 /** The error state of a data view, announced to screen readers. */
-export function ErrorState({ title, message, onRetry, retryLabel = 'Try again', retryDisabled = false, actions, className = '' }: ErrorStateProps) {
+export function ErrorState({ title, message, onRetry, retryLabel = 'Try again', retryDisabled = false, retryLoading = false, actions, className = '' }: ErrorStateProps) {
   return (
     <div role="alert" className={`flex items-start gap-3 rounded-panel border border-danger bg-danger-soft px-4 py-3 ${className}`}>
       <CircleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-danger" />
@@ -29,7 +31,7 @@ export function ErrorState({ title, message, onRetry, retryLabel = 'Try again', 
         <div className="flex shrink-0 items-center gap-2">
           {actions}
           {onRetry && (
-            <Button size="sm" icon={<RotateCw aria-hidden="true" />} disabled={retryDisabled} onClick={onRetry}>
+            <Button size="sm" icon={<RotateCw aria-hidden="true" />} disabled={retryDisabled} loading={retryLoading} onClick={onRetry}>
               {retryLabel}
             </Button>
           )}

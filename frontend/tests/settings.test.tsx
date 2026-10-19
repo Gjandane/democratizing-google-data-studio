@@ -267,6 +267,9 @@ describe('trace modal', () => {
     for (const cell of [within(rows[1] as HTMLElement).getByText('41.2 s'), within(totals).getByText('Total, 2 runs'), within(totals).getByText(/ s$| min /)]) {
       expect(cell.classList.contains('whitespace-nowrap')).toBe(true);
     }
+    // The total label uses the body font; the Node column's body cells stay mono.
+    expect(within(totals).getByText('Total, 2 runs').classList.contains('font-mono')).toBe(false);
+    expect(within(rows[1] as HTMLElement).getByText('plan').classList.contains('font-mono')).toBe(true);
   });
 
   it('shows errors, a missing model and updates totals for failed runs', async () => {

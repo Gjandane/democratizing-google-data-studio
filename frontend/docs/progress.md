@@ -242,3 +242,14 @@ context. Task status lives in docs/plan.md, not here.
 - Docs: 8.1's ErrorState `retryDisabled` decision is a component API detail, not folded into the essentials (already over one page). AGENTS.md Known gotchas unchanged (8.1 added none).
 - Left open: typescript Verified row still not re-verified; lint warnings (essentials length, 5.1 entry date order) unchanged.
 - Next: task 9.1, then a re-audit (architect).
+
+## 2026-10-19: Task 9.1 Retry gap, punctuation edge cases, retry spinner and total-row font
+- Status: done
+- Plan check: off
+- What changed: InterviewStage keeps "Generate plan" and its retries busy (spinner, aria-busy, ref guard) from click until the plan/spec run error clears, a POST error, or a 30 s fallback; ErrorState gets additive `retryLoading`; ChatPanel suffix checks the trimmed text and allows one closing quote/bracket; Table footer cells never get `font-mono`.
+- Checks: `npm test` PASS 14 files / 241 tests (new: busy until run.started, rejected POST, same-frame clicks, run.started before POST, 30 s fallback, two punctuation cases, footer font, ErrorState no aria-busy); `npm run typecheck` PASS; manual: yes, screenshots/9.1-trace-1280x800.png ("Total, 2 runs" in Inter, one line), screenshots/9.1-retry-pending-1280x800.png (both buttons spinning).
+- Decisions: `awaitingRun` state + `inFlight` ref released in a layout effect when `runErrors.plan/spec` clear; stage leave resets by unmount (WorkspaceShell). Fallback `AWAIT_RUN_MS = 30_000` (exported from InterviewStage) for a run missed while the stream was down (review P2). The main "Generate plan" button shares the busy state. Footer font fixed in Table (all footers body font); TraceModal unchanged.
+- Tried and failed: none
+- Gotchas: none new.
+- Left open: none
+- Next: re-audit (architect).

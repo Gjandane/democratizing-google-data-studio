@@ -5,7 +5,7 @@ import { api } from '../src/api/client';
 import type { OpenBuildEvents, StreamHandlers } from '../src/api/events';
 import { ApiError, type Build, type BuildEvent, type Message } from '../src/api/types';
 import { ChatPanel } from '../src/features/workspace/chat/ChatPanel';
-import { InterviewStage } from '../src/features/workspace/chat/InterviewStage';
+import { AWAIT_RUN_MS, InterviewStage } from '../src/features/workspace/chat/InterviewStage';
 import { useBuildStream } from '../src/features/workspace/chat/useBuildStream';
 import { resetMockState, setMockRunFailure } from '../src/mocks/api';
 import { openMockBuildEvents } from '../src/mocks/events';
@@ -324,9 +324,113 @@ describe('Run errors', () => {
     await act(async () => finish({ run_id: 'r_x' }));
   });
 
+  it('posts /plan once for two clicks in the same frame (the ref guard, not only disabled)', async () => {
+    const { ready, fire } = await setup();
+    await ready();
+    await screen.findByText(/Who will read this dashboard/);
+    await failPlan(fire, 'Gemini quota hit');
+    const spy = vi.spyOn(api, 'generatePlan').mockResolvedValue({ run_id: 'r_x' });
+    const retry = within(stageAlert() as HTMLElement).getByRole('button', { name: 'Generate plan again' }) as HTMLButtonElement;
+    await act(async () => {
+      retry.click();
+      retry.click();
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps "Generate plan again" busy after the POST until the plan run starts', async () => {
+    const { ready, fire } = await setup();
+    await ready();
+    await screen.findByText(/Who will read this dashboard/);
+    await failPlan(fire, 'Gemini quota hit');
+    const spy = vi.spyOn(api, 'generatePlan').mockResolvedValue({ run_id: 'r_x' });
+    const retry = () => within(stageAlert() as HTMLElement).getByRole('button', { name: 'Generate plan again' }) as HTMLButtonElement;
+    expect(retry().getAttribute('aria-busy')).toBeNull();
+    await act(async () => {
+      fireEvent.click(retry());
+    });
+    // The POST resolved; the run error stays until `run.started`.
+    expect(stageAlert()?.textContent).toContain('Gemini quota hit');
+    expect(retry().disabled).toBe(true);
+    expect(retry().getAttribute('aria-busy')).toBe('true');
+    expect(retry().querySelector('[class*="animate-spin"]')).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(retry());
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+    await fire({ name: 'run.started', data: { run_id: 'r_plan2', node: 'plan' } });
+    expect(stageAlert()).toBeNull();
+    const plan = screen.getByRole('button', { name: 'Generate plan' }) as HTMLButtonElement;
+    expect(plan.disabled).toBe(false);
+    expect(plan.getAttribute('aria-busy')).toBeNull();
+  });
+
+  it('frees the buttons when run.started arrives before the POST resolves', async () => {
+    const { ready, fire } = await setup();
+    await ready();
+    await screen.findByText(/Who will read this dashboard/);
+    await failPlan(fire, 'Gemini quota hit');
+    let finish: (value: { run_id: string }) => void = () => {};
+    vi.spyOn(api, 'generatePlan').mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    fireEvent.click(within(stageAlert() as HTMLElement).getByRole('button', { name: 'Generate plan again' }));
+    await fire({ name: 'run.started', data: { run_id: 'r_plan2', node: 'plan' } });
+    await act(async () => finish({ run_id: 'r_plan2' }));
+    expect(stageAlert()).toBeNull();
+    const plan = screen.getByRole('button', { name: 'Generate plan' }) as HTMLButtonElement;
+    expect(plan.disabled).toBe(false);
+    expect(plan.getAttribute('aria-busy')).toBeNull();
+  });
+
+  it('gives the retry back if run.started never arrives (a run missed while the stream was down)', async () => {
+    const { ready, fire } = await setup();
+    await ready();
+    await screen.findByText(/Who will read this dashboard/);
+    await failPlan(fire, 'Gemini quota hit');
+    const spy = vi.spyOn(api, 'generatePlan').mockResolvedValue({ run_id: 'r_x' });
+    const retry = () => within(stageAlert() as HTMLElement).getByRole('button', { name: 'Generate plan again' }) as HTMLButtonElement;
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        fireEvent.click(retry());
+      });
+      expect(retry().disabled).toBe(true);
+      act(() => vi.advanceTimersByTime(AWAIT_RUN_MS - 1));
+      expect(retry().disabled).toBe(true);
+      act(() => vi.advanceTimersByTime(1));
+      expect(retry().disabled).toBe(false);
+      expect(retry().getAttribute('aria-busy')).toBeNull();
+      await act(async () => {
+        fireEvent.click(retry());
+      });
+      expect(spy).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('re-enables the retry with the error shown when the POST is rejected', async () => {
+    const { ready, fire } = await setup();
+    await ready();
+    await screen.findByText(/Who will read this dashboard/);
+    await failPlan(fire, 'Gemini quota hit');
+    const spy = vi.spyOn(api, 'generatePlan').mockRejectedValue(new ApiError(502, 'backend_down', 'The planner is offline.'));
+    fireEvent.click(within(stageAlert() as HTMLElement).getByRole('button', { name: 'Generate plan again' }));
+    await waitFor(() => expect(stageAlert()?.textContent).toContain('The planner is offline.'));
+    const retry = within(stageAlert() as HTMLElement).getByRole('button', { name: 'Try again' }) as HTMLButtonElement;
+    expect(retry.disabled).toBe(false);
+    expect(retry.getAttribute('aria-busy')).toBeNull();
+    spy.mockResolvedValue({ run_id: 'r_y' });
+    await act(async () => {
+      fireEvent.click(retry);
+    });
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
   it.each([
     ['quota hit', 'quota hit. Send your answer again.'],
     ['Model timed out.', 'Model timed out. Send your answer again.'],
+    ['quota hit. ', 'quota hit. Send your answer again.'],
+    ['He said "stop."', 'He said "stop." Send your answer again.'],
   ])('ends an interview error %j as a sentence before the next step', async (error, shown) => {
     const { ready, fire } = await setup();
     await ready();

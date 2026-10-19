@@ -23,8 +23,9 @@ interface TableProps<T> {
   className?: string;
 }
 
-const cellClass = <T,>(column: Column<T>) =>
-  `px-3 ${column.align === 'right' ? 'text-right tabular-nums' : 'text-left'} ${column.mono ? 'font-mono' : ''} ${column.className ?? ''}`;
+/** Footer cells (totals, their label) keep the body font even in a mono column. */
+const cellClass = <T,>(column: Column<T>, mono = column.mono) =>
+  `px-3 ${column.align === 'right' ? 'text-right tabular-nums' : 'text-left'} ${mono ? 'font-mono' : ''} ${column.className ?? ''}`;
 
 /** A dense data table. */
 export function Table<T>({ columns, rows, rowKey, caption, showCaption = false, footer, className = '' }: TableProps<T>) {
@@ -56,7 +57,7 @@ export function Table<T>({ columns, rows, rowKey, caption, showCaption = false, 
           <tfoot>
             <tr className="border-t border-border-strong bg-surface-muted font-medium">
               {columns.map((column) => (
-                <td key={column.id} className={`h-9 ${cellClass(column)}`}>
+                <td key={column.id} className={`h-9 ${cellClass(column, false)}`}>
                   {footer[column.id]}
                 </td>
               ))}

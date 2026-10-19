@@ -143,8 +143,21 @@ describe('ErrorState', () => {
     const alert = screen.getByRole('alert');
     expect(alert.textContent).toContain("Couldn't load your dashboards");
     expect(alert.textContent).toContain('Start the backend on port 8000, then try again.');
-    fireEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
+    const retry = within(alert).getByRole('button', { name: 'Try again' }) as HTMLButtonElement;
+    // Without retryLoading the retry isn't busy.
+    expect(retry.getAttribute('aria-busy')).toBeNull();
+    fireEvent.click(retry);
     expect(onRetry).toHaveBeenCalledOnce();
+  });
+
+  it('shows a busy, disabled retry with retryLoading', () => {
+    const onRetry = vi.fn();
+    render(<ErrorState title="The plan didn't finish" message="Gemini quota hit." onRetry={onRetry} retryLabel="Generate plan again" retryLoading />);
+    const retry = screen.getByRole('button', { name: 'Generate plan again' }) as HTMLButtonElement;
+    expect(retry.disabled).toBe(true);
+    expect(retry.getAttribute('aria-busy')).toBe('true');
+    fireEvent.click(retry);
+    expect(onRetry).not.toHaveBeenCalled();
   });
 
   it('has no button without onRetry', () => {

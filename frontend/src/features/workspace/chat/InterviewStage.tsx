@@ -1,5 +1,5 @@
 import { Sparkles } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { api } from '../../../api/client';
 import { ApiError, type Build, type Message, type SourceKind } from '../../../api/types';
 import { Button } from '../../../components/Button';
@@ -36,6 +36,9 @@ function answersOf(messages: Message[]): Answer[] {
   return answers;
 }
 
+/** How long a posted plan may wait for its `run.started` before the retry comes back. */
+export const AWAIT_RUN_MS = 30_000;
+
 const plural = (n: number, word: string) => `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`;
 
 /** The Interview stage area: sources, archetype, answers so far, and "Generate plan". */
@@ -52,10 +55,28 @@ export function InterviewStage({
   runErrors?: RunErrors;
 }) {
   const [planning, setPlanning] = useState(false);
+  // The POST went through and the shown run error waits for the next plan run to clear it.
+  const [awaitingRun, setAwaitingRun] = useState(false);
   const [planError, setPlanError] = useState<string | null>(null);
   const info = ARCHETYPE_INFO[build.archetype];
 
+  // Blocks a second POST in the same frame and stays set until the run error clears.
   const inFlight = useRef(false);
+  const hasRunError = Boolean(runErrors.plan || runErrors.spec);
+  const busy = planning || awaitingRun;
+
+  // The next `run.started` of `plan` clears the run errors; leaving Interview unmounts this stage.
+  // A run missed while the stream was down never clears them: give the retry back after a while.
+  useLayoutEffect(() => {
+    if (!awaitingRun) return;
+    const release = () => {
+      inFlight.current = false;
+      setAwaitingRun(false);
+    };
+    if (!hasRunError) return release();
+    const timer = setTimeout(release, AWAIT_RUN_MS);
+    return () => clearTimeout(timer);
+  }, [awaitingRun, hasRunError]);
 
   const generate = async () => {
     if (inFlight.current) return;
@@ -65,10 +86,11 @@ export function InterviewStage({
     try {
       await api.generatePlan(build.id);
       // The stage change arrives on the event stream.
+      setAwaitingRun(true);
     } catch (error) {
+      inFlight.current = false;
       setPlanError(error instanceof ApiError ? error.message : "Couldn't start the plan. Try again.");
     } finally {
-      inFlight.current = false;
       setPlanning(false);
     }
   };
@@ -129,7 +151,7 @@ export function InterviewStage({
             variant={build.ready_for_plan ? 'primary' : 'secondary'}
             data-ready={String(build.ready_for_plan)}
             icon={<Sparkles aria-hidden="true" />}
-            loading={planning}
+            loading={busy}
             onClick={() => void generate()}
           >
             Generate plan
@@ -140,12 +162,12 @@ export function InterviewStage({
               : 'You can plan now, but answering a few more questions helps.'}
           </p>
         </div>
-        {planError && <ErrorState title="Couldn't start the plan" message={planError} onRetry={() => void generate()} retryDisabled={planning} />}
+        {planError && <ErrorState title="Couldn't start the plan" message={planError} onRetry={() => void generate()} retryLoading={busy} />}
         {!planError && runErrors.plan && (
-          <ErrorState title="The plan didn't finish" message={runErrors.plan} onRetry={() => void generate()} retryDisabled={planning} retryLabel="Generate plan again" />
+          <ErrorState title="The plan didn't finish" message={runErrors.plan} onRetry={() => void generate()} retryLoading={busy} retryLabel="Generate plan again" />
         )}
         {!planError && runErrors.spec && (
-          <ErrorState title="The spec didn't finish" message={runErrors.spec} onRetry={() => void generate()} retryDisabled={planning} retryLabel="Generate plan again" />
+          <ErrorState title="The spec didn't finish" message={runErrors.spec} onRetry={() => void generate()} retryLoading={busy} retryLabel="Generate plan again" />
         )}
       </div>
     </div>

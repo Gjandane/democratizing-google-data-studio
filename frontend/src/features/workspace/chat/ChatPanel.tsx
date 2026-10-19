@@ -15,6 +15,15 @@ import { RUN_ERROR_FALLBACK, type BuildStream } from './useBuildStream';
 /** Within this many pixels of the end counts as "reading the newest". */
 const NEAR_BOTTOM = 96;
 
+/** `.`, `!` or `?`, then at most one closing quote or bracket, ends a sentence. */
+const SENTENCE_END = /[.!?]["'”’»)\]]?$/;
+
+/** The interview error as a sentence, then what to do next. */
+const withNextStep = (error: string) => {
+  const text = error.trim();
+  return `${text}${SENTENCE_END.test(text) ? '' : '.'} Send your answer again.`;
+};
+
 const bubble = 'min-w-0 max-w-[85%] rounded-panel px-3 py-2 text-body text-text [overflow-wrap:anywhere]';
 
 function MessageBubble({ message }: { message: Message }) {
@@ -204,9 +213,8 @@ export function ChatPanel({ build, chat }: { build: Build; chat: BuildStream }) 
         <p role="alert" className="flex items-start gap-1.5 px-3 pb-2 text-label text-danger">
           <CircleAlert aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
           <span className="min-w-0 [overflow-wrap:anywhere]">
-            {chat.runErrors.interview}
             {/* The server's text may not say what to do next: the fallback already does. */}
-            {chat.runErrors.interview !== RUN_ERROR_FALLBACK.interview && `${/[.!?]$/.test(chat.runErrors.interview) ? '' : '.'} Send your answer again.`}
+            {chat.runErrors.interview === RUN_ERROR_FALLBACK.interview ? chat.runErrors.interview : withNextStep(chat.runErrors.interview)}
           </span>
         </p>
       )}
