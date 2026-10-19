@@ -36,11 +36,7 @@ Run from this folder (`backend/`) in bash.
 ## Known gotchas
 Traps that cost an earlier session time and that the other docs don't cover, one line each. Builders add lines; the architect sorts them into the docs at the final audit.
 - ADK 2.12 Workflow function events use the workflow as author; identify the node via node_info.path (e.g. dss_run@1/guardrail@1).
-- ADK logs unhandled model exceptions before the harness sees them; sanitize them in on_model_error_callback and test captured logs.
 - BigQuery rejects source_column_match=POSITION with autodetect; normalize upload headers, and use an explicit positional schema for GCS loads.
-- Engine commands launched through uv can leave children holding stdout open; timeout and cancellation must terminate the process tree, then reap the wrapper.
-- ADK interpolates braces in string instructions as session state; use callable instruction providers for assembled context containing user text.
-- ADK output_schema validation bypasses on_model_error_callback; guard and validate raw output in after_model_callback before ADK can log validation inputs.
 - Gemini numeric Literal constraints require response_json_schema; response_schema conversion raises "Literal values must be strings".
 - Gemini's generic `400 INVALID_ARGUMENT` does not identify the invalid field; isolate worker/model/schema compatibility with a minimal live request before attributing it to `Any` or unions.
 - The worker rejects the revise schema's nested `maxItems` (20 changes, 40 operations); omit provider array maxima but retain Pydantic limits; title revisions need the renderer's default 28px in context.
@@ -48,8 +44,4 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Starlette StaticFiles normalizes paths with OS separators: normalize backslashes before checking the API boundary for SPA fallback on Windows.
 - Uvicorn's graceful-shutdown timeout excludes lifespan teardown; bound backup waits separately and avoid non-daemon executor threads for volume I/O.
 - httpx string headers must be ASCII; use byte header values when testing non-ASCII credentials at the server boundary.
-- `uv run pytest` already runs in `backend/`: a test that a subprocess gets `cwd=backend/` must first chdir elsewhere, or it passes without the cwd.
-- The `app` fixture's `state.settings`/`db`/`harness` exist only once its lifespan runs: a test that uses `app` must also request `client` (or `build_id`).
-- Native Google Search hides individual fetches: budget its model calls separately from application HTTP requests; the research scraper counts redirects and failures.
-- BigQuery needs the actual project ID, not its display name (underscores are invalid); verify it before a paid research run reaches intake.
 <!-- blueprint-solution:end -->

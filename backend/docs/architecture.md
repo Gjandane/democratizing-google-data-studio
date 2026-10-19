@@ -69,7 +69,9 @@ Files per version: `data/builds/<id>/v<n>/` (../contracts/conventions.md).
 ## Key flows
 - **Agent run** (one per API action): load settings -> assemble working memory for the node
   (`context.py`) -> node runs (LLM loop with tools, or code) -> guardrails -> write episodic
-  (messages/events) -> emit SSE -> write exactly one trace -> drop run state.
+  (messages/events) -> emit SSE -> write exactly one trace -> drop run state. After each model
+  response that reports usage, the run's running totals go out as `run.usage` (change
+  2026-10-19; ../contracts/api.md 1.2), counted once per response, never per streamed chunk.
 - **interview_turn**: user message saved -> interview node (worker, skills: interview +
   archetype-<x>) -> reply streamed as `message.delta`/`message.done`. When the interview has
   enough, the agent calls its tool `mark_ready_for_plan()` (never a text marker), which sets
@@ -155,6 +157,26 @@ Files per version: `data/builds/<id>/v<n>/` (../contracts/conventions.md).
 - Oracle: tests/test_cloud_mode.py, tests/test_agent_server.py, tests/test_agent_client.py (plan
   tasks 5.1-5.3); every earlier test passes with the code empty and `DSS_ENGINE_MODE=local`.
 
+### Build consistency
+Final-audit corrections (2026-10-19):
+- Recipe preview must work without an engine installation or agent connection. Backend code
+  formats each op's human-readable `line`, preserving the `dsengine print` convention in the API
+  contract. Fixture tests compare preview lines with recorded engine output. Hosted runtime
+  never launches the engine, including for preview.
+- Running an already compiled version must use the current spec. Refresh the recipe from the
+  current spec before execution/job preparation; the recipe action still provides preview.
+  Compile failure starts no engine/job and preserves stage, lock and previous complete artifacts.
+  A recipe request on a busy build must not mutate an in-flight job's files.
+- Package version-relative image assets into deterministic plain filenames for agent transport,
+  rewriting only packaged recipe references. Preserve canonical compiler bytes and original
+  assets. Names must be collision-safe, stable across runs and deduplicated for repeated sources;
+  reject missing files, traversal and resolved paths outside the version folder before queueing.
+  Do not loosen the shared filename guard or change contracts.
+- The agent's 60 s retry budget starts at its first failed attempt. Before each subsequent
+  request, check the remaining deadline and bound the whole attempt, including stalled I/O,
+  by that remainder. Backoff and HTTP 429/5xx share the deadline; expiration exits nonzero and
+  cleans up a running engine. The first ordinary long poll keeps its >35 s timeout.
+
 ### Graph
 - Problem: one ADK 2.0 `Workflow` that is the harness's agent run for every action.
 - Model check: at startup and when settings change, list the available models; if the planner
@@ -189,6 +211,13 @@ Files per version: `data/builds/<id>/v<n>/` (../contracts/conventions.md).
   -> drop FTS past results, then the oldest messages, then semantic concepts beyond the first;
   never drop the system prompt, skills or user input. Count with the API's token counter or
   chars/4 when offline.
+- Offline assembly may use chars/4 as an estimate; live requests must count the complete
+  effective request with the configured model's token counter before generation, including
+  instructions, schemas, tools, contents, images and repair text. Apply the documented drop
+  order and recount. Counting failure returns sanitized `llm_unavailable`, rather than
+  generating over budget. Record estimated section counts separately from the authoritative
+  request count. Counting calls do not add generation calls or consume the research scraper
+  quota; preserve all generation/repair limits.
 - Oracle: unit tests assert section order, budget enforcement and the drop order.
 
 ### Episodic retrieval
@@ -210,6 +239,10 @@ Files per version: `data/builds/<id>/v<n>/` (../contracts/conventions.md).
   `data/knowledge/user/`, updates `index.md`, prepends to `log.md`; then `chats_since = 0`. A
   changed fact keeps the old value under "Previously" with its date. Runs after the build's
   response, never blocking it.
+- Count each successful/partial `build.finished` under the snapshot lock; consume only the
+  count included in a successful snapshot, preserving builds completed while it ran. Inputs
+  are brief/design/decisions, at most 3000 characters each, newest first; skip missing docs.
+  Consolidation has its own Workflow and one build-less trace. Failure preserves the counter.
 - Oracle: test with FakeLLM and `DSS_CONSOLIDATE_EVERY=5`: 4 builds -> no write; 5th -> files written, counter reset, every
   file has parseable frontmatter with non-empty `type`.
 
@@ -254,6 +287,9 @@ Files per version: `data/builds/<id>/v<n>/` (../contracts/conventions.md).
   grid inside 12 columns and the page height; no two components overlap (decorations may sit
   under components); every question in `questions.md` with priority high is referenced by at
   least one component's `question_ref`. Errors are a list of `{path, message}` fed to the repair turn.
+- Sort is a validated `{field, order: asc|desc}` object, matching the recipe contract. Renderer
+  SQL and compiler consume that same shape; unknown keys or orders fail before publication.
+  An explicitly ascending bar/table must render ascending as it will in Data Studio.
 - Oracle: property tests on random valid/invalid specs (fixed seed) + golden invalid cases.
 
 ### Layout
@@ -313,6 +349,10 @@ Files per version: `data/builds/<id>/v<n>/` (../contracts/conventions.md).
 | GCS | CSV source URIs (read by BigQuery load jobs) | ADC | bad URI -> `422 invalid_source` |
 | Google Search (ADK tool) | research discovery (stretch) | API key | one model call; provider-internal fetches opaque |
 | Python table scraper (stdlib) | research CSV/HTML retrieval | none | 20 HTTP requests per run, redirects/failures included; no retries |
+| dsengine (subprocess) | building the report | none | exit codes per ../contracts/recipe.md |
+| Cloud Run | hosting (one instance) | runtime service account (BigQuery Data Editor + Job User) is the ADC there | restart -> running agent job fails with `agent_timeout`; DB restored from the volume |
+| Secret Manager | `GOOGLE_API_KEY`, `DSS_ACCESS_CODE`, `DSS_AGENT_TOKEN` as env vars | Cloud Run (runtime SA: Secret Accessor) | too short or missing code/token -> the backend refuses to start on Cloud Run |
+| GCS volume (`/data`) | state files and the DB backup | Cloud Run gen2 (runtime SA: Storage Object User) | no file locking: the live DB stays on local disk; up to 30 s of writes lost on a crash |
 
 Research budget refinement (task 7.3, approved by user 2026-10-19): discovery uses one
 Google Search model call. Code retrieves public CSV/HTML tables within the separate
@@ -322,11 +362,6 @@ duplicate rows and repeated headers, and writes the CSV and sources.md before ex
 intake registers a research source. Provenance records discovery citations and every
 attempted HTTP URL, including redirects and failures. The reusable Python scraper command
 shares the same limits and parser; it does not execute JavaScript or invent missing data.
-| dsengine (subprocess) | building the report | none | exit codes per ../contracts/recipe.md |
-| Cloud Run | hosting (one instance) | runtime service account (BigQuery Data Editor + Job User) is the ADC there | restart -> running agent job fails with `agent_timeout`; DB restored from the volume |
-| Secret Manager | `GOOGLE_API_KEY`, `DSS_ACCESS_CODE`, `DSS_AGENT_TOKEN` as env vars | Cloud Run (runtime SA: Secret Accessor) | too short or missing code/token -> the backend refuses to start on Cloud Run |
-| GCS volume (`/data`) | state files and the DB backup | Cloud Run gen2 (runtime SA: Storage Object User) | no file locking: the live DB stays on local disk; up to 30 s of writes lost on a crash |
-
 ## Dependencies
 fastapi/uvicorn (API), sse-starlette (SSE), python-multipart (uploads), google-adk (graph,
 agents, tools), google-genai (Gemini client, token counts), google-cloud-bigquery (data),
@@ -334,10 +369,36 @@ python-dotenv (env), pydantic (models), pyyaml (OKF frontmatter), jsonpatch (RFC
 playwright (background screenshot), httpx (TestClient and the `dss-agent` HTTP client, so a
 runtime dependency), pytest + pytest-asyncio (tests).
 
+## Implementation conventions
+- Use callable ADK instructions for assembled user context; braces in string instructions are
+  state templates. Identify Workflow function nodes via `node_info.path` when author is the workflow.
+- Structured output uses `response_json_schema`, not converted `response_schema`. Keep strict
+  Pydantic validation locally; strip only demonstrated unsupported provider bounds (worker
+  nested `maxItems`). Guard raw output before ADK output-schema validation can log inputs;
+  sanitize provider exceptions in `on_model_error_callback`. Apply to plan/repair as well as
+  spec/revise/audit/style/consolidation/judge.
+- Timeout/cancellation owns the engine process tree until terminated and reaped, including
+  wrappers whose descendants hold stdout open. Keep backend cwd explicit.
+- Revision stages spec, prototype, background and cache, publishes with rollback, and preserves
+  aggregate SQL hashes for layout-only changes. Canonical no-ops keep `spec_version`; supply
+  rendered defaults (title 28px) in context. New versions reuse the view and copy render
+  inputs/docs, omitting recipe, events and engine screenshots.
+- Secrets use SecretStr and an allowlisted public settings response. Agent mode ignores saved
+  deployment overrides except models. Backups track committed-write generations, serialize
+  copies/rename, and use daemon I/O with a shared 3 s shutdown deadline.
+- GCP configuration needs a project ID, not its display name; verify syntax/access before live
+  paid runs. Never repair the root .env from a backend build task.
+
 ## Testing
 pytest, offline by default: FakeLLM (scripted responses by node), FakeBigQuery (in-memory rows
 from a CSV), fake engine (a script that prints ../contracts/fixtures/events.sample.jsonl).
 Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
+- Fixtures needing `app.state.db/settings/harness` request `client` or `build_id` to run lifespan.
+  Cwd tests must start outside backend. Encode dot-dot as `%2e%2e` for path-boundary tests; use
+  byte headers for non-ASCII credentials under httpx.
+- Final-audit evidence: `.blueprint/qa/final-audit/` (ignored). Prototype screenshots use the spec
+  canvas (default 1200x900); frontend QA belongs to its part. A fixture render after a failed live
+  plan proves render/build behavior only.
 
 ## Decision log
 | Date | Decision | Alternatives | Why | Source |
@@ -351,4 +412,8 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-18 | Thin slice task 1.3 first; context assembler and consolidation after the build path | memory first | critical path to integration | audit |
 | 2026-10-19 | Cloud mode in this part: static frontend, `$PORT`, access code, DB on local disk with a backup-API copy to `/data` | SQLite on gcsfuse; Firestore | one code path for local and Cloud Run; gcsfuse has no locking | change 2026-10-19 |
 | 2026-10-19 | Delta audit: backup every 30 s when dirty via /tmp, graceful shutdown <= 3 s, fail-closed start, separate agent token, settings lock, path guards, report_url host check, agent split 5.2/5.3, 5.1 right after 1.3 | backup only after builds; access code for the agent | restarts and redeploys lost unbuilt work; a code holder could steal jobs or swap the API key | change 2026-10-19 (audit) |
+| 2026-10-19 | `run.usage` emitted from the one place graph.py sums tokens; consolidate/eval runs (no build stream) emit none | a usage field on `run.finished` only | the UI shows tokens climbing during the run; one emit site | change 2026-10-19 |
 | 2026-10-19 | Build agent `dss-agent` lives in backend and reuses the execute node's event handling; in-memory job queue | agent in engine; Pub/Sub queue | one part owns both sides of the agent endpoints; one instance needs no external queue | change 2026-10-19 |
+| 2026-10-19 | Fold task decisions into implementation conventions; preserve concurrent consolidation completions | reset all counters; direct artifact publication | retain verified concurrency, redaction, staging and cache behavior | tasks 1.1-7.3; final audit |
+| 2026-10-19 | Correct schema transport, engine-free preview, current-spec execution, sort parity and flat agent assets | accept isolated test passes as release evidence | live plan and cross-node checks failed despite 350 passing tests | final audit; tasks 9.1-9.5 |
+| 2026-10-19 | Enforce live token counts and whole-attempt retry deadline | waive original budgets for POC | explicit requirements; CJK estimate and retry loop violate them | final audit; tasks 9.6-9.7 |

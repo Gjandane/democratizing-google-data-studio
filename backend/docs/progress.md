@@ -311,3 +311,114 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: recorded in AGENTS.md.
 - Left open: configured GCP_PROJECT_ID hackaton_aicup26 is invalid; configuration unchanged. Live artifacts: data/research-live/builds/b_fd93e999922d/v1/.
 - Next: all 19 backend tasks complete; final audit with blueprint-solution-architect in a new chat.
+
+## 2026-10-19: Audit (final)
+- Status: DEFECTS. First final audit of this version; all 19 original task suites rerun. The
+  passing offline suite does not establish live or cross-node correctness. Seven fix tasks
+  (9.1-9.7) appended; original task markers unchanged. No product source or tests changed.
+- What changed: docs/plan.md adds Phase 9; architecture.md specifies the corrections and folds
+  durable task decisions into implementation conventions; essentials summarize them and stay
+  below the one-page limit; AGENTS.md moves code/testing conventions out of Known gotchas;
+  PRD clarifies the shared-code non-goal and records limitations. Contracts and other parts untouched.
+- Independent review: blueprint_reviewer read the finished backend against all task Specs and
+  Review focus fields, PRD, contracts, and progress Decisions. Four integration findings accepted
+  after parent reproductions. No built non-goal or unverified declared dependency. Metadata-only
+  backend history scan: 18 commits, 227 blobs, no tracked .env or Google-key/GitHub-token/private-key
+  pattern hit; this is a scoped pattern check, not a whole-program security audit.
+
+### Current runs
+- Test (all): `uv run pytest` PASS: 350 passed, 3 live deselected, 2 upstream warnings,
+  155.95 s. Warnings: Starlette/httpx deprecation and ADK experimental function-schema feature.
+- Every original Done-when pytest command passed in this session (same file arguments as plan;
+  quiet output only). No original automated task command skipped or superseded:
+
+| Task | Passed | Task | Passed | Task | Passed |
+|---|---:|---|---:|---|---:|
+| 1.1 | 7 | 1.2 | 23 | 1.3 | 9 |
+| 2.1 | 11 | 3.1 | 12 | 3.2 | 23 |
+| 3.3 | 26 | 4.1 | 15 | 4.2 | 27 |
+| 4.3 | 8 | 4.4 | 7 | 5.1 | 22 |
+| 5.2 | 35 | 5.3 | 12 | 6.1 | 45 |
+| 6.2 | 11 | 7.1 | 17 | 7.2 | 13 |
+| 7.3 | 27 | | | | |
+
+- Contract conformance: test_api_contract.py PASS as part of 4.4; test_recipe_contract.py
+  PASS as 4.3. Manual conventions check: ports/env names, root-relative runtime paths, IDs,
+  independent access/agent credentials and UTC times match; sorting, image packaging and
+  cloud engine absence have the defects below. No shared contract changes are needed.
+- `uv run pytest -m live tests/live/test_models.py -q`: PASS (1): both configured model names
+  available. `uv run pytest tests/test_render.py -m live -q`: PASS (2), actual Chromium capture
+  and 12-component render budget. A fresh process using the documented `uv run uvicorn
+  dss.main:app --port <free port>` returned health `{status:ok}`; isolated runtime, no reload.
+- Live API upload: PASS (3 rows, order_date/region/revenue), actual BigQuery project
+  ai-projects-250716 in isolated Config only. Interview start/answer: PASS; first question names
+  real columns and contains one question. Real /plan: FAIL, trace r_75cdb09c63da stops in plan
+  before view/spec. Therefore 3.2/3.3's current full live acceptance remains failed/unverified.
+- Minimal provider isolation: Plan via converted response_schema -> 400 INVALID_ARGUMENT on
+  both configured models, unknown additional_properties; the same Plan via response_json_schema
+  on the planner -> PASS. Generation output/credentials were not logged.
+- To test remaining paths independently, injected the existing thin-spec fixture after the
+  demonstrated plan failure, created a real BigQuery view and rendered its aggregates. PASS:
+  scorecard 224.48, one ECharts SVG; 1200x900 screenshot inspected, background title visible in
+  a fresh capture. Real Gemini title-only comment -> spec_version 2, components unchanged,
+  only p1_title changed. Real engine recipe/dry-run -> 200/202 then stage done. This fixture
+  continuation does not count as a successful live interview-to-prototype flow.
+- Real build agent manual command from the repo root (`uv run --project backend dss-agent
+  --server <isolated local server> --dry-run`) with the installed engine -> stage done. Server
+  teardown logged cancellation of its idle poll after the 2 s test shutdown timeout; no failing
+  build or leaked task was observed.
+- Real research API prompt "NBA players 2025-26 season stats" -> successful trace, one research
+  source, 734 BigQuery rows. Local QA scripts/results/screenshots are ignored under
+  .blueprint/qa/final-audit/ (prototype.png and decoration-fresh.png). Runtime test tables remain
+  in the authorized demo dataset; no deployment configuration changed.
+- Live token counter: 900 CJK characters estimated as 225 tokens by current chars/4 helper;
+  provider counted 501. Deterministic agent retry-clock check starts another request exactly
+  60 s after first failure, which can add an ordinary HTTP timeout beyond the budget.
+- `blueprint.py deps`: all 17 rows FOUND; no dependencies added. Stamp PASS; lint: 0 errors,
+  one advisory for 27 cumulative tasks (19 original plus 1 concurrent change plus 7 fixes in this already-split program).
+  Scoped `git diff --check -- .` PASS; only six backend planning/instruction files changed.
+  Independent follow-up review of Phase 9 and its Specs: no findings; reviewer inspected the
+  current prototype and fresh decoration screenshots with no clipping/overlap issue.
+
+### Findings and disposition
+| Priority | Finding (current source) | Disposition |
+|---|---|---|
+| P1 | Plan output_schema transport rejected live; nodes/plan.py:92 | 9.1 M: response_json_schema with strict local guards; real core-flow regression |
+| P1 | Hosted preview subprocesses absent engine; api/run.py:28 | 9.2 S: deterministic engine-free preview |
+| P2 | Revise leaves recipe stale; nodes/revise.py:124 and api/run.py:50 | 9.3 S: refresh from current spec at execution boundary |
+| P2 | Renderer reads direction, contract uses order; render/prototype.py:73 | 9.4 S: one validated sort shape |
+| P2 | Valid nested image rejected by plain filename guard; agent/jobs.py:22,75 | 9.5 M: private flat-name job packaging |
+| P2 | Live budgets always chars/4; harness/context.py:34 | 9.6 M: authoritative complete-request token counts |
+| P3 | Retry starts an attempt at/after deadline; agent/client.py:102,112 | 9.7 S: whole-attempt remaining deadline |
+
+- Reproductions: missing engine in agent mode makes /recipe 422 invalid_source; compile ->
+  persist a revision -> /run is accepted 202 and the downloaded job contains the old recipe;
+  an order:asc bar emits DESC aggregate SQL; the valid golden image spec passes validation
+  then Job.prepare raises 400 invalid_name. These are defects even though current unit tests pass.
+- Existing Left open items: old partial-task blockers were resolved in later task entries;
+  budget and retry items become fixes. Unbounded consolidation index and unmeasured idle Ctrl+C
+  latency are POC limitations in PRD Later. Optional live schema checks remain unrun and are
+  also retained there. No prior open item silently treated as passing.
+- Release checklist: documented backend startup PASS; live core flow FAIL at planning; known
+  limitations documented; generated prototype screenshot PASS at the default canvas. Frontend,
+  deployment, whole-program history and integration release checks belong to the root audit.
+- Decisions: preserve the original requirements instead of waiving measured budget defects;
+  no contracts/dependencies change; use an isolated previously authorized valid GCP project for
+  live QA because the configured project ID has invalid syntax. The configured value and root
+  .env remain unchanged. Do not move to the program integration audit until backend is ACCEPTED.
+- Next: retain the program-prioritized activity task 8.1 first (gpt-6.1-sol at low/Light), then
+  task 9.1 (gpt-6.1-sol at high). After both phases finish, rerun final audit, affected earlier
+  suites, current API conformance and the full live core flow.
+
+## 2026-10-19: Change activity transparency (program root)
+- Status: done
+- What changed: the user asked for UI transparency (what the agent is doing, elapsed time, tokens). contracts/api.md is now 1.2: new event `run.usage {run_id, node, input_tokens, output_tokens}` (running totals per run) and the list of `node` values; new fixture contracts/fixtures/api/events.usage.sse. PRD Features, architecture.md (Agent run flow, decision row) and the essentials' Contracts row updated.
+- Affects: new task 9.1 (emit `run.usage` in graph.py). No gate: frontend 6.1 builds against the fixture in parallel. First in the program's cut order. 9.1 and fix task 8.6 both edit src/dss/harness/graph.py: never build them at the same time.
+- Next: the final audit's fix tasks 8.1-8.7, then 9.1.
+
+### Final-audit reconciliation
+- A concurrent program-root change added activity task 8.1 and API 1.2 after the baseline
+  checks. Preserved that task and all its doc/contract updates; moved audit fixes to Phase 9
+  (9.1-9.7), with unchanged task markers. The activity change remains first in plan order.
+- Current audit does not certify the unimplemented run.usage extension. Its own task check and
+  API 1.2 conformance must pass before the next final acceptance. Both phases remain pending.

@@ -155,3 +155,70 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Depends on: 1.2; 3.1
   - Size: M
   - Done when: `uv run pytest tests/test_research.py` passes with FakeLLM and fake search/HTTP tools: scraper HTTP requests stop at 20 including redirects and failures; search runs at most once; raw scraped rows never enter model context; writes a CSV with a header row and `sources.md` listing every URL used, and registers a `research` source; manual (live): "NBA players 2025-26 season stats" yields a CSV with at least 20 rows.
+
+## Phase 9: Activity transparency (change 2026-10-19)
+- [ ] 9.1 Live token usage on the event stream
+  - Goal: every run on a build emits `run.usage` with its running token totals after each model response that reports usage, per ../contracts/api.md 1.2 (Event stream), so the frontend can show tokens climbing during the run.
+  - Files: src/dss/harness/graph.py, tests/test_usage_events.py
+  - Depends on: 1.1
+  - Size: S
+  - Done when: `uv run pytest tests/test_usage_events.py` passes with FakeLLM: an interview turn (streamed) and a plan run each put at least one `run.usage` between `run.started` and `run.finished` on the build's stream; the totals never decrease within a run; the last `run.usage` equals the run's `traces` row (`input_tokens`, `output_tokens`); a streamed interview reply whose chunks carry usage is counted once, not per chunk; a `recipe` run (no model call) emits none; each payload has exactly the keys and JSON types of ../contracts/fixtures/api/events.usage.sse; Test (all) `uv run pytest` passes.
+  - Review focus: ../contracts/api.md 1.2 `run.usage`; one emit per model response; trace totals of non-streamed runs unchanged.
+
+## Phase 9: Audit fixes
+- [ ] 9.1 Restore live planner schema compatibility
+  - Goal: the normal interview-to-prototype path works with the real configured planner. Current plan/repair output_schema conversion sends unsupported additional_properties in response_schema and fails with provider 400 before writing docs.
+  - Spec: docs/architecture.md#Graph; docs/architecture.md#Implementation conventions
+  - Files: src/dss/harness/nodes/plan.py, tests/test_plan.py, tests/live/test_backend_flow.py
+  - Depends on: 3.2; 3.3; 4.1
+  - Size: M
+  - Done when: `uv run pytest tests/test_plan.py tests/test_spec_node.py` passes, including assertions on the effective provider request (response_json_schema, no converted response_schema), local strict validation, sanitized malformed/secret output, and one SQL repair; `uv run pytest -m live tests/live/test_backend_flow.py` uploads the sample CSV, starts/answers the interview and reaches prototype through the unmodified API with real Gemini/BigQuery, no injected spec/FakeLLM, at most two spec calls for the sample, a working view SELECT and a 1200px background. Live runtime stays in a temporary folder; use a valid authorized GCP project without editing root .env. Save the run IDs and prototype screenshot. `uv run pytest` passes.
+  - Review focus: provider compatibility must not bypass raw-output guards, strict Pydantic validation, token accounting, node order or the repair budget.
+- [ ] 9.2 Compile and preview recipes without a server-side engine
+  - Goal: hosted agent mode returns recipe preview with no installed engine and no connected agent, as required by the deployment and recipe fallback.
+  - Spec: docs/architecture.md#Build consistency; docs/architecture.md#Recipe compiler
+  - Files: src/dss/api/run.py, src/dss/recipe/compiler.py, tests/test_recipe_contract.py, tests/test_api_contract.py, tests/data/recipe_preview.json
+  - Depends on: 4.3; 5.2
+  - Size: S
+  - Done when: `uv run pytest tests/test_recipe_contract.py tests/test_api_contract.py` passes: in agent mode, with engine invocation made to fail if attempted and no heartbeat, POST /recipe returns 200 with sequential ids, the contract shape and deterministic print-compatible lines for all 12 types; compare with an independently recorded preview fixture (not the formatter's own output); canonical golden recipe bytes remain unchanged; compile/preview failures publish no partial recipe and leak no raw exception. `uv run pytest` passes.
+  - Review focus: engine-free preview preserves ../contracts/api.md's line convention; never add the engine to the cloud image or edit another part.
+- [ ] 9.3 Execute the current spec after revision or replanning
+  - Goal: a previously compiled recipe cannot execute stale chart labels, geometry, bindings or theme after the prototype changes.
+  - Spec: docs/architecture.md#Build consistency; docs/architecture.md#Recipe compiler; docs/architecture.md#Revise
+  - Files: src/dss/api/run.py, src/dss/harness/nodes/compile.py, tests/test_execute.py, tests/test_agent_server.py, tests/test_revise.py
+  - Depends on: 9.2; 4.2
+  - Size: S
+  - Done when: `uv run pytest tests/test_execute.py tests/test_agent_server.py tests/test_revise.py` passes: compile -> real revision publication -> run refreshes the recipe from the current spec in local and agent modes; the engine argument input and downloaded Job recipe both contain revised chart content; a replan replacing a spec is covered too. Refresh failure starts no subprocess/job, preserves prototype stage and previous complete recipe, and leaves locks usable; concurrent recipe calls cannot mutate active job files. A no-op remains deterministic. `uv run pytest` passes.
+  - Review focus: freshness holds at the execution boundary, including direct API use; no reliance on a frontend recompilation sequence.
+- [ ] 9.4 Align sort validation, prototype SQL and recipe order
+  - Goal: one validated sort shape uses the contract's order key, so ascending/descending previews match the report.
+  - Spec: docs/architecture.md#Dashboard Spec; docs/architecture.md#Prototype renderer; docs/architecture.md#Recipe compiler
+  - Files: src/dss/spec/models.py, src/dss/spec/validate.py, src/dss/render/prototype.py, src/dss/recipe/compiler.py, tests/test_spec_validate.py, tests/test_render.py, tests/test_recipe_contract.py
+  - Depends on: 4.3
+  - Size: S
+  - Done when: `uv run pytest tests/test_spec_validate.py tests/test_render.py tests/test_recipe_contract.py` passes: explicit order asc/desc on bar, table and time_series produces matching aggregate SQL and schema-valid recipe; absent sort preserves documented defaults; malformed order, unknown keys (including direction) and unknown fields fail validation before artifacts are published; all 12-type golden recipe bytes remain stable. `uv run pytest` passes.
+  - Review focus: ../contracts/recipe.md add_chart.sort and recipe.schema.json; update request schema serialization safely if sort becomes a typed model.
+- [ ] 9.5 Package nested image assets for plain-name agent jobs
+  - Goal: a valid image component with a version-relative path (including images/logo.png) can build through the agent without relaxing filename security.
+  - Spec: docs/architecture.md#Build consistency; docs/architecture.md#Recipe compiler
+  - Files: src/dss/agent/jobs.py, tests/test_agent_server.py, tests/test_agent_client.py
+  - Depends on: 9.3
+  - Size: M
+  - Done when: `uv run pytest tests/test_agent_server.py tests/test_agent_client.py` passes: a valid nested-image spec compiles, queues and finishes through the fake agent engine; every transported name is plain, recipe.jsonl comes first, referenced bytes download correctly, same-basename different assets cannot collide, repeated references deduplicate and repeat packaging is deterministic. Canonical recipe/source bytes stay unchanged; background inputs still work; missing/traversal/absolute/outside-resolved image paths reject before queueing, and failure leaves the stage/lock usable. `uv run pytest` passes.
+  - Review focus: preserve ../contracts/api.md Agent endpoints and its filename guard; package a private recipe copy without changing local execution or canonical compiler bytes.
+- [ ] 9.6 Enforce live input budgets using authoritative token counts
+  - Goal: online contexts obey the specified token limits rather than treating chars/4 as an actual live count (audit CJK sample: estimate 225, provider 501).
+  - Spec: docs/architecture.md#Working memory assembly; docs/architecture.md#Graph
+  - Files: src/dss/harness/context.py, src/dss/harness/llm.py, src/dss/harness/graph.py, src/dss/harness/nodes/plan.py, src/dss/harness/nodes/spec.py, src/dss/harness/nodes/revise.py, src/dss/harness/nodes/ux_audit.py, src/dss/harness/nodes/style_extract.py, src/dss/harness/nodes/research.py, src/dss/harness/nodes/consolidate.py, src/dss/ops/eval.py, tests/test_context.py, tests/test_plan.py, tests/test_revise.py, tests/test_audit_style.py, tests/test_consolidation.py, tests/test_eval.py, tests/test_research.py, tests/live/test_backend_flow.py
+  - Depends on: 9.1; 6.1; 6.2; 7.1; 7.2; 7.3
+  - Size: M
+  - Done when: `uv run pytest tests/test_context.py tests/test_plan.py tests/test_revise.py tests/test_audit_style.py tests/test_consolidation.py tests/test_eval.py tests/test_research.py` passes offline with an injectable token counter: an online-shaped request estimated under budget but counted over budget drops in the specified order, preserves mandatory sections, recounts after drops and refuses generation if still too large; schema/tools/images/repair text participate; every real LLM node uses the guard and stores authoritative request counts separately from estimates; counting failure is sanitized and does not generate. FakeLLM remains network-free and generation/repair/search caps stay unchanged. `uv run pytest -m live tests/live/test_backend_flow.py` confirms actual counts on the live plan/spec path; `uv run pytest` passes.
+  - Review focus: this task centralizes counting and request fitting; node changes are wiring to that guard. Preserve typed Context metadata, schema compatibility and all per-node call limits. No new dependency.
+- [ ] 9.7 Bound retry attempts by the remaining 60-second deadline
+  - Goal: the agent stops retrying within its documented budget even if a subsequent HTTP attempt stalls; no request starts at or after expiration.
+  - Spec: docs/architecture.md#Build consistency
+  - Files: src/dss/agent/client.py, tests/test_agent_client.py
+  - Depends on: 5.3
+  - Size: S
+  - Done when: `uv run pytest tests/test_agent_client.py` passes: deterministic clock tests cover transport failures, 429/5xx and success before expiry; no new attempt starts at the deadline; a real local stalled server with a shortened retry budget cannot extend total retry time by the ordinary 40 s timeout (allow <=0.5 s scheduling tolerance); abort closes owned resources and kills an active engine; initial long-poll timeout remains >35 s, heartbeat and non-ASCII token protections still pass. `uv run pytest` passes.
+  - Review focus: limit the whole stalled attempt, not just one timeout phase; backoff and requests consume the same deadline measured from first failure.

@@ -24,7 +24,7 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 5. History: every build keeps its versions; a new version starts from the latest spec.
 
 ## Non-goals
-- No auth, accounts or multi-user (POC, one local user).
+- No user identities, accounts or multi-user isolation (POC, one shared access code).
 - No vector store or embeddings (OKF navigation + FTS5 instead).
 - No Data Studio calculated fields or blends: derived fields and joins live in the BigQuery view.
 - No LLM-generated HTML or recipe text (deterministic renderers only).
@@ -58,6 +58,7 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 | episodic memory, context assembly, traces | research mode (google_search, capped) | multi-user |
 | 4 archetype skills, 12-type catalog in OKF | LLM-judge eval script | |
 | cloud mode, access code, agent mode + `dss-agent` | | |
+| | live token totals on the event stream (`run.usage`, change 2026-10-19) | |
 
 ## Constraints
 - Deadline 2026-10-20 01:05 MPST (whole program); flow 1 ready for integration by about 14:00 on
@@ -88,3 +89,10 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 - Cloud SQL/Firestore for episodic memory, more than one instance (change 2026-10-19).
 - Automated Eval -> Gate -> Release loop with versioned prompts (plan).
 - Data Studio calculated fields when a view can't express them (plan).
+- Bound/compact the consolidated user index before it outgrows mandatory context; currently a
+  long-running installation can fail consolidation while retaining its counter (audit 2026-10-19).
+- Verify Windows idle Ctrl+C responsiveness; an in-flight agent long poll can delay it up to
+  25 seconds (audit 2026-10-19, not yet measured).
+- Live smoke checks for optional consolidation, UX audit, style extraction and judge schemas
+  remain unrun; offline checks pass (audit 2026-10-19). These are not evidence that the main
+  live planner works: Phase 8 must restore that path before final acceptance.
