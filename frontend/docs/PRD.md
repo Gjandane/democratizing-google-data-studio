@@ -22,6 +22,9 @@ view of the dashboard being built.
 6. Hosted on Cloud Run (change 2026-10-19): an access-code gate before the app when the backend
    requires one, and a Build stage that shows the build agent's status and how to start it when
    the backend runs in agent mode.
+7. Activity transparency (change 2026-10-19): while a run works, the chat column shows a preset
+   phrase for what it's doing, the elapsed time and the live token count, plus a preset step
+   checklist for multi-step runs.
 
 ## Non-goals
 - No auth or accounts (POC, one user): only the shared access code of ../contracts/api.md#Access.
@@ -49,6 +52,7 @@ view of the dashboard being built.
 | Build: recipe lines, live op status, link, engine sign-in | screencast panel | |
 | Settings modal; mock mode against fixtures | | |
 | access-code gate; build-agent status in Build | | |
+| | activity strip and run checklist (change 2026-10-19) | |
 
 ## Constraints
 - Deadline 2026-10-20 01:05 MPST (whole program). Built against ../contracts/api.md with a mock
@@ -71,5 +75,6 @@ view of the dashboard being built.
 - none
 
 ## Later
+- Real per-step progress from the backend (`node.progress` at node boundaries) instead of timed presets (change 2026-10-19).
 - Live view of the agent's Chrome inside the hosted app (screencast relayed through the agent).
 - Responsive layout (plan).

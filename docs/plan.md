@@ -53,6 +53,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Needs: engine 3.1; frontend 3.2
   - Done when: with `DSS_ENGINE_DRY_RUN=0` and the signed-in profile, `uv run --project integration python integration/e2e_flow1.py --live` exits 0, prints a `https://datastudio.google.com/` link and writes its bench JSON; manual: the link opens the dashboard with charts over the background; the same flow clicked through the UI at http://localhost:5173 reaches the link.
   - If: engine chart ops fail for some types -> narrow `DSS_ALLOWED_TYPES` in .env to the types that pass, rerun, and record it under Decisions.
+  - If: frontend 6.1 and backend 10.1 are done -> the UI walkthrough also checks that the activity strip shows a phrase, the elapsed time and a growing token count during plan, and the plan checklist ends all ticked; otherwise skip this (it is first in the cut order).
 
 ## Phase 3: Cloud Run
 - [ ] 3.1 Dockerfile and Cloud Run deploy script

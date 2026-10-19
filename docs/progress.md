@@ -44,3 +44,9 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: in AGENTS.md Known gotchas (planned tags drift).
 - Left open: none
 - Next: Task 1.3 (deck draft from the cup template). Re-check planned tags against `blueprint.py program` first and re-render.
+
+## 2026-10-19: Change activity transparency (frontend, backend)
+- Status: done
+- What changed: user request: show what the agent is doing in the background (preset wording), elapsed time and tokens, like a coding agent's task list. contracts/api.md 1.1 -> 1.2 (`run.usage` event, `node` values), new fixture contracts/fixtures/api/events.usage.sse; program.md Contracts row, roadmap step and cut order (first to cut), two decision rows; new tasks backend 10.1 (S) and frontend 6.1 (M); release essentials Contracts row 1.2, release 2.3 gets an `If:` for the walkthrough. Fixed the 1.3 P3: essentials now say WPS Office.
+- Affects: release 2.3 (optional walkthrough check). Release 2.1-2.2 unchanged; Test (all) `check_contracts.py` PASS 9/9 with the new fixture.
+- Next: frontend 6.1 now; backend 10.1 after the backend final audit's fix tasks 9.1-9.7 (9.6 shares graph.py); release 2.1 in parallel.

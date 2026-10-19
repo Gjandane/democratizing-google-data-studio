@@ -73,7 +73,7 @@ Written 2026-10-18.
 |---|---|---|---|---|
 | contracts/conventions.md | 1.1 | program | engine, backend, frontend, release | release: `uv run --project integration python integration/check_contracts.py` (the one root `.env.example` has every name); manual: each part's config reads these names, ports and paths |
 | contracts/recipe.md | 1.0 | backend (recipe), engine (events) | engine, backend, release | engine: `uv run pytest tests/test_contract.py`; backend: `uv run pytest tests/test_recipe_contract.py` |
-| contracts/api.md | 1.1 | backend | frontend, release | backend: `uv run pytest tests/test_api_contract.py`; frontend: `npm test -- contract`; both against contracts/fixtures/api/ |
+| contracts/api.md | 1.2 | backend | frontend, release | backend: `uv run pytest tests/test_api_contract.py`; frontend: `npm test -- contract`; both against contracts/fixtures/api/ |
 
 ## Delivery
 - Targets: one GitHub repo (this folder; the user pushes) and one Cloud Run service `dss` in the
@@ -107,7 +107,11 @@ Times are targets for 2026-10-19/20 (MPST). Backend runs in two sessions (A and 
    release 2.3 and 3.2, or its local-only path; STOP for team details).
 6. 22:00-01:05: stretch in the cut order (backend 7.x, engine 4.3), release 4.3 (repo ready),
    rehearsal; submit by 00:45.
-- Cut order if behind: research mode (backend 7.3), screencast (engine 4.3), style-from-picture and
+- Activity transparency (change 2026-10-19), first, before release 2.1: frontend 6.1 (activity strip and run checklist)
+  now; backend 10.1 (`run.usage`) after backend's final-audit fixes 9.1-9.7 (it shares graph.py with
+  9.6); no gate between them (frontend builds against `events.usage.sse`). Release 2.1-2.2 don't wait on them.
+- Cut order if behind: activity transparency (frontend 6.1, backend 10.1; release is unaffected),
+  research mode (backend 7.3), screencast (engine 4.3), style-from-picture and
   UX audit (backend 7.1), eval script (backend 7.2), history re-edit, consolidation (backend 6.2),
   episodic depth (backend 6.1), then the agent client (backend 5.3). Without 5.3 the hosted app
   runs in agent mode with no agent: Build shows the offline panel, the live build is shown from
@@ -181,4 +185,6 @@ Times are targets for 2026-10-19/20 (MPST). Backend runs in two sessions (A and 
 | 2026-10-19 | Submission deck = the AI Builder Cup template filled by `deck/build_deck.ps1` (PowerPoint COM), diagrams as HTML rendered to PNG by headless Chrome, plus a PDF | PRESENTATION.md; python-pptx | the cup requires its template; no new dependency; PowerPoint and Chrome are on the machine | change 2026-10-19 (user choice) |
 | 2026-10-19 | Delta audit of the change: 33 findings, all applied (agent paths and `--dry-run`, SA roles, `.gcloudignore`, DB backup every 30 s, Secure cookie, agent token, settings lock, path guards, fail-closed start, backend 5.1 in parallel after 1.3, agent split into 5.2/5.3, local-only deck path, bench JSON, COM rules) | - | reviewer audit | change 2026-10-19 |
 | 2026-10-19 | The hosted app is shared by everyone with the code (one history, one engine lock) and builds only while the owner's agent is online | per-user sessions; hosted engine | POC with one owner; judges are told in README and on the links slide | change 2026-10-19 (audit) |
+| 2026-10-19 | Activity transparency: a pinned strip in the chat column (preset phrase, elapsed, live tokens) and a preset step checklist per run; contracts/api.md 1.2 adds `run.usage` (running token totals per run) and lists the `node` values | frontend only (tokens after the run from /api/traces); rotating phrase without checklist; strip in the stage area | the user sees the agent working; real token counts cost one emit where tokens are already summed; presets need no backend detail | change 2026-10-19 (user choice) |
+| 2026-10-19 | `run.usage` example in a new fixture `events.usage.sse`; `events.sse` unchanged | add it to events.sse | the frontend validates events.sse at app load, so a new event there would break the app until frontend 6.1 lands | change 2026-10-19 (architect) |
 | 2026-10-18 | Plan audit: 18 findings, all applied (backend thin slice, engine must-have ops, DSS_ALLOWED_TYPES fallback, shared API fixtures, no --reload on Windows, model check, gates in the roadmap, recipe ops with ids, background_p<n>.png, view reuse, ready_for_plan tool, deps, edge cases, stage areas, renderer budget, flow 3 e2e, trims) | - | reviewer audit | program |

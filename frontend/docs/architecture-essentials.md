@@ -47,7 +47,7 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
 - Tokens: src/styles/tokens.css; components use tokens only.
 - Palette: bg #F8FAFC, surface #FFFFFF, surface-muted #F1F5F9, text #0F172A, text-muted #475569, border #E2E8F0, primary #1E40AF (hover #1E3A8A, on #FFFFFF), accent #D97706 (comment pins, "Apply" CTA; on #000000), success #15803D, danger #DC2626, focus ring #1E40AF.
 - Type and spacing: Inter (UI), Fira Code (recipe lines, ids); 12/13/14/16/20/24 px, body 14; spacing 4/8/12/16/24/32; radius 6 controls, 10 panels; shadow only on popovers/modals.
-- Layout: top bar 48 px (logo, build title, stepper, Trace, Settings); left chat column 380 px fixed; stage area fills the rest; History is a single centered list (max 960 px). Stage areas: Connect (archetype, sources); Interview (sources summary, archetype card, questions answered so far, "Generate plan"); Plan (progress lines, docs); Prototype (scaled iframe, pins, pending list); Build (recipe ops, live status); Done (link card, versions, "New version").
+- Layout: top bar 48 px (logo, build title, stepper, Trace, Settings); left chat column 380 px fixed; stage area fills the rest; History is a single centered list (max 960 px). Stage areas: Connect (archetype, sources); Interview (sources summary, archetype card, questions answered so far, "Generate plan"); Plan (progress lines, docs); Prototype (scaled iframe, pins, pending list); Build (recipe ops, live status); Done (link card, versions, "New version"); above the chat input, the activity strip (task 6.1).
 - Copy: sentence case, active voice; buttons are verbs ("Apply 3 comments"); errors say what to do next.
 - States: every data view has loading, empty and error; every control has hover, focus-visible and disabled.
 - Accessibility: 4.5:1 text contrast, keyboard path to every action (Esc closes popovers), visible focus ring, respects prefers-reduced-motion.
@@ -57,7 +57,7 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
 ## Contracts
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
-| ../contracts/api.md | 1.1 | consumes | `npm test -- contract` |
+| ../contracts/api.md | 1.2 | consumes | `npm test -- contract` |
 | ../contracts/conventions.md | 1.1 | consumes | manual: port 5173, `/api` proxy to 8000 |
 
 ## Dependencies

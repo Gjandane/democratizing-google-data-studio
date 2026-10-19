@@ -142,3 +142,9 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: Git Bash `sed -i` strips CRLF to LF on the whole file: restore endings after.
 - Left open: P2 literal localhost in react-router bundle - dist; P3 EventSource/iframe 401 not routed to gate - src/api/events.ts; P3 stale in-flight 401 can re-lock after success - AccessGate.tsx; P3 lock only after failed save - SettingsModal.tsx; P3 command `<code>` not keyboard-scrollable - EnginePanel.tsx; P3 gate screenshot shows the session-ended hint; one unidentified test flake.
 - Next: none in frontend plan; final audit / deploy.
+
+## 2026-10-19: Change activity transparency (program root)
+- Status: done
+- What changed: the user asked for UI transparency like a coding agent's task list (what is happening, elapsed time, tokens), with preset wording. contracts/api.md is now 1.2: `run.usage {run_id, node, input_tokens, output_tokens}` (running totals) and the list of `node` values; new fixture contracts/fixtures/api/events.usage.sse (events.sse unchanged, so the app still loads). PRD goal 7 and Features, essentials UI design "Activity" and Contracts row updated.
+- Affects: new task 6.1 (activity strip and run checklist), built against the fixture; no gate on backend 10.1 (without it the strip shows phrase and time, no tokens). Until 6.1 is done, `npm test` fails one check (contract.test.ts "has a check for every fixture file": events.usage.sse); the app itself is unaffected (fixtures.ts imports files by name; unknown live events are ignored).
+- Next: task 6.1.

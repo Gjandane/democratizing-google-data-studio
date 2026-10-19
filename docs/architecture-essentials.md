@@ -12,8 +12,8 @@ the root part. The whole system is described in docs/program.md.
   `uv run playwright install --with-deps chromium`, a headless smoke screenshot, CMD
   `uv run python -m dss.main`. `deploy/deploy.sh` with the gcloud CLI (`gcloud run deploy --source .`
   through Cloud Build; `.gcloudignore` decides what is uploaded).
-- Deck: the cup template filled through PowerPoint COM from PowerShell 5.1 (`deck/build_deck.ps1`,
-  PowerPoint installed; checked 2026-10-19); diagrams as HTML rendered by headless Chrome
+- Deck: the cup template filled through PowerPoint COM from PowerShell 5.1 (`deck/build_deck.ps1`;
+  the COM server here is WPS Office, see Known gotchas; checked 2026-10-19); diagrams as HTML rendered by headless Chrome
   (`--headless --screenshot --window-size=1840,800 --force-device-scale-factor=2
   --hide-scrollbars --virtual-time-budget=5000`).
 
@@ -68,7 +68,7 @@ README.md                what, hosted demo, prerequisites, start, sign-in, agent
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
 | contracts/recipe.md | 1.0 | consumes (validates fixtures) | `uv run --project integration python integration/check_contracts.py` |
-| contracts/api.md | 1.1 | consumes (e2e, local and deployed) | `uv run --project integration python integration/e2e_flow1.py` |
+| contracts/api.md | 1.2 | consumes (e2e, local and deployed) | `uv run --project integration python integration/e2e_flow1.py` |
 | contracts/conventions.md | 1.1 | consumes | `uv run --project integration python integration/check_contracts.py` (every env name is in .env.example) |
 
 ## Dependencies

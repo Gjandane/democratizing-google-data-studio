@@ -1,17 +1,20 @@
 # Contract: backend HTTP API (REST + SSE)
-Version 1.1 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
+Version 1.2 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
 (recipe ops with ids, stage rules, engine_busy, shared fixtures). 1.1 (2026-10-19) Cloud Run:
 Access (session endpoints, `access_required`), engine status `mode`/agent fields, Agent endpoints,
 errors `access_denied`, `login_on_agent`, `agent_offline`, `agent_timeout`; fixtures
 `session.json`, `engine_status.json`, `agent_job.json`; revised the same day by the delta audit
 before any build (agent token, `settings_locked`, `invalid_name`, `invalid_report_url`,
 `agent_mode_off`, `job_not_found`, `413`, `engine_status.local.json`).
+1.2 (2026-10-19) activity transparency: `run.usage` event (live token counts per run) and the
+list of `node` values; new fixture `events.usage.sse` (`events.sse` unchanged).
 Provider: backend. Consumers: frontend, release. Base: `http://localhost:8000/api` (the frontend
 uses relative `/api`, proxied by Vite; contracts/conventions.md). JSON bodies, UTF-8. Errors use
 the shape in contracts/conventions.md. Long-running actions return `202 {"run_id": "r_..."}` at
 once and report progress on the build's event stream.
-Shared fixtures: `contracts/fixtures/api/` (one JSON file per response type, `events.sse`, and
-`prototype.sample.html`). The frontend's mock mode loads them; the backend's and release's
+Shared fixtures: `contracts/fixtures/api/` (one JSON file per response type, `events.sse`,
+`events.usage.sse` (a plan run with live token counts) and `prototype.sample.html`). The
+frontend's mock mode loads them; the backend's and release's
 contract tests check real responses against their shapes (same keys, same JSON types; a field
 typed `|null` may be null or a value either way; a type with two fixtures, such as
 `engine_status.json` and `engine_status.local.json`, matches either).
@@ -140,6 +143,7 @@ the client re-reads `GET /api/builds/{id}` and `GET /api/builds/{id}/messages`.
 | `stage.changed` | `{stage: Stage}` |
 | `build.updated` | `{build: Build}` (sent whenever `ready_for_plan`, sources, versions or `report_url` change) |
 | `run.started` | `{run_id, node}` |
+| `run.usage` | `{run_id, node, input_tokens: int, output_tokens: int}`: the run's totals so far, sent after each model response that reports usage (none for runs without a model call) |
 | `node.progress` | `{run_id, node, text}` (short status line, e.g. "Writing questions.md") |
 | `run.finished` | `{run_id, node, status: "ok"\|"error", error: string\|null}` |
 | `docs.updated` | `{docs: DocRef[]}` |
@@ -147,6 +151,12 @@ the client re-reads `GET /api/builds/{id}` and `GET /api/builds/{id}/messages`.
 | `build.op` | the engine's `op_finished` event (contracts/recipe.md) |
 | `build.frame` | `{data}` base64 JPEG (stretch, screencast) |
 | `build.finished` | `{status: "ok"\|"partial"\|"failed", report_url: string\|null, version: int}` |
+
+`node` in `run.*` and `node.progress` is the action that started the run: `interview`, `plan`,
+`spec`, `revise`, `research`, `style_extract`, `ux_audit`, `intake`, `create_build`, `versions`,
+`load_spec`, `recipe`, `execute` (the Data Studio build), `engine_login`, `consolidate`. A client
+treats any other value as a generic run. `run.usage` totals only grow within a run; `run.finished`
+follows the last one.
 
 ## Prototype HTML
 `GET /api/builds/{id}/prototype` returns one self-contained HTML page (inline CSS; charts drawn
