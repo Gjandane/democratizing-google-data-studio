@@ -528,3 +528,14 @@ context. Task status lives in docs/plan.md, not here.
 - Change requests settled (entry "2026-10-20: Change synthetic data and audit of phases 10-12"): (a) planned: frontend 10.1 needs backend 11.8, frontend 11.1 needs backend 12.3 (user choice; backend prototype label checked in release 3.3 if 12.5 is later), release 3.3 needs backend 11.8, 12.4, 12.5 and frontend 11.1, program.md sequence updated; (b) planned: accepted best-effort (user choice), task 12.4; (c) planned: deadline 2026-10-23 01:05 MPST confirmed by the user, in program.md.
 - Checks: `lint` backend 0 errors (2 warnings: 40 tasks; 12.2 Spec size); `program` 0 problems.
 - Next: Task 10.1 Live token usage on the event stream.
+
+## 2026-10-20: Task 10.1 Live token usage on the event stream
+- Status: done
+- Plan check: off
+- What changed: graph.py emits `run.usage` (running trace totals) after each non-partial model response with usage, build runs only; spec/revise/style_extract/ux_audit/research after_model callbacks now pass `usage_metadata` through. New tests/test_usage_events.py; tests/test_skeleton.py hello event list now includes run.usage.
+- Checks: `uv run pytest tests/test_usage_events.py` PASS (7); Test (all) `uv run pytest` PASS before final test tweak (453 + skeleton fix, rerun skeleton+usage 14 PASS). Reviewer: no P0/P1.
+- Decisions: partial (streamed chunk) events are skipped, so a streamed reply counts once. test_skeleton.py edited outside Files (hello is a model call). Consolidate has its own Workflow with no build stream, untouched.
+- Tried and failed: none
+- Gotchas: none beyond AGENTS.md.
+- Left open: P2 consolidate/eval after_model drop usage_metadata, so their traces read 0 (plan's "already counts usage" is wrong) - src/dss/harness/nodes/consolidate.py:257, src/dss/ops/eval.py:66; P3 tokens of model calls returning invalid output are not counted - src/dss/harness/graph.py:193.
+- Next: Task 11.1 Evidence-backed capability registry and deterministic checks.

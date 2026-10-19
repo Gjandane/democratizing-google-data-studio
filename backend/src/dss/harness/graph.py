@@ -192,9 +192,14 @@ class AgentHarness:
                         streaming_mode=StreamingMode.SSE if action == "interview" else StreamingMode.NONE)):
                 if event.error_code:
                     raise RunError("llm_unavailable", "The model call failed; check Settings", 503)
-                if event.usage_metadata:
+                # Streamed chunks repeat usage; only the final response of a model call counts.
+                if event.usage_metadata and not event.partial:
                     trace.input_tokens += event.usage_metadata.prompt_token_count or 0
                     trace.output_tokens += event.usage_metadata.candidates_token_count or 0
+                    if build_id is not None:
+                        await self.emit(build_id, run_id, "run.usage", {
+                            "run_id": run_id, "node": action,
+                            "input_tokens": trace.input_tokens, "output_tokens": trace.output_tokens})
                 if reply_stream and event.partial and event.content:
                     for part in event.content.parts or []:
                         if part.text and not part.thought:

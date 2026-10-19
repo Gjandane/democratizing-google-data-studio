@@ -216,7 +216,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: limit the whole stalled attempt, not just one timeout phase; backoff and requests consume the same deadline measured from first failure.
 
 ## Phase 10: Activity transparency (change 2026-10-19)
-- [ ] 10.1 Live token usage on the event stream
+- [x] 10.1 Live token usage on the event stream
   - Goal: every run on a build emits `run.usage` with its running token totals after each model response that reports usage, per ../contracts/api.md 1.2 (Event stream), so the frontend can show tokens climbing during the run; every LLM node keeps the provider's usage so traces stop reading 0.
   - Files: src/dss/harness/graph.py, src/dss/harness/nodes/spec.py, src/dss/harness/nodes/revise.py, src/dss/harness/nodes/style_extract.py, src/dss/harness/nodes/ux_audit.py, src/dss/harness/nodes/research.py, tests/test_usage_events.py
   - Depends on: 9.6

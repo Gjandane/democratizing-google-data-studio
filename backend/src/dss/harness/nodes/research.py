@@ -123,7 +123,8 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
             except Exception:
                 return LlmResponse(error_code='llm_unavailable', error_message='Unsafe research output')
             # Raw model output is validated by code, never ADK output_schema logging.
-            return LlmResponse(content=types.Content(role='model', parts=[types.Part(text='Research response received.')]))
+            return LlmResponse(content=types.Content(role='model', parts=[types.Part(text='Research response received.')]),
+            usage_metadata=llm_response.usage_metadata)
         return callback
 
     async def fetch(node_input):

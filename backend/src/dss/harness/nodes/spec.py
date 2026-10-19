@@ -86,7 +86,8 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         raw = ''.join(p.text for p in (llm_response.content.parts or []) if p.text and not p.thought) if llm_response.content else ''
         state['raw'] = check_reply(raw, (secret,))
         # Validate in our code node rather than ADK output_schema, which logs invalid inputs.
-        return LlmResponse(content=types.Content(role='model', parts=[types.Part(text='Spec received for validation.')]))
+        return LlmResponse(content=types.Content(role='model', parts=[types.Part(text='Spec received for validation.')]),
+            usage_metadata=llm_response.usage_metadata)
 
     async def save(value):
         spec = DashboardSpec.model_validate(value)

@@ -195,7 +195,8 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
             state['raw'] = check_reply(raw, (secret,))
         except RunError:
             return LlmResponse(error_code='llm_unavailable', error_message='Revision model returned unsafe output')
-        return LlmResponse(content=types.Content(role='model', parts=[types.Part(text='Revision received for validation.')]))
+        return LlmResponse(content=types.Content(role='model', parts=[types.Part(text='Revision received for validation.')]),
+            usage_metadata=llm_response.usage_metadata)
 
     async def validate(node_input):
         trace.span('validate_revision')

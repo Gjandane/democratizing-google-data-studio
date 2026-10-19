@@ -69,7 +69,7 @@ async def test_hello_workflow_trace(client, app, build_id):
         assert [s["node"] for s in json.loads(row["spans_json"])] == ["router", "hello_function", "hello_llm", "guardrail"]
         assert row["input_tokens"] == 5 and row["output_tokens"] == 2
         assert connection.execute("SELECT text FROM messages_fts WHERE messages_fts MATCH 'Hello'").fetchone()[0] == "Hello!"
-        assert [r[0] for r in connection.execute("SELECT kind FROM events ORDER BY rowid")] == ["run.started", "run.finished"]
+        assert [r[0] for r in connection.execute("SELECT kind FROM events ORDER BY rowid")] == ["run.started", "run.usage", "run.finished"]
 
 
 async def test_unknown_failure_and_lock_release(client, app, build_id, caplog):
