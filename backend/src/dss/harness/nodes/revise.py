@@ -167,7 +167,7 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
     folder = config.data_dir / 'builds' / build_id / f'v{version}'
     original = DashboardSpec.model_validate_json((folder / 'spec.json').read_text(encoding='utf-8')).model_dump()
     allowed = allowed_types() & catalog().keys()
-    context = check_reply(revise_context(original, comments, allowed, config), (secret,))
+    context = check_reply(revise_context(original, comments, allowed, config, folder=folder), (secret,))
     questions_file = folder / 'docs/questions.md'
     questions = high_questions(questions_file.read_text(encoding='utf-8')) if questions_file.exists() else []
     state = {'raw':'', 'errors':'', 'repairs':0, 'failure':None, 'reply':'Revision did not finish.'}

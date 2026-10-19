@@ -52,3 +52,4 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Developer API count_tokens rejects system_instruction/tools/generation_config; llm.count_tokens folds them into contents, which counts ~5% under the billed prompt_token_count (live: 8245 vs 8695).
 - Knowledge index.md links must target .md files or folders: Navigator.list_folder reads every local link and raises on a .json link; name capabilities.json in a code span instead.
 - Test modules share one import namespace: tests/live/ has an `__init__.py` so a live test may reuse an offline test's basename (tests/live/test_references.py vs tests/test_references.py); keep it.
+- Source column `type` is an API display type; feasibility uses `bq_type` and the view builder's `snake_names`/`date_like` projection to match real bindings.

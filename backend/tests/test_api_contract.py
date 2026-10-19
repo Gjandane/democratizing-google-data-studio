@@ -137,3 +137,30 @@ def test_reference_set_contract(thin, monkeypatch):
     deleted = client.delete(f"/api/builds/{bid}/reference-images")
     assert deleted.status_code == 204 and client.get(f"/api/builds/{bid}/reference-images").json() is None
     assert fixture.keys() == {"id", "mode", "instructions", "images", "summary"}
+
+
+def test_feasibility_contract_states(thin, monkeypatch):
+    """Load the shared fixture explicitly; verify exact shape in every 11.3 state."""
+    from dss.spec import requirements as req
+    from test_feasibility import check as assess, user, use_model, extracted
+    client, app, bid, folder = thin
+    fixture = json.loads((INTENT / "feasibility.json").read_text())
+    def conform(actual):
+        req.Assessment.model_validate(actual)
+        expected = {**fixture, "id": actual["id"], "input_digest": actual["input_digest"]}
+        shape(actual, expected)
+    a = client.get(f"/api/builds/{bid}/feasibility").json()
+    assert a["state"] == "unchecked"
+    conform(a)
+    use_model(monkeypatch, app)
+    _, a = assess(client, app, bid)
+    assert a["state"] == "ready"
+    conform(a)
+    sid = user(app, bid, "Animate GPS points along a route")
+    a = client.get(f"/api/builds/{bid}/feasibility").json()
+    assert a["state"] == "stale"
+    conform(a)
+    use_model(monkeypatch, app, extracted(sid, "animation.temporal_playback"))
+    _, a = assess(client, app, bid)
+    assert a["state"] == "blocked" and a["issues"]
+    conform(a)

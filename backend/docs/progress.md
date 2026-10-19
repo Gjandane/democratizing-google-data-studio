@@ -561,3 +561,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: P3 over-budget vision request reports llm_unavailable ("check Settings") - src/dss/harness/context.py:183; P3 live check stops at spec context, no generated spec compared with placement - tests/live/test_references.py; prompts/v1/style_extract.md now unused.
 - Next: Task 11.3 Requirement ledger, capability check and assessment API.
+
+## 2026-10-20: Task 11.3 Requirement ledger, capability check and assessment API
+- Status: done
+- Plan check: off
+- What changed: requirement ledger, capability_check Workflow, feasibility APIs, invalidation and protected contexts.
+- Checks: `uv run pytest tests/test_feasibility.py tests/test_api_contract.py` PASS (51); Test (all) `uv run pytest` PASS (575, 5 live deselected, 2 warnings). Bounded recomputation test passes <=100ms for 40 requirements/24 components. Read-only review: no remaining findings.
+- Decisions: requirements.json stores requirements (code IDs, original message/comment/image provenance, needs, mappings, component_ids), processed_sources hashes, decisions placeholder, verification, assessment and sticky prototype_stale/invalidated flags. GET compares input digests without writes/model calls; stale IDs become null. Check merges new sources, preserves prior intent, retires replaced reference requirements and recomputes. Extraction uses one counted 12k-input/4k-output call, no repairs, 40 requirements/20 issues; scope overflow blocks. Explicit assignment clauses and source-defined aggregation/unit/grain prevent inferred mappings. Save rolls back docs/ledger together. Outside Files: nodes/revise.py passes folder for mandatory ledger context. AGENTS records physical schema/projection gotcha. No dependencies added.
+- Tried and failed: test assumed a native exclusion; review exposed incidental field mentions, stale schema fallback and exact-cap truncation; corrected with regressions.
+- Gotchas: recorded in AGENTS.md.
+- Left open: none.
+- Next: Task 11.4 Explicit decisions and pending comment batches.
