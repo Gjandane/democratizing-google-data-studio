@@ -86,9 +86,9 @@ describe('Style screenshots', () => {
     expect(spy).toHaveBeenCalledWith(build.id, [file]);
     expect(off(screen.getByRole('button', { name: 'Add style screenshots' }))).toBe(true);
     await act(async () => resolve({ run_id: 'r_style' }));
-    await fire(started('style', 'r_style'));
+    await fire(started('style_extract', 'r_style'));
     await screen.findByText('Reading the style…');
-    await fire(done('style', 'r_style'));
+    await fire(done('style_extract', 'r_style'));
     await screen.findByText('Style saved. The planner uses it.');
     expect(off(screen.getByRole('button', { name: 'Add style screenshots' }))).toBe(false);
   });
@@ -98,8 +98,8 @@ describe('Style screenshots', () => {
     vi.spyOn(api, 'uploadStyleImages').mockReturnValue(accepted('r_s'));
     pick(png());
     await screen.findByText('Reading the style…');
-    await fire(started('style', 'r_s'));
-    await fire(done('style', 'r_s', "Couldn't read the images. Upload clearer screenshots."));
+    await fire(started('style_extract', 'r_s'));
+    await fire(done('style_extract', 'r_s', "Couldn't read the images. Upload clearer screenshots."));
     expect((await screen.findByRole('alert')).textContent).toContain("Couldn't read the images");
     expect(off(screen.getByRole('button', { name: 'Add style screenshots' }))).toBe(false);
   });
@@ -153,22 +153,22 @@ describe('UX audit', () => {
     await waitFor(() => expect(spy).toHaveBeenCalledWith(build.id));
     await screen.findByText('Auditing…');
     expect(off(screen.getByRole('button', { name: 'Run UX audit' }))).toBe(true);
-    await fire(started('audit', 'r_aud'));
-    await fire(done('audit', 'r_aud'));
+    await fire(started('ux_audit', 'r_aud'));
+    await fire(done('ux_audit', 'r_aud'));
     await screen.findByText('Audit done. The findings are in the chat.');
     expect(off(screen.getByRole('button', { name: 'Run UX audit' }))).toBe(false);
   });
 
   it('follows a newer run from another tab instead of waiting on its own forever', async () => {
     const { fire } = await prototype();
-    await fire(started('audit', 'r_old'));
-    await fire(done('audit', 'r_old'));
+    await fire(started('ux_audit', 'r_old'));
+    await fire(done('ux_audit', 'r_old'));
     // Accepted, but its run.started never arrives; another tab's run takes the node over.
     vi.spyOn(api, 'runAudit').mockReturnValue(accepted('r_mine'));
     fireEvent.click(screen.getByRole('button', { name: 'Run UX audit' }));
     await screen.findByText('Auditing…');
-    await fire(started('audit', 'r_other'));
-    await fire(done('audit', 'r_other'));
+    await fire(started('ux_audit', 'r_other'));
+    await fire(done('ux_audit', 'r_other'));
     await screen.findByText('Audit done. The findings are in the chat.');
     expect(off(screen.getByRole('button', { name: 'Run UX audit' }))).toBe(false);
   });
@@ -181,17 +181,17 @@ describe('UX audit', () => {
     fireEvent.click(button);
     await screen.findByText('Auditing…');
     button.blur();
-    await fire(started('audit', 'r_aud'));
-    await fire(done('audit', 'r_aud'));
+    await fire(started('ux_audit', 'r_aud'));
+    await fire(done('ux_audit', 'r_aud'));
     await screen.findByText('Audit done. The findings are in the chat.');
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Run UX audit' }));
   });
 
   it('is disabled while comments are being applied', async () => {
     const { fire } = await prototype();
-    await fire(started('comments', 'r_c'));
+    await fire(started('revise', 'r_c'));
     expect(off(screen.getByRole('button', { name: 'Run UX audit' }))).toBe(true);
-    await fire(done('comments', 'r_c'));
+    await fire(done('revise', 'r_c'));
     expect(off(screen.getByRole('button', { name: 'Run UX audit' }))).toBe(false);
   });
 
@@ -200,8 +200,8 @@ describe('UX audit', () => {
     vi.spyOn(api, 'runAudit').mockReturnValue(accepted('r_aud'));
     fireEvent.click(screen.getByRole('button', { name: 'Run UX audit' }));
     await screen.findByText('Auditing…');
-    await fire(started('audit', 'r_aud'));
-    await fire(done('audit', 'r_aud', 'The audit stopped. Run it again.'));
+    await fire(started('ux_audit', 'r_aud'));
+    await fire(done('ux_audit', 'r_aud', 'The audit stopped. Run it again.'));
     expect((await screen.findByRole('alert')).textContent).toBe('The audit stopped. Run it again.');
   });
 });
@@ -275,7 +275,7 @@ describe('Live view', () => {
   it('reduceBuildRun keeps the frame and clears it when a build run starts', () => {
     const withFrame = reduceBuildRun(idleRun, frame('AAAA'));
     expect(withFrame.frame).toBe('AAAA');
-    expect(reduceBuildRun(withFrame, { name: 'run.started', data: { run_id: 'r1', node: 'build' } }).frame).toBeNull();
+    expect(reduceBuildRun(withFrame, { name: 'run.started', data: { run_id: 'r1', node: 'execute' } }).frame).toBeNull();
     expect(reduceBuildRun(withFrame, { name: 'run.started', data: { run_id: 'r1', node: 'plan' } }).frame).toBe('AAAA');
   });
 });

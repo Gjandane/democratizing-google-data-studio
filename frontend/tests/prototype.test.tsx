@@ -157,7 +157,7 @@ describe('Prototype stage', () => {
     const running = screen.getByRole('button', { name: 'Applying 2 comments…' }) as HTMLButtonElement;
     expect(running.disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'Comment on Header band' }) as HTMLButtonElement).disabled).toBe(true);
-    await fire({ name: 'run.started', data: { run_id: 'r_1', node: 'comments' } });
+    await fire({ name: 'run.started', data: { run_id: 'r_1', node: 'revise' } });
     expect((screen.getByRole('button', { name: 'Applying 2 comments…' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -168,7 +168,7 @@ describe('Prototype stage', () => {
     const url = vi.spyOn(api, 'prototypeUrl').mockImplementation(httpApi.prototypeUrl);
     comment('Revenue (scorecard)', 'first');
     fireEvent.click(screen.getByRole('button', { name: 'Apply 1 comment' }));
-    await fire({ name: 'run.started', data: { run_id: 'r_1', node: 'comments' } });
+    await fire({ name: 'run.started', data: { run_id: 'r_1', node: 'revise' } });
     const before = (screen.getByTitle(`Prototype of ${build.title}`) as HTMLIFrameElement).getAttribute('src');
     await fire({ name: 'prototype.updated', data: { spec_version: 2 } });
     const frame = screen.getByTitle(`Prototype of ${build.title}`) as HTMLIFrameElement;
@@ -177,7 +177,7 @@ describe('Prototype stage', () => {
     expect(frame.getAttribute('src')).toMatch(/[?&]v=2(&|$)/);
     expect(screen.queryByRole('list', { name: 'Pending comments' })).toBeNull();
     expect(within(pins()).queryAllByRole('img')).toHaveLength(0);
-    await fire({ name: 'run.finished', data: { run_id: 'r_1', node: 'comments', status: 'ok', error: null } });
+    await fire({ name: 'run.finished', data: { run_id: 'r_1', node: 'revise', status: 'ok', error: null } });
     loadFrame();
     expect(screen.getByRole('button', { name: 'Apply 0 comments' }) as HTMLButtonElement).toHaveProperty('disabled', true);
     expect(screen.getByText('Click any part of the prototype to add a comment.')).toBeTruthy();
@@ -188,15 +188,15 @@ describe('Prototype stage', () => {
     vi.spyOn(api, 'postComments').mockResolvedValue({ run_id: 'r_1' });
     comment('Revenue (scorecard)', 'first');
     fireEvent.click(screen.getByRole('button', { name: 'Apply 1 comment' }));
-    await fire({ name: 'run.started', data: { run_id: 'r_1', node: 'comments' } });
-    await fire({ name: 'run.finished', data: { run_id: 'r_1', node: 'comments', status: 'error', error: 'The model timed out.' } });
+    await fire({ name: 'run.started', data: { run_id: 'r_1', node: 'revise' } });
+    await fire({ name: 'run.finished', data: { run_id: 'r_1', node: 'revise', status: 'error', error: 'The model timed out.' } });
     expect(screen.getByRole('alert').textContent).toContain('The model timed out.');
     expect(screen.getByRole('button', { name: 'Apply 1 comment' }) as HTMLButtonElement).toHaveProperty('disabled', false);
     // Retry; a second identical failure still ends the spinner.
     fireEvent.click(screen.getByRole('button', { name: 'Apply 1 comment' }));
     expect(screen.queryByRole('alert')).toBeNull();
-    await fire({ name: 'run.started', data: { run_id: 'r_2', node: 'comments' } });
-    await fire({ name: 'run.finished', data: { run_id: 'r_2', node: 'comments', status: 'error', error: 'The model timed out.' } });
+    await fire({ name: 'run.started', data: { run_id: 'r_2', node: 'revise' } });
+    await fire({ name: 'run.finished', data: { run_id: 'r_2', node: 'revise', status: 'error', error: 'The model timed out.' } });
     expect(screen.getByRole('alert').textContent).toContain('The model timed out.');
     expect(screen.getByRole('button', { name: 'Apply 1 comment' }) as HTMLButtonElement).toHaveProperty('disabled', false);
   });
@@ -330,15 +330,15 @@ describe('useBuildStream: comments run', () => {
       return null;
     }
     render(<Probe />);
-    await fire({ name: 'run.started', data: { run_id: 'r_1', node: 'comments' } });
+    await fire({ name: 'run.started', data: { run_id: 'r_1', node: 'revise' } });
     expect(latest!.applying).toBe(true);
-    await fire({ name: 'run.finished', data: { run_id: 'r_1', node: 'comments', status: 'error', error: null } });
+    await fire({ name: 'run.finished', data: { run_id: 'r_1', node: 'revise', status: 'error', error: null } });
     expect(latest!.applying).toBe(false);
     expect(latest!.commentsError?.text).toBe("Couldn't apply the comments. Try again.");
     const seq = latest!.commentsError!.seq;
-    await fire({ name: 'run.started', data: { run_id: 'r_2', node: 'comments' } });
+    await fire({ name: 'run.started', data: { run_id: 'r_2', node: 'revise' } });
     expect(latest!.commentsError).toBeNull();
-    await fire({ name: 'run.finished', data: { run_id: 'r_2', node: 'comments', status: 'error', error: null } });
+    await fire({ name: 'run.finished', data: { run_id: 'r_2', node: 'revise', status: 'error', error: null } });
     expect(latest!.commentsError!.seq).toBeGreaterThan(seq);
   });
 });

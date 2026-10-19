@@ -159,3 +159,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: tests/agent-status.test.tsx "424 agent_offline" flakes ~1 in 6 on baseline too (not from this task).
 - Left open: P2 contract 1.2 node names (revise, style_extract, ux_audit, execute) not matched by useBuildStream/buildRun.ts/mocks - useBuildStream.ts; P2 finished card stays pinned under later messages - activity.ts cardRun; P2 agent-status flake - tests/agent-status.test.tsx.
 - Next: all frontend tasks done; next is the program's final audit (architect).
+
+## 2026-10-19: Task 6.2 Contract 1.2 run node names
+- Status: done
+- Plan check: off
+- What changed: task added by the architect after the 6.1 review P2 (user asked to record it as a task). Run `node` checks now use the contract 1.2 names: useBuildStream `revise` (applying/commentsError), StretchNode keys `style_extract`/`research`/`ux_audit` (StylePanel, PrototypeStage pass them), buildRun.ts `execute`; mock startRun/progress/run.finished and the audit message node use the same names; tests build/plan/prototype/stretch emit them. presets.ts ALIASES and `canonicalNode` removed (activity.ts stores the node as sent).
+- Checks: Grep for run `node` values 'comments'/'style'/'audit'/'build' in src/ and tests/ finds none (only StretchRoute 'audit', an API route); `npm run typecheck` PASS; `npm test` 14 files / 221 tests: PASS 1 of 4 runs, the other 3 had 1 failure each, always tests/agent-status.test.tsx "424 agent_offline" (uses no stream events); same test fails 1 of 4 isolated runs at HEAD 65126e9 in a temp worktree, so pre-existing.
+- Decisions: renamed StretchNode keys to the contract names (2 call sites) rather than mapping them. Mock audit message `node` also `ux_audit` (Message.node, nothing matches on it).
+- Tried and failed: none.
+- Gotchas: none new.
+- Left open: P2 agent-status "424 agent_offline" flake (seen 3 of 4 full runs this session, more often than 6.1's ~1 in 6) - tests/agent-status.test.tsx; P2 finished card stays pinned under later messages - activity.ts cardRun (from 6.1).
+- Next: program final audit (architect).

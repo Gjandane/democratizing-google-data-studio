@@ -395,8 +395,8 @@ export function createMockApi(): ApiClient {
         if (files.length === 0 || !files.every((f) => /\.(png|jpe?g)$/i.test(f.name))) {
           throw invalid('invalid_request', 'Upload .png or .jpg images only.');
         }
-        return startRun(build, 'style', (runId) => [
-          () => emit(id, { name: 'node.progress', data: { run_id: runId, node: 'style', text: `Reading ${files.length} style ${files.length === 1 ? 'image' : 'images'}` } }),
+        return startRun(build, 'style_extract', (runId) => [
+          () => emit(id, { name: 'node.progress', data: { run_id: runId, node: 'style_extract', text: `Reading ${files.length} style ${files.length === 1 ? 'image' : 'images'}` } }),
         ]);
       }),
 
@@ -515,8 +515,8 @@ export function createMockApi(): ApiClient {
         }
         requireStage(build, ['prototype'], 'Comments apply to the prototype. Open the Prototype stage first.');
         requireModel();
-        return startRun(build, 'comments', (runId) => [
-          () => emit(id, { name: 'node.progress', data: { run_id: runId, node: 'comments', text: `Applying ${comments.length} comments` } }),
+        return startRun(build, 'revise', (runId) => [
+          () => emit(id, { name: 'node.progress', data: { run_id: runId, node: 'revise', text: `Applying ${comments.length} comments` } }),
           () => {
             build.spec_version = (build.spec_version ?? 0) + 1;
             touch(build);
@@ -531,11 +531,11 @@ export function createMockApi(): ApiClient {
         const build = findBuild(id);
         requireStage(build, ['prototype'], 'Run the audit on the prototype. Open the Prototype stage first.');
         requireModel();
-        return startRun(build, 'audit', () =>
+        return startRun(build, 'ux_audit', () =>
           streamAssistant(
             id,
             '**UX audit findings**\n\n1. The headline metric is easy to miss. Make it larger.\n2. The two charts use different colors for the same series. Pick one.\n3. The filter bar has no label. Add one.',
-            'audit',
+            'ux_audit',
           ),
         );
       }),
@@ -583,7 +583,7 @@ export function createMockApi(): ApiClient {
         const runError = outcome === 'failed' ? "The engine stopped before the dashboard was saved. Sign in to Google again, then build again." : null;
         return startRun(
           build,
-          'build',
+          'execute',
           (run_id) => [
             ...ops.map((op, i) => () => {
               emit(id, { name: 'build.op', data: opEvent(op, i) });
@@ -594,7 +594,7 @@ export function createMockApi(): ApiClient {
               if (outcome === 'failed') {
                 if (version) version.status = 'draft';
                 emit(id, { name: 'build.finished', data: { status: 'failed', report_url: null, version: build.current_version } });
-                emit(id, { name: 'run.finished', data: { run_id, node: 'build', status: 'error', error: runError } });
+                emit(id, { name: 'run.finished', data: { run_id, node: 'execute', status: 'error', error: runError } });
                 setStage(build, 'prototype');
                 announce(build);
                 return;
@@ -603,7 +603,7 @@ export function createMockApi(): ApiClient {
               if (version) Object.assign(version, { status: 'published', report_url: reportUrl });
               build.report_url = reportUrl;
               emit(id, { name: 'build.finished', data: { status: outcome, report_url: reportUrl, version: build.current_version } });
-              emit(id, { name: 'run.finished', data: { run_id, node: 'build', status: 'ok', error: null } });
+              emit(id, { name: 'run.finished', data: { run_id, node: 'execute', status: 'ok', error: null } });
               setStage(build, 'done');
               announce(build);
             },

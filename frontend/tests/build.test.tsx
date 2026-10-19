@@ -112,7 +112,7 @@ describe('Build stage recipe', () => {
 
   it('marks the first op without a result as running while the run goes', async () => {
     const { fire } = await withRecipe();
-    await fire({ name: 'run.started', data: { run_id: 'r_000000000001', node: 'build' } });
+    await fire({ name: 'run.started', data: { run_id: 'r_000000000001', node: 'execute' } });
     await fire({ name: 'stage.changed', data: { stage: 'build' } });
     expect(row('s001').dataset.status).toBe('running');
     await fire(opEvent('s001', 'ok'));
@@ -263,7 +263,7 @@ function MockHolder({ initial }: { initial: Build }) {
 describe('Build stage state from the stage', () => {
   async function running() {
     const ctx = await withRecipe();
-    await ctx.fire({ name: 'run.started', data: { run_id: 'r_000000000001', node: 'build' } });
+    await ctx.fire({ name: 'run.started', data: { run_id: 'r_000000000001', node: 'execute' } });
     await ctx.fire({ name: 'stage.changed', data: { stage: 'build' } });
     await ctx.fire(opEvent('s001', 'ok'));
     expect(screen.getByText('Building in Data Studio…')).toBeTruthy();
@@ -288,7 +288,7 @@ describe('Build stage state from the stage', () => {
 
   it('does not tick a regenerated recipe with the previous run, nor show its result', async () => {
     const { fire } = await withRecipe();
-    await fire({ name: 'run.started', data: { run_id: 'r_000000000001', node: 'build' } });
+    await fire({ name: 'run.started', data: { run_id: 'r_000000000001', node: 'execute' } });
     await fire(opEvent('s001', 'failed', 'sign-in expired'));
     await fire(finished('failed', null));
     expect(screen.getByText('The build failed.')).toBeTruthy();
@@ -374,7 +374,7 @@ describe('Continue to build', () => {
 });
 
 describe('reduceBuildRun', () => {
-  const started: BuildEvent = { name: 'run.started', data: { run_id: 'r_000000000001', node: 'build' } };
+  const started: BuildEvent = { name: 'run.started', data: { run_id: 'r_000000000001', node: 'execute' } };
 
   it('run.started on build starts fresh and drops earlier ops', () => {
     const before = reduceBuildRun(reduceBuildRun(idleRun, started), opEvent('s001', 'failed', 'x'));
@@ -401,7 +401,7 @@ describe('reduceBuildRun', () => {
     expect(done.finished?.status).toBe('ok');
     const failed = reduceBuildRun(reduceBuildRun(idleRun, started), {
       name: 'run.finished',
-      data: { run_id: 'r_000000000001', node: 'build', status: 'error', error: 'It broke.' },
+      data: { run_id: 'r_000000000001', node: 'execute', status: 'error', error: 'It broke.' },
     });
     expect(failed).toMatchObject({ running: false, error: 'It broke.' });
   });

@@ -113,16 +113,5 @@ export const PRESETS: Readonly<Record<string, Preset>> = {
   consolidate: { phrases: ['Reviewing past builds', 'Collecting what worked', 'Updating the notes'] },
 };
 
-/** Run names the app used before contracts/api.md 1.2 listed the `node` values. */
-const ALIASES: Readonly<Record<string, string>> = {
-  build: 'execute',
-  comments: 'revise',
-  style: 'style_extract',
-  audit: 'ux_audit',
-};
-
-/** The contract name of a run's node (legacy names mapped). */
-export const canonicalNode = (node: string): string => ALIASES[node] ?? node;
-
 /** The preset of a node; any unknown node gets the generic phrases. */
-export const presetFor = (node: string): Preset => PRESETS[canonicalNode(node)] ?? GENERIC;
+export const presetFor = (node: string): Preset => PRESETS[node] ?? GENERIC;

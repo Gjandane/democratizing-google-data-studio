@@ -8,7 +8,7 @@ import { useRefocusAfter, useStretchAction } from '../stretch';
 
 /** Optional style screenshots: the planner reads them for colors and fonts. Hidden when the backend has no such route. */
 export function StylePanel({ buildId, stretchRuns }: { buildId: string; stretchRuns: StretchRuns }) {
-  const action = useStretchAction('style-images', 'style', stretchRuns);
+  const action = useStretchAction('style-images', 'style_extract', stretchRuns);
   const input = useRef<HTMLInputElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const [count, setCount] = useState(0);

@@ -121,8 +121,8 @@ describe('Plan stage', () => {
 
   it('ignores progress lines of other nodes, refetches an open doc on docs.updated and closes a doc that left the list', async () => {
     const { build, fire } = await setup();
-    await fire({ name: 'run.started', data: { run_id: 'r_9', node: 'comments' } });
-    await fire({ name: 'node.progress', data: { run_id: 'r_9', node: 'comments', text: 'Applying 2 comments' } });
+    await fire({ name: 'run.started', data: { run_id: 'r_9', node: 'revise' } });
+    await fire({ name: 'node.progress', data: { run_id: 'r_9', node: 'revise', text: 'Applying 2 comments' } });
     expect(screen.queryByText('Applying 2 comments')).toBeNull();
 
     await fire({ name: 'docs.updated', data: { docs: fixtures.build.docs } });

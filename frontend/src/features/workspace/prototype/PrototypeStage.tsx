@@ -25,7 +25,7 @@ interface PrototypeStageProps {
 const noRuns: StretchRuns = {};
 
 export function PrototypeStage({ build, applying, commentsError, stretchRuns = noRuns, onPendingChange }: PrototypeStageProps) {
-  const audit = useStretchAction('audit', 'audit', stretchRuns);
+  const audit = useStretchAction('audit', 'ux_audit', stretchRuns);
   const auditing = audit.state === 'starting' || audit.state === 'running';
   const auditButton = useRef<HTMLButtonElement>(null);
   useRefocusAfter(auditing, auditButton);

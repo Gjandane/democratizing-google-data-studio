@@ -21,7 +21,7 @@ const fresh: BuildRun = { running: true, ops: {}, finished: null, error: null, f
 export function reduceBuildRun(run: BuildRun, event: BuildEvent): BuildRun {
   switch (event.name) {
     case 'run.started':
-      return event.data.node === 'build' ? { ...fresh } : run;
+      return event.data.node === 'execute' ? { ...fresh } : run;
     case 'stage.changed':
       // Another tab started the run: its run.started was never seen here.
       return event.data.stage === 'build' && !run.running ? { ...fresh } : run;
@@ -32,7 +32,7 @@ export function reduceBuildRun(run: BuildRun, event: BuildEvent): BuildRun {
     case 'build.finished':
       return { ...run, finished: event.data, running: false };
     case 'run.finished':
-      return event.data.node === 'build' && event.data.status === 'error'
+      return event.data.node === 'execute' && event.data.status === 'error'
         ? { ...run, error: event.data.error ?? null, running: false }
         : run;
     default:

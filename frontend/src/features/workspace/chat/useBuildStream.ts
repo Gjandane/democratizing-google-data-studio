@@ -18,7 +18,7 @@ export interface ProgressLine {
 }
 
 /** The stretch actions that run on the stream: style images, research, UX audit. */
-export type StretchNode = 'style' | 'research' | 'audit';
+export type StretchNode = 'style_extract' | 'research' | 'ux_audit';
 export interface NodeRun {
   run_id: string;
   status: 'running' | 'ok' | 'error';
@@ -26,7 +26,7 @@ export interface NodeRun {
 }
 export type StretchRuns = Partial<Record<StretchNode, NodeRun>>;
 
-const STRETCH_NODES: readonly string[] = ['style', 'research', 'audit'];
+const STRETCH_NODES: readonly string[] = ['style_extract', 'research', 'ux_audit'];
 const isStretchNode = (node: string): node is StretchNode => STRETCH_NODES.includes(node);
 
 export interface BuildStream {
@@ -43,9 +43,9 @@ export interface BuildStream {
   progress: ProgressLine[];
   /** A `plan` run has started and not finished. */
   planning: boolean;
-  /** A `comments` run has started and not finished. */
+  /** A `revise` run (applying comments) has started and not finished. */
   applying: boolean;
-  /** Set when a `comments` run ends in error; `seq` changes on every failure, even an identical one. */
+  /** Set when a `revise` run ends in error; `seq` changes on every failure, even an identical one. */
   commentsError: { seq: number; text: string } | null;
   /** The engine run of the build stage, folded from build.* and run.* events. */
   buildRun: BuildRun;
@@ -185,7 +185,7 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
           setStretchRuns((runs) => ({ ...runs, [node]: { run_id, status: 'running', error: null } }));
         }
         if (event.data.node === 'plan') setPlanning(true);
-        if (event.data.node === 'comments') {
+        if (event.data.node === 'revise') {
           setApplying(true);
           setCommentsError(null);
         }
@@ -201,7 +201,7 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
           setStretchRuns((runs) => ({ ...runs, [node]: { run_id, status: status === 'ok' ? 'ok' : 'error', error } }));
         }
         if (event.data.node === 'plan') setPlanning(false);
-        if (event.data.node === 'comments') {
+        if (event.data.node === 'revise') {
           setApplying(false);
           if (event.data.status === 'error') {
             setCommentsError({ seq: ++errorSeq.current, text: event.data.error ?? "Couldn't apply the comments. Try again." });

@@ -2,7 +2,7 @@
 // Events aren't replayed, so a reload mid-run shows nothing until the next run starts.
 import { useEffect, useReducer } from 'react';
 import type { BuildEvent } from '../../api/types';
-import { PHRASE_MS, canonicalNode, presetFor, type PresetStep } from './presets';
+import { PHRASE_MS, presetFor, type PresetStep } from './presets';
 
 /** The strip appears this long after `run.started`; shorter runs never show it. */
 export const SHOW_DELAY_MS = 400;
@@ -12,7 +12,7 @@ const KEEP_RUNS = 10;
 
 export interface ActivityRun {
   runId: string;
-  /** The contract name of the node (legacy names mapped). */
+  /** The contract name of the node (contracts/api.md 1.2). */
   node: string;
   startedAt: number;
   finishedAt: number | null;
@@ -49,7 +49,7 @@ export function reduceActivity(runs: Activity, event: BuildEvent, now: number): 
     case 'run.started': {
       const run: ActivityRun = {
         runId: event.data.run_id,
-        node: canonicalNode(event.data.node),
+        node: event.data.node,
         startedAt: now,
         finishedAt: null,
         status: 'running',
