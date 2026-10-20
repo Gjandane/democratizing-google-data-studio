@@ -128,3 +128,19 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: in AGENTS.md Known gotchas. npm.cmd prints "Terminate batch job (Y/N)?" on Ctrl+C in PowerShell; taskkill clears it, harmless.
 - Left open: P3 start.sh untested on Linux/macOS (Unix stop uses pkill -P; bash 3.2 `set -u` on empty array) - start.sh; README (3.1) should give the `-ExecutionPolicy Bypass` form for start.ps1.
 - Next: Task 2.2 End-to-end flow 1 and 3, dry-run engine.
+
+## 2026-10-21: Task 2.2 End-to-end flow 1 and 3, dry-run engine
+- Status: blocked
+- Plan check: off
+- What changed: API driver implemented and preserved in git stash `blueprint: task 2.2 failed attempt 2026-10-21 01:01`; no part files edited. Test services stopped; `.env` dry-run setting restored to 0.
+- Checks: `uv run --project integration python integration/e2e_flow1.py --version2` FAIL at interview answer 1; CSV upload and interview start passed. Test (all) `check_contracts.py` PASS 9/9. Read-only reviewer: no findings. No benchmark generated.
+- Decisions: follow task's If rule; preserve the driver with `blueprint.py restore 2.2` pending backend resolution.
+- Tried and failed: removed unsupported profit request; retry still blocked for ordinary audience context and metric clarification.
+- Gotchas: none.
+- Left open: full flow and benchmark verification.
+- Blocked because: (a) fixing backend feasibility behavior requires editing a separate part, forbidden here.
+- Question: How should backend feasibility handle interview audience context and incomplete metrics before all three answers arrive?
+- Options: A resolve in backend / B architect approves a different scripted interview / Recommend: A, audience context is classified as an unknown capability.
+- Evidence: build `b_63e4d5fbd1df`, run `r_bb51e67be2ec`, node `interview`, trace status `error`, error `feasibility_blocked`; POST messages accepted 202, subsequent GET feasibility 200:
+  `{"state":"blocked","issues":[{"requirement":"The audience is sales executives.","status":"unknown","reason":"No registered capability covers this requirement; clarify the requested behavior"}]}` (excerpt; remaining issues request explicit fields for order count, quantity and sales).
+- Next: architect resolves backend interview feasibility; recover the named stash, then rerun task 2.2.

@@ -40,7 +40,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: S
   - Needs: backend 1.1; frontend 1.1
   - Done when: manual: `./start.sh` in Git Bash and `./start.ps1` in PowerShell each print both URLs, `curl -s localhost:8000/api/health` returns ok and http://localhost:5173 loads; Ctrl+C leaves no process listening on 8000 or 5173 (`netstat -ano | grep -E ":(8000|5173) "` prints nothing).
-- [ ] 2.2 End-to-end flow 1 and 3, dry-run engine
+- [!] 2.2 End-to-end flow 1 and 3, dry-run engine
   - Goal: `integration/e2e_flow1.py` drives flow 1 through the API (sample CSV, scripted interview of 3 answers, plan, one comment, recipe, run) and, with `--version2`, flow 3 (new version, one comment, run) against the backend with `DSS_ENGINE_DRY_RUN=1`; it prints seconds per stage and the run's token totals from `GET /api/traces?build_id=`, and writes them to `deck/data/bench-<UTC date>-<mode>.json` (the deck's benchmark source).
   - Files: integration/e2e_flow1.py, deck/data/*.json
   - Depends on: 2.1
