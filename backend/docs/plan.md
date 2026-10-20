@@ -345,7 +345,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: label cannot be removed by a model patch or image style; no fabricated-original-data claims.
 
 ## Phase 13: Final audit fixes (2026-10-20)
-- [ ] 13.1 Keep generated theme colors and recipes contract-valid
+- [x] 13.1 Keep generated theme colors and recipes contract-valid
   - Goal: a live model-generated dashboard compiles to a valid recipe and reaches done through the real engine dry-run.
   - Spec: docs/architecture.md#Dashboard Spec; docs/architecture.md#Recipe compiler
   - Files: src/dss/spec/models.py, src/dss/spec/validate.py, src/dss/recipe/compiler.py, src/dss/harness/nodes/compile.py, src/dss/api/run.py, prompts/v1/spec.md, skills/spec.md, tests/test_spec_validate.py, tests/test_spec_node.py, tests/test_recipe_contract.py, tests/test_api_contract.py, tests/live/test_backend_flow.py

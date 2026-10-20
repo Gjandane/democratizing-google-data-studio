@@ -780,3 +780,14 @@ context. Task status lives in docs/plan.md, not here.
 - Next: builder task 13.1 (M, deep: provider schema/local validation/real recipe boundary),
   gpt-6.1-sol at high, in backend/. After Phase 13, rerun final audit; root integration follows
   backend ACCEPTED and the other parts' gates, not this DEFECTS verdict.
+
+## 2026-10-20: Task 13.1 Keep generated theme colors and recipes contract-valid
+- Status: done
+- Plan check: off
+- What changed: strict #RRGGBB Theme fields/palette, provider schema and prompt guidance; mutable specs revalidate locally. Compiler validates emitted headers/ops against recipe 1.0 before publication. Regression tests cover bounded repair, legacy rejection, artifact preservation and no engine/job side effects.
+- Checks: `uv run pytest tests/test_spec_validate.py tests/test_spec_node.py tests/test_recipe_contract.py tests/test_api_contract.py -q` PASS (234); `uv run pytest -m live tests/live/test_backend_flow.py -q` PASS (3, 286.81s); Test (all) `uv run pytest` PASS (1068, 9 deselected, 424.65s); `git diff --check` PASS. Reviewer: no findings. Golden bytes unchanged.
+- Decisions: cache shared-schema validators; compilation also revalidates Theme instances to catch mutations. Release integration must ship `contracts/recipe.schema.json` beside backend at runtime. No dependencies, contracts, engine or repair budgets changed.
+- Tried and failed: new test setup initially used malformed prior JSON and omitted explicit datasource.synthetic; corrected fixtures and error-detail assertions.
+- Gotchas: evidence/logs in `.blueprint/qa/task-13.1/` and `.blueprint/task-13.1-*.log`; isolated live core reached done (12 validated lines, real engine dry-run: 11 skipped, zero failed). Viewed prototype PNG; existing heading clipping belongs to 13.3.
+- Left open: none in this task.
+- Next: Task 13.2 Bound retry expiry cleanup on Windows (deep; gpt-6.1-sol at high).

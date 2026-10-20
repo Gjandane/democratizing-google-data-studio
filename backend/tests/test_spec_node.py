@@ -125,3 +125,46 @@ async def test_oversized_context_never_calls_model(client, app, build_id):
     with pytest.raises(RunError):
         await app.state.harness.run('spec', build_id, {'config':app.state.settings.get()}, llm=fake)
     assert fake.calls == 0
+
+
+@pytest.mark.parametrize('invalid', [1, 3])
+async def test_invalid_colors_use_bounded_repair_before_publication(client, app, build_id, invalid):
+    folder = spec_seed(app, build_id)
+    from test_spec_validate import sample
+    previous = {'spec.json': json.dumps(sample()).encode(), 'prototype.html': b'previous prototype',
+                'background_p1.png': b'previous background', 'recipe.jsonl': b'previous recipe'}
+    for name, content in previous.items():
+        (folder / name).write_bytes(content)
+    class Colors(FakeLLM):
+        async def generate_content_async(self, llm_request, stream=False):
+            self.calls += 1
+            schema = llm_request.config.response_json_schema
+            props = schema['$defs']['Theme']['properties']
+            assert props['palette']['items']['pattern'] == '^#[0-9A-Fa-f]{6}$'
+            assert 'exactly #RRGGBB' in llm_request.config.system_instruction
+            if self.calls > 1:
+                for field in ('background', 'surface', 'text', 'muted', 'accent', 'palette.1'):
+                    assert 'theme.' + field in llm_request.config.system_instruction
+            spec = response_for(llm_request)
+            spec['datasource']['synthetic'] = False
+            if self.calls <= invalid:
+                spec['theme'] = {field: '123456' for field in ('background', 'surface', 'text', 'muted', 'accent')}
+                spec['theme']['palette'] = ['#123456', '#abc']
+            yield LlmResponse(content=types.Content(role='model', parts=[types.Part(text=json.dumps(spec))]))
+    fake = Colors()
+    if invalid == 3:
+        with pytest.raises(RunError) as error:
+            await app.state.harness.run('spec', build_id, {'config': app.state.settings.get()}, llm=fake)
+        assert error.value.code == 'invalid_request'
+        assert {e['path'] for e in error.value.detail['errors']} == {
+            'theme.' + field for field in ('background', 'surface', 'text', 'muted', 'accent', 'palette.1')}
+        assert {name: (folder / name).read_bytes() for name in previous} == previous
+        assert client.get(f'/api/builds/{build_id}').json()['stage'] == 'interview'
+    else:
+        await app.state.harness.run('spec', build_id, {'config': app.state.settings.get()}, llm=fake)
+        from dss.spec.validate import validate_spec
+        assert validate_spec(json.loads((folder / 'spec.json').read_text())) == []
+        assert all((folder / name).read_bytes() == content for name, content in previous.items() if name != 'spec.json')
+    assert fake.calls == invalid + (invalid != 3)
+    with app.state.db.connect() as conn:
+        assert [row[0] for row in conn.execute('SELECT status FROM traces')] == ['error' if invalid == 3 else 'ok']

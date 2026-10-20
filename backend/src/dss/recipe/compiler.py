@@ -1,14 +1,26 @@
 """Deterministic, code-produced recipe JSON Lines and their engine-free preview."""
 import json
 import shlex
+from functools import lru_cache
+from jsonschema import Draft202012Validator, ValidationError
+from dss.config import BACKEND_DIR
 from dss.spec.layout import box
-from dss.spec.models import DashboardSpec, image_paths, reference_image
+from dss.spec.models import DashboardSpec, Theme, image_paths, reference_image
+
+
+@lru_cache(maxsize=1)
+def _recipe_validators():
+    schema = json.loads((BACKEND_DIR.parent / 'contracts/recipe.schema.json').read_text(encoding='utf-8'))
+    return tuple(Draft202012Validator({**schema, '$ref': '#/$defs/' + kind}) for kind in ('header', 'op'))
 
 
 def compile_recipe(spec: DashboardSpec, version: int) -> str:
     """Compile the current spec without consulting settings or mutating the spec."""
     from dss.spec.layout import require_synthetic_label
     from dss.spec.models import SYNTHETIC_LABEL_ID, SYNTHETIC_LABEL
+    # A legacy/constructed/mutated model must obey the same color rules as new model output,
+    # including theme colors flattened into the background rather than emitted as ops.
+    Theme.model_validate(spec.theme.model_dump(warnings=False))
     require_synthetic_label(spec)
     # Logos are flattened into background_p<n>.png, so they are checked like image components.
     if any(reference_image(path) for _, path in image_paths(spec)):
@@ -53,7 +65,16 @@ def compile_recipe(spec: DashboardSpec, version: int) -> str:
     op("get_link")
     if len(lines) > 1000:
         raise ValueError("Recipe exceeds three-digit op id capacity")
-    return ''.join(json.dumps(line, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n" for line in lines)
+    header_validator, op_validator = _recipe_validators()
+    try:
+        header_validator.validate(lines[0])
+        for line in lines[1:]:
+            op_validator.validate(line)
+    except ValidationError:
+        # Never expose raw spec values through a provider/JSON Schema diagnostic.
+        raise ValueError('Compiled recipe does not match recipe contract 1.0') from None
+    return ''.join(json.dumps(line, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+                              allow_nan=False) + "\n" for line in lines)
 
 
 # `dsengine print` convention (contracts/api.md), recorded in tests/data/recipe_preview.json:

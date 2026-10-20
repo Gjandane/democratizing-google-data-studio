@@ -41,7 +41,8 @@ def high_questions(text):
 
 def validate_spec(value, *, allowed=None, high_priority=(), catalog_root=None):
     try:
-        spec = value if isinstance(value, DashboardSpec) else DashboardSpec.model_validate(value)
+        # Revalidate mutable model instances too; assignment/list mutation bypasses Pydantic.
+        spec = DashboardSpec.model_validate(value.model_dump(warnings=False) if isinstance(value, DashboardSpec) else value)
     except ValidationError as exc:
         return [{"path": ".".join(map(str, e["loc"])), "message": e["msg"]} for e in exc.errors(include_input=False)]
     rules = catalog(catalog_root)

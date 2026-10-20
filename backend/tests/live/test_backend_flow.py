@@ -1,4 +1,4 @@
-"""Live interview-to-prototype path through the unmodified API (real Gemini and BigQuery)."""
+"""Live core and feasibility paths (real Gemini, BigQuery and configured engine dry-run)."""
 import json
 import os
 import struct
@@ -9,6 +9,7 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
+from jsonschema import Draft202012Validator
 
 from dss.config import BACKEND_DIR, Config
 from dss.data.bigquery import BigQuery
@@ -16,7 +17,15 @@ from dss.harness.context import BUDGETS
 from dss.main import create_app
 
 SAMPLE = Path(__file__).parents[1] / "data/small_sales.csv"
-EVIDENCE = BACKEND_DIR / ".blueprint/qa/task-11.8/core"
+EVIDENCE = BACKEND_DIR / ".blueprint/qa/task-13.1/core"
+RECIPE_SCHEMA = json.loads((BACKEND_DIR.parent / 'contracts/recipe.schema.json').read_text(encoding='utf-8'))
+
+
+def validate_recipe(text):
+    lines = [json.loads(line) for line in text.rstrip('\n').split('\n')]
+    for i, line in enumerate(lines):
+        Draft202012Validator({**RECIPE_SCHEMA, '$ref': '#/$defs/op' if i else '#/$defs/header'}).validate(line)
+    return lines
 
 
 def wait(app, seconds=300):
@@ -34,7 +43,9 @@ def trace(app, run_id):
 
 
 @pytest.mark.live
-def test_interview_to_prototype(tmp_path):
+def test_interview_to_prototype(tmp_path, monkeypatch):
+    # Keep the ordinary configured engine invocation; only force its supported no-browser mode.
+    monkeypatch.setenv('DSS_ENGINE_DRY_RUN', '1')
     env = Config.from_env()
     assert env.google_api_key.get_secret_value(), "GOOGLE_API_KEY must be configured for this live check"
     # DSS_LIVE_GCP_PROJECT overrides the root .env without editing it.
@@ -97,6 +108,34 @@ def test_interview_to_prototype(tmp_path):
         html = client.get(f"/api/builds/{build_id}/prototype").text
         spec = client.get(f"/api/builds/{build_id}/spec").json()
 
+        EVIDENCE.mkdir(parents=True, exist_ok=True)
+        compiled = client.post(f'/api/builds/{build_id}/recipe')
+        assert compiled.status_code == 200, compiled.text
+        recipe = (folder / 'recipe.jsonl').read_text(encoding='utf-8')
+        (EVIDENCE / 'recipe.jsonl').write_text(recipe, encoding='utf-8', newline='\n')
+        lines = validate_recipe(recipe)
+        assert compiled.json()['op_count'] == len(lines) - 1
+        executed = client.post(f'/api/builds/{build_id}/run')
+        assert executed.status_code == 202, executed.text
+        runs['execute'] = executed.json()['run_id']
+        wait(app, 600)
+        events = (folder / 'events.jsonl').read_text(encoding='utf-8')
+        (EVIDENCE / 'events.jsonl').write_text(events, encoding='utf-8', newline='\n')
+        outcome = client.get(f'/api/builds/{build_id}').json()
+        (EVIDENCE / 'outcome.json').write_text(json.dumps(outcome, indent=2), encoding='utf-8')
+        assert trace(app, runs['execute'])['status'] == 'ok'
+        assert outcome['stage'] == 'done', outcome
+        validate_recipe((folder / 'recipe.jsonl').read_text(encoding='utf-8'))
+        engine_events = [json.loads(line) for line in events.split('\n') if line]
+        finished = [event for event in engine_events if event['event'] == 'run_finished']
+        assert len(finished) == 1 and finished[0]['status'] == 'ok', finished
+        assert finished[0]['report_url'] is None and finished[0]['failed'] == 0
+        ops = [event for event in engine_events if event['event'] == 'op_finished']
+        assert [op['op_id'] for op in ops] == [op['id'] for op in lines[1:]]
+        assert all(op['status'] == 'skipped' for op in ops), ops
+        (EVIDENCE / 'spec.json').write_text(json.dumps(spec, indent=2), encoding='utf-8')
+        (EVIDENCE / 'traces.json').write_text(json.dumps({name: trace(app, rid) for name, rid in runs.items()}, indent=2), encoding='utf-8')
+
     EVIDENCE.mkdir(parents=True, exist_ok=True)
     from playwright.sync_api import sync_playwright
     with sync_playwright() as playwright:
@@ -110,7 +149,8 @@ def test_interview_to_prototype(tmp_path):
     (EVIDENCE / "background_p1.png").write_bytes(background.content)
     (EVIDENCE / "runs.json").write_text(json.dumps({"build_id": build_id, "runs": runs, "plan_nodes": nodes,
         "plan_tokens": [plan_trace["input_tokens"], plan_trace["output_tokens"]],
-        "request_tokens_vs_estimate": request_counts, "view_rows": len(rows)}, indent=2))
+        "request_tokens_vs_estimate": request_counts, "view_rows": len(rows),
+        "stage": outcome['stage'], "recipe_lines_validated": len(lines), "engine_dry_run": finished[0]}, indent=2))
     print(json.dumps({"build_id": build_id, "runs": runs, "plan_nodes": nodes, "view_rows": len(rows),
                       "request_tokens_vs_estimate": request_counts}))
 
@@ -244,6 +284,7 @@ def test_image_revenue_mapping_clarified_to_real_prototype(tmp_path):
         compiled = client.post(f'/api/builds/{bid}/recipe')
         assert compiled.status_code == 200, compiled.text
         recipe = (folder / 'recipe.jsonl').read_text(encoding='utf-8')
+        validate_recipe(recipe)
         assert 'reference_' not in recipe and '"add_chart"' in recipe
         reference = client.get(f'/api/builds/{bid}/reference-images').json()
         background = (folder / 'background_p1.png').read_bytes()

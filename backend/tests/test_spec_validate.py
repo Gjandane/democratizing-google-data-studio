@@ -130,3 +130,45 @@ def test_provider_schema_carries_the_sort_contract():
     assert schema['$defs']['Sort']['properties']['order']['enum'] == ['asc', 'desc']
     assert schema['$defs']['Sort']['additionalProperties'] is False
     assert {'$ref': '#/$defs/Sort'} in schema['$defs']['Component']['properties']['sort']['anyOf']
+
+
+THEME_COLORS = ('background', 'surface', 'text', 'muted', 'accent', 'palette')
+BAD_COLORS = ('123456', '#abc', '#GG1234', '#12345678', 'red', '#123456\n', 123456, None)
+
+
+@pytest.mark.parametrize('field', THEME_COLORS)
+@pytest.mark.parametrize('color', BAD_COLORS)
+@pytest.mark.parametrize('as_model', [False, True])
+def test_theme_color_constraints(field, color, as_model):
+    from dss.spec.models import DashboardSpec
+    spec = sample()
+    if as_model:
+        spec = DashboardSpec.model_validate(spec)
+        if field == 'palette':
+            spec.theme.palette[1] = color
+        else:
+            setattr(spec.theme, field, color)
+    else:
+        spec.setdefault('theme', {})[field] = ['#aBc123', color] if field == 'palette' else color
+    errors = validate_spec(spec)
+    assert [e['path'] for e in errors] == ['theme.' + field + ('.1' if field == 'palette' else '')]
+    assert all(set(e) == {'path', 'message'} for e in errors)
+
+
+def test_theme_defaults_and_mixed_case_match_provider_schema():
+    from dss.spec.models import DashboardSpec, Theme
+    from jsonschema import Draft202012Validator
+    assert validate_spec(sample()) == []
+    theme = {field: ['#abcdef', '#ABCDEF', '#aBc123'] if field == 'palette' else '#aBc123'
+             for field in THEME_COLORS}
+    spec = sample()
+    spec['theme'] = theme
+    assert validate_spec(spec) == []
+    assert Theme.model_validate(theme).palette == theme['palette']
+    schema = DashboardSpec.model_json_schema()
+    colors = schema['$defs']['Theme']['properties']
+    for field in THEME_COLORS:
+        rule = colors[field]['items'] if field == 'palette' else colors[field]
+        assert rule['pattern'] == '^#[0-9A-Fa-f]{6}$'
+        assert rule['minLength'] == rule['maxLength'] == 7
+    Draft202012Validator(schema).validate(spec)

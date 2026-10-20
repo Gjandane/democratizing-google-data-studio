@@ -1,5 +1,6 @@
 """Contract shapes for endpoints implemented through phase 4; later phases add theirs."""
 import json
+import pytest
 from pathlib import Path
 from test_thin_slice import thin, load
 from test_execute import settle
@@ -66,6 +67,45 @@ def test_recipe_contract_in_agent_mode_without_engine(agent_client, spec):
     from fakes import ready_fixture
     ready_fixture(app, spec.build_id, folder)
     check(client.post(f"/api/builds/{spec.build_id}/recipe"), "recipe.json")
+
+
+@pytest.mark.parametrize('mode', ['local', 'agent'])
+@pytest.mark.parametrize('field', ['background', 'surface', 'text', 'muted', 'accent', 'palette'])
+@pytest.mark.parametrize('color', ['123456', '#abc', '#GG1234'])
+def test_corrupted_saved_spec_rejected_without_engine_or_publication(agent_client, spec, mode, field, color, monkeypatch):
+    client, app, folder = agent_client
+    app.state.config.engine_mode = mode
+    (folder / 'spec.json').write_text(spec.model_dump_json(), encoding='utf-8')
+    from fakes import ready_fixture
+    ready_fixture(app, spec.build_id, folder)
+    assert client.post(f'/api/builds/{spec.build_id}/recipe').status_code == 200
+    artifacts = {'recipe.jsonl': (folder / 'recipe.jsonl').read_bytes(),
+                 'prototype.html': b'complete prototype', 'background_p1.png': b'complete background',
+                 'events.jsonl': b'previous events'}
+    for name, content in artifacts.items():
+        (folder / name).write_bytes(content)
+    def no_job(*args, **kwargs):
+        raise AssertionError('Invalid recipe prepared an agent job')
+    monkeypatch.setattr(app.state.agent_jobs, 'prepare', no_job)
+    document = spec.model_dump()
+    document['theme'][field] = [color] if field == 'palette' else color
+    (folder / 'spec.json').write_text(json.dumps(document), encoding='utf-8')
+    for action in ('recipe', 'run'):
+        response = client.post(f'/api/builds/{spec.build_id}/{action}')
+        assert response.status_code == 422, response.text
+        assert response.json().keys() == {'error'}
+        assert response.json()['error'].keys() == {'code', 'message', 'detail'}
+        assert response.json()['error']['code'] == 'invalid_recipe'
+        assert response.json()['error']['detail'] == {}
+        assert {name: (folder / name).read_bytes() for name in artifacts} == artifacts
+        assert not (folder / 'recipe.jsonl.tmp').exists()
+        assert client.get(f'/api/builds/{spec.build_id}').json()['stage'] == 'prototype'
+        assert not app.state.engine_busy and not app.state.harness.active_builds
+        assert not app.state.engine_tasks
+        assert not app.state.agent_jobs.jobs and not app.state.agent_jobs.queue and not app.state.agent_jobs.running
+        with app.state.db.connect() as conn:
+            assert not conn.execute("SELECT 1 FROM versions WHERE status='building'").fetchone()
+            assert not conn.execute("SELECT 1 FROM traces WHERE node='execute'").fetchone()
 
 
 def test_intake_and_action_contracts(thin, monkeypatch):

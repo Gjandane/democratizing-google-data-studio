@@ -1,5 +1,5 @@
 """Typed Dashboard Spec; semantic constraints are checked against the catalog."""
-from typing import Literal
+from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 TYPES = ("scorecard", "time_series", "bar", "pie", "table", "pivot_table", "geo_map", "scatter", "text", "image", "date_range", "dropdown")
@@ -42,13 +42,16 @@ class Cell(Model):
     w: int = Field(ge=1)
     h: int = Field(ge=1)
 
+Color = Annotated[str, Field(strict=True, pattern=r"^#[0-9A-Fa-f]{6}$", min_length=7, max_length=7)]
+
+
 class Theme(Model):
-    background: str = "#F1F5F9"
-    surface: str = "#FFFFFF"
-    text: str = "#0F172A"
-    muted: str = "#64748B"
-    accent: str = "#1E40AF"
-    palette: list[str] = Field(default_factory=lambda: ["#1E40AF", "#0D9488"])
+    background: Color = "#F1F5F9"
+    surface: Color = "#FFFFFF"
+    text: Color = "#0F172A"
+    muted: Color = "#64748B"
+    accent: Color = "#1E40AF"
+    palette: list[Color] = Field(default_factory=lambda: ["#1E40AF", "#0D9488"])
     font_family: str = "Arial"
     radius: int = Field(default=8, ge=0)
 

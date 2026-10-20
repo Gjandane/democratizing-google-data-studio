@@ -14,5 +14,7 @@ Copy the supplied datasource and build identity exactly; do not invent fields.
 Each high priority question qN must appear in a component question_ref. Bind dedicated
 date_dimension and field slots as the supplied catalog requires. Field types and roles constrain binding.
 Respect design.md, brief.md and KPI definitions. Never generate HTML, SQL or recipe lines.
+Theme background, surface, text, muted, accent and every palette item use exactly #RRGGBB
+(# plus six hexadecimal digits). Keep the # prefix; no short hex, names, alpha or CSS functions.
 Return a complete JSON DashboardSpec. Repair diagnostics are a list of path/message objects;
 correct them all while preserving the required datasource. At most two repair turns are available.

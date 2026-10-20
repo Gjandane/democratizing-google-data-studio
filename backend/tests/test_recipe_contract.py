@@ -153,6 +153,45 @@ def test_text_fallback_and_missing_image_preserves_recipe(spec, tmp_path):
     assert (tmp_path / 'recipe.jsonl').read_bytes() == previous
 
 
+@pytest.mark.parametrize('field', ['background', 'surface', 'text', 'muted', 'accent', 'palette'])
+@pytest.mark.parametrize('color', ['123456', '#abc', '#GG1234'])
+def test_compiler_refuses_mutated_theme_preserving_recipe(spec, tmp_path, field, color):
+    perform(spec, 3, tmp_path)
+    previous = (tmp_path / 'recipe.jsonl').read_bytes()
+    if field == 'palette':
+        spec.theme.palette[0] = color
+    else:
+        setattr(spec.theme, field, color)
+    with pytest.raises(ValueError):
+        compile_recipe(spec, 3)
+    with pytest.raises(RunError) as error:
+        perform(spec, 3, tmp_path)
+    assert error.value.code == 'invalid_recipe'
+    assert (tmp_path / 'recipe.jsonl').read_bytes() == previous
+    assert not (tmp_path / 'recipe.jsonl.tmp').exists()
+
+
+@pytest.mark.parametrize('corruption', ['header', 'text', 'geometry', 'dimension'])
+def test_compiler_checks_emitted_recipe_contract(spec, tmp_path, corruption):
+    perform(spec, 3, tmp_path)
+    previous = (tmp_path / 'recipe.jsonl').read_bytes()
+    version = 3
+    if corruption == 'header':
+        version = 0
+    elif corruption == 'text':
+        next(c for c in spec.pages[0].components if c.type == 'text').text = None
+        next(c for c in spec.pages[0].components if c.type == 'text').label = ''
+    elif corruption == 'geometry':
+        spec.canvas.width = 0
+    else:
+        next(c for c in spec.pages[0].components if c.type == 'bar').dimensions = ['']
+    with pytest.raises(RunError) as error:
+        perform(spec, version, tmp_path)
+    assert error.value.code == 'invalid_recipe'
+    assert (tmp_path / 'recipe.jsonl').read_bytes() == previous
+    assert not (tmp_path / 'recipe.jsonl.tmp').exists()
+
+
 @pytest.mark.parametrize('count', [994, 995])
 def test_op_id_capacity(spec, count):
     note = next(c for c in spec.pages[0].components if c.type == 'text')
