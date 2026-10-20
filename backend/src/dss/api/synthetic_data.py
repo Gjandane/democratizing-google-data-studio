@@ -13,6 +13,8 @@ from dss.data import synthetic
 from dss.db import new_id, now
 from dss.harness.guardrails import RunError
 from dss.harness.nodes import synthetic_generate as node
+from dss.harness.nodes import synthetic_schema
+from dss.spec import references
 
 router = APIRouter(prefix="/api/builds")
 STAGES = ("connect", "interview")
@@ -26,6 +28,69 @@ class GenerateRequest(BaseModel):
     generation_key: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
     proposal_id: str | None
     spec: dict
+
+
+class ProposalRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    reference_set_id: str = Field(min_length=1, max_length=100)
+
+
+def write_stage(state, build_id):
+    """Check and reserve without yielding after the bounded request body was read."""
+    with state.db.connect() as connection:
+        build = connection.execute('SELECT stage FROM builds WHERE id=?', (build_id,)).fetchone()
+        has_sources = connection.execute('SELECT 1 FROM sources WHERE build_id=?', (build_id,)).fetchone()
+    if build['stage'] not in STAGES or build_id in state.harness.active_builds:
+        raise RunError('wrong_stage', 'Sample data actions require connect or interview with no running action',
+                       409, {'stage': build['stage']})
+    if has_sources:
+        raise RunError('synthetic_requires_empty_build', 'Sample data is only for a build without data sources; '
+                       'start a new dashboard instead', 409)
+
+
+def version_folder(state, build_id):
+    from dss.api.prototype import current
+    return current(state, build_id)[1]
+
+
+@router.get('/{build_id}/synthetic-data/proposal')
+def get_proposal(build_id: str, request: Request):
+    proposal = synthetic_schema.load(version_folder(request.app.state, build_id))
+    return proposal.model_dump(mode='json') if proposal else None
+
+
+@router.post('/{build_id}/synthetic-data/proposal', status_code=202)
+async def propose(build_id: str, request: Request):
+    state = request.app.state
+    require_build(state.db, build_id)
+    try:
+        body = ProposalRequest.model_validate(await read_json(request))
+    except ValidationError:
+        raise invalid_request() from None
+    write_stage(state, build_id)
+    folder = version_folder(state, build_id)
+    reference = references.load(folder)
+    if not reference or reference['mode'] != 'recreate':
+        raise RunError('synthetic_schema_unavailable', 'Choose Recreate mode with a reference image, '
+                       'or enter a manual sample-data schema', 422)
+    if reference['id'] != body.reference_set_id:
+        raise synthetic_schema.stale()
+    run_id = new_id('r')
+    config = state.settings.get()
+    state.harness.active_builds.add(build_id)
+
+    async def background():
+        try:
+            await state.harness.run('synthetic_schema', build_id,
+                {'config': config, 'folder': folder, 'reference': reference}, run_id=run_id, reserved=True)
+        except RunError:
+            pass
+        finally:
+            state.harness.active_builds.discard(build_id)
+    task = asyncio.create_task(background())
+    state.engine_tasks.add(task)
+    task.add_done_callback(state.engine_tasks.discard)
+    return {'run_id': run_id}
 
 
 def invalid_request():
@@ -93,22 +158,20 @@ async def generate(build_id: str, request: Request):
     # Everything from here to the reservation runs without an await, so it is atomic per build.
     with state.db.connect() as connection:
         existing = job(connection, build_id, body.generation_key)
-        build = connection.execute("SELECT stage FROM builds WHERE id=?", (build_id,)).fetchone()
-        has_sources = connection.execute("SELECT 1 FROM sources WHERE build_id=?", (build_id,)).fetchone()
     if existing is not None:
         if existing["request_hash"] == digest:
             return {"run_id": existing["run_id"]}
         raise RunError("synthetic_request_conflict", "This generation key was used for a different request", 409,
                        {"generation_key": body.generation_key})
-    if build["stage"] not in STAGES or build_id in state.harness.active_builds:
-        raise RunError("wrong_stage", "Sample data can be generated only in connect or interview with no running action",
-                       409, {"stage": build["stage"]})
-    if has_sources:
-        raise RunError("synthetic_requires_empty_build", "Sample data is only for a build without data sources; "
-                       "start a new dashboard instead", 409, {})
+    write_stage(state, build_id)
+    assumptions = list(MANUAL_ASSUMPTIONS)
     if body.proposal_id is not None:
-        # No schema proposal is current yet (proposals arrive with task 12.3).
-        raise RunError("synthetic_proposal_stale", "The schema proposal is no longer current", 409, {})
+        proposal = synthetic_schema.load(version_folder(state, build_id))
+        if proposal is None or proposal.id != body.proposal_id:
+            raise synthetic_schema.stale()
+        assumptions = list(proposal.assumptions)
+        if synthetic.canonical_json(spec) != synthetic.canonical_json(proposal.spec):
+            assumptions.append(synthetic_schema.EDITED_NOTE)
     config = state.settings.get()
     if not config.gcp_project_id.strip():
         raise RunError("gcp_not_configured", "Set the GCP project in Settings before generating data", 503)
@@ -120,11 +183,11 @@ async def generate(build_id: str, request: Request):
             "retry_ready,created_at,spec_json,assumptions_json) VALUES(?,?,?,?,?,?,'queued',0,?,?,?)",
             # The accepted exact spec as sent (canonical form only identifies the request).
             (body.generation_key, build_id, digest, run_id, source_id, table, created,
-             json.dumps(body.spec, ensure_ascii=False), json.dumps(MANUAL_ASSUMPTIONS)))
+             json.dumps(body.spec, ensure_ascii=False), json.dumps(assumptions)))
     state.harness.active_builds.add(build_id)
     payload = {"config": config, "factory": state.bigquery_factory, "spec": spec, "build_id": build_id,
                "generation_key": body.generation_key, "source_id": source_id, "bq_table": table,
-               "assumptions": MANUAL_ASSUMPTIONS, "created_at": created}
+               "assumptions": assumptions, "created_at": created}
 
     async def background():
         try:

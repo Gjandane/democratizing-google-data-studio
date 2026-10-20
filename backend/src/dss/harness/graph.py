@@ -65,7 +65,7 @@ class AgentHarness:
 
             async def router(node_input):
                 trace.span("router")
-                return Event(actions=EventActions(route=action if action in ("hello", "interview", "plan", "spec", "revise", "ux_audit", "reference_extract", "capability_check", "research", "intake", "create_build", "load_spec", "recipe", "execute", "versions", "reference_delete", "engine_login", "synthetic_generate") else "unknown"))
+                return Event(actions=EventActions(route=action if action in ("hello", "interview", "plan", "spec", "revise", "ux_audit", "reference_extract", "synthetic_schema", "capability_check", "research", "intake", "create_build", "load_spec", "recipe", "execute", "versions", "reference_delete", "engine_login", "synthetic_generate") else "unknown"))
 
             async def code_node(node_input):
                 nonlocal code_error
@@ -204,9 +204,11 @@ class AgentHarness:
                 workflow = Workflow(name='dss_run', edges=[
                     ('START', router), (router, {'research': discover}), (discover, fetch),
                     (fetch, {'select': select, 'failed': finish}), (select, finish), (finish, guardrail)])
-            elif action in ("ux_audit", "reference_extract", "capability_check"):
+            elif action in ("ux_audit", "reference_extract", "capability_check", "synthetic_schema"):
                 if action == "ux_audit":
                     from dss.harness.nodes.ux_audit import make_branch as extra_branch
+                elif action == "synthetic_schema":
+                    from dss.harness.nodes.synthetic_schema import make_branch as extra_branch
                 elif action == "capability_check":
                     from dss.harness.nodes.capability_check import make_branch as extra_branch
                 else:
@@ -236,7 +238,7 @@ class AgentHarness:
             runner = Runner(app_name="dss", node=workflow, session_service=sessions)
             async for event in runner.run_async(user_id="local", session_id=run_id,
                     new_message=types.Content(role="user", parts=[types.Part(text=action)]),
-                    run_config=RunConfig(max_llm_calls=6 if action == "plan" else (3 if action in ('spec', 'revise') else 2 if action == 'research' else 1 if action in ('reference_extract', 'capability_check') else 5 if action == 'interview' else 4),
+                    run_config=RunConfig(max_llm_calls=6 if action == "plan" else (3 if action in ('spec', 'revise') else 2 if action == 'research' else 1 if action in ('reference_extract', 'capability_check', 'synthetic_schema') else 5 if action == 'interview' else 4),
                         streaming_mode=StreamingMode.SSE if action == "interview" else StreamingMode.NONE)):
                 if event.error_code:
                     raise RunError("llm_unavailable", "The model call failed; check Settings", 503)
@@ -279,7 +281,7 @@ class AgentHarness:
                 raise extra_state['failure']
             if reference_before is not None and reference_before != requirements.digest(references.load(reference_folder)):
                 requirements.reference_changed(reference_folder)
-            if action in ('revise', 'ux_audit', 'reference_extract', 'capability_check', 'research'):
+            if action in ('revise', 'ux_audit', 'reference_extract', 'capability_check', 'research', 'synthetic_schema'):
                 from dss.memory import episodic
                 message = episodic.save(self.db, build_id, 'assistant', reply, action)
                 await self.emit(build_id, run_id, 'message.done', {'message':message})
@@ -314,7 +316,7 @@ class AgentHarness:
                 from dss.memory import episodic
                 message = episodic.save(self.db, build_id, 'assistant', exc.message, action)
                 await self.emit(build_id, run_id, 'message.done', {'message': message})
-            if action in ("interview", "plan", "spec", "revise", "ux_audit", "reference_extract", "capability_check", "research"):
+            if action in ("interview", "plan", "spec", "revise", "ux_audit", "reference_extract", "capability_check", "research", "synthetic_schema"):
                 error_message = exc.message
             raise
         except asyncio.CancelledError:

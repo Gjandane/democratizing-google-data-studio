@@ -698,3 +698,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: added shape() heterogeneous-list line; `""` null row now live-verified.
 - Left open: P3 cleanup ignores delete_loaded_table's False (load job never observed): retry_ready may be true while a late load creates an orphan table - src/dss/harness/nodes/synthetic_generate.py.
 - Next: Task 12.3 Screenshot schema proposal (or 12.4, also unblocked).
+
+## 2026-10-20: Task 12.3 Screenshot schema proposal
+- Status: done
+- Plan check: off
+- What changed: proposal GET/POST routes, synthetic_schema Workflow branch, bounded observation-only context, prompt/skill, and current-proposal validation during generation. Added FakeLLM and shared-fixture contract coverage.
+- Checks: `uv run pytest tests/test_synthetic_api.py tests/test_api_contract.py` PASS (29); Test (all) `uv run pytest` PASS (867, 8 live deselected, 3 dependency warnings). Read-only blueprint_reviewer: no findings. No live provider call required or run.
+- Decisions: version folder `synthetic-proposal.json` stores Proposal; GET returns null after reference replacement/deletion/style mode. Model returns spec/assumptions; code adds proposal/reference IDs and validates with the generator compiler. Input uses existing reference interpretation only, counted budget 12k, output cap 6k, low thinking, one call/no repair. Supplied proposal must match the stored proposal and current recreate reference; replay still precedes freshness checks. Edited specs retain all original assumptions plus EDITED_NOTE; exact submitted spec persists in the generation row.
+- Tried and failed: PowerShell rejected an inline Python edit command; applied the graph edit with apply_patch instead. No implementation/check failures.
+- Gotchas: none.
+- Left open: none.
+- Next: Task 12.4 Immediate backups and interrupted-job recovery.

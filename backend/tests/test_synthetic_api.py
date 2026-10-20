@@ -1,4 +1,4 @@
-"""Synthetic generation API, typed intake and download with fake BigQuery and no model call."""
+"""Synthetic schema proposals and generation API with FakeLLM and typed fake BigQuery."""
 import csv
 import io
 import json
@@ -26,6 +26,178 @@ REQUEST = json.loads((FIXTURES / "request.json").read_text(encoding="utf-8"))
 SPEC = REQUEST["spec"]
 PARSE = {"INTEGER": int, "NUMERIC": Decimal, "STRING": str, "DATE": date.fromisoformat,
          "BOOLEAN": lambda v: {"true": True, "false": False}[v]}
+
+
+def recreate_reference(client, app, bid, monkeypatch, mode='recreate'):
+    """Use actual reference extraction with FakeLLM; no screenshot is sent for the proposal."""
+    from dss.spec import references
+    from fakes import FakeLLM
+    from test_references import png, output
+    with monkeypatch.context() as patch:
+        patch.setattr(references, 'decode', lambda images: None)
+        patch.setattr(app.state.models, 'llm_for', lambda _: FakeLLM(response=output()))
+        response = client.post(f'/api/builds/{bid}/reference-images', data={'mode': mode},
+                               files=[('files', ('ref.png', png(), 'image/png'))])
+        assert response.status_code == 202, response.text
+        wait(app)
+    return client.get(f'/api/builds/{bid}/reference-images').json()['id']
+
+
+def proposal_model(monkeypatch, app, response=None, count=11000):
+    from fakes import FakeLLM
+    class Counted(FakeLLM):
+        requests: list = []
+        counts: int = 0
+
+        async def count_request_tokens(self, request):
+            self.counts += 1
+            return count
+
+        async def generate_content_async(self, request, stream=False):
+            self.requests.append(request.model_copy(deep=True))
+            async for result in super().generate_content_async(request, stream):
+                yield result
+    model = Counted(response=json.dumps(response if response is not None else {
+        'spec': SPEC, 'assumptions': ['All rows are invented sample data.', 'Revenue is assumed to mean quantity times unit price.']}))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda action: model if action == 'synthetic_schema' else None)
+    return model
+
+
+def propose(client, app, bid, reference_id):
+    accepted = client.post(f'/api/builds/{bid}/synthetic-data/proposal', json={'reference_set_id': reference_id})
+    assert accepted.status_code == 202, accepted.text
+    wait(app)
+    return accepted.json()['run_id'], client.get(f'/api/builds/{bid}/synthetic-data/proposal').json()
+
+
+def test_proposal_is_one_bounded_metadata_only_call(setup, monkeypatch):
+    from dss.harness.nodes.synthetic_schema import Proposal
+    client, app, fake = setup
+    bid = create(client)
+    assert client.get(f'/api/builds/{bid}/synthetic-data/proposal').json() is None
+    rid = recreate_reference(client, app, bid, monkeypatch)
+    model = proposal_model(monkeypatch, app)
+    run_id, proposal = propose(client, app, bid, rid)
+    validated = Proposal.model_validate(proposal)
+    assert synthetic.parse_spec(validated.spec) == synthetic.parse_spec(SPEC)
+    assert proposal['reference_set_id'] == rid and model.calls == model.counts == 1
+    request, = model.requests
+    assert request.config.max_output_tokens == 6000
+    assert request.config.response_json_schema and request.config.response_schema is None
+    assert not request.config.tools
+    assert not any(p.inline_data or p.file_data for c in request.contents for p in c.parts)
+    text = str(request.config.system_instruction)
+    assert 'Revenue' in text
+    assert all(word not in text for word in ('sample.csv', 'data-profile.md', 'sample_001', '"rows":'))
+    assert not fake.loads and client.get(f'/api/builds/{bid}').json()['sources'] == []
+    with app.state.db.connect() as conn:
+        trace, = conn.execute('SELECT * FROM traces WHERE run_id=?', (run_id,)).fetchall()
+    assert trace['node'] == 'synthetic_schema' and trace['status'] == 'ok'
+    spans = json.loads(trace['spans_json'])
+    span = next(s for s in spans if s['node'] == 'synthetic_schema')
+    assert span['request_tokens'] == 11000 and span['count_calls'] == 1
+    assert events(app, run_id)[-1][1]['status'] == 'ok'
+    assert {'build.updated', 'docs.updated'} <= {kind for kind, _ in events(app, run_id)}
+    # A fresh application over the same storage can read the proposal without a model call.
+    other = create_app(app.state.settings.get(), model_lister=fake_models)
+    with TestClient(other) as reloaded:
+        assert reloaded.get(f'/api/builds/{bid}/synthetic-data/proposal').json() == proposal
+
+
+def test_proposal_edits_preserve_assumptions_and_exact_accepted_spec(setup, monkeypatch):
+    from dss.harness.nodes.synthetic_schema import EDITED_NOTE
+    client, app, fake = setup
+    bid = create(client)
+    rid = recreate_reference(client, app, bid, monkeypatch)
+    model = proposal_model(monkeypatch, app)
+    _, proposal = propose(client, app, bid, rid)
+    edited = {**proposal['spec'], 'row_count': 17, 'seed': 15}
+    response = post(client, bid, spec=edited, proposal_id=proposal['id'])
+    assert response.status_code == 202, response.text
+    wait(app)
+    dataset, = client.get(f'/api/builds/{bid}/synthetic-data').json()
+    assert dataset['spec'] == edited
+    assert dataset['assumptions'] == proposal['assumptions'] + [EDITED_NOTE]
+    assert model.calls == 1 and len(fake.loads) == 1
+    doc = (app.state.settings.get().data_dir / 'builds' / bid / 'v1/docs/synthetic-data.md').read_text(encoding='utf-8')
+    assert yaml.safe_load(doc.split('---', 2)[1])['assumptions'] == dataset['assumptions']
+    # Replay precedes current-reference checks even if the source is now registered.
+    folder = app.state.settings.get().data_dir / 'builds' / bid / 'v1'
+    (folder / 'references.json').unlink()
+    assert post(client, bid, spec=edited, proposal_id=proposal['id']).json() == response.json()
+
+
+def test_stale_proposal_reference_replacement_and_deletion(setup, monkeypatch):
+    client, app, fake = setup
+    bid = create(client)
+    rid = recreate_reference(client, app, bid, monkeypatch)
+    proposal_model(monkeypatch, app)
+    _, first = propose(client, app, bid, rid)
+    _, second = propose(client, app, bid, rid)
+    assert first['id'] != second['id']
+    stale = post(client, bid, proposal_id=first['id'])
+    assert stale.status_code == 409 and stale.json()['error']['code'] == 'synthetic_proposal_stale'
+    new_rid = recreate_reference(client, app, bid, monkeypatch)
+    assert new_rid != rid
+    assert client.get(f'/api/builds/{bid}/synthetic-data/proposal').json() is None
+    stale = post(client, bid, proposal_id=second['id'])
+    assert stale.status_code == 409 and stale.json()['error']['code'] == 'synthetic_proposal_stale'
+    stale = client.post(f'/api/builds/{bid}/synthetic-data/proposal', json={'reference_set_id': rid})
+    assert stale.status_code == 409 and stale.json()['error']['code'] == 'synthetic_proposal_stale'
+    proposal_model(monkeypatch, app)
+    _, third = propose(client, app, bid, new_rid)
+    assert client.delete(f'/api/builds/{bid}/reference-images').status_code == 204
+    assert client.get(f'/api/builds/{bid}/synthetic-data/proposal').json() is None
+    assert post(client, bid, proposal_id=third['id']).json()['error']['code'] == 'synthetic_proposal_stale'
+    assert not fake.loads
+
+
+def test_proposal_rejections_and_action_lock(setup, monkeypatch):
+    client, app, fake = setup
+    bid = create(client)
+    url = f'/api/builds/{bid}/synthetic-data/proposal'
+    for mode in (None, 'style'):
+        rid = recreate_reference(client, app, bid, monkeypatch, mode) if mode else 'missing'
+        response = client.post(url, json={'reference_set_id': rid})
+        assert response.status_code == 422 and response.json()['error']['code'] == 'synthetic_schema_unavailable'
+    rid = recreate_reference(client, app, bid, monkeypatch)
+    for body in ({}, {'reference_set_id': 1}, {'reference_set_id': rid, 'extra': 1}):
+        assert client.post(url, json=body).json()['error']['code'] == 'invalid_request'
+    app.state.harness.active_builds.add(bid)
+    try:
+        assert client.post(url, json={'reference_set_id': rid}).json()['error']['code'] == 'wrong_stage'
+    finally:
+        app.state.harness.active_builds.discard(bid)
+    with app.state.db.connect() as conn:
+        conn.execute("UPDATE builds SET stage='prototype' WHERE id=?", (bid,))
+    assert client.post(url, json={'reference_set_id': rid}).json()['error']['code'] == 'wrong_stage'
+    with app.state.db.connect() as conn:
+        conn.execute("UPDATE builds SET stage='connect' WHERE id=?", (bid,))
+        conn.execute("INSERT INTO sources VALUES('s_real',?,'upload','sales.csv','p.d.t',3,'[]')", (bid,))
+    assert client.post(url, json={'reference_set_id': rid}).json()['error']['code'] == 'synthetic_requires_empty_build'
+
+
+@pytest.mark.parametrize('failure', ['too_many', 'too_long', 'invalid_dependency', 'rows', 'bad_json', 'over_budget'])
+def test_invalid_proposal_is_never_repaired_or_published(setup, monkeypatch, failure):
+    client, app, fake = setup
+    bid = create(client)
+    rid = recreate_reference(client, app, bid, monkeypatch)
+    value = {'spec': SPEC, 'assumptions': ['Invented sample rows.']}
+    if failure == 'too_many':
+        value['assumptions'] *= 21
+    elif failure == 'too_long':
+        value['assumptions'] = ['x' * 241]
+    elif failure == 'invalid_dependency':
+        value['spec'] = {**SPEC, 'columns': [column('amount', 'number', {'kind': 'product', 'fields': ['x', 'y'], 'decimals': 2})]}
+    elif failure == 'rows':
+        value['rows'] = [{'revenue': 10}]
+    model = proposal_model(monkeypatch, app, value, count=12001 if failure == 'over_budget' else 10000)
+    if failure == 'bad_json':
+        model.response = '{'
+    run_id, proposal = propose(client, app, bid, rid)
+    assert proposal is None and model.calls == (0 if failure == 'over_budget' else 1)
+    assert events(app, run_id)[-1][1]['status'] == 'error'
+    assert not fake.loads and client.get(f'/api/builds/{bid}').json()['sources'] == []
 
 
 class FakeTypedBigQuery:

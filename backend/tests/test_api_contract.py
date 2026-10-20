@@ -274,3 +274,40 @@ def test_synthetic_data_contract(tmp_path, monkeypatch):
         assert failure["error"]["code"] == failed["error"]["code"]
         conflict = client.post(f"/api/builds/{other}/synthetic-data", json={**request, "proposal_id": None, "spec": {**request["spec"], "seed": 1}})
         assert conflict.status_code == 409 and conflict.json()["error"]["code"] == "synthetic_request_conflict"
+
+
+def test_synthetic_proposal_contract(tmp_path, monkeypatch):
+    """Current Proposal matches the shared fixture and preserves assumptions on acceptance."""
+    from fastapi.testclient import TestClient
+    from dss.config import Config
+    from dss.data.synthetic import parse_spec
+    from dss.main import create_app
+    from fakes import fake_models
+    from test_synthetic_api import FakeTypedBigQuery, create, wait, recreate_reference, proposal_model
+    fixture = json.loads((SYNTHETIC / 'proposal.json').read_text())
+    app = create_app(Config(data_dir=tmp_path, gcp_project_id='test-project'),
+                     model_lister=fake_models, bigquery_factory=lambda _: FakeTypedBigQuery())
+    with TestClient(app) as client:
+        bid = create(client)
+        url = f'/api/builds/{bid}/synthetic-data/proposal'
+        assert client.get(url).status_code == 200 and client.get(url).json() is None
+        rid = recreate_reference(client, app, bid, monkeypatch)
+        model = proposal_model(monkeypatch, app, {k: fixture[k] for k in ('spec', 'assumptions')})
+        response = client.post(url, json={'reference_set_id': rid})
+        check(response, 'run_accepted.json', 202)
+        wait(app)
+        proposed = client.get(url)
+        assert proposed.status_code == 200
+        proposal = proposed.json()
+        assert proposal.keys() == fixture.keys()
+        shape({k: v for k, v in proposal.items() if k != 'spec'},
+              {k: v for k, v in fixture.items() if k != 'spec'})
+        assert parse_spec(proposal['spec']) == parse_spec(fixture['spec'])
+        assert proposal['reference_set_id'] == rid and proposal['assumptions'] == fixture['assumptions']
+        response = client.post(f'/api/builds/{bid}/synthetic-data', json={
+            'generation_key': 'accept_proposal', 'proposal_id': proposal['id'], 'spec': proposal['spec']})
+        check(response, 'run_accepted.json', 202)
+        wait(app)
+        dataset, = client.get(f'/api/builds/{bid}/synthetic-data').json()
+        assert dataset['spec'] == proposal['spec'] and dataset['assumptions'] == proposal['assumptions']
+        assert model.calls == 1
