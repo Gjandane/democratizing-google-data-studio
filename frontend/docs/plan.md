@@ -192,7 +192,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: fail-closed rules intact (first load, failed GET, stale, blocked); obsolete responses still dropped; the server stays the authority while a gate shows its last loaded state.
 
 ## Phase 13: Audit fixes (final re-audit 2026-10-20, after Phase 12)
-- [ ] 13.1 Steady feasibility focus test
+- [x] 13.1 Steady feasibility focus test
   - Goal: make `npm test` reliable: the test "handles a finish arriving before the check POST returns" (tests/feasibility.test.tsx:67-78) checks heading focus before the refetch that moves it lands; it must await the focus instead, with the app code unchanged.
   - Files: tests/feasibility.test.tsx
   - Depends on: 12.1

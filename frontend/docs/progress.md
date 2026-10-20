@@ -390,3 +390,14 @@ context. Task status lives in docs/plan.md, not here.
 - Reviewer (blueprint-reviewer, opus high, blockers only, web-design-guidelines on the three 12.1 UI files): P1: the test races 12.1's focus gate (FeasibilityPanel.tsx:91 waits for `!refreshing`; the status text renders before the mock GET's `setTimeout(0)` lands); the app behaves right, the test is wrong. Review focus passes (fail-closed on first load, failed GET, stale, blocked; obsolete responses dropped via seq/adopt and fetchSeq; a pending refetch only closes gates). Done when (1)-(4) each asserted. No Non-goal built; package.json matches the Verified table; 12.1 Decisions consistent. Below the bar: four P3 already on Later, one new P3 (late focus) added to Later.
 - Docs: reference-ui.md Controls and states records the 12.1 decisions (a pending refetch may close a gate, never reopen it; focus moves to the heading once the refetch lands). The "Resource-panel tests" and "Feasibility test helpers" gotchas moved from AGENTS.md into implementation-notes.md Conventions as a test trap, plus the await-focus rule. PRD Later gains the late-focus P3.
 - Next: task 13.1, then a re-audit (architect): blockers only.
+
+## 2026-10-20: Task 13.1 Steady feasibility focus test
+- Status: done
+- Plan check: off
+- What changed: tests/feasibility.test.tsx (3 heading-focus assertions after status messages, lines 77, 411, 446) and tests/references.test.tsx (file-chooser focus after "References removed.") now wrapped in `waitFor`. No src/ change.
+- Checks: `npm test` PASS in 4 runs in a row, each 17 files/376 tests; `npm run typecheck` PASS; `git diff` touches no file under src/ (other diff entries in the repo are pre-existing, not this task).
+- Decisions: other focus assertions (feasibility 218, 233, 269; references 75, 287) left sync: they follow no status message or assert focus kept. Reviewer subagent skipped: S task, test-only, wait-for-focus change.
+- Tried and failed: none.
+- Gotchas: none new.
+- Left open: none.
+- Next: re-audit (architect): blockers only.

@@ -74,7 +74,7 @@ describe('Feasibility recovery and gates', () => {
     fire(finished('fast'));
     await act(async () => resolve({ run_id: 'fast' }));
     await screen.findByText('Feasibility checked. Review the result.');
-    expect(screen.getByRole('heading', { name: 'Feasibility' })).toBe(document.activeElement);
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Feasibility' })).toBe(document.activeElement));
   });
 
   it('recovers a missed completion when reconnect arrives before the check POST response', async () => {
@@ -408,7 +408,7 @@ describe('Saved comment batches and stale repair', () => {
     await screen.findByText('Your requirements are resolved.');
     await waitFor(() => expect(disabled('Generate recipe')).toBe(false));
     expect(screen.queryByRole('list', { name: 'Saved comments' })).toBeNull();
-    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Feasibility' }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Feasibility' })));
     expect(recipe).not.toHaveBeenCalled(); expect(run).not.toHaveBeenCalled();
   });
 
@@ -443,7 +443,7 @@ describe('Saved comment batches and stale repair', () => {
     await screen.findByText(independent.requirement);
     expect(discard).toHaveBeenCalledExactlyOnceWith(id, saved.id);
     expect(screen.queryByRole('list', { name: 'Saved comments' })).toBeNull();
-    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Feasibility' }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Feasibility' })));
     expect(plan).not.toHaveBeenCalled(); expect(recipe).not.toHaveBeenCalled(); expect(run).not.toHaveBeenCalled();
   });
 

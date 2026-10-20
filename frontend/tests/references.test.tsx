@@ -103,7 +103,7 @@ describe('Required references', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove references' }));
     await screen.findByText('References removed.');
     expect(remove).toHaveBeenCalledExactlyOnceWith(buildId);
-    expect(document.activeElement).toBe(screen.getByLabelText('Reference images'));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Reference images')));
     expect(screen.queryByRole('img')).toBeNull();
     await screen.findByText(/No references yet/);
   });
