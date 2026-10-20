@@ -1,9 +1,13 @@
 # Contract: dashboard references and feasibility
 Version 1.1 (2026-10-19). Change: explicit synthetic-data fallback for screenshot-only builds;
 original reference/feasibility rules retained. Version 1.0 was the initial planned contract. Provider: backend. Consumers: frontend, release.
-Status: planned; implementation is backend 11.1-11.8 (task split 2026-10-20) and frontend 10.1.
-API transport: contracts/api.md 1.4. Recipe transport stays at 1.0.
-Shared fixtures: contracts/fixtures/dashboard-intent/{reference_set,feasibility}.json.
+2026-10-20 (no version change, shapes unchanged): example fixtures added for alternatives,
+pending comments and a stale assessment; implementation task IDs follow frontend's split.
+Status: backend 11.1-11.8 (task split 2026-10-20) and frontend 10.1-10.3 (split 2026-10-20).
+API transport: contracts/api.md 1.5. Recipe transport stays at 1.0.
+Shared fixtures: contracts/fixtures/dashboard-intent/{reference_set,feasibility}.json, plus the
+Assessment variants feasibility.alternatives.json (blocked, alternatives offered),
+feasibility.pending.json (a blocked comment batch in pending_comments) and feasibility.stale.json.
 Keep them separate from the pre-1.3 fixture inventory; new conformance tests explicitly load them.
 
 ## Scope

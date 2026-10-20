@@ -683,3 +683,7 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: added the `""` single-column null row to Known gotchas (12.2 loader).
 - Left open: P3 duplicate-JSON-key error names the bare key, not its path; P3 no-hard-link fallback uses lexists+os.replace (race) and leaves an empty created parent dir on failure - src/dss/data/synthetic.py.
 - Next: Task 12.2 Synthetic generation API, typed intake and download.
+
+## 2026-10-20: Change api.md 1.5 and example fixtures (program root)
+- What changed: contracts/api.md 1.4 -> 1.5, consistency only (no shape or route change; a 1.4 implementation conforms): cross-refs to dashboard-intent/synthetic-data 1.1, the `node` list adds reference_extract, reference_delete, capability_check, synthetic_schema, synthetic_generate. New example fixtures dashboard-intent/feasibility.{alternatives,pending,stale}.json and synthetic-data/{dataset,job.succeeded}.json (dataset sha256/bytes from `dss.data.synthetic` on request.json's spec, generator `dss-synthetic/1`). Essentials Contracts row says api 1.5.
+- Affects: no task; existing contract tests load fixtures by name, so the new files change nothing they check.

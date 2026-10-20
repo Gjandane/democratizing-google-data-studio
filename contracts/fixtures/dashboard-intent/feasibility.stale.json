@@ -1,0 +1,8 @@
+{
+  "id": "assessment_stale",
+  "state": "stale",
+  "input_digest": "example_digest_stale",
+  "prototype_stale": true,
+  "issues": [],
+  "pending_comments": null
+}

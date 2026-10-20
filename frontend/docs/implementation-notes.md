@@ -21,7 +21,7 @@
   placement is checked in the manual screenshots.
 - Tests use the mock (`resetMockState()` per test; knobs `setMockEngine`, `setMockBuildOutcome`,
   `setMockSession`); no jest-dom: assert `el.disabled`, drive with `fireEvent`. Guards are exact.
-- Run `node` values are the api.md 1.4 names; StretchRoute `'audit'` is a route, not a node.
+- Run `node` values are the api.md 1.5 names; StretchRoute `'audit'` is a route, not a node.
 - New actions (reference, feasibility, synthetic) match their run by the `run_id` from the `202`,
   never by node, and refetch their resource on that run's `run.finished`. The stretch 404-hide
   (stretch.ts) never applies to the required reference, feasibility or synthetic routes.

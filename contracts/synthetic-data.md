@@ -2,9 +2,12 @@
 Version 1.1 (2026-10-20). Provider: backend. Consumers: frontend, release.
 Change log: 1.1 (2026-10-20) durability uses the generation table plus immediate DB backups
 instead of immutable manifests and startup reconciliation; HTTP shapes unchanged. 1.0 (2026-10-19)
-initial planned contract.
-Planned implementation: backend 12.1-12.5, frontend 11.1, release 2.5/2.6 (local) and 4.3 (hosted) acceptance.
-Transport: api.md 1.4. Source.kind adds `synthetic`; existing Source keys stay unchanged.
+initial planned contract. 2026-10-20 (no version change, shapes unchanged): example fixtures
+`dataset.json` (SyntheticDataset) and `job.succeeded.json` (GenerationStatus) added.
+Planned implementation: backend 12.1-12.5, frontend 11.1-11.2, release 2.5/2.6 (local) and 4.3 (hosted) acceptance.
+Transport: api.md 1.5. Source.kind adds `synthetic`; existing Source keys stay unchanged.
+Shared fixtures: contracts/fixtures/synthetic-data/ (request, proposal, dataset, source,
+job.succeeded, job.failed).
 
 ## Purpose and flow
 Reference screenshot, no CSV -> extract visual observations -> propose a sample-data schema ->

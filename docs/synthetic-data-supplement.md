@@ -1,6 +1,6 @@
 # Supplement: recreate a dashboard without an uploaded dataset
 Written 2026-10-20. Supplements the current architect review; no new task markers or scope
-approval. The authoritative contract is contracts/synthetic-data.md 1.1 with API 1.4, and the
+approval. The authoritative contract is contracts/synthetic-data.md 1.1 with API 1.5, and the
 current backend/frontend/release plans determine implementation order.
 
 ## User requirement
@@ -90,7 +90,7 @@ or Gemini; the HTTP workflow adds storage, intake, provenance and job tracking.
 | backend 12.3 | Screenshot schema proposal |
 | backend 12.4 | Immediate backups and interrupted-job recovery |
 | backend 12.5 | Synthetic label through prototype/report and live flow |
-| frontend 11.1 | Schema review, count/seed controls, generation and download; needs backend 12.3 |
+| frontend 11.1-11.2 | 11.1 schema review, count/seed controls and generate (needs backend 12.3); 11.2 status recovery, download and provenance |
 | release 2.5, 2.6, 4.3 | End-to-end and manual acceptance, local then hosted (release plan, change 2026-10-20 final phases) |
 
 ## Acceptance reminders for the existing tasks

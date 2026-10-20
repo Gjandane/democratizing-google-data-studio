@@ -102,3 +102,10 @@ context. Task status lives in docs/plan.md, not here.
 - Checks: `blueprint.py lint` release 0 errors 0 warnings; `program` 0 problems.
 - Left open: backend 11.8's latest entry asks the architect to rule on planner/provider compatibility; 2.5, 2.6 and 4.3 wait on it (and backend 12.x, frontend 10.1/11.1). 2.1-2.4 don't.
 - Next: release 2.1 (start scripts) once its session can commit (uncommitted part work in the tree).
+
+## 2026-10-20: Change frontend split gates and contract consistency (program)
+- Status: done
+- What changed: 2.5 `Needs:` frontend 10.1/11.1 -> frontend 10.3/11.2 (frontend's delta audit split 10.1 into 10.1-10.3 and 11.1 into 11.1-11.2). contracts/api.md 1.4 -> 1.5 (consistency only: cites dashboard-intent/synthetic-data 1.1, headings "(added in 1.3/1.4)", `node` list adds reference_extract, reference_delete, capability_check, synthetic_schema, synthetic_generate; mis-encoded `·`/`—` repaired). New example fixtures: dashboard-intent/feasibility.{alternatives,pending,stale}.json, synthetic-data/{dataset,job.succeeded}.json (dataset checksum/bytes from a real `dss.data.synthetic` run of request.json's spec); dashboard-intent.md and synthetic-data.md list them and the new task IDs, versions unchanged (shapes unchanged). program.md: Parts table (frontend consumes dashboard-intent, synthetic-data), Contracts table api 1.5, roadmap gates, decision-log row. Essentials Contracts row api 1.5 here, in backend and in frontend. docs/synthetic-data-supplement.md: frontend 11.1-11.2, API 1.5.
+- Why: settles "Left open (program root)" (a)-(d) of frontend's 2026-10-20 delta audit entry; without (a) 2.5 could start before frontend finishes.
+- Affects: release 2.5 gate only; 4.3 follows 2.5 unchanged.
+- Checks: `lint` release 0 errors 0 warnings, engine 0/0, backend 0 errors (4 earlier size warnings), frontend 0 errors (2 earlier warnings); `program` 0 problems; `check_contracts.py` 9/9 PASS; frontend `npm test -- contract` 31/31; new fixtures' keys match their sibling fixtures and contract types.

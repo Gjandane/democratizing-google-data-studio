@@ -291,3 +291,9 @@ context. Task status lives in docs/plan.md, not here.
 - Checks: `lint` 0 errors (warnings: 22 tasks; historical progress date order); `stamp` run.
 - Left open (program root, frontend can't edit): (a) release 2.5 `Needs: frontend 10.1; frontend 11.1` and the program.md roadmap/decision log must move to frontend 10.3 and 11.2, or release 2.5 can start before this part finishes; (b) api.md still cites dashboard-intent/synthetic-data 1.0 and "(1.3)" headings, and its node list lacks reference_extract, capability_check, synthetic_schema, synthetic_generate; (c) fixtures missing: SyntheticDataset, succeeded GenerationStatus, feasibility with alternatives/pending_comments/stale; (d) program.md Parts table: frontend Consumes omits dashboard-intent and synthetic-data.
 - Next: frontend 10.1 (backend 11.8 is done).
+
+## 2026-10-20: Change frontend split gates and contract consistency (program root)
+- Status: done
+- What changed: contracts/api.md 1.5 (no shape or route change; complete `node` list adds reference_delete besides the 1.3/1.4 names; reference-ui.md presets line names it). New shared fixtures replace this part's override plan: dashboard-intent/feasibility.{alternatives,pending,stale}.json and synthetic-data/{dataset,job.succeeded}.json. Plan: 10.2 Done when (1) imports the three Assessment variants; 10.3 (1) names feasibility.pending.json; 11.1 (1) also imports dataset.json and job.succeeded.json; 11.2 uses them instead of overriding job.failed.json. Review focus lines, essentials Contracts row, reference-ui and implementation-notes cite api 1.5. Program: release 2.5 now needs frontend 10.3 and 11.2; program.md Parts table lists dashboard-intent and synthetic-data as consumed.
+- Affects: 10.2, 10.3, 11.1, 11.2 (unstarted; checks only). Supersedes the audit's override Decision.
+- Left open: none of (a)-(d) from the 2026-10-20 delta audit.

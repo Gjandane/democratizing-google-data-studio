@@ -1,0 +1,50 @@
+{
+  "id": "assessment_alternatives",
+  "state": "blocked",
+  "input_digest": "example_digest_alternatives",
+  "prototype_stale": false,
+  "issues": [
+    {
+      "id": "issue_gps",
+      "requirement": "Animate GPS points along a route.",
+      "status": "unsupported_app",
+      "reason": "This app's current recipe and engine do not support temporal GPS playback.",
+      "evidence": [
+        "contracts/recipe.md#Operations"
+      ],
+      "alternatives": [
+        {
+          "id": "alt_region_map",
+          "label": "Geo map of revenue by region"
+        },
+        {
+          "id": "alt_time_series",
+          "label": "Time series of revenue by day"
+        }
+      ],
+      "resolution": "unresolved"
+    },
+    {
+      "id": "issue_revenue",
+      "requirement": "Show Revenue.",
+      "status": "needs_clarification",
+      "reason": "Both gross_sales and net_sales could mean Revenue.",
+      "evidence": [
+        "schema:gross_sales",
+        "schema:net_sales"
+      ],
+      "alternatives": [
+        {
+          "id": "alt_net_sales",
+          "label": "Revenue = SUM(net_sales)"
+        },
+        {
+          "id": "alt_gross_sales",
+          "label": "Revenue = SUM(gross_sales)"
+        }
+      ],
+      "resolution": "unresolved"
+    }
+  ],
+  "pending_comments": null
+}

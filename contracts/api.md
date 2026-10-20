@@ -1,5 +1,5 @@
 # Contract: backend HTTP API (REST + SSE)
-Version 1.4 Â· Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
+Version 1.5 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
 (recipe ops with ids, stage rules, engine_busy, shared fixtures). 1.1 (2026-10-19) Cloud Run:
 Access (session endpoints, `access_required`), engine status `mode`/agent fields, Agent endpoints,
 errors `access_denied`, `login_on_agent`, `agent_offline`, `agent_timeout`; fixtures
@@ -15,6 +15,12 @@ fixture inventory until consumers implement 1.3). Legacy style-images remains a 
 1.4 (2026-10-19) planned synthetic CSV API/proposal/provenance; Source.kind adds synthetic,
 new node names synthetic_schema/synthetic_generate; contracts/synthetic-data.md 1.0.
 Shared fixtures live separately in contracts/fixtures/synthetic-data/.
+1.5 (2026-10-20) consistency only, no shape or route change (a 1.4 implementation conforms):
+cites dashboard-intent.md 1.1 and synthetic-data.md 1.1; section headings name the versions that
+added them; the `node` list adds `reference_extract`, `capability_check`, `reference_delete`,
+`synthetic_schema` and `synthetic_generate`; new example fixtures
+dashboard-intent/feasibility.{alternatives,pending,stale}.json and
+synthetic-data/{dataset,job.succeeded}.json; mis-encoded characters repaired.
 Provider: backend. Consumers: frontend, release. Base: `http://localhost:8000/api` (the frontend
 uses relative `/api`, proxied by Vite; contracts/conventions.md). JSON bodies, UTF-8. Errors use
 the shape in contracts/conventions.md. Long-running actions return `202 {"run_id": "r_..."}` at
@@ -75,39 +81,41 @@ folder; otherwise `400 invalid_name`.
 ## Endpoints
 | Method and path | Body | Response |
 |---|---|---|
-| `GET /api/health` | â€” | `{status: "ok"}` (never gated; Cloud Run probes it) |
-| `GET /api/session` | â€” | `Session` |
+| `GET /api/health` | — | `{status: "ok"}` (never gated; Cloud Run probes it) |
+| `GET /api/session` | — | `Session` |
 | `POST /api/session` | `{code: string}` | `200 Session` with `Set-Cookie: dss_session=...`; wrong code -> `401 access_denied` |
-| `GET /api/settings` | â€” | `Settings` |
+| `GET /api/settings` | — | `Settings` |
 | `PUT /api/settings` | partial `Settings` fields, plus `google_api_key?: string` (write-only) | `Settings`. Agent mode (Cloud Run): any field other than `planner_model`/`worker_model` -> `403 settings_locked` |
-| `GET /api/builds` | â€” | `BuildSummary[]`, newest `updated_at` first |
+| `GET /api/builds` | — | `BuildSummary[]`, newest `updated_at` first |
 | `POST /api/builds` | `{title?: string, archetype: Archetype, mode: Mode}` | `201 Build` (stage `connect`) |
-| `GET /api/builds/{id}` | â€” | `Build` |
+| `GET /api/builds/{id}` | — | `Build` |
 | `POST /api/builds/{id}/sources/upload` | multipart, field `files` (one or more `.csv`) | `201 {sources: Source[]}` |
 | `POST /api/builds/{id}/sources` | `{kind: "gcs"\|"bigquery", uri: string}` (`gs://bucket/path.csv` or `project.dataset.table`) | `201 Source` |
 | `POST /api/builds/{id}/style-images` | multipart, field `files` (png/jpg) | `202 {run_id}` (stretch) |
 | `POST /api/builds/{id}/research` | `{prompt: string}` | `202 {run_id}` (stretch; mode `research`) |
-| `POST /api/builds/{id}/interview/start` | â€” | `202 {run_id}`; stage -> `interview`; the first question streams |
-| `GET /api/builds/{id}/messages` | â€” | `Message[]`, oldest first |
+| `POST /api/builds/{id}/interview/start` | — | `202 {run_id}`; stage -> `interview`; the first question streams |
+| `GET /api/builds/{id}/messages` | — | `Message[]`, oldest first |
 | `POST /api/builds/{id}/messages` | `{text: string}` | `202 {run_id, message_id}` (the user message's id) |
-| `POST /api/builds/{id}/plan` | â€” | `202 {run_id}`; allowed in stage `interview` (even before `ready_for_plan`) or `prototype` (re-plan); stage -> `plan`, then `prototype` when the prototype is ready; on failure stage returns to `interview` and `run.finished` carries the error |
-| `GET /api/builds/{id}/docs/{path}` | â€” | `text/markdown` of one build doc |
-| `GET /api/builds/{id}/spec` | â€” | the current spec JSON (read-only display) |
+| `POST /api/builds/{id}/plan` | — | `202 {run_id}`; allowed in stage `interview` (even before `ready_for_plan`) or `prototype` (re-plan); stage -> `plan`, then `prototype` when the prototype is ready; on failure stage returns to `interview` and `run.finished` carries the error |
+| `GET /api/builds/{id}/docs/{path}` | — | `text/markdown` of one build doc |
+| `GET /api/builds/{id}/spec` | — | the current spec JSON (read-only display) |
 | `GET /api/builds/{id}/prototype` | query `layer=all\|decoration` (default `all`), `v=<spec_version>` (cache-buster, ignored) | `text/html` (see Prototype HTML) |
 | `POST /api/builds/{id}/comments` | `{comments: Comment[]}` (1-20) | `202 {run_id}`; `prototype.updated` when done |
-| `POST /api/builds/{id}/audit` | â€” | `202 {run_id}` (stretch); findings arrive as an assistant message |
-| `POST /api/builds/{id}/recipe` | â€” | `200 {op_count: int, ops: [{op_id: string, line: string /* dsengine print line */}]}`; compiles from the current spec |
-| `POST /api/builds/{id}/run` | â€” | `202 {run_id}`; stage -> `build`, then `done` (also after `partial`); after `failed` the stage returns to `prototype`. One engine run at a time on the machine: else `409 engine_busy`. Agent mode: queued as a `Job`; no agent heartbeat in the last 30 s -> `424 agent_offline` |
-| `POST /api/builds/{id}/versions` | â€” | `201 Build`: new version from the latest spec; stage -> `prototype` |
-| `GET /api/builds/{id}/files/{name}` | â€” | a file from the current version folder (`background_p1.png`, `screens/<file>`) |
-| `GET /api/builds/{id}/events` | â€” | `text/event-stream` (below) |
+| `POST /api/builds/{id}/audit` | — | `202 {run_id}` (stretch); findings arrive as an assistant message |
+| `POST /api/builds/{id}/recipe` | — | `200 {op_count: int, ops: [{op_id: string, line: string /* dsengine print line */}]}`; compiles from the current spec |
+| `POST /api/builds/{id}/run` | — | `202 {run_id}`; stage -> `build`, then `done` (also after `partial`); after `failed` the stage returns to `prototype`. One engine run at a time on the machine: else `409 engine_busy`. Agent mode: queued as a `Job`; no agent heartbeat in the last 30 s -> `424 agent_offline` |
+| `POST /api/builds/{id}/versions` | — | `201 Build`: new version from the latest spec; stage -> `prototype` |
+| `GET /api/builds/{id}/files/{name}` | — | a file from the current version folder (`background_p1.png`, `screens/<file>`) |
+| `GET /api/builds/{id}/events` | — | `text/event-stream` (below) |
 | `GET /api/traces` | query `build_id?` | `Trace[]`, newest first |
-| `GET /api/engine/status` | â€” | `EngineStatus` (agent mode: `chrome_running` and `signed_in` come from the agent's last heartbeat) |
-| `POST /api/engine/login` | â€” | `202 {run_id}`; opens the sign-in window. Agent mode: `409 login_on_agent` (run `dsengine login` on the agent's machine) |
+| `GET /api/engine/status` | — | `EngineStatus` (agent mode: `chrome_running` and `signed_in` come from the agent's last heartbeat) |
+| `POST /api/engine/login` | — | `202 {run_id}`; opens the sign-in window. Agent mode: `409 login_on_agent` (run `dsengine login` on the agent's machine) |
 
-## Reference and feasibility endpoints (1.3)
-Rules and exact response shapes: contracts/dashboard-intent.md 1.0. Auth and per-build action
-serialization apply. Node names additionally include `reference_extract` and `capability_check`.
+## Reference and feasibility endpoints (added in 1.3)
+Rules and exact response shapes: contracts/dashboard-intent.md 1.1. Fixtures:
+contracts/fixtures/dashboard-intent/ (`reference_set.json`; `feasibility.json` and its
+`.alternatives`, `.pending`, `.stale` variants). Auth and per-build action serialization apply.
+Run nodes: `reference_extract`, `reference_delete` and `capability_check` (Event stream).
 
 | Method and path | Body | Response |
 |---|---|---|
@@ -125,9 +133,11 @@ New errors: `409 feasibility_blocked` (detail assessment_id, issue_ids), `409 fe
 routes are required; legacy style-images is no longer optional once 11.2 lands. Stage transitions
 and ready_for_plan additionally obey feasibility, including direct plan/recipe/run calls.
 
-## Synthetic data endpoints (1.4)
-See contracts/synthetic-data.md 1.0 for request/response types, generation rules, budgets,
-replay behavior, failure handling and required labeling. Auth is unchanged.
+## Synthetic data endpoints (added in 1.4)
+See contracts/synthetic-data.md 1.1 for request/response types, generation rules, budgets,
+replay behavior, failure handling and required labeling. Auth is unchanged. Fixtures:
+contracts/fixtures/synthetic-data/ (`request.json`, `proposal.json`, `dataset.json`,
+`source.json`, `job.succeeded.json`, `job.failed.json`).
 
 | Method and path | Request | Response |
 |---|---|---|
@@ -153,7 +163,7 @@ Agent mode only (`404 agent_mode_off` in local mode). Used only by the build age
 |---|---|---|
 | `POST /api/agent/heartbeat` | `{chrome_running: boolean, signed_in: boolean, agent_version: string}` | `{ok: true}`; the agent sends it every 10 s |
 | `GET /api/agent/jobs/next` | query `wait=<s>` (long poll, max 25) | `200 Job`, or `204` when no job is queued within `wait` |
-| `GET /api/agent/jobs/{run_id}/files/{name}` | â€” | the bytes of one file listed in `Job.files` |
+| `GET /api/agent/jobs/{run_id}/files/{name}` | — | the bytes of one file listed in `Job.files` |
 | `POST /api/agent/jobs/{run_id}/events` | `{events: object[]}` (engine stdout events, in order, one or more) | `{ok: true}`; each `op_finished` is relayed as `build.op` |
 | `PUT /api/agent/jobs/{run_id}/screens/{file}` | raw PNG bytes | `{ok: true}`; stored as `screens/<file>` of the build version |
 | `POST /api/agent/jobs/{run_id}/finished` | `{exit_code: int, stderr_tail: string}` | `{ok: true}`; mapped like a local `dsengine run` exit (contracts/recipe.md), then `build.finished` |
@@ -200,7 +210,9 @@ the client re-reads `GET /api/builds/{id}` and `GET /api/builds/{id}/messages`.
 
 `node` in `run.*` and `node.progress` is the action that started the run: `interview`, `plan`,
 `spec`, `revise`, `research`, `style_extract`, `ux_audit`, `intake`, `create_build`, `versions`,
-`load_spec`, `recipe`, `execute` (the Data Studio build), `engine_login`, `consolidate`. A client
+`load_spec`, `recipe`, `execute` (the Data Studio build), `engine_login`, `consolidate`,
+`reference_extract`, `reference_delete`, `capability_check` (1.3), `synthetic_schema`,
+`synthetic_generate` (1.4). A client
 treats any other value as a generic run. `run.usage` totals only grow within a run; `run.finished`
 follows the last one.
 

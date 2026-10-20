@@ -22,9 +22,9 @@
   an explicit Discard pending comments action. Keep old preview visibly stale; server remains authority.
   A failed GET of the assessment or reference set fails closed: ErrorState with Retry, Generate
   plan/recipe and Build stay disabled. The mock's default assessment for fixtures.build is ready.
-- APIs/fixtures: ../contracts/dashboard-intent.md 1.1 and api.md 1.4. Build/SSE guards stay exact;
+- APIs/fixtures: ../contracts/dashboard-intent.md 1.1 and api.md 1.5. Build/SSE guards stay exact;
   the one 1.4 change is `Source.kind` adding `synthetic` (10.1). Add node labels for
-  reference_extract/capability_check (and synthetic_schema/synthetic_generate) to the presets.
+  reference_extract/reference_delete/capability_check (and synthetic_schema/synthetic_generate) to the presets.
 - Verify at 1280x800 and 1440x900: empty, saved, processing, failed, blocked and stale states;
   keyboard upload/decision/removal path, focus return, long names, no horizontal overflow.
 

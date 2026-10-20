@@ -20,7 +20,7 @@ Written 2026-10-18.
 |---|---|---|---|---|---|
 | engine | engine/ | `dsengine` CLI: runs a recipe in Data Studio through Playwright on a signed-in Chrome profile; streams one event per op | POC | contracts/recipe.md (events half) | contracts/recipe.md, contracts/conventions.md |
 | backend | backend/ | the harness: ADK 2.0 graph, three memory types, Gemini calls, data intake to BigQuery, spec, HTML renderer, recipe compiler, REST + SSE API; cloud mode (static frontend, access code, DB backup) and the build agent (`dss-agent`) | POC | contracts/api.md, contracts/recipe.md (recipe half) | contracts/conventions.md, contracts/recipe.md (events half) |
-| frontend | frontend/ | the web app: history, workspace with stage stepper, chat, click-to-comment prototype, build view, settings, trace tab; access-code gate and build-agent status | POC | - | contracts/api.md, contracts/conventions.md |
+| frontend | frontend/ | the web app: history, workspace with stage stepper, chat, click-to-comment prototype, build view, settings, trace tab; access-code gate and build-agent status | POC | - | contracts/api.md, contracts/dashboard-intent.md, contracts/synthetic-data.md, contracts/conventions.md |
 | release | . | end-to-end flow checks (local and deployed), start scripts, Dockerfile and Cloud Run deploy script, README, `.env.example`, LICENSE, the AI Builder Cup submission deck (pptx + pdf, HTML-rendered diagrams) | POC | - | every contract |
 
 ## Goals and non-goals
@@ -79,9 +79,9 @@ Written 2026-10-18.
 |---|---|---|---|---|
 | contracts/conventions.md | 1.2 | program | engine, backend, frontend, release | release: `uv run --project integration python integration/check_contracts.py` (the one root `.env.example` has every name); manual: each part's config reads these names, ports and paths |
 | contracts/recipe.md | 1.0 | backend (recipe), engine (events) | engine, backend, release | engine: `uv run pytest tests/test_contract.py`; backend: `uv run pytest tests/test_recipe_contract.py` |
-| contracts/api.md | 1.4 | backend | frontend, release | backend: `uv run pytest tests/test_api_contract.py`; frontend: `npm test -- contract`; both against contracts/fixtures/api/ |
+| contracts/api.md | 1.5 | backend | frontend, release | backend: `uv run pytest tests/test_api_contract.py`; frontend: `npm test -- contract`; both against contracts/fixtures/api/ |
 | contracts/dashboard-intent.md | 1.1 | backend | frontend, release | backend: capability/reference/feasibility tests; frontend: contract and reference tests; release: tasks 2.5 and 4.3 |
-| contracts/synthetic-data.md | 1.1 | backend | frontend, release | backend synthetic tests, frontend 11.1, release 2.5, 2.6 and 4.3 |
+| contracts/synthetic-data.md | 1.1 | backend | frontend, release | backend synthetic tests, frontend 11.1-11.2, release 2.5, 2.6 and 4.3 |
 
 ## Delivery
 - Targets: one GitHub repo, https://github.com/Gjandane/democratizing-google-data-studio (this
@@ -128,10 +128,11 @@ phases" below.
   now; backend 10.1 (`run.usage`) after backend's final-audit fixes 9.1-9.7 (it shares graph.py with
   9.6); no gate between them (frontend builds against `events.usage.sse`). Release 2.1-2.2 don't wait on them.
 - Required scope change 2026-10-19 (task IDs per backend's split, change 2026-10-20): backend 9.7
-  (done), backend 10.1, then backend 11.1-11.8 and 12.1-12.5; frontend 10.1 follows backend 11.8,
-  then frontend 11.1 follows backend 12.3 (synthetic API complete; the backend prototype label
-  from 12.5 is checked in release 2.5 if 12.5 lands later); release 2.5 follows backend 11.8,
-  12.4, 12.5 and frontend 10.1, 11.1, i.e. all required feature work. These take precedence
+  (done), backend 10.1, then backend 11.1-11.8 and 12.1-12.5; frontend 10.1-10.3 follow backend
+  11.8, then frontend 11.1-11.2 follow backend 12.3 (synthetic API complete; the backend prototype
+  label from 12.5 is checked in release 2.5 if 12.5 lands later); release 2.5 follows backend 11.8,
+  12.4, 12.5 and frontend 10.3, 11.2 (frontend split 10.1 and 11.1, change 2026-10-20 frontend
+  split), i.e. all required feature work. These take precedence
   over further stretch expansion; existing release infrastructure can continue.
   Images and feasibility cannot be silently cut. If these gates threaten the deadline, report
   the conflict for the user's scope decision. Earlier clock slots are historical targets.
@@ -146,11 +147,11 @@ phases" below.
   and validator then only use those.
 - Must survive: reference style/recreation and feasibility rejection (release 2.5 and 4.3), plus CSV -> interview -> prototype -> one comment edit -> recipe -> live build -> link
   (locally), and the same flow at the Cloud Run URL at least to the recipe.
-- Final phases (change 2026-10-20 final phases), once backend 12.5 and frontend 11.1 are done
+- Final phases (change 2026-10-20 final phases), once backend 12.5 and frontend 10.3 and 11.2 are done
   (engine is done):
   1. Local: release 2.1 start scripts, 2.2 dry-run e2e, 2.3 live e2e and 2.4 the user's manual
      acceptance of CSV, research, BigQuery and GCS (STOP) need no further part work; 2.5
-     reference/synthetic e2e waits on backend 12.5 and frontend 11.1; 2.6 the user's manual
+     reference/synthetic e2e waits on backend 12.5 and frontend 10.3 and 11.2; 2.6 the user's manual
      screenshot + synthetic acceptance (STOP) follows it.
   2. GitHub: release 3.1 README, 3.2 repo ready and first push (STOP before the push).
   3. Cloud Run: release 4.1 Dockerfile and deploy to `dss-frontend` (STOP before the deploy),
@@ -245,3 +246,4 @@ phases" below.
 | 2026-10-20 | The release builder pushes to origin main after the user confirms on a card | the user pushes | user choice; history is checked for secrets first | change 2026-10-20 final phases (user choice) |
 | 2026-10-20 | No further deck work: the 1.3 draft ships; README is the judge-facing document | finish deck with screenshots and benchmark | already submitted; user choice | change 2026-10-20 final phases (user choice) |
 | 2026-10-20 | GCS joins the four manual acceptance sources | four sources only | README claims GCS; every claimed source gets a tested row | change 2026-10-20 final phases (user choice) |
+| 2026-10-20 | Release 2.5 gates on frontend 10.3 and 11.2, the last tasks of frontend's split of 10.1 (10.1-10.3) and 11.1 (11.1-11.2); api.md 1.5 (consistency: cross-refs, complete `node` list); example fixtures for SyntheticDataset, a succeeded GenerationStatus and Assessment alternatives/pending/stale (dashboard-intent and synthetic-data keep 1.1, shapes unchanged); frontend consumes dashboard-intent and synthetic-data | keep the old gates; bump dashboard-intent and synthetic-data too | the old gates let release 2.5 start before frontend finishes; consumers test against shared fixtures instead of overrides; no shape changed, so no part rework | change 2026-10-20 frontend split (frontend delta audit) |

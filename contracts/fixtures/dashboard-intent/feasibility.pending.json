@@ -1,0 +1,37 @@
+{
+  "id": "assessment_pending",
+  "state": "blocked",
+  "input_digest": "example_digest_pending",
+  "prototype_stale": false,
+  "issues": [
+    {
+      "id": "issue_comment_animate",
+      "requirement": "Animate the regional sales map over time.",
+      "status": "unsupported_app",
+      "reason": "This app's current recipe and engine have no animation or temporal playback op.",
+      "evidence": [
+        "contracts/recipe.md#Operations"
+      ],
+      "alternatives": [
+        {
+          "id": "alt_static_map",
+          "label": "Keep a static map with a date range control"
+        }
+      ],
+      "resolution": "unresolved"
+    }
+  ],
+  "pending_comments": {
+    "id": "batch_example",
+    "comments": [
+      {
+        "component_id": "p1_revenue_by_region",
+        "text": "Animate this map over time."
+      },
+      {
+        "component_id": "p1_title",
+        "text": "Rename to Regional sales."
+      }
+    ]
+  }
+}

@@ -67,7 +67,7 @@ docs/img/                README screenshots from 2.4/2.6, cropped (no email, ava
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
 | contracts/recipe.md | 1.0 | consumes (validates fixtures) | `uv run --project integration python integration/check_contracts.py` |
-| contracts/api.md | 1.4 | consumes (e2e, local and deployed) | `uv run --project integration python integration/e2e_flow1.py` |
+| contracts/api.md | 1.5 | consumes (e2e, local and deployed) | `uv run --project integration python integration/e2e_flow1.py` |
 | contracts/conventions.md | 1.2 | consumes | `uv run --project integration python integration/check_contracts.py` (every env name is in .env.example) |
 | contracts/dashboard-intent.md | 1.1 | consumes | `uv run --project integration python integration/check_contracts.py`; tasks 2.5 and 4.3 end-to-end |
 | contracts/synthetic-data.md | 1.1 | consumes | release 2.5, 2.6 and 4.3 |
