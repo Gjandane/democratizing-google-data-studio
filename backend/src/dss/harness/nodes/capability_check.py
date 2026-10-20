@@ -22,6 +22,9 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         version = conn.execute("SELECT current_version FROM builds WHERE id=?", (build_id,)).fetchone()[0]
     folder = config.data_dir / "builds" / build_id / f"v{version}"
     ledger, snapshot, checker = req.load(folder), req.inputs(harness.db, build_id, folder), Checker(load_registry())
+    artifact_stale = req.artifact_stale(snapshot, ledger, checker)
+    if payload.get('_comment_preflight') and not payload.get('_reapply'):
+        ledger = req.stage_comments(ledger, payload['comments'])
     pending = req.new_sources(snapshot, ledger)
     secrets = tuple(getattr(config, key).get_secret_value() for key in ("google_api_key", "access_code", "agent_token"))
     state = {"raw": "", "failure": None, "scope": False}
@@ -96,7 +99,8 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                     return "Requirement extraction did not finish."
         if state["scope"]:
             candidate.scope_error = SCOPE_MESSAGE
-        candidate.prototype_stale |= req.artifact_stale(snapshot, ledger, checker)
+            candidate.scope_batch_id = candidate.pending_comments.id if payload.get('_comment_preflight') and candidate.pending_comments else None
+        candidate.prototype_stale |= artifact_stale
         candidate = req.revalidate_decisions(snapshot, candidate, checker)
         # Source changes occurring during the counted call cannot publish a fresh ID.
         fresh = req.inputs(harness.db, build_id, folder)

@@ -76,7 +76,8 @@ async def comments(build_id: str, body: Comments, request: Request):
     config = state.settings.get()
     text = check_reply(json.dumps(values), (config.google_api_key.get_secret_value(),))
     run_id = new_id('r')
-    episodic.save(state.db, build_id, 'user', text, 'revise')
+    # The batch ledger owns intent; this message is chat history, not another source.
+    episodic.save(state.db, build_id, 'user', text, 'comment_batch')
     state.harness.active_builds.add(build_id)
     async def background():
         try:

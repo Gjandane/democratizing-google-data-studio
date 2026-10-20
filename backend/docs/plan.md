@@ -275,7 +275,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_feasibility.py tests/test_plan.py tests/test_interview.py` passes oracle cases 1, 2, 4, 5, 6 (message and image) and 11 and the plan part of case 8 through the real API/graph with fake model/BigQuery: an interview turn with a requirement makes one trace (extraction node inside it) and does not signal ready_for_plan while issues are unresolved; `POST /plan` on a blocked build returns `409 feasibility_blocked` with `{assessment_id, issue_ids}` and creates no view; a spec that drops a requirement or sets `animate` on a geo_map is rejected, not stripped; a later spec/render failure keeps the previous view/spec/prototype. `uv run pytest` passes.
   - Review focus: preflight before any BigQuery write; requirement coverage AND typed options enforced; spec repair budgets unchanged.
-- [ ] 11.7 Gate comments and revise
+- [x] 11.7 Gate comments and revise
   - Goal: comments are assessed before patching; a blocked batch leaves spec and recipe unchanged and is persisted; reapply runs the ordinary revise branch with confirmed decisions; revised specs are checked against requirements and the registry.
   - Spec: docs/architecture.md#Capability verification; ../contracts/dashboard-intent.md#Enforcement
   - Files: src/dss/api/prototype.py, src/dss/api/feasibility.py, src/dss/harness/graph.py, src/dss/harness/nodes/revise.py, src/dss/spec/requirements.py, src/dss/spec/validate.py, tests/test_feasibility.py, tests/test_revise.py

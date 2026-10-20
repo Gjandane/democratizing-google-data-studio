@@ -81,11 +81,11 @@ async def test_plan_run_emits_usage(client, app, build_id, monkeypatch):
 
 
 async def test_revise_run_emits_usage(client, app, build_id, monkeypatch):
-    from test_revise import seed_revision, FakeBigQuery, response, op
+    from test_revise import seed_revision, FakeBigQuery, RevisionModel, response, op
     app, bid, folder, spec, service, _ = seed_revision(app, build_id, monkeypatch)
     result = await app.state.harness.run("revise", bid, {"config": app.state.settings.get(),
         "factory": lambda config: service, "comments": [{"component_id": "p1_revenue", "text": "bigger"}]},
-        llm=FakeLLM(response=response([op("/pages/0/components/0/grid/w", 8), op("/pages/0/components/1/grid/row", 26)])))
+        llm=RevisionModel(delegate=FakeLLM(response=response([op("/pages/0/components/0/grid/w", 8), op("/pages/0/components/1/grid/row", 26)]))))
     check_stream(app, bid, result["run_id"], "revise")
 
 

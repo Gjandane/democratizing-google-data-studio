@@ -605,3 +605,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: recorded in AGENTS.md.
 - Left open: none.
 - Next: Task 11.7 Gate comments and revise; reuse extraction and coverage without increasing revise repairs.
+
+## 2026-10-20: Task 11.7 Gate comments and revise
+- Status: done
+- Plan check: off
+- What changed: same-Workflow comment assessment, persisted whole-batch refusal, validated reapply, requirement/registry checks and atomic revision/proof publication. Empty patches require fulfillment; unsupported partial batches fail.
+- Checks: `uv run pytest tests/test_feasibility.py tests/test_revise.py -q --tb=short` PASS (114); Test (all) `uv run pytest --tb=short` PASS (664, 5 live deselected, 2 existing warnings); `git diff --check -- .` PASS. Final read-only review: no findings.
+- Decisions: `comment_batch` history is excluded from intent extraction; batch sources own provenance. Typed `properties` prove exact item values; slot-level `superseded` chains preserve original requests and last-wins assignments, with abandon restoring predecessors. `scope_batch_id` owns removable scope failures. Publication includes requirements/feasibility and checks input/registry freshness. Outside Files: capability_check.py reuses bounded extraction; test_context.py/test_usage_events.py adapt fakes. AGENTS.md records history/chain gotchas. No dependencies.
+- Tried and failed: corrected fake token-count forwarding and legacy fingerprint fixture; review exposed unproven decoration edits and overwritten supersession chains, fixed with regressions.
+- Gotchas: recorded in AGENTS.md.
+- Left open: none.
+- Next: Task 11.8 Gate recipe, run and new versions; live flow. Reuse committed proof and preserve pending/reference staleness at every run gate.

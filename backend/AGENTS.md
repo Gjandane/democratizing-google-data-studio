@@ -57,3 +57,4 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Cloud SQLite backups can lag volume artifacts: preserve volume ownership/commit records when removing rollback files, or restart can delete a published resource.
 - BigQuery `QueryJob.result(timeout=...)` may leave the job running; retain candidate ownership until its deterministic job is terminal before retiring cleanup.
 - `Candidate.begin` snapshots rollback stage: call it before setting `stage='plan'`, including when planner initialization is deferred until after feasibility extraction.
+- Batch-backed comment history uses node `comment_batch`; requirements.json owns its intent. Re-extracting that history resurrects abandoned batches. Preserve supersession chains when later assignments override a property.

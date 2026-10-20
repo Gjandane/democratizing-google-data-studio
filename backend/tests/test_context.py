@@ -235,7 +235,7 @@ async def test_plan_and_spec_trace_spans_have_section_tokens(app, build_id, monk
 
 
 async def test_revise_trace_span_has_section_tokens(app, build_id, monkeypatch):
-    from test_revise import FakeBigQuery, response
+    from test_revise import FakeBigQuery, RevisionModel, response
     config = app.state.settings.get()
     folder = config.data_dir / "builds" / build_id / "v1"
     (folder / "docs").mkdir(parents=True)
@@ -246,9 +246,9 @@ async def test_revise_trace_span_has_section_tokens(app, build_id, monkeypatch):
         conn.execute("INSERT INTO versions(build_id,n,status,spec_version,created_at) VALUES(?,1,'draft',1,?)",
                      (build_id, now()))
     await app.state.harness.run("revise", build_id, {"config": config, "factory": lambda config: FakeBigQuery(),
-        "comments": [{"component_id": "p1_revenue", "text": "fine as is"}]}, llm=FakeLLM(response=response([])))
+        "comments": [{"component_id": "p1_revenue", "text": "fine as is"}]}, llm=RevisionModel(delegate=FakeLLM(response=response([]))))
     span = next(s for s in spans(app, "revise") if s["node"] == "revise")
-    check_span(span, ["system", "skills", "semantic", "docs", "docs", "docs", "input"])
+    check_span(span, ["system", "skills", "semantic", "docs", "docs", "docs", "docs", "input"])
 
 
 async def test_interview_start_run_skips_fts(app, build_id):

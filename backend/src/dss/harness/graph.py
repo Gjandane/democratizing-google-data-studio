@@ -104,13 +104,19 @@ class AgentHarness:
                 trace.span("guardrail")
                 raise RunError("wrong_stage", "Unknown action", 409)
 
-            if action in ('interview', 'plan'):
+            if action in ('interview', 'plan', 'revise'):
                 from dss.harness.nodes.capability_check import make_branch as intent_branch
                 from dss.spec import requirements as req
                 from dss.spec.capabilities import Checker, load_registry
                 intent_model = llm if llm is not None else self.models.llm_for('capability_check')
                 payload['_intent_only'] = True
                 payload['_defer_assessment'] = action == 'plan'
+                payload['_comment_preflight'] = action == 'revise'
+                if action == 'revise' and payload.get('_reapply'):
+                    with self.db.connect() as conn:
+                        version = conn.execute('SELECT current_version FROM builds WHERE id=?', (build_id,)).fetchone()[0]
+                    folder = payload['config'].data_dir / 'builds' / build_id / f'v{version}'
+                    req.validate_reapply(req.inputs(self.db, build_id, folder), req.load(folder), Checker(load_registry()), payload['_reapply'])
                 intent_agent, intent_complete, extra_state = intent_branch(
                     self, build_id, run_id, payload, intent_model, trace, model_error)
 
@@ -181,7 +187,9 @@ class AgentHarness:
                 trace.model = model.model
                 reviser, repair, validate_revision, complete, revise_state = revise_branch(self, build_id, run_id, payload, model, trace, model_error)
                 workflow = Workflow(name='dss_run', edges=[
-                    ('START', router), (router, {'revise':reviser}), (reviser, validate_revision),
+                    ('START', router), (router, {'revise':intent_agent}), (intent_agent, assess_intent),
+                    (assess_intent, {'continue':reviser, 'blocked':intent_blocked}),
+                    (intent_blocked, guardrail), (reviser, validate_revision),
                     (validate_revision, {'repair':repair, 'complete':complete}), (repair, validate_revision),
                     (complete, guardrail)])
             elif action == 'research':
@@ -224,7 +232,7 @@ class AgentHarness:
             runner = Runner(app_name="dss", node=workflow, session_service=sessions)
             async for event in runner.run_async(user_id="local", session_id=run_id,
                     new_message=types.Content(role="user", parts=[types.Part(text=action)]),
-                    run_config=RunConfig(max_llm_calls=6 if action == "plan" else (3 if action == "spec" else 2 if action in ('revise', 'research') else 1 if action in ('reference_extract', 'capability_check') else 5 if action == 'interview' else 4),
+                    run_config=RunConfig(max_llm_calls=6 if action == "plan" else (3 if action in ('spec', 'revise') else 2 if action == 'research' else 1 if action in ('reference_extract', 'capability_check') else 5 if action == 'interview' else 4),
                         streaming_mode=StreamingMode.SSE if action == "interview" else StreamingMode.NONE)):
                 if event.error_code:
                     raise RunError("llm_unavailable", "The model call failed; check Settings", 503)
@@ -258,10 +266,11 @@ class AgentHarness:
                     from dss.api.builds import build_response
                     message = episodic.save(self.db, build_id, 'assistant', reply, action)
                     await self.emit(build_id, run_id, 'message.done', {'message': message})
-                    with self.db.connect() as conn:
-                        conn.execute("UPDATE builds SET stage='interview',ready_for_plan=0,updated_at=? WHERE id=?", (now(), build_id))
-                    await self.emit(build_id, run_id, 'stage.changed', {'stage': 'interview'})
-                    await self.emit(build_id, run_id, 'build.updated', {'build': build_response(self.db, payload['config'], build_id)})
+                    if action != 'revise':
+                        with self.db.connect() as conn:
+                            conn.execute("UPDATE builds SET stage='interview',ready_for_plan=0,updated_at=? WHERE id=?", (now(), build_id))
+                        await self.emit(build_id, run_id, 'stage.changed', {'stage': 'interview'})
+                        await self.emit(build_id, run_id, 'build.updated', {'build': build_response(self.db, payload['config'], build_id)})
                     blocked_saved = True
                 raise extra_state['failure']
             if reference_before is not None and reference_before != requirements.digest(references.load(reference_folder)):

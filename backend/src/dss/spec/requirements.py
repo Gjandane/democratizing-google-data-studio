@@ -9,7 +9,7 @@ import re
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, model_validator
 
 from dss.db import new_id
 from dss.harness.guardrails import RunError
@@ -32,12 +32,31 @@ class Mapping(Strict):
     date_grain: str | None = Field(default=None, max_length=120)
 
 
+class Property(Strict):
+    path: Literal['label', 'text', 'grid.col', 'grid.row', 'grid.w', 'grid.h',
+                  'style.font_size', 'style.color', 'style.background_color']
+    value: StrictStr | StrictInt
+
+    @model_validator(mode='after')
+    def typed(self):
+        numeric = self.path.startswith('grid.') or self.path == 'style.font_size'
+        if numeric and (type(self.value) is not int or not 1 <= self.value <= 10000):
+            raise ValueError('Numeric properties need a positive integer')
+        if not numeric and (not isinstance(self.value, str) or len(self.value) > 4000):
+            raise ValueError('Text properties need a bounded string')
+        if self.path.startswith('style.') and self.path != 'style.font_size' and not re.fullmatch(r'#[0-9a-fA-F]{6}', self.value):
+            raise ValueError('Color properties need a hex color')
+        return self
+
+
 class Extracted(Strict):
     source_id: str = Field(min_length=1, max_length=240)
     text: str = Field(min_length=1, max_length=2000)
     needs: list[capabilities.Need] = Field(default_factory=list, max_length=20)
     mappings: list[Mapping] = Field(default_factory=list, max_length=20)
     component_ids: list[str] = Field(default_factory=list, max_length=24)
+    properties: list[Property] = Field(default_factory=list, max_length=20,
+        description='Exact requested item properties, including title text, layout and decoration styling. Preserve explicit values; vague changes stay unknown.')
 
 
 class Extraction(Strict):
@@ -64,6 +83,8 @@ class Requirement(Strict):
     component_ids: list[str] = Field(default_factory=list)
     resolution: Literal["unresolved", "accepted_alternative", "dropped"] = "unresolved"
     clarifications: list[Source] = Field(default_factory=list)
+    properties: list[Property] = Field(default_factory=list)
+    superseded: dict[str, str] = Field(default_factory=dict)
 
 
 class Alternative(Strict):
@@ -138,6 +159,7 @@ class Ledger(Strict):
     prototype_stale: bool = False
     invalidated: bool = False
     scope_error: str | None = None
+    scope_batch_id: str | None = None
     verification: dict[str, list[dict]] = Field(default_factory=dict)
     pending_comments: PendingComments | None = None
     retired_sources: list[str] = Field(default_factory=list)
@@ -165,6 +187,8 @@ def inputs(db, build_id, folder):
                    for r in conn.execute("SELECT * FROM sources WHERE build_id=? ORDER BY rowid", (build_id,))]
         messages = []
         for r in conn.execute("SELECT * FROM messages WHERE build_id=? AND role='user' ORDER BY rowid", (build_id,)):
+            if r['node'] == 'comment_batch':
+                continue  # Pending/applied batch sources already retain this intent.
             try:
                 comments = json.loads(r["text"]) if r["node"] == "revise" else None
             except ValueError:
@@ -251,6 +275,10 @@ def merge(ledger, snapshot, extraction):
     updated.requirements = [r for r in updated.requirements if not r.source.reference_id or r.source.reference_id == current_ref]
     for item in extraction.requirements:
         source = Source.model_validate(sources[item.source_id])
+        if source.batch_id and source.component_id:
+            if item.component_ids and item.component_ids != [source.component_id]:
+                raise ValueError('Comment extraction must preserve its target')
+            item = item.model_copy(update={'component_ids': [source.component_id]})
         rid = "req_" + digest({"source": source.model_dump(), "text": item.text})[:24]
         existing = next((r for r in updated.requirements if r.id == rid), None)
         if existing is not None:
@@ -264,6 +292,7 @@ def merge(ledger, snapshot, extraction):
                     existing.needs.append(unknown)
             existing.needs += [n for n in item.needs if n not in existing.needs]
             existing.mappings += [m for m in item.mappings if m not in existing.mappings]
+            existing.properties += [p for p in item.properties if p not in existing.properties]
             existing.component_ids = list(dict.fromkeys(existing.component_ids + item.component_ids))
             continue
         updated.requirements.append(Requirement(id=rid, source=source, **item.model_dump(exclude={"source_id"})))
@@ -306,8 +335,35 @@ def merge(ledger, snapshot, extraction):
     if len(updated.requirements) > MAX_REQUIREMENTS:
         raise ValueError("Requirement scope exceeded")
     updated.processed_sources.update({sid: digest(s) for sid, s in sources.items()})
+    _supersede_comments(updated, snapshot, sources)
     updated.scope_error = None
+    updated.scope_batch_id = None
     return updated
+
+
+def _supersede_comments(ledger, snapshot, sources):
+    """Later assignments override the same property, never an unrelated/unsupported behavior."""
+    checker = capabilities.Checker(capabilities.load_registry())
+    def slots(r):
+        result = {f'property:{i}': 'property:' + p.path for i, p in enumerate(r.properties)}
+        for i, n in enumerate(r.needs):
+            cap = checker.registry.get(n.capability)
+            if cap and checker.need(n, schema(snapshot)).ok:
+                if cap.component_type:
+                    result[f'need:{i}'] = 'component.type'
+                elif n.value is not None and len(cap.recipe) == 1:
+                    result[f'need:{i}'] = 'recipe:' + cap.recipe[0]
+        return result
+    order = {sid: i for i, sid in enumerate(sources)}
+    incoming = sorted((r for r in ledger.requirements if r.source.id in sources and r.source.batch_id), key=lambda r: order[r.source.id])
+    previous = [r for r in ledger.requirements if r.source.id not in sources]
+    for r in incoming:
+        keys = (set(slots(r).values()) if r.needs and all(checker.need(n, schema(snapshot)).ok for n in r.needs)
+                and not any(mapping_verdict(m, r, schema(snapshot)) for m in r.mappings) else set())
+        for old in previous:
+            if old.source.kind == 'comment' and old.source.id != r.source.id and old.component_ids == r.component_ids:
+                old.superseded.update({slot: r.id for slot, key in slots(old).items() if key in keys and slot not in old.superseded})
+        previous.append(r)
 
 
 def _normal(text):
@@ -363,7 +419,7 @@ def mapping_verdict(mapping, requirement, fields):
 def meaning(requirement):
     """Authorization follows requested meaning, not a generated assessment or registry version."""
     # Empty optional provenance must not revoke pre-11.6 durable choices.
-    excluded = {'resolution'} | ({'clarifications'} if not requirement.clarifications else set())
+    excluded = {'resolution', 'superseded'} | ({'clarifications'} if not requirement.clarifications else set()) | ({'properties'} if not requirement.properties else set())
     return digest(requirement.model_dump(exclude=excluded))
 
 
@@ -488,7 +544,7 @@ def _requirement_issues(snapshot, ledger, checker):
     """Internal issue targets never come from client/model claims."""
     fields, rows = schema(snapshot), []
     for r in ledger.requirements:
-        verdicts = [(f"need:{i}", checker.need(n, fields)) for i, n in enumerate(r.needs)]
+        verdicts = [(f"need:{i}", checker.need(n, fields)) for i, n in enumerate(r.needs) if f'need:{i}' not in r.superseded]
         if not r.needs and not audience_requirement(r):
             verdicts.append(("unknown", capabilities.Verdict("unknown", "No registered capability covers this requirement")))
         verdicts += [(f"mapping:{i}", v) for i, m in enumerate(r.mappings) if (v := mapping_verdict(m, r, fields))]
@@ -597,6 +653,8 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None):
         needs = []
         dropped = False
         for i, need in enumerate(r.needs):
+            if f'need:{i}' in r.superseded:
+                continue
             choice = _choice(r, f"need:{i}", snapshot, ledger, checker)
             if choice and choice["action"] == "drop":
                 dropped = True
@@ -605,10 +663,17 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None):
                          if choice else [need])
         if dropped:
             continue
+        properties = [p for i, p in enumerate(r.properties) if f'property:{i}' not in r.superseded]
+        if not needs and not properties and r.superseded and not r.mappings:
+            continue
+        active = r.model_copy(update={'properties': properties})
         candidates = [c for c in components if not r.component_ids or c["id"] in r.component_ids]
-        matches = [c for c in candidates if _component_fulfills(c, r, needs, checker, snapshot) and
+        matches = [c for c in candidates if _component_fulfills(c, active, needs, checker, snapshot) and
                    all(_recipe_fulfills(n, checker, [op for op in ops if op.get('component_id') in (None, c['id'])]) for n in needs)]
-        if not r.component_ids and not r.mappings and needs and all(
+        decorations = {c['id']: c for p in (snapshot['spec'] or {}).get('pages', []) for c in p.get('decorations', [])}
+        decoration_proven = (r.component_ids and set(r.component_ids) <= decorations.keys() and properties
+                             and all(_properties_match(decorations[cid], properties) for cid in r.component_ids))
+        if (not r.component_ids or decoration_proven) and not r.mappings and needs and all(
                 n.capability.startswith('layout.') and _recipe_fulfills(n, checker, ops) for n in needs):
             continue
         if not matches or (r.component_ids and {c["id"] for c in matches} != set(r.component_ids)):
@@ -653,7 +718,7 @@ def _recipe_fulfills(need, checker, ops):
 
 def _component_fulfills(component, requirement, needs, checker, snapshot):
     """Check type, typed options, real bindings and metric semantics on the same component."""
-    if not needs or checker.component(component):
+    if (not needs and not requirement.properties) or checker.component(component) or not _properties_match(component, requirement.properties):
         return False
     for need in needs:
         cap = checker.registry.get(need.capability)
@@ -705,6 +770,16 @@ def _component_fulfills(component, requirement, needs, checker, snapshot):
     return True
 
 
+def _properties_match(item, properties):
+    for p in properties:
+        value = item
+        for key in p.path.split('.'):
+            value = value.get(key) if isinstance(value, dict) else None
+        if value != p.value or type(value) is not type(p.value):
+            return False
+    return True
+
+
 def _date_bucket(snapshot, field, grain, source=None):
     text = snapshot['definitions'].get('derived-fields.md', '')
     metadata = yaml.safe_load(text.split('---', 2)[1]) if text.startswith('---') else {}
@@ -735,6 +810,8 @@ def verification(snapshot, ledger, checker):
             rows.append({"mapping": mapping.model_dump(), "status": verdict.status if verdict else "supported",
                          "reason": verdict.reason if verdict else "Original source defines this binding",
                          "source_id": r.source.id, "schema_type": fields.get(mapping.field), "component_ids": r.component_ids})
+        if r.properties or r.superseded:
+            rows.append({'properties': [p.model_dump() for p in r.properties], 'superseded': r.superseded})
         for issue, slot in resolved.get(r.id, []):
             rows.append({"slot": slot, "resolution": issue.resolution,
                          "decision": _choice(r, slot, snapshot, ledger, checker)})
@@ -815,8 +892,12 @@ def abandon_pending(ledger):
     source_ids |= {f"{batch_id}:{i}" for i in range(len(updated.pending_comments.comments))}
     updated.retired_sources = list(dict.fromkeys(updated.retired_sources + sorted(source_ids)))
     updated.requirements = [r for r in updated.requirements if r.id not in removed]
+    for r in updated.requirements:
+        r.superseded = {slot: rid for slot, rid in r.superseded.items() if rid not in removed}
     updated.decisions = [d for d in updated.decisions if d.get("requirement_id") not in removed]
     updated.verification = {rid: rows for rid, rows in updated.verification.items() if rid not in removed}
+    if updated.scope_batch_id == batch_id:
+        updated.scope_error, updated.scope_batch_id = None, None
     updated.pending_comments = None
     return updated
 

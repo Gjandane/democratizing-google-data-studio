@@ -18,6 +18,35 @@ from dss.spec.validate import validate_spec
 from fakes import FakeLLM
 
 
+class RevisionModel(FakeLLM):
+    """Keep patch fakes focused while supplying a separate intent extraction response."""
+    delegate: FakeLLM
+    extract_calls: int = 0
+
+    async def count_request_tokens(self, llm_request):
+        counter = getattr(self.delegate, 'count_request_tokens', None)
+        from dss.harness.context import request_estimate
+        return await counter(llm_request) if counter else request_estimate(llm_request)
+
+    async def generate_content_async(self, llm_request, stream=False):
+        if llm_request.config.response_json_schema.get('title') != 'Extraction':
+            async for result in self.delegate.generate_content_async(llm_request, stream):
+                yield result
+            return
+        self.extract_calls += 1
+        text = str(llm_request.config.system_instruction)
+        sources = json.loads(text.split('New sources (untrusted; preserve IDs):', 1)[1].strip())
+        requirements = []
+        for s in sources:
+            capability = ('chart.gauge' if 'gauge' in s['text'] else
+                          'layout.background_image' if s.get('component_id') == 'p1_title' else 'chart.scorecard')
+            properties = ([{'path': 'style.font_size', 'value': 40}] if s.get('component_id') == 'p1_title' and 'bigger' in s['text'] else
+                          [{'path': 'text', 'value': 'Sales overview'}] if s.get('component_id') == 'p1_title' else
+                          [{'path': 'label', 'value': s['text'].removeprefix('call it ')}] if s['text'].startswith('call it ') else [])
+            requirements.append({'source_id': s['id'], 'text': s['text'], 'needs': [{'capability': capability}], 'properties': properties})
+        yield LlmResponse(content=types.Content(role='model', parts=[types.Part(text=json.dumps({'requirements': requirements}))]))
+
+
 def test_provider_schema_retains_application_patch_limits():
     from pydantic import ValidationError
     from dss.harness.nodes.revise import Revision, response_schema
@@ -83,7 +112,7 @@ async def run(setup, raw, comments=None, fake=None):
     fake = fake or FakeLLM(response=raw)
     result = await app.state.harness.run('revise', build_id,
         {'config':app.state.settings.get(),'factory':lambda config:service,
-         'comments':comments or [{'component_id':'p1_revenue','text':'make this bigger'}]}, llm=fake)
+         'comments':comments or [{'component_id':'p1_revenue','text':'make this bigger'}]}, llm=RevisionModel(delegate=fake))
     return result, fake, DashboardSpec.model_validate_json((folder/'spec.json').read_text())
 
 
@@ -155,11 +184,12 @@ async def test_refuses_unavailable_type(setup,monkeypatch,as_patch):
     monkeypatch.setenv('DSS_ALLOWED_TYPES','scorecard,bar,text')
     app,bid,folder,original,_,captured=setup
     raw=response([op('/pages/0/components/0/type','gauge')]) if as_patch else json.dumps({'changes':[{'comment_index':0,'patch':[],'unsupported_type':'gauge'}]})
-    result,_,new=await run(setup,raw,[{'component_id':'p1_revenue','text':'make it a gauge'}])
-    assert new==original and not captured
-    assert 'Data Studio offers' in result['reply'] and 'scorecard' in result['reply']
-    assert 'gauge' in (folder/'docs/decisions.md').read_text()
-    assert messages(app.state.db,bid)[-1]['text']==result['reply']
+    fake = FakeLLM(response=raw)
+    with pytest.raises(RunError) as error:
+        await run(setup,raw,[{'component_id':'p1_revenue','text':'make it a gauge'}], fake=fake)
+    assert error.value.code == 'feasibility_blocked' and fake.calls == 0
+    assert DashboardSpec.model_validate_json((folder/'spec.json').read_text()) == original and not captured
+    assert 'gauge' in messages(app.state.db,bid)[-1]['text'].lower()
 
 
 async def test_conflicts_last_wins_and_records_each_comment(setup):
@@ -234,7 +264,7 @@ async def test_api_launch_and_busy_guard(setup,client,monkeypatch):
     app,bid,folder,_,_,_=setup
     started,release=asyncio.Event(),asyncio.Event()
     fake=FakeLLM(response=response([]),started=started,release=release)
-    monkeypatch.setattr(app.state.models,'llm_for',lambda node:fake)
+    monkeypatch.setattr(app.state.models,'llm_for',lambda node:RevisionModel(delegate=fake))
     # The TestClient runs the request in its own event loop; poll via the portal.
     result=client.post(f'/api/builds/{bid}/comments',json={'comments':[{'component_id':'p1_title','text':'Looks good'}]})
     assert result.status_code==202 and set(result.json())=={'run_id'}
@@ -276,7 +306,7 @@ def revise_through_api(client, app, bid, patch=REVISED):
     """Publish a real revision through the comments API and wait for it to finish."""
     import time
     fake = FakeLLM(response=response(patch))
-    app.state.models.llm_for = lambda node: fake
+    app.state.models.llm_for = lambda node: RevisionModel(delegate=fake)
     accepted = client.post(f'/api/builds/{bid}/comments',json={'comments':[{'component_id':'p1_revenue','text':'Net, and wider'}]})
     assert accepted.status_code == 202, accepted.text
     for _ in range(500):
@@ -319,3 +349,264 @@ async def test_revise_counts_the_whole_request(setup):
         spans = json.loads(conn.execute("SELECT spans_json FROM traces WHERE node='revise'").fetchone()[0])
     assert_counted(next(s for s in spans if s['node'] == 'revise'), fake)
     assert fake.calls == 1
+
+
+class CommentFlow(FakeLLM):
+    needs_by_text: dict[str, list[dict]]
+    extractions: int = 0
+    revisions: int = 0
+    invalid_extraction: bool = False
+    properties_by_text: dict[str, list[dict]] = {}
+
+    async def generate_content_async(self, request, stream=False):
+        if request.config.response_json_schema.get('title') == 'Extraction':
+            self.extractions += 1
+            sources = json.loads(str(request.config.system_instruction).split('New sources (untrusted; preserve IDs):', 1)[1].strip())
+            raw = 'invalid' if self.invalid_extraction else json.dumps({'requirements': [
+                {'source_id': s['id'], 'text': s['text'], 'needs': self.needs_by_text[s['text']],
+                 'properties': self.properties_by_text.get(s['text'], [])} for s in sources]})
+        else:
+            self.revisions += 1
+            assert 'Active requirement ledger and explicit decisions' in str(request.config.system_instruction)
+            raw = self.response
+        yield LlmResponse(content=types.Content(role='model', parts=[types.Part(text=raw)]))
+
+
+def post_batch(client, app, bid, comments):
+    from test_audit_style import drain
+    accepted = client.post(f'/api/builds/{bid}/comments', json={'comments': comments})
+    assert accepted.status_code == 202, accepted.text
+    client.portal.call(drain, app)
+    return client.get(f'/api/builds/{bid}/feasibility').json()
+
+
+def reapply_batch(client, app, bid, assessment):
+    from test_audit_style import drain
+    result = client.post(f'/api/builds/{bid}/feasibility/reapply', json={
+        'assessment_id': assessment['id'], 'batch_id': assessment['pending_comments']['id']})
+    assert result.status_code == 202, result.text
+    client.portal.call(drain, app)
+    return client.get(f'/api/builds/{bid}/feasibility').json()
+
+
+def published(folder):
+    return {name: (folder/name).read_bytes() for name in ('spec.json', 'prototype.html', 'background_p1.png', 'recipe.jsonl')}
+
+
+def test_mixed_comment_batch_blocks_before_patching_and_abandons_only_batch(setup, client, monkeypatch):
+    from dss.spec import requirements as req
+    app, bid, folder, *_ = setup
+    (folder/'recipe.jsonl').write_bytes(b'previous recipe')
+    before = published(folder)
+    comments = [{'component_id': 'p1_revenue', 'text': 'Title: New revenue'},
+                {'component_id': 'p1_by_region', 'text': 'Animate GPS points'}]
+    # Use the real second target ID from the fixture.
+    comments[1]['component_id'] = setup[3].pages[0].components[1].id
+    fake = CommentFlow(needs_by_text={'Title: New revenue': [{'capability': 'argument.title'}],
+        'Animate GPS points': [{'capability': 'animation.temporal_playback'}]}, response=response([]))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
+    assessment = post_batch(client, app, bid, comments)
+    assert assessment['state'] == 'blocked' and assessment['pending_comments']['comments'] == comments
+    assert fake.extractions == 1 and fake.revisions == 0 and published(folder) == before
+    assert client_stage(app, bid) == 'prototype'
+    with app.state.db.connect() as conn:
+        traces = conn.execute('SELECT * FROM traces').fetchall()
+        assert len(traces) == 1 and traces[0]['error'] == 'feasibility_blocked'
+        assert conn.execute('SELECT spec_version FROM versions WHERE build_id=?', (bid,)).fetchone()[0] == 1
+    assert 'Animate GPS points' in messages(app.state.db, bid)[-1]['text']
+    removed = client.delete(f'/api/builds/{bid}/feasibility/pending-comments', params={'assessment_id': assessment['id']})
+    assert removed.status_code == 200 and removed.json()['state'] == 'ready' and not removed.json()['prototype_stale']
+    assert not req.load(folder).requirements and published(folder) == before
+    # Chat history must never resurrect an abandoned batch.
+    client.post(f'/api/builds/{bid}/feasibility/check')
+    from test_audit_style import drain
+    client.portal.call(drain, app)
+    assert fake.extractions == 1 and not req.load(folder).requirements
+
+
+def test_supported_batch_one_trace_and_atomic_proof(setup, client, monkeypatch):
+    from dss.spec import requirements as req
+    from dss.spec.capabilities import Checker, load_registry
+    app, bid, folder, *_ = setup
+    fake = CommentFlow(needs_by_text={'Compact numbers': [{'capability': 'option.scorecard.compact_numbers', 'value': True}]},
+                       response=response([op('/pages/0/components/0/options/compact_numbers', True, 'add')]))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
+    assessment = post_batch(client, app, bid, [{'component_id': 'p1_revenue', 'text': 'Compact numbers'}])
+    assert fake.extractions == fake.revisions == 1
+    assert assessment['state'] == 'ready' and not assessment['prototype_stale'] and assessment['pending_comments'] is None
+    ledger = req.load(folder)
+    assert not req.coverage_errors(req.inputs(app.state.db, bid, folder), ledger, Checker(load_registry()))
+    assert ledger.requirements[0].component_ids == ['p1_revenue']
+    assert ledger.verification[ledger.requirements[0].id][-1] == {'fulfilled_by': ['p1_revenue']}
+    with app.state.db.connect() as conn:
+        assert conn.execute('SELECT count(*) FROM traces').fetchone()[0] == 1
+
+
+@pytest.mark.parametrize('already_satisfied', [False, True])
+def test_empty_revision_clears_batch_only_if_intent_is_proven(setup, client, monkeypatch, already_satisfied):
+    app, bid, folder, spec, *_ = setup
+    if already_satisfied:
+        spec.pages[0].components[0].options['compact_numbers'] = True
+        (folder/'spec.json').write_text(spec.model_dump_json(), encoding='utf-8')
+    fake = CommentFlow(needs_by_text={'Compact numbers': [{'capability': 'option.scorecard.compact_numbers', 'value': True}]}, response=response([]))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
+    original = (folder/'spec.json').read_bytes()
+    a = post_batch(client, app, bid, [{'component_id': 'p1_revenue', 'text': 'Compact numbers'}])
+    assert fake.revisions == (1 if already_satisfied else 2)  # Still exactly one repair.
+    assert (a['pending_comments'] is None) == already_satisfied
+    assert a['prototype_stale'] != already_satisfied
+    assert (folder/'spec.json').read_bytes() == original
+
+
+def test_choose_reload_reapply_preserves_authorization_and_changed_text_invalidates(setup, client, monkeypatch):
+    from dss.spec import requirements as req
+    app, bid, folder, spec, *_ = setup
+    # A connected date makes the registry's explicit time-series offer possible.
+    from dss.spec.models import DataField
+    spec.datasource.fields.append(DataField(name='observed_at', type='DATE', label='Observed at', role='dimension'))
+    (folder/'spec.json').write_text(spec.model_dump_json(), encoding='utf-8')
+    (folder/'recipe.jsonl').write_bytes(b'previous recipe')
+    before = published(folder)
+    fake = CommentFlow(needs_by_text={text: [{'capability': 'animation.temporal_playback'}]
+        for text in ('Animate GPS points', 'Animate differently')}, response=response([
+            op('/pages/0/components/0/type', 'time_series'),
+            op('/pages/0/components/0/date_dimension', 'observed_at'),
+            op('/pages/0/components/0/grid/h', 10)]))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
+    a = post_batch(client, app, bid, [{'component_id': 'p1_revenue', 'text': 'Animate GPS points'}])
+    issue = a['issues'][0]
+    chosen = client.post(f'/api/builds/{bid}/feasibility/decisions', json={'assessment_id': a['id'], 'decisions': [{
+        'issue_id': issue['id'], 'action': 'accept_alternative', 'alternative_id': issue['alternatives'][0]['id']}]})
+    assert chosen.status_code == 200 and published(folder) == before
+    b = client.get(f'/api/builds/{bid}/feasibility').json()
+    assert b['state'] == 'ready' and b['prototype_stale'] and fake.revisions == 0
+    c = reapply_batch(client, app, bid, b)
+    assert c['state'] == 'ready' and c['pending_comments'] is None and not c['prototype_stale'], c
+    assert fake.extractions == 1 and fake.revisions == 1
+    assert req.load(folder).decisions[0]['applied']
+    assert json.loads((folder/'spec.json').read_text())['spec_version'] == 2
+    assert (folder/'recipe.jsonl').read_bytes() == before['recipe.jsonl']
+    d = post_batch(client, app, bid, [{'component_id': 'p1_revenue', 'text': 'Animate differently'}])
+    assert d['state'] == 'blocked' and any(i['requirement'] == 'Animate differently' and i['resolution'] == 'unresolved' for i in d['issues'])
+    assert fake.extractions == 2 and fake.revisions == 1
+
+
+def test_extraction_failure_preserves_prior_batch_and_artifacts(setup, client, monkeypatch):
+    from dss.spec import requirements as req
+    app, bid, folder, *_ = setup
+    (folder/'recipe.jsonl').write_bytes(b'previous recipe')
+    fake = CommentFlow(needs_by_text={'Animate': [{'capability': 'animation.temporal_playback'}]})
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
+    post_batch(client, app, bid, [{'component_id': 'p1_revenue', 'text': 'Animate'}])
+    before, ledger = published(folder), (folder/'requirements.json').read_bytes()
+    fake.invalid_extraction = True
+    post_batch(client, app, bid, [{'component_id': 'p1_revenue', 'text': 'Changed'}])
+    assert published(folder) == before and (folder/'requirements.json').read_bytes() == ledger
+    assert req.load(folder).pending_comments.comments[0].text == 'Animate'
+
+
+@pytest.mark.parametrize('refused', [False, True])
+def test_reviser_cannot_partially_apply_an_assessed_batch(setup, client, monkeypatch, refused):
+    app, bid, folder, *_ = setup
+    (folder/'recipe.jsonl').write_bytes(b'previous recipe')
+    before = published(folder)
+    raw = json.loads(response([op('/pages/0/components/0/label', 'New')],
+                             [op('/pages/0/components/1/type', 'gauge')]))
+    if refused:
+        raw['changes'][1] = {'comment_index': 1, 'patch': [], 'unsupported_type': 'gauge'}
+    fake = CommentFlow(needs_by_text={'New name': [{'capability': 'argument.title'}],
+        'Keep the bar': [{'capability': 'chart.bar'}]}, response=json.dumps(raw))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
+    a = post_batch(client, app, bid, [{'component_id': 'p1_revenue', 'text': 'New name'},
+                                    {'component_id': 'p1_regions', 'text': 'Keep the bar'}])
+    assert fake.revisions == 2 and a['pending_comments'] and published(folder) == before
+
+
+def test_publication_failure_rolls_back_proof_spec_and_artifacts(setup, client, monkeypatch):
+    from dss.spec import requirements as req
+    app, bid, folder, *_ = setup
+    (folder/'recipe.jsonl').write_bytes(b'previous recipe')
+    before = published(folder)
+    real = Path.replace
+    def fail(path, target):
+        if path.name.startswith('publish-') and Path(target).name == 'requirements.json':
+            raise OSError('injected proof publication failure')
+        return real(path, target)
+    monkeypatch.setattr(Path, 'replace', fail)
+    fake = CommentFlow(needs_by_text={'New title': [{'capability': 'argument.title'}]},
+                       response=response([op('/pages/0/components/0/label', 'New')]))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
+    a = post_batch(client, app, bid, [{'component_id': 'p1_revenue', 'text': 'New title'}])
+    assert fake.revisions == 1 and a['pending_comments'] and published(folder) == before
+    assert req.load(folder).pending_comments is not None
+    assert '"comment":' not in (folder/'docs/decisions.md').read_text()
+    with app.state.db.connect() as conn:
+        assert conn.execute('SELECT spec_version FROM versions WHERE build_id=?', (bid,)).fetchone()[0] == 1
+
+
+def test_drop_reapply_noop_retains_independent_staleness(setup, client, monkeypatch):
+    from dss.spec import requirements as req
+    app, bid, folder, *_ = setup
+    ledger = req.load(folder)
+    ledger.prototype_stale = True
+    req.save(folder, ledger)
+    fake = CommentFlow(needs_by_text={'Animate': [{'capability': 'animation.temporal_playback'}]}, response=response([]))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
+    a = post_batch(client, app, bid, [{'component_id': 'p1_revenue', 'text': 'Animate'}])
+    result = client.post(f'/api/builds/{bid}/feasibility/decisions', json={'assessment_id': a['id'], 'decisions': [{
+        'issue_id': a['issues'][0]['id'], 'action': 'drop', 'alternative_id': None}]})
+    assert result.status_code == 200
+    original = (folder/'spec.json').read_bytes()
+    b = reapply_batch(client, app, bid, result.json())
+    assert b['state'] == 'ready' and b['pending_comments'] is None and b['prototype_stale']
+    assert fake.extractions == fake.revisions == 1 and (folder/'spec.json').read_bytes() == original
+
+
+@pytest.mark.parametrize('size', [None, 32, 40])
+def test_decoration_revision_proves_requested_property(setup, client, monkeypatch, size):
+    app, bid, folder, *_ = setup
+    fake = CommentFlow(needs_by_text={'Title size 40': [{'capability': 'layout.background_image'}]},
+        properties_by_text={'Title size 40': [{'path': 'style.font_size', 'value': 40}]},
+        response=response([] if size is None else [op('/pages/0/decorations/0/style/font_size', size, 'add')]))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
+    original = (folder/'spec.json').read_bytes()
+    a = post_batch(client, app, bid, [{'component_id': 'p1_title', 'text': 'Title size 40'}])
+    assert (a['pending_comments'] is None) == (size == 40)
+    if size != 40:
+        assert (folder/'spec.json').read_bytes() == original and fake.revisions == 2
+
+
+def test_later_comment_property_overrides_preserve_provenance_and_abandon_restores(setup, client, monkeypatch):
+    from dss.spec import requirements as req
+    app, bid, folder, *_ = setup
+    fake = CommentFlow(needs_by_text={s: [{'capability': 'option.scorecard.compact_numbers', 'value': value}]
+        for s, value in [('Enable compact', True), ('Disable compact', False)]},
+        response=response([op('/pages/0/components/0/options/compact_numbers', True, 'add')]))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
+    a = post_batch(client, app, bid, [{'component_id': 'p1_revenue', 'text': 'Enable compact'}])
+    assert a['pending_comments'] is None
+    old_id = req.load(folder).requirements[0].id
+    # Failed replacement remains pending; abandon reactivates exactly the old assignment.
+    fake.response = response([])
+    b = post_batch(client, app, bid, [{'component_id': 'p1_revenue', 'text': 'Disable compact'}])
+    assert b['pending_comments'] and req.load(folder).requirements[0].superseded
+    result = client.delete(f'/api/builds/{bid}/feasibility/pending-comments', params={'assessment_id': b['id']})
+    assert result.status_code == 200 and not req.load(folder).requirements[0].superseded
+    fake.response = response([op('/pages/0/components/0/options/compact_numbers', False)])
+    c = post_batch(client, app, bid, [{'component_id': 'p1_revenue', 'text': 'Disable compact'}])
+    assert c['pending_comments'] is None and c['state'] == 'ready'
+    ledger = req.load(folder)
+    assert ledger.requirements[0].id == old_id and ledger.requirements[0].source.text == 'Enable compact'
+    assert ledger.requirements[0].superseded['need:0'] == ledger.requirements[1].id
+    assert json.loads((folder/'spec.json').read_text())['pages'][0]['components'][0]['options']['compact_numbers'] is False
+    # A third, failed assignment must not overwrite A -> B when adding B -> C.
+    fake.response = response([])
+    d = post_batch(client, app, bid, [{'component_id': 'p1_revenue', 'text': 'Enable compact'}])
+    assert d['pending_comments']
+    result = client.delete(f'/api/builds/{bid}/feasibility/pending-comments', params={'assessment_id': d['id']})
+    assert result.status_code == 200
+    ledger = req.load(folder)
+    assert ledger.requirements[0].superseded['need:0'] == ledger.requirements[1].id
+    assert not ledger.requirements[1].superseded
+    from dss.spec.capabilities import Checker, load_registry
+    assert not req.coverage_errors(req.inputs(app.state.db, bid, folder), ledger, Checker(load_registry()))

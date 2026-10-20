@@ -22,6 +22,8 @@ from dss.harness.nodes.render import artifacts
 from dss.spec.models import DashboardSpec
 from dss.spec.patch import apply_scoped, items, PatchError
 from dss.spec.validate import allowed_types, catalog, high_questions, validate_spec
+from dss.spec import requirements as req
+from dss.spec.capabilities import Checker, load_registry
 
 
 class Strict(BaseModel):
@@ -71,32 +73,26 @@ def revised(document, comments, batch, allowed):
     if [c.comment_index for c in batch.changes] != list(range(len(comments))):
         raise PatchError('Return exactly one change per comment, in order')
     candidate = deepcopy(document)
-    records, refused = [], []
+    records = []
     for comment, change in zip(comments, batch.changes):
         patch = [op.model_dump(by_alias=True, exclude_unset=True) for op in change.patch]
         if change.unsupported_type:
-            if change.unsupported_type in allowed or patch:
-                raise PatchError('Unsupported types must be unavailable and have an empty patch')
-            refused.append(change.unsupported_type)
-            records.append({'comment': comment, 'change': 'refused unsupported type: ' + change.unsupported_type})
-            continue
+            raise PatchError('The complete batch must fulfill confirmed intent')
         updated = apply_scoped(candidate, patch, comment['component_id'])
         # A type patch itself can express the unsupported request. Never persist it.
         target = items(updated).get(comment['component_id'])
         requested = target.get('type') if target else None
         if requested and requested not in allowed:
-            refused.append(requested)
-            records.append({'comment': comment, 'change': 'refused unsupported type: ' + str(requested)})
-            continue
+            raise PatchError('The complete batch must use supported types')
         candidate = updated
         records.append({'comment': comment, 'change': patch or 'no change needed'})
     errors = validate_spec(candidate, allowed=allowed)
     if errors:
         raise PatchError(json.dumps(errors))
-    return candidate, records, refused
+    return candidate, records
 
 
-def persist(harness, build_id, version, folder, candidate, records, changed, service, questions):
+def persist(harness, build_id, version, folder, candidate, records, changed, service, questions, snapshot, ledger, checker):
     """Render into a sibling staging folder; retain the published version on failure."""
     from dss.harness.nodes.intake import write_doc
     spec = DashboardSpec.model_validate(candidate)
@@ -135,6 +131,32 @@ def persist(harness, build_id, version, folder, candidate, records, changed, ser
             if not destination.exists():
                 write_doc(staging / name, {'type':kind}, body)
                 updates[destination] = (staging / name).read_bytes()
+        # Publish proof and the changed artifacts in the same rollback transaction.
+        for name in ('index.md', 'log.md'):
+            source = folder / 'docs' / name
+            (staging / 'docs').mkdir(exist_ok=True)
+            if source.exists():
+                shutil.copyfile(source, staging / 'docs' / name)
+            elif folder / 'docs' / name in updates:
+                (staging / 'docs' / name).write_bytes(updates[folder / 'docs' / name])
+        proposed = deepcopy(snapshot)
+        proposed['spec'] = candidate
+        proposed['definitions']['decisions.md'] = text
+        verified = req.revalidate_decisions(proposed, ledger, checker)
+        bindings = {}
+        errors = req.coverage_errors(proposed, verified, checker, bindings=bindings)
+        if errors:
+            raise PatchError('Candidate does not fulfill confirmed intent')
+        verified.pending_comments = None
+        verified.verification = req.verification(proposed, verified, checker)
+        for rid, ids in bindings.items():
+            verified.verification[rid].append({'fulfilled_by': ids})
+        req.save(staging, verified, req.evaluate(proposed, verified, checker))
+        for name in ('requirements.json', 'docs/feasibility.md', 'docs/index.md', 'docs/log.md'):
+            updates[folder / name] = (staging / name).read_bytes()
+        if (req.digest(req.inputs(harness.db, build_id, folder)) != req.digest(snapshot)
+                or Checker(load_registry()).digest() != checker.digest()):
+            raise RunError('feasibility_stale', 'Inputs changed during revision; check again', 409)
         backups = {path: path.read_bytes() if path.exists() else None for path in updates}
         written = []
         try:
@@ -167,7 +189,7 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
     folder = config.data_dir / 'builds' / build_id / f'v{version}'
     original = DashboardSpec.model_validate_json((folder / 'spec.json').read_text(encoding='utf-8')).model_dump()
     allowed = allowed_types() & catalog().keys()
-    context = check_reply(revise_context(original, comments, allowed, config, folder=folder), (secret,))
+    context = None
     questions_file = folder / 'docs/questions.md'
     questions = high_questions(questions_file.read_text(encoding='utf-8')) if questions_file.exists() else []
     state = {'raw':'', 'errors':'', 'repairs':0, 'failure':None, 'reply':'Revision did not finish.'}
@@ -178,9 +200,14 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         return '\nPrevious output (untrusted):\n' + state['raw'] + '\nValidation diagnostics:\n' + state['errors'] + '\nReturn the complete repaired revision batch.'
 
     async def instruction_provider(context_object):
-        return context + repair()
+        # Extraction precedes this node; assemble mandatory intent only afterwards.
+        return 'Revise the complete comment batch using the confirmed requirements.'
 
     async def before_model(callback_context, llm_request):
+        nonlocal context
+        context = check_reply(revise_context(original, comments, allowed, config, folder=folder), (secret,))
+        if not state['repairs']:
+            state['snapshot'], state['ledger'], state['checker'] = req.inputs(harness.db, build_id, folder), req.load(folder), Checker(load_registry())
         trace.span('revise_repair' if state['repairs'] else 'revise')
         llm_request.config.response_mime_type = 'application/json'
         llm_request.config.response_json_schema = response_schema()
@@ -201,37 +228,45 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
     async def validate(node_input):
         trace.span('validate_revision')
         try:
-            candidate, records, refused = revised(original, comments, Revision.model_validate_json(state['raw']), allowed)
+            candidate, records = revised(original, comments, Revision.model_validate_json(state['raw']), allowed)
             errors = validate_spec(candidate, allowed=allowed, high_priority=questions)
             if errors:
                 raise PatchError(json.dumps(errors))
             candidate = DashboardSpec.model_validate(candidate).model_dump()
             changed = candidate != original
             candidate['spec_version'] = original['spec_version'] + int(changed)
+            proposed = deepcopy(state['snapshot'])
+            proposed['spec'] = candidate
+            errors = req.coverage_errors(proposed, state['ledger'], state['checker'])
+            if errors:
+                raise PatchError(json.dumps(errors))
         except (ValueError, TypeError, KeyError, AttributeError):
             # Keep repair diagnostics free of pydantic inputs and provider text.
-            state['errors'] = 'Patch rejected: preserve scope/ids, move only collision neighbours, use valid field bindings, sizes and a non-overlapping layout.'
+            state['errors'] = 'Patch rejected: fulfill every active requirement and confirmed decision; preserve scope/ids, move only collision neighbours, use valid field bindings, sizes and a non-overlapping layout.'
             if not state['repairs']:
                 state['repairs'] = 1
                 return Event(actions=EventActions(route='repair'))
             state['failure'] = RunError('invalid_request', 'Revision patch was rejected after one repair', 422)
             return Event(actions=EventActions(route='complete'))
         try:
-            worker = asyncio.create_task(asyncio.to_thread(persist, harness, build_id, version, folder, candidate, records, changed, lambda:payload['factory'](config), questions))
-            try:
-                await asyncio.shield(worker)
-            except asyncio.CancelledError:
+            from dss.spec.publication import build_lock
+            async with build_lock(harness.db, build_id):
+                worker = asyncio.create_task(asyncio.to_thread(persist, harness, build_id, version, folder, candidate, records, changed, lambda:payload['factory'](config), questions, state['snapshot'], state['ledger'], state['checker']))
                 try:
                     await asyncio.shield(worker)
-                except Exception:
-                    pass
-                raise
+                except asyncio.CancelledError:
+                    try:
+                        await asyncio.shield(worker)
+                    except Exception:
+                        pass
+                    raise
+        except RunError as exc:
+            state['failure'] = exc
+            return Event(actions=EventActions(route='complete'))
         except Exception:
             state['failure'] = RunError('invalid_source', 'Revision could not be rendered and saved; previous prototype retained', 422)
             return Event(actions=EventActions(route='complete'))
         notes = ['Prototype updated.' if changed else 'No change needed.']
-        if refused:
-            notes.append('The requested type is unavailable. Data Studio offers: ' + ', '.join(sorted(allowed)) + '.')
         if any(n > 1 for n in Counter(c['component_id'] for c in comments).values()):
             notes.append('Comments on the same item were applied in order; the last change to the same property wins.')
         state['reply'] = ' '.join(notes)

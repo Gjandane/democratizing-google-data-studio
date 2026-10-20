@@ -4,7 +4,7 @@ from contextlib import contextmanager
 
 from fastapi import APIRouter, Request, Query
 
-from dss.api.prototype import current
+from dss.api.prototype import current, read_spec
 from dss.db import new_id
 from dss.harness.guardrails import RunError
 from dss.spec import requirements as req
@@ -45,12 +45,27 @@ async def abandon_comments(build_id: str, request: Request, assessment_id: str =
         return assessment.model_dump()
 
 
-@router.post("/{build_id}/feasibility/reapply")
+@router.post("/{build_id}/feasibility/reapply", status_code=202)
 async def reapply(build_id: str, body: req.Reapply, request: Request):
-    with action(request.app.state, build_id) as (_, snapshot, ledger, checker):
-        req.validate_reapply(snapshot, ledger, checker, body)
-        # The accepted revise action is implemented together with its gate in 11.7.
-        raise RunError("wrong_stage", "Comment reapplication is not available yet", 409)
+    state = request.app.state
+    build, folder = current(state, build_id)
+    if build['stage'] != 'prototype' or build_id in state.harness.active_builds:
+        raise RunError('wrong_stage', 'Reapply requires an idle prototype', 409, {'stage': build['stage']})
+    read_spec(folder)
+    batch = req.validate_reapply(req.inputs(state.db, build_id, folder), req.load(folder), Checker(load_registry()), body)
+    run_id, config = new_id('r'), state.settings.get()
+    state.harness.active_builds.add(build_id)
+
+    async def background():
+        try:
+            await state.harness.run('revise', build_id, {'comments': [c.model_dump() for c in batch.comments],
+                'config': config, 'factory': state.bigquery_factory, '_reapply': body}, run_id=run_id, reserved=True)
+        except RunError:
+            pass
+    task = asyncio.create_task(background())
+    state.engine_tasks.add(task)
+    task.add_done_callback(state.engine_tasks.discard)
+    return {'run_id': run_id}
 
 
 @router.get("/{build_id}/feasibility")

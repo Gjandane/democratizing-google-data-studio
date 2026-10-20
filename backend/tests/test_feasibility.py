@@ -561,7 +561,7 @@ def test_existing_choices_survive_optional_clarification_provenance(thin, monkey
     ledger = req.load(folder)
     original = ledger.requirements[0]
     # The exact meaning shape written by 11.4 before clarifications existed.
-    ledger.decisions[0]['meaning'] = req.digest(original.model_dump(exclude={'resolution', 'clarifications'}))
+    ledger.decisions[0]['meaning'] = req.digest(original.model_dump(exclude={'resolution', 'clarifications', 'properties', 'superseded'}))
     snapshot = req.inputs(app.state.db, bid, folder)
     a = req.evaluate(snapshot, ledger, capabilities.Checker(capabilities.load_registry()))
     assert a.state == 'ready' and a.issues[0].resolution == 'accepted_alternative'
@@ -804,6 +804,14 @@ def test_abandon_accepted_pending_alternative_clears_only_batch_staleness(thin, 
     assert not req.load(folder).prototype_stale
     result = client.delete(f"/api/builds/{bid}/feasibility/pending-comments", params={"assessment_id": a["id"]})
     assert result.status_code == 200 and result.json()["state"] == "ready" and not result.json()["prototype_stale"]
+
+
+def test_abandon_clears_only_batch_owned_scope_failure():
+    ledger = req.stage_comments(req.Ledger(), [{'component_id': 'p1_revenue', 'text': 'A large request'}])
+    ledger.scope_error = 'Reduce scope'
+    assert req.abandon_pending(ledger).scope_error == 'Reduce scope'
+    ledger.scope_batch_id = ledger.pending_comments.id
+    assert req.abandon_pending(ledger).scope_error is None
 
 
 def test_static_map_alternative_checks_inherited_type_and_binding():
