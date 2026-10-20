@@ -26,6 +26,12 @@
   `URL.createObjectURL`, so spy `prototypeUrl` with `mockImplementation(httpApi.prototypeUrl)` to
   assert `?v=`; build-stage tests use `fixtures.build.id` (mock `compileRecipe` needs
   `spec_version`); call `button.focus()` before `fireEvent.click` to assert Modal focus return.
+- Resource-panel tests (references, feasibility): a GET spy call only means a refetch started, and
+  a background refetch keeps the old content, controls and gates: await what the new result
+  renders (resolved requirements are hidden, a ready assessment is one line), or hold the GET on a
+  pending promise to assert the in-between state. "Loading feasibility…" shows only before the
+  first load. A status message renders before the refetch lands, so await post-action focus with
+  `waitFor`.
 - Workspace panels (references, feasibility, synthetic) share the build's one EventSource through
   stretch.ts `subscribeWorkspace`/`publishWorkspace`; WorkspaceShell owns the feasibility gates
   (planReady/buildReady); a panel drops a response older than its latest request or assessment id.

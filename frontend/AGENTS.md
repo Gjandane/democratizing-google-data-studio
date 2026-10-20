@@ -43,12 +43,7 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Detect a file's line ending with Python byte counts (`open(f,'rb').read().count(b'\r\n')`): `grep -q $'\r'` in the Bash tool reports CRLF files as LF, and a Python patch matching `'\n'`-joined lines then silently misses.
 - The blueprint checkpoint zip skips every folder named `build/`, so `diff` and `restore` miss src/features/workspace/build/: review those files in full and back them up yourself before risky edits.
 - A Python edit on Windows without `encoding='utf-8'` writes a new non-ASCII literal (`·`, `…`) as cp1252.
-
 - Headless CDP keyboard checks: Enter activation needs an `Input.dispatchKeyEvent` char event with `text: "\r"`; keyDown/keyUp alone may move focus without clicking.
-
-- Resource-panel tests: a GET spy call only means a refetch started, and a background refetch keeps the old content, controls and gates: await what the new result renders, or hold the GET on a pending promise to assert the in-between state.
-
-- Feasibility test helpers: "Loading feasibility…" shows only before the first load, so wait for it to clear once; after that await the new result's text (resolved requirements are hidden, a ready assessment is one line).
 - Never `git stash` (not even to compare with baseline): it stashes the whole program repo, other parts and concurrent sessions included, and `pop` rewrites LF files as CRLF (core.autocrlf=true). Rerun a suspect test alone instead.
 - Headless Chrome driven by separate CDP scripts: `Emulation.setDeviceMetricsOverride` resets when the client disconnects; size the window with `Browser.setWindowBounds` instead (headless adds 26x100 px: 1306x900 gives a 1280x800 viewport).
 

@@ -18,8 +18,9 @@
   Evidence: link only http(s) entries (new tab, screen-reader text); show repo paths as mono text.
 - Fetch assessment/reference set on load, reconnect, docs.updated/run.finished and successful
   mutations. A background refetch keeps the last assessment or set and its controls in place (no
-  unmount, layout shift or focus loss), and the gates keep their last loaded state until it lands;
-  loading text only before the first load. A ready assessment with no open issue is one line.
+  unmount, layout shift or focus loss), and the gates keep their last loaded state until it lands
+  (a pending refetch may close a gate, never reopen it); loading text only before the first load.
+  After an action, focus moves to the panel heading once its refetch lands. A ready assessment with no open issue is one line.
   Unchecked/unknown assessment shows Check feasibility; unresolved issues disable
   Generate/Build. Resolved stale intent enables Replan (or Reapply saved comments), while Build
   stays disabled until the prototype is current. Show saved batch targets/text after reload and

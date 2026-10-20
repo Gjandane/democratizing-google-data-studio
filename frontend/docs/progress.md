@@ -382,3 +382,11 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none new.
 - Left open: none.
 - Next: re-audit (architect); 12.2 was removed by the Phase 12 triage.
+
+## 2026-10-20: Audit (final, re-audit after Phase 12)
+- Status: done
+- Verdict: DEFECTS (0 P0, 1 P1); user accepted Phase 13 (13.1 Steady feasibility focus test, S), a second audit-fix phase in a row, on a card naming its cost.
+- Checks rerun (re-audit: Test (all) plus 12.1's Done when; 12.1 touched FeasibilityPanel, ReferencePanel and PrototypeStage, whose earlier tasks 3.1, 10.1, 10.2, 10.3 are covered by the same `npm test`): `npm run typecheck` PASS; `npm run build` exit 0 (chunk-size warning); hex search of src/components and src/features none; secrets: no .env on disk or in git history. `npm test` FLAKY: 4 full runs, 2 PASS (17 files/376 tests), 2 FAIL with 1 test each, tests/feasibility.test.tsx:77 "handles a finish arriving before the check POST returns" (heading not focused); the file alone passed 5 of 5. Screenshots: viewed screenshots/12.1-prototype-1280x800.png (canvas top above the fold); no fresh screenshots (12.1 changed only Prototype, and its own are current). Skipped: live-backend legs (still blocked, see Later).
+- Reviewer (blueprint-reviewer, opus high, blockers only, web-design-guidelines on the three 12.1 UI files): P1: the test races 12.1's focus gate (FeasibilityPanel.tsx:91 waits for `!refreshing`; the status text renders before the mock GET's `setTimeout(0)` lands); the app behaves right, the test is wrong. Review focus passes (fail-closed on first load, failed GET, stale, blocked; obsolete responses dropped via seq/adopt and fetchSeq; a pending refetch only closes gates). Done when (1)-(4) each asserted. No Non-goal built; package.json matches the Verified table; 12.1 Decisions consistent. Below the bar: four P3 already on Later, one new P3 (late focus) added to Later.
+- Docs: reference-ui.md Controls and states records the 12.1 decisions (a pending refetch may close a gate, never reopen it; focus moves to the heading once the refetch lands). The "Resource-panel tests" and "Feasibility test helpers" gotchas moved from AGENTS.md into implementation-notes.md Conventions as a test trap, plus the await-focus rule. PRD Later gains the late-focus P3.
+- Next: task 13.1, then a re-audit (architect): blockers only.
