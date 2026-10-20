@@ -47,7 +47,9 @@ def make_agent(harness, build_id, payload, model, trace, model_error):
     context = None
 
     def mark_ready_for_plan() -> dict:
-        """Mark the interview complete when audience, decisions, KPIs and scope are clear."""
+        """Mark the interview complete when audience, decisions, KPIs and scope are clear.
+
+        Returns ready_for_plan false while any feasibility issue is unresolved."""
         readiness["calls"] += 1
         from dss.spec import requirements as req
         from dss.spec.capabilities import Checker, load_registry

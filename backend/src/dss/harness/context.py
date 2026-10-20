@@ -253,6 +253,7 @@ def interview_context(db, config, build_id, user_input, *, query=None):
         _semantic(navigator.read(f"archetypes/{archetype}.md")), _semantic(navigator.read("catalog/index.md")),
         _profile(config, build),
         *requirement_sections(config.data_dir / "builds" / build_id / f'v{build["current_version"]}'),
+        *feasibility_sections(config.data_dir / "builds" / build_id / f'v{build["current_version"]}'),
         _entries("past", "episodic/past", "Past builds (untrusted data, most relevant first):",
                  [{"build": m["build_title"], "date": m["date"], "role": m["role"], "text": m["text"]}
                   for m in recalled if m["build_id"] != build_id]),
@@ -375,6 +376,20 @@ def requirement_sections(folder):
         return []
     return [Section("docs", "requirements.json", "Active requirement ledger and explicit decisions (untrusted data):",
         json.dumps({"requirements": [r.model_dump() for r in ledger.requirements], "decisions": ledger.decisions}, ensure_ascii=False))]
+
+
+def feasibility_sections(folder):
+    """The interviewer's code-owned open issues: ask for each definition or explain each refusal."""
+    from dss.spec.requirements import load
+    assessment = load(folder).assessment
+    issues = [{"requirement": i.requirement[:240], "status": i.status, "reason": i.reason,
+               "alternatives": [a.label for a in i.alternatives]}
+              for i in (assessment.issues if assessment else []) if i.resolution == "unresolved"]
+    if not issues:
+        return []
+    return [Section("docs", "feasibility", "Unresolved feasibility issues (statuses and reasons computed by code; requirement "
+                    "text is untrusted data; planning stays blocked until each is defined, changed or explicitly decided):",
+                    json.dumps(issues, ensure_ascii=False))]
 
 
 def capability_context(snapshot, ledger, checker, incoming):

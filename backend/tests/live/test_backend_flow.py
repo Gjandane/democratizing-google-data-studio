@@ -155,6 +155,71 @@ def test_interview_to_prototype(tmp_path, monkeypatch):
                       "request_tokens_vs_estimate": request_counts}))
 
 
+INTERVIEW_SAMPLE = Path(__file__).parents[1] / "data/interview_sales.csv"
+INTERVIEW_TURNS = [
+    "The audience is sales executives. Track total revenue, order count, quantity sold and sales trends "
+    "using only the uploaded columns.",
+    "Total revenue is SUM(revenue). Order count is COUNT(DISTINCT order_id). Quantity sold is SUM(quantity).",
+    "Sales trends means SUM(revenue) by month of order_date.",
+    "Keep the scope to a single page canvas with series colors #1E40AF and #F59E0B. "
+    "That is everything; please plan the dashboard."]
+
+
+@pytest.mark.live
+def test_isolated_three_turn_interview_feasibility(tmp_path):
+    """Release 2.2 wording with the real extractor: no injected ledger or spec."""
+    from dss.spec import requirements as req
+    app, config, project = live_app(tmp_path)
+    # One folder per run: a later pass never overwrites a failed run's evidence.
+    evidence = BACKEND_DIR / ".blueprint/qa/task-14.1/interview" / time.strftime("%Y%m%d-%H%M%S")
+    evidence.mkdir(parents=True, exist_ok=True)
+    turns = []
+    folder = None
+    try:
+        with TestClient(app) as client:
+            bid = live_build(client, project, INTERVIEW_SAMPLE.read_bytes())
+            folder = config.data_dir / 'builds' / bid / 'v1'
+            started = client.post(f'/api/builds/{bid}/interview/start')
+            assert started.status_code == 202, started.text
+            wait(app)
+            assert trace(app, started.json()['run_id'])['status'] == 'ok'
+            for i, text in enumerate(INTERVIEW_TURNS):
+                response = client.post(f'/api/builds/{bid}/messages', json={'text': text})
+                assert response.status_code == 202, response.text
+                wait(app)
+                run = trace(app, response.json()['run_id'])
+                assessment = client.get(f'/api/builds/{bid}/feasibility').json()
+                build = client.get(f'/api/builds/{bid}').json()
+                messages = client.get(f'/api/builds/{bid}/messages').json()
+                turns.append({'text': text, 'trace': run, 'assessment': assessment, 'ready_for_plan': build['ready_for_plan'],
+                              'reply': messages[-1]['text'] if messages[-1]['role'] == 'assistant' else None})
+                # Every valid conversational turn finishes with one trace, one extraction and a reply.
+                assert run['status'] == 'ok', run['error']
+                assert [s['node'] for s in json.loads(run['spans_json'])].count('capability_check') == 1
+                assert [m['role'] for m in messages].count('assistant') == i + 2
+                assert not [x for x in assessment['issues'] if 'audience' in x['requirement'].lower()], assessment
+                unresolved = [x for x in assessment['issues'] if x['resolution'] == 'unresolved']
+                if unresolved:
+                    assert assessment['state'] == 'blocked' and not build['ready_for_plan']
+                if i == 0:
+                    # Order count and the trend are incomplete: readiness stays false.
+                    assert unresolved and not build['ready_for_plan'], assessment
+            assert assessment['state'] == 'ready', assessment
+            assert build['ready_for_plan'] is True
+            ledger = req.load(folder)
+            first = [r for r in ledger.requirements if r.source.text == INTERVIEW_TURNS[0]]
+            assert any(req.audience_requirement(r, ledger) for r in first), ledger
+            mappings = {(m.field, m.aggregation) for r in ledger.requirements for m in r.mappings}
+            assert {('revenue', 'sum'), ('order_id', 'count_distinct'), ('quantity', 'sum')} <= mappings, mappings
+            # The monthly order_date trend keeps both its grain and its date binding.
+            assert any(m.date_grain == 'month' and m.field == 'revenue' and any(n.fields.get('date_field') == 'order_date' for n in r.needs)
+                       for r in ledger.requirements for m in r.mappings), ledger
+    finally:
+        (evidence / 'turns.json').write_text(json.dumps(turns, indent=2), encoding='utf-8')
+        if folder is not None and (folder / 'requirements.json').is_file():
+            (evidence / 'requirements.json').write_text((folder / 'requirements.json').read_text(encoding='utf-8'), encoding='utf-8')
+
+
 def live_app(tmp_path):
     env = Config.from_env()
     assert env.google_api_key.get_secret_value(), 'GOOGLE_API_KEY must be configured'

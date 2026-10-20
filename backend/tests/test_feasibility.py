@@ -192,6 +192,9 @@ def test_interview_extraction_validates_completed_stream_only(thin, monkeypatch)
         async def generate_content_async(self, request, stream=False):
             assert stream
             self.calls += 1
+            if (request.config.response_json_schema or {}).get('title') != 'Extraction':
+                yield LlmResponse(content=types.Content(role='model', parts=[types.Part(text='GPS playback is unsupported.')]))
+                return
             yield LlmResponse(partial=True, content=types.Content(role='model', parts=[types.Part(text='Thinking', thought=True)]))
             yield LlmResponse(partial=True, content=types.Content(role='model', parts=[types.Part(text='{"requirements":[')]))
             yield LlmResponse(content=types.Content(role='model', parts=[types.Part(text=self.response)]))
@@ -202,14 +205,14 @@ def test_interview_extraction_validates_completed_stream_only(thin, monkeypatch)
     sid = user(app, bid, 'Animate GPS points along a route')
     model.response = json.dumps({'requirements': [extracted(sid, 'animation.temporal_playback')]})
     async def interview():
-        from dss.harness.guardrails import RunError
-        with pytest.raises(RunError) as error:
-            await app.state.harness.run('interview', bid, {'config': app.state.settings.get(), 'text': 'Animate GPS points along a route'})
-        assert error.value.code == 'feasibility_blocked'
+        # 14.1: the blocked assessment continues to the interviewer's explanation.
+        result = await app.state.harness.run('interview', bid, {'config': app.state.settings.get(), 'text': 'Animate GPS points along a route'})
+        assert result['reply'] == 'GPS playback is unsupported.'
     client.portal.call(interview)
     assessment = client.get(f'/api/builds/{bid}/feasibility').json()
     assert assessment['state'] == 'blocked' and assessment['issues'][0]['status'] == 'unsupported_app'
-    assert model.calls == 1 and req.load(folder).requirements[0].source.id == sid
+    assert model.calls == 2 and req.load(folder).requirements[0].source.id == sid
+    assert client.get(f'/api/builds/{bid}').json()['ready_for_plan'] is False
 
 
 def test_confirmed_reapply_compiles_runs_and_carries_to_new_version(thin, monkeypatch):
@@ -404,6 +407,79 @@ def test_date_grain_preserves_daily_and_monthly_meaning(text, grain, ready):
     mapping = req.Mapping(label='revenue', field='revenue', date_grain=grain)
     requirement = req.Requirement(id='r', source=req.Source(id='m', kind='message', text=text), text=text, mappings=[mapping])
     assert (req.mapping_verdict(mapping, requirement, {'revenue': 'FLOAT'}) is None) == ready
+
+
+@pytest.mark.parametrize('text,label,field,agg,ok', [
+    ('Order count is COUNT(DISTINCT order_id).', 'order count', 'order_id', 'count_distinct', True),
+    ('Order count is COUNT(DISTINCT order_id).', 'order count', 'order_id', 'count', False),
+    ('Order count is COUNT(order_id).', 'order count', 'order_id', 'count', True),
+    ('Order count is the distinct count of order_id.', 'order count', 'order_id', 'count_distinct', True),
+    ('Show the order count; use order_id for order count.', 'order count', 'order_id', 'count', False),
+    ('Show the order count; use order_id for order count.', 'order count', 'order_id', 'count_distinct', False),
+    ('Total revenue is SUM(revenue).', 'revenue', 'revenue', 'sum', True),
+    ('Total revenue is SUM(revenue).', 'revenue', 'revenue', 'avg', False),
+    # DISTINCT qualifies only COUNT; SUM(DISTINCT x) is no definition the ledger can hold.
+    ('Revenue is SUM(DISTINCT gross_sales).', 'revenue', 'gross_sales', 'sum', False),
+    ('Revenue is the sum of distinct gross_sales.', 'revenue', 'gross_sales', 'sum', False),
+    ('Revenue is SUM(gross_sales) unless audited.', 'revenue', 'gross_sales', 'sum', False),
+    ('Do not use SUM(gross_sales) for revenue.', 'revenue', 'gross_sales', 'sum', False)])
+def test_explicit_aggregate_definitions(text, label, field, agg, ok):
+    mapping = req.Mapping(label=label, field=field, aggregation=agg)
+    requirement = req.Requirement(id='r', source=req.Source(id='m', kind='message', text=text), text=text, mappings=[mapping])
+    fields = {'order_id': 'STRING', 'revenue': 'FLOAT', 'gross_sales': 'FLOAT'}
+    assert (req.mapping_verdict(mapping, requirement, fields) is None) == ok
+
+
+def merge_turns(fields, *turns):
+    snapshot = {'sources': [{'id': 's', 'table': 't', 'columns': [{'name': n, 'type': k, 'bq_type': k} for n, k in fields.items()]}],
+                'incoming': [], 'reference': None, 'definitions': {}, 'spec': None}
+    ledger = req.Ledger()
+    for i, (text, items) in enumerate(turns):
+        snapshot['incoming'].append(req.Source(id=f'm{i}', kind='message', text=text).model_dump())
+        ledger = req.merge(ledger, snapshot, req.Extraction(requirements=[{'source_id': f'm{i}', **item} for item in items]))
+    return snapshot, ledger
+
+
+@pytest.mark.parametrize('answer,rows', [
+    # Each definition clause refines its earlier row, wherever it sits in the answer.
+    ('Order count is COUNT(DISTINCT order_id). Quantity sold is SUM(quantity). Thanks!', 2),
+    # A clause that is not a definition keeps the whole answer as a fail-closed row.
+    ('Order count is COUNT(DISTINCT order_id). Quantity sold is SUM(quantity). Animate GPS points.', 3)])
+def test_definition_answers_refine_and_keep_other_clauses(answer, rows):
+    fields = {'order_id': 'STRING', 'quantity': 'INTEGER'}
+    snapshot, ledger = merge_turns(fields, ('Track order count and quantity sold', [
+        {'text': 'Track order count', 'needs': [{'capability': 'chart.scorecard'}], 'mappings': [{'label': 'order count', 'field': None}]},
+        {'text': 'Track quantity sold', 'needs': [{'capability': 'chart.scorecard'}], 'mappings': [{'label': 'quantity sold', 'field': None}]}]),
+        (answer, [{'text': 'Order count is COUNT(DISTINCT order_id).', 'mappings': [{'label': 'order count', 'field': 'order_id'}]},
+                  {'text': 'Quantity sold is SUM(quantity).', 'mappings': [{'label': 'quantity sold', 'field': 'quantity'}]}]))
+    assert len(ledger.requirements) == rows
+    assert [m.aggregation for r in ledger.requirements[:2] for m in r.mappings] == ['count_distinct', 'sum']
+    a = req.evaluate(snapshot, ledger, capabilities.Checker(capabilities.load_registry()))
+    assert a.state == ('ready' if rows == 2 else 'blocked')
+    assert [i.requirement for i in a.issues] == ([] if rows == 2 else [answer])
+
+
+@pytest.mark.parametrize('date_field,rows', [('order_date', 1), ('ship_date', 2)])
+def test_definition_grain_and_date_field_are_reconciled(date_field, rows):
+    fields = {'revenue': 'FLOAT', 'order_date': 'DATE', 'ship_date': 'DATE'}
+    answer = f'Sales trend is SUM(revenue) by month of {date_field}.'
+    snapshot, ledger = merge_turns(fields, ('Show the sales trend', [{'text': 'Show the sales trend',
+        'needs': [{'capability': 'chart.time_series', 'fields': {'date_field': 'order_date'}}],
+        'mappings': [{'label': 'sales trend', 'field': None}]}]),
+        (answer, [{'text': answer, 'mappings': [{'label': 'sales trend', 'field': 'revenue'}]}]))
+    # Code reads the stated grain; a different date field is never absorbed into the old binding.
+    assert len(ledger.requirements) == rows
+    mapping = ledger.requirements[0].mappings[0]
+    assert (mapping.field, mapping.aggregation, mapping.date_grain) == ('revenue', 'sum', 'month')
+    a = req.evaluate(snapshot, ledger, capabilities.Checker(capabilities.load_registry()))
+    assert a.state == ('ready' if rows == 1 else 'blocked')
+
+
+@pytest.mark.parametrize('text,rows', [('That is everything; please plan the dashboard.', 0), ('Thanks!', 0),
+                                       ('Thanks, and animate the map.', 1), ('Please plan it with GPS playback.', 1)])
+def test_only_courtesy_needs_no_fail_closed_row(text, rows):
+    _, ledger = merge_turns({'revenue': 'FLOAT'}, (text, []))
+    assert len(ledger.requirements) == rows and list(ledger.processed_sources) == ['m0']
 
 
 def test_removed_source_field_not_resurrected_by_old_spec(thin, monkeypatch):

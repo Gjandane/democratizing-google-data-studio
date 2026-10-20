@@ -16,8 +16,11 @@ class FakeLLM(BaseFakeLLM):
     ambiguous: bool = False
     extracted_source_ids: list[str] = []
     empty_needs: bool = False
+    contexts: list[str] = []
 
     async def generate_content_async(self, llm_request, stream=False):
+        if (llm_request.config.response_json_schema or {}).get("title") != "Extraction":
+            self.contexts.append(str(llm_request.config.system_instruction))
         if (llm_request.config.response_json_schema or {}).get("title") == "Extraction":
             self.calls += 1
             self.extraction_calls += 1
@@ -219,7 +222,7 @@ async def test_message_capability_gate(client, app, build_id, monkeypatch, capab
                 {"name": "date", "type": "date", "bq_type": "DATE", "sample": []}]), build_id))
     with app.state.db.connect() as conn:
         conn.execute("UPDATE builds SET ready_for_plan=1 WHERE id=?", (build_id,))
-    fake = FakeLLM(extra_capability=capability, ambiguous=capability is None)
+    fake = FakeLLM(extra_capability=capability, ambiguous=capability is None, response="Which definition should we use?")
     monkeypatch.setattr(app.state.models, "llm_for", lambda node: fake)
     service = FakeBigQuery()
     app.state.bigquery_factory = lambda config: service
@@ -227,7 +230,8 @@ async def test_message_capability_gate(client, app, build_id, monkeypatch, capab
     response = client.post(f"/api/builds/{build_id}/messages", json={"text": message})
     assert response.status_code == 202
     await wait_done(app)
-    assert fake.extraction_calls == fake.calls == 1
+    # 14.1: the blocked assessment does not end the turn; the interviewer explains it.
+    assert fake.extraction_calls == 1 and fake.calls == 2
     assert fake.extracted_source_ids == [response.json()["message_id"]]
     assessment = client.get(f"/api/builds/{build_id}/feasibility").json()
     assert assessment["state"] == "blocked"
@@ -237,17 +241,16 @@ async def test_message_capability_gate(client, app, build_id, monkeypatch, capab
     ledger = req.load(folder)
     assert ledger.requirements[0].source.id == response.json()["message_id"]
     history = client.get(f"/api/builds/{build_id}/messages").json()
-    explanation = history[-1]["text"]
-    assert history[-1]["role"] == "assistant"
+    assert history[-1]["role"] == "assistant" and history[-1]["text"] == "Which definition should we use?"
+    issues = fake.contexts[-1].split("Unresolved feasibility issues", 1)[1]
+    assert all(issue["reason"] in issues for issue in assessment["issues"])
     if status == "unsupported_app":
-        assert "alternative" in explanation.lower() and "time" in explanation.lower()
-    else:
-        assert "clarify" in explanation.lower()
+        assert "Time series using date" in issues
     with app.state.db.connect() as conn:
         traces = conn.execute("SELECT * FROM traces WHERE build_id=?", (build_id,)).fetchall()
-    assert len(traces) == 1
-    assert "capability_check" in [span["node"] for span in json.loads(traces[0]["spans_json"])]
-    assert events(app, build_id)[-1][1]["status"] == "error"
+    assert len(traces) == 1 and traces[0]["status"] == "ok"
+    assert [span["node"] for span in json.loads(traces[0]["spans_json"])][:4] == ["router", "capability_check", "assess_capabilities", "interview"]
+    assert events(app, build_id)[-1][1]["status"] == "ok"
     blocked = client.post(f"/api/builds/{build_id}/plan")
     assert blocked.status_code == 409
     detail = blocked.json()["error"]["detail"]
@@ -255,7 +258,7 @@ async def test_message_capability_gate(client, app, build_id, monkeypatch, capab
     current = client.get(f"/api/builds/{build_id}/feasibility").json()
     assert detail["assessment_id"] == current["id"]
     assert set(detail["issue_ids"]) == {issue["id"] for issue in current["issues"] if issue["resolution"] == "unresolved"}
-    assert fake.calls == 1 and not service.views and not service.dry_runs
+    assert fake.calls == 2 and not service.views and not service.dry_runs
 
 
 @pytest.mark.parametrize('text,ready', [('Help our sales director', True), ('For the sales team', True),
@@ -273,7 +276,8 @@ async def test_audience_metadata_full_source_only(client, app, build_id, monkeyp
     a = client.get(f'/api/builds/{build_id}/feasibility').json()
     assert a['state'] == ('ready' if ready else 'blocked')
     assert client.get(f'/api/builds/{build_id}').json()['ready_for_plan'] is ready
-    assert fake.extraction_calls == 1 and fake.interview_calls == (2 if ready else 0)
+    # The interviewer runs either way; its early readiness call cannot bypass the block.
+    assert fake.extraction_calls == 1 and fake.interview_calls == 2
     folder = app.state.settings.get().data_dir / 'builds' / build_id / 'v1'
     ledger = req.load(folder)
     assert ledger.requirements[0].source.id == response.json()['message_id']
@@ -300,3 +304,309 @@ async def test_split_forbidden_stream(client, app, build_id, forbidden):
         await stream.append(forbidden[3:])
     published = "".join(p["text"] for k, p in events(app, build_id) if k == "message.delta")
     assert forbidden not in published and forbidden[:3] not in published
+
+
+class ScriptLLM(BaseFakeLLM):
+    """Extraction scripted by exact source text; the interviewer tries readiness once per turn."""
+    script: dict = {}
+    extraction_calls: int = 0
+    interview_calls: int = 0
+    contexts: list[str] = []
+    ready_results: list[bool] = []
+
+    async def generate_content_async(self, llm_request, stream=False):
+        self.calls += 1
+        if (llm_request.config.response_json_schema or {}).get("title") == "Extraction":
+            self.extraction_calls += 1
+            sources = json.JSONDecoder().raw_decode(llm_request.config.system_instruction.split(
+                "New sources (untrusted; preserve IDs):\n", 1)[1])[0]
+            items = [{**item, "source_id": s["id"]} for s in sources for item in self.script[s["text"]]]
+            yield LlmResponse(content=types.Content(role="model", parts=[types.Part(text=json.dumps({"requirements": items}))]))
+            return
+        self.interview_calls += 1
+        self.contexts.append(str(llm_request.config.system_instruction))
+        answered = [p.function_response for p in llm_request.contents[-1].parts or [] if p.function_response]
+        if not answered:
+            yield LlmResponse(content=types.Content(role="model", parts=[types.Part(
+                function_call=types.FunctionCall(name="mark_ready_for_plan", args={}))]))
+            return
+        self.ready_results.append(answered[0].response["ready_for_plan"])
+        yield LlmResponse(content=types.Content(role="model", parts=[types.Part(text=f"Interview reply {self.interview_calls}.")]))
+
+
+AUDIENCE = "The audience is sales executives."
+MIXED = ("The audience is sales executives. Track total revenue, order count, quantity sold and sales trends "
+         "using only the uploaded columns.")
+SCORECARD = [{"capability": "chart.scorecard"}]
+TREND = [{"capability": "chart.time_series", "fields": {"date_field": "order_date"}}]
+MIXED_SCRIPT = [
+    {"text": AUDIENCE, "needs": []},
+    {"text": "Track total revenue using only the uploaded columns", "needs": SCORECARD,
+     "mappings": [{"label": "revenue", "field": "revenue", "aggregation": "sum"}]},
+    {"text": "Track order count", "needs": SCORECARD, "mappings": [{"label": "order count", "field": None}]},
+    {"text": "Track quantity sold", "needs": SCORECARD, "mappings": [{"label": "quantity sold", "field": "quantity"}]},
+    {"text": "Track sales trends", "needs": TREND, "mappings": [{"label": "sales trend", "field": None}]}]
+ANSWERS = [  # Three successive explicit answers, each resolving one earlier mapping.
+    ("Order count is COUNT(DISTINCT order_id).", [{"text": "Order count is COUNT(DISTINCT order_id).", "needs": [],
+      "mappings": [{"label": "order count", "field": "order_id", "aggregation": "count_distinct"}]}]),
+    ("Quantity sold is SUM(quantity).", [{"text": "Quantity sold is SUM(quantity).", "needs": SCORECARD,
+      "mappings": [{"label": "quantity sold", "field": "quantity"}]}]),
+    ("Sales trend is SUM(revenue) by month of order_date.", [{"text": "Sales trend is SUM(revenue) by month of order_date.",
+      "needs": TREND, "mappings": [{"label": "sales trend", "field": "revenue", "aggregation": "sum", "date_grain": "month"}]}])]
+SALES = {"order_id": "STRING", "order_date": "DATE", "revenue": "FLOAT", "quantity": "INTEGER"}
+
+
+def sales_seed(app, build_id, **columns):
+    from test_plan import seed
+    seed(app, build_id)
+    with app.state.db.connect() as conn:
+        conn.execute("UPDATE sources SET columns_json=? WHERE build_id=?", (json.dumps([
+            {"name": name, "type": "date" if kind == "DATE" else "number" if kind in ("FLOAT", "INTEGER") else "text",
+             "bq_type": kind, "sample": []} for name, kind in columns.items()]), build_id))
+    return app.state.settings.get().data_dir / "builds" / build_id / "v1"
+
+
+async def say(client, app, build_id, text):
+    response = client.post(f"/api/builds/{build_id}/messages", json={"text": text})
+    assert response.status_code == 202, response.text
+    await wait_done(app)
+    run = [p for kind, p in events(app, build_id) if kind == "run.finished"][-1]
+    assert run["run_id"] == response.json()["run_id"] and run["status"] == "ok", run
+    history = client.get(f"/api/builds/{build_id}/messages").json()
+    assert history[-2]["id"] == response.json()["message_id"] and history[-1]["role"] == "assistant"
+    with app.state.db.connect() as conn:
+        assert conn.execute("SELECT count(*) FROM traces WHERE run_id=?", (run["run_id"],)).fetchone()[0] == 1
+    return response.json()["message_id"], client.get(f"/api/builds/{build_id}/feasibility").json()
+
+
+def audience_issues(assessment):
+    return [i for i in assessment["issues"] if "audience" in i["requirement"].lower()]
+
+
+@pytest.mark.parametrize("needs", [[], [{"capability": "unknown.unclassified"}]])
+async def test_standalone_audience_is_context(client, app, build_id, monkeypatch, needs):
+    from dss.spec import requirements as req
+    folder = sales_seed(app, build_id, **SALES)
+    fake = ScriptLLM(script={AUDIENCE: [{"text": AUDIENCE, "needs": needs}]})
+    monkeypatch.setattr(app.state.models, "llm_for", lambda node: fake)
+    sid, a = await say(client, app, build_id, AUDIENCE)
+    assert a["state"] == "ready" and not a["issues"], a
+    assert fake.extraction_calls == 1 and fake.ready_results == [True]
+    assert client.get(f"/api/builds/{build_id}").json()["ready_for_plan"] is True
+    row = req.load(folder).requirements[0]
+    assert row.source.id == sid and row.text == AUDIENCE
+    assert req.load(folder).verification[row.id][0]["status"] == "context"
+
+
+async def test_mixed_audience_and_incomplete_metrics_continue_the_interview(client, app, build_id, monkeypatch):
+    from dss.spec import requirements as req
+    from test_plan import FakeBigQuery
+    folder = sales_seed(app, build_id, **SALES)
+    fake = ScriptLLM(script={MIXED: MIXED_SCRIPT})
+    monkeypatch.setattr(app.state.models, "llm_for", lambda node: fake)
+    service = FakeBigQuery()
+    app.state.bigquery_factory = lambda config: service
+    sid, a = await say(client, app, build_id, MIXED)
+    assert a["state"] == "blocked" and not audience_issues(a), a
+    assert {i["status"] for i in a["issues"]} == {"needs_clarification"}
+    # The early readiness call is refused and the interviewer sees the open definitions.
+    assert fake.ready_results == [False] and fake.extraction_calls == 1
+    assert "Define order count" in fake.contexts[-1] and "Define sales trend" in fake.contexts[-1]
+    build = client.get(f"/api/builds/{build_id}").json()
+    assert build["stage"] == "interview" and build["ready_for_plan"] is False
+    ledger = req.load(folder)
+    assert len(ledger.requirements) == 5 and {r.source.id for r in ledger.requirements} == {sid}
+    audience = next(r for r in ledger.requirements if r.text == AUDIENCE)
+    assert ledger.verification[audience.id][0]["status"] == "context"
+    # Direct plan, recipe and run stay gated with no side effects.
+    plan = client.post(f"/api/builds/{build_id}/plan")
+    assert plan.status_code == 409 and plan.json()["error"]["code"] == "feasibility_blocked"
+    for endpoint in ("recipe", "run"):
+        assert client.post(f"/api/builds/{build_id}/{endpoint}").status_code == 409
+    assert not service.views and not service.dry_runs and not app.state.engine_tasks
+    assert not (folder / "spec.json").exists() and not (folder / "recipe.jsonl").exists()
+    assert fake.calls == 3  # one extraction and two interviewer calls; the gates call no model
+
+
+async def test_three_answers_resolve_definitions_without_losing_intent(client, app, build_id, monkeypatch):
+    from dss.spec import requirements as req
+    from test_plan import FakeBigQuery
+    folder = sales_seed(app, build_id, **SALES)
+    fake = ScriptLLM(script={MIXED: MIXED_SCRIPT, **dict(ANSWERS)})
+    monkeypatch.setattr(app.state.models, "llm_for", lambda node: fake)
+    app.state.bigquery_factory = lambda config: FakeBigQuery()
+    first, a = await say(client, app, build_id, MIXED)
+    original = {r.id: r for r in req.load(folder).requirements}
+    open_issues = [len(a["issues"])]
+    for i, (text, _) in enumerate(ANSWERS):
+        sid, a = await say(client, app, build_id, text)
+        assert fake.extraction_calls == i + 2  # one extraction per message
+        open_issues.append(len([x for x in a["issues"] if x["resolution"] == "unresolved"]))
+        ready = client.get(f"/api/builds/{build_id}").json()["ready_for_plan"]
+        assert ready is (i == len(ANSWERS) - 1) and a["state"] == ("ready" if ready else "blocked")
+        assert not audience_issues(a)
+    assert open_issues == [3, 2, 1, 0] and fake.ready_results == [False, False, False, True]
+    ledger = req.load(folder)
+    # Definitions refine the original rows: same IDs, sources and needs, plus provenance.
+    assert {r.id for r in ledger.requirements} == set(original)
+    rows = {m.label: (r, m) for r in ledger.requirements for m in r.mappings}
+    assert rows["order count"][1].model_dump() == {"label": "order count", "field": "order_id", "unit": None,
+                                                   "aggregation": "count_distinct", "date_grain": None}
+    assert rows["quantity sold"][1].aggregation == "sum"  # code read SUM(quantity) from the answer
+    assert (rows["sales trend"][1].field, rows["sales trend"][1].date_grain) == ("revenue", "month")
+    assert rows["revenue"][1].aggregation == "sum" and not rows["revenue"][0].clarifications
+    for label in ("order count", "quantity sold", "sales trend"):
+        r = rows[label][0]
+        assert r.source.id == first and r.needs == original[r.id].needs and len(r.clarifications) == 1
+
+
+@pytest.mark.parametrize("aggregation", ["count", None])
+async def test_count_versus_distinct_count_is_never_guessed(client, app, build_id, monkeypatch, aggregation):
+    sales_seed(app, build_id, **SALES)
+    text = "Show the order count."
+    fake = ScriptLLM(script={text: [{"text": text, "needs": SCORECARD,
+        "mappings": [{"label": "order count", "field": "order_id", "aggregation": aggregation}]}],
+        "Order count is COUNT(order_id).": [{"text": "Order count is COUNT(order_id).", "needs": [],
+        "mappings": [{"label": "order count", "field": "order_id", "aggregation": "count_distinct"}]}]})
+    monkeypatch.setattr(app.state.models, "llm_for", lambda node: fake)
+    _, a = await say(client, app, build_id, text)
+    assert a["state"] == "blocked"
+    # A model proposal that contradicts the explicit COUNT(...) cannot resolve it.
+    _, a = await say(client, app, build_id, "Order count is COUNT(order_id).")
+    assert a["state"] == "blocked" and client.get(f"/api/builds/{build_id}").json()["ready_for_plan"] is False
+
+
+async def test_gross_net_ambiguity_requires_an_explicit_choice(client, app, build_id, monkeypatch):
+    from dss.spec import requirements as req
+    folder = sales_seed(app, build_id, order_date="DATE", gross_sales="FLOAT", net_sales="FLOAT")
+    revenue = [{"label": "Revenue", "field": "gross_sales", "aggregation": "sum"}]
+    fake = ScriptLLM(script={
+        "Show total Revenue": [{"text": "Show total Revenue", "needs": SCORECARD, "mappings": revenue}],
+        "Use whichever revenue column is standard.": [{"text": "Use whichever revenue column is standard.",
+            "needs": SCORECARD, "mappings": [{"label": "Revenue", "field": "gross_sales"}]}],
+        "Revenue means net_sales.": [{"text": "Revenue means net_sales.", "needs": SCORECARD,
+                                      "mappings": [{"label": "Revenue", "field": "net_sales"}]}]})
+    monkeypatch.setattr(app.state.models, "llm_for", lambda node: fake)
+    for text in ("Show total Revenue", "Use whichever revenue column is standard."):
+        _, a = await say(client, app, build_id, text)
+        assert a["state"] == "blocked" and all("Confirm which field defines Revenue" in i["reason"] for i in a["issues"])
+        assert client.get(f"/api/builds/{build_id}").json()["ready_for_plan"] is False
+    _, a = await say(client, app, build_id, "Revenue means net_sales.")
+    assert a["state"] == "ready", a
+    assert {m.field for r in req.load(folder).requirements for m in r.mappings} == {"net_sales"}
+    assert fake.ready_results == [False, False, True]
+    # After resolution, the existing supported planning path still works.
+    from test_plan import IntentLLM, FakeBigQuery, PLAN, plan_api
+    planner = IntentLLM(response=json.dumps({**PLAN, "fields": []}), chart="scorecard", metric_field="net_sales")
+    monkeypatch.setattr(app.state.models, "llm_for", lambda node: planner)
+    service = FakeBigQuery()
+    app.state.bigquery_factory = lambda config: service
+    _, final = await plan_api(client, app, build_id)
+    assert final["status"] == "ok", final
+    assert planner.extraction_calls == 0 and len(service.views) == 1
+    assert client.get(f"/api/builds/{build_id}/feasibility").json()["state"] == "ready"
+
+
+@pytest.mark.parametrize("text,script,status", [
+    (AUDIENCE + " Animate GPS points along a route.",
+     [{"text": AUDIENCE, "needs": []}, {"text": "Animate GPS points along a route", "needs": [{"capability": "animation.temporal_playback"}]}],
+     "unsupported_app"),
+    (AUDIENCE + " Add a telepathic chart.", [{"text": AUDIENCE, "needs": []}, {"text": "Add a telepathic chart", "needs": []}], "unknown"),
+    # The extractor drops the request: code keeps the whole message as an unknown row.
+    (AUDIENCE + " Animate GPS points along a route.", [{"text": AUDIENCE, "needs": []}], "unknown")])
+async def test_audience_never_hides_unsupported_or_unknown_requests(client, app, build_id, monkeypatch, text, script, status):
+    from dss.spec import requirements as req
+    folder = sales_seed(app, build_id, **SALES)
+    fake = ScriptLLM(script={text: script})
+    monkeypatch.setattr(app.state.models, "llm_for", lambda node: fake)
+    sid, a = await say(client, app, build_id, text)
+    assert a["state"] == "blocked" and [i["status"] for i in a["issues"]] == [status], a
+    assert not audience_issues(a) or a["issues"][0]["requirement"] == text
+    assert fake.ready_results == [False] and client.get(f"/api/builds/{build_id}").json()["ready_for_plan"] is False
+    assert all(r.source.id == sid for r in req.load(folder).requirements)
+    assert client.post(f"/api/builds/{build_id}/plan").status_code == 409
+
+
+@pytest.mark.parametrize("raw", ["not json", json.dumps({"requirements": [{"source_id": "m_spoofed", "text": "x"}]})])
+async def test_extraction_errors_still_fail_the_turn(client, app, build_id, monkeypatch, raw):
+    from dss.spec import requirements as req
+    folder = sales_seed(app, build_id, **SALES)
+    class Broken(ScriptLLM):
+        async def generate_content_async(self, llm_request, stream=False):
+            if (llm_request.config.response_json_schema or {}).get("title") == "Extraction":
+                self.calls += 1
+                yield LlmResponse(content=types.Content(role="model", parts=[types.Part(text=raw)]))
+                return
+            async for event in super().generate_content_async(llm_request, stream):
+                yield event
+    fake = Broken()
+    monkeypatch.setattr(app.state.models, "llm_for", lambda node: fake)
+    response = client.post(f"/api/builds/{build_id}/messages", json={"text": AUDIENCE})
+    assert response.status_code == 202
+    await wait_done(app)
+    run = [p for kind, p in events(app, build_id) if kind == "run.finished"][-1]
+    assert run["status"] == "error" and fake.calls == 1 and fake.interview_calls == 0
+    assert [m["role"] for m in client.get(f"/api/builds/{build_id}/messages").json()] == ["user"]
+    assert not (folder / "requirements.json").exists() and req.load(folder).requirements == []
+
+
+def write_legacy(app, build_id, folder, rows):
+    """A pre-14.1 ledger whose persisted assessment blocked ordinary audience rows."""
+    from dss.spec import capabilities, requirements as req
+    snapshot = req.inputs(app.state.db, build_id, folder)
+    ledger = req.Ledger(requirements=rows, processed_sources={s["id"]: req.digest(s) for s in snapshot["incoming"]})
+    checker = capabilities.Checker(capabilities.load_registry())
+    blocked = req.evaluate(snapshot, ledger, checker).model_copy(update={"state": "blocked", "issues": [req.Issue(
+        id="issue_legacy", requirement=AUDIENCE, status="unknown", reason="No registered capability covers this requirement")]})
+    req.save(folder, ledger, blocked)
+
+
+async def test_persisted_audience_rows_recover_on_reassessment(client, app, build_id, monkeypatch):
+    from dss.spec import requirements as req
+    from test_audit_style import drain
+    folder = sales_seed(app, build_id, **SALES)
+    standalone = episodic.save(app.state.db, build_id, "user", AUDIENCE)
+    mixed = episodic.save(app.state.db, build_id, "user", MIXED)
+    source = lambda m: req.Source(id=m["id"], kind="message", text=m["text"])
+    rows = [req.Requirement(id="req_a", source=source(standalone), text=AUDIENCE),
+            req.Requirement(id="req_b", source=source(mixed), text=AUDIENCE, needs=[{"capability": "unknown.unclassified"}]),
+            req.Requirement(id="req_c", source=source(mixed), text="Track total revenue", needs=SCORECARD,
+                            mappings=[req.Mapping(label="revenue", field="revenue", aggregation="sum")])]
+    write_legacy(app, build_id, folder, rows)
+    assert client.get(f"/api/builds/{build_id}/feasibility").json()["state"] == "blocked"
+    fake = ScriptLLM()
+    monkeypatch.setattr(app.state.models, "llm_for", lambda node: fake)
+    assert client.post(f"/api/builds/{build_id}/feasibility/check").status_code == 202
+    await drain(app)
+    a = client.get(f"/api/builds/{build_id}/feasibility").json()
+    assert a["state"] == "ready" and not a["issues"], a
+    assert fake.calls == 0  # deterministic reassessment: no new extraction
+    ledger = req.load(folder)
+    assert [r.id for r in ledger.requirements] == ["req_a", "req_b", "req_c"] and not ledger.decisions
+    assert {r.source.id for r in ledger.requirements} == {standalone["id"], mixed["id"]}
+    # Genuine unknown rows in the same ledger still block: no blanket recovery.
+    rows.append(req.Requirement(id="req_d", source=source(mixed), text="Add a telepathic chart"))
+    rows.append(req.Requirement(id="req_e", source=source(standalone), text=AUDIENCE + " Add a telepathic chart"))
+    write_legacy(app, build_id, folder, rows)
+    assert client.post(f"/api/builds/{build_id}/feasibility/check").status_code == 202
+    await drain(app)
+    a = client.get(f"/api/builds/{build_id}/feasibility").json()
+    assert a["state"] == "blocked" and sorted(i["requirement"] for i in a["issues"]) == sorted(
+        ["Add a telepathic chart", AUDIENCE + " Add a telepathic chart"])
+
+
+def test_audience_recognition_is_bounded():
+    from dss.spec import requirements as req
+    def row(text, source=None, **fields):
+        return req.Requirement(id="r", source=req.Source(id="m", kind="message", text=source or text), text=text, **fields)
+    for text in (AUDIENCE, "Help our sales director", "Audience: regional sales managers", "For the CFO and the sales team"):
+        assert req.audience_requirement(row(text)), text
+    for text in ("Show sales leads", "Help our sales director and animate GPS points",
+                 "The audience is sales executives who need GPS playback"):
+        assert not req.audience_requirement(row(text)), text
+    assert not req.audience_requirement(row(AUDIENCE, needs=SCORECARD))
+    assert not req.audience_requirement(row(AUDIENCE, mappings=[req.Mapping(label="revenue", field="revenue")]))
+    # A model claim that does not quote the message's own audience clause is not context.
+    assert not req.audience_requirement(row("The audience is the CFO", source="Show revenue."))
+    # A mixed message without any other row for its remainder fails closed.
+    assert not req.audience_requirement(row(AUDIENCE, source=MIXED), req.Ledger())

@@ -371,7 +371,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: same geometry/style defaults in validator, prototype and background; preserve existing spec repair budget and contract boxes.
 
 ## Phase 14: Integration blocker repair
-- [ ] 14.1 Preserve audience context and continue feasibility clarification
+- [x] 14.1 Preserve audience context and continue feasibility clarification
   - Goal: ordinary interview answers and incomplete metrics reach the next question; unresolved behavior still blocks planning and execution. Recover the release 2.2 failure without weakening capability checks.
   - Spec: docs/architecture.md#Interview feasibility recovery; ../contracts/dashboard-intent.md#Enforcement
   - Files: src/dss/spec/requirements.py, src/dss/harness/graph.py, src/dss/harness/nodes/interview.py, src/dss/harness/context.py, prompts/v1/capability_check.md, prompts/v1/interview.md, skills/interview.md, tests/test_interview.py, tests/test_feasibility.py, tests/live/test_backend_flow.py, tests/data/interview_sales.csv

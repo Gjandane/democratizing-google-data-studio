@@ -883,3 +883,14 @@ context. Task status lives in docs/plan.md, not here.
   no other new request in the latest backend entry.
 - Next: builder in backend/ completes 14.1; then release 2.2 recovers its saved driver and
   verifies both dry-run versions at the program root.
+
+## 2026-10-21: Task 14.1 Preserve audience context and continue feasibility clarification
+- Status: done
+- Plan check: off
+- What changed: requirements.py recognizes audience rows by code (exact audience clause of the source, needs empty or only the unknown.unclassified sentinel, remainder covered by sibling rows) for issues, coverage and verification; merge reads SUM()/COUNT(DISTINCT)/grain definitions, absorbs definition-only answers anywhere in a message and fails closed on uncovered clauses. graph.py routes blocked interview assessments to the interviewer (new feasibility context section); prompts/skill updated. New offline API/graph tests, live three-turn test and tests/data/interview_sales.csv.
+- Checks: Done-when focused suite PASS (227); `uv run pytest -m live tests/live/test_backend_flow.py -k interview` PASS (2, 202.62s); Test (all) `uv run pytest` PASS (1140, 10 deselected); `git diff --check` PASS. Reviewer: 0 P0/P1; 2 P2 + 1 P3 fixed.
+- Decisions: count vs count_distinct needs an explicit COUNT(...)/COUNT(DISTINCT ...)/distinct-count clause; DISTINCT only with COUNT. Bounded courtesy clauses ("thanks", "that is everything", "please plan it") need no row. Audience qualifiers are a fixed list. Live answer 4 uses single-page canvas + hex series colors. Old interview-bypass tests updated to assert the reply, ok trace and gated plan. AGENTS.md gotcha added. No dependencies, contracts or budgets changed.
+- Tried and failed: "default theme / all orders" answer and a prompt that split cadence sentences both produced unknown rows (evidence `.blueprint/qa/task-14.1/interview/*`, logs `.blueprint/task-14.1-*.log`); one transient first-turn llm_unavailable.
+- Gotchas: none beyond AGENTS.md.
+- Left open: P2 partial omission in a mixed message (extractor drops one clause but keeps a sibling) is not detected; pre-existing extraction trust - src/dss/spec/requirements.py. P3 non-aggregate distinct wording ("use customer_id for unique customers") now always asks - src/dss/spec/requirements.py. P3 bare roles ("Sales team.") count as context - src/dss/spec/requirements.py.
+- Next: release 2.2 at the program root recovers its saved driver and verifies both dry-run versions.

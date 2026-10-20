@@ -6,6 +6,16 @@ Preserve every requested behavior, including unsupported features inside otherwi
 requests. Split distinct requirements. Copy source_id exactly from a supplied source. Describe
 unknown behavior with an empty needs list. A vague request or unreadable image must stay unknown.
 For conversational answers, retain the stated constraint as a requirement; do not invent a chart.
+A sentence that only names the audience ("The audience is sales executives.") is its own
+requirement: text copied verbatim, with empty needs and mappings. A sentence that also names
+metrics, a review cadence or decisions ("The director reviews revenue weekly") is not split out:
+keep it in the text of the requirements for the metrics it names.
+A restriction to the uploaded or connected columns qualifies the metrics it names: keep it in
+those requirements' text, not as a separate requirement. Closing remarks ("That is everything;
+please plan the dashboard.") request nothing and are never a requirement.
+A definition answer ("Order count is COUNT(DISTINCT order_id).") reuses the exact label of the
+ledger mapping it defines, sets field and aggregation (count_distinct for COUNT(DISTINCT ...)),
+and its text copies only that definition sentence.
 
 Use only registry capability IDs when a match exists; otherwise leave needs empty. Include all
 feature combinations, values and data prerequisites, not merely the eventual chart type.

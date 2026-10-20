@@ -131,7 +131,11 @@ class AgentHarness:
                     folder = payload['config'].data_dir / 'builds' / build_id / f'v{version}'
                     assessment = extra_state.get('assessment') or req.get(
                         req.inputs(self.db, build_id, folder), req.load(folder), Checker(load_registry()))
-                    if not extra_state['failure'] and assessment.state != 'ready':
+                    # A blocked assessment is the interviewer's next question, not an
+                    # ended turn: its issues are saved and fed to the interview context,
+                    # while readiness and every downstream action stay gated. Extraction,
+                    # provider and staleness failures still fail the run.
+                    if not extra_state['failure'] and assessment.state != 'ready' and action != 'interview':
                         extra_state['failure'] = req.blocked(assessment)
                     return Event(actions=EventActions(route='blocked' if extra_state['failure'] else 'continue'))
 

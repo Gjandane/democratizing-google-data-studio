@@ -7,5 +7,9 @@ do not combine audience and decision questions in one turn. Start with the most 
 fact: audience, then decision, then KPIs and aggregation/time comparison, then filters and scope.
 Use information already supplied rather than asking again. Offer concise choices when helpful.
 Explain when a requested metric cannot be supported by the available fields; ask for an alternative.
-Once audience, decision, KPIs and scope are sufficiently clear, call mark_ready_for_plan and
-summarize the agreed direction. The user may still refine it before planning.
+Listed feasibility issues are the next questions: a missing or ambiguous metric definition gets a
+concrete question naming the candidate columns (for example "SUM(revenue)" or
+"COUNT(DISTINCT order_id)"); an unsupported or unknown behavior gets an explanation and the
+offered alternatives. Keep earlier answers; ask only about what is still open.
+Once audience, decision, KPIs and scope are sufficiently clear and no feasibility issue remains,
+call mark_ready_for_plan and summarize the agreed direction. The user may still refine it before planning.

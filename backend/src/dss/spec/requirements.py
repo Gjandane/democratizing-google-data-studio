@@ -273,6 +273,13 @@ def merge(ledger, snapshot, extraction):
         raise ValueError("Extraction cites an unknown source")
     current_ref = (snapshot["reference"] or {}).get("id")
     updated.requirements = [r for r in updated.requirements if not r.source.reference_id or r.source.reference_id == current_ref]
+    # Code, not the model, reads an aggregate and grain the source explicitly defines.
+    def stated(item, m):
+        defined = _definition(sources[item.source_id]["text"], m) or {}
+        return m.model_copy(update={k: defined.get(k) for k in ("aggregation", "date_grain")
+                                    if getattr(m, k) is None and defined.get(k)})
+    extraction = extraction.model_copy(update={"requirements": [item.model_copy(update={"mappings": [
+        stated(item, m) for m in item.mappings]}) for item in extraction.requirements]})
     for item in extraction.requirements:
         source = Source.model_validate(sources[item.source_id])
         if source.batch_id and source.component_id:
@@ -297,12 +304,9 @@ def merge(ledger, snapshot, extraction):
             continue
         updated.requirements.append(Requirement(id=rid, source=source, **item.model_dump(exclude={"source_id"})))
     covered = {r.source_id for r in extraction.requirements}
-    # Fail closed when extraction omits an entire message or observed chart.
-    for sid, source in sources.items():
-        if sid not in covered:
-            updated.requirements.append(Requirement(id="req_" + digest(source)[:24], source=Source.model_validate(source), text=source["text"]))
     # A later explicit field definition can clarify an earlier ambiguity, but
     # cannot remove its capabilities or provenance. Model suggestions alone do not.
+    absorbed = {}
     for item in extraction.requirements:
         source = Source.model_validate(sources[item.source_id])
         clarified, previous_needs = set(), []
@@ -325,13 +329,28 @@ def merge(ledger, snapshot, extraction):
                     previous_needs.extend(previous.needs)
         rid = 'req_' + digest({'source': source.model_dump(), 'text': item.text})[:24]
         merged = next((r for r in updated.requirements if r.id == rid), None)
-        definition_only = len(item.mappings) == 1 and (assignment := _assignment(source.text, item.mappings[0])) and not source.text[assignment.end():].strip(' .;\r\n\t')
-        if (merged and definition_only and merged.mappings and all(m.label in clarified for m in merged.mappings)
-                and all(n in previous_needs for n in merged.needs)):
+        # A date field the definition names must already be the refined row's binding;
+        # otherwise the answer stays its own requirement for that binding.
+        dates = {n.fields.get('date_field') for n in previous_needs}
+        if (merged and merged.mappings and all(m.label in clarified for m in merged.mappings)
+                and all(n in previous_needs for n in merged.needs) and _definitions_only(merged.text, merged.mappings)
+                and all((_definition(source.text, m) or {}).get('date_field') in dates | {None} for m in merged.mappings)):
             # A definition-only reply refines the original requirement. Keep its
             # original grain/unit/aggregation instead of making an unconstrained
             # duplicate that would demand a different chart binding.
             updated.requirements = [r for r in updated.requirements if r.id != rid]
+            absorbed.setdefault(source.id, []).extend(merged.mappings)
+    # Fail closed when extraction omits an entire message or observed chart, or
+    # keeps only audience context and absorbed definitions of a message whose
+    # other clauses would then have no ledger row.
+    for sid, source in sources.items():
+        rows = [r for r in updated.requirements if r.source.id == sid]
+        uncovered = source["kind"] == "message" and all(_audience_only(r) for r in rows) and any(
+            not any(_definition_clause(clause, m) for m in absorbed.get(sid, [])) for clause in _remainder(source["text"]))
+        # Only audience and courtesy clauses ("Thanks, please plan it.") request nothing.
+        omitted = sid not in covered and (source["kind"] != "message" or bool(_remainder(source["text"])))
+        if omitted or uncovered:
+            updated.requirements.append(Requirement(id="req_" + digest(source)[:24], source=Source.model_validate(source), text=source["text"]))
     if len(updated.requirements) > MAX_REQUIREMENTS:
         raise ValueError("Requirement scope exceeded")
     updated.processed_sources.update({sid: digest(s) for sid, s in sources.items()})
@@ -370,32 +389,123 @@ def _normal(text):
     return re.sub(r"[^a-z0-9]", "", text.lower())
 
 
-_AUDIENCE_ROLE = (r'(?:(?:sales|finance|marketing|operations|product|engineering|executive|leadership)\s+'
-                  r'(?:director|manager|team|leaders?|analysts?)|ceo|cfo|cto|coo|executives?|analysts?|leadership)')
+_ROLE_NOUN = r'(?:directors?|managers?|teams?|leaders?|analysts?|executives?|heads?|vps?|officers?|stakeholders?|leadership)'
+_AUDIENCE_ROLE = (r'(?:(?:sales|finance|marketing|operations|product|engineering|executive|leadership|business)\s+'
+                  + _ROLE_NOUN + r'|ceo|cfo|cto|coo|cmo|executives?|analysts?|leadership|managers?|directors?|stakeholders?)')
+# A bounded qualifier list (an arbitrary first word could be a verb: "show sales ...")
+# and at most two roles.
+_QUALIFIER = r'(?:regional|global|senior|local|national|country|area|district|internal|key|top)'
+_ONE_ROLE = r'(?:(?:the|our|my|a|an)\s+)?(?:' + _QUALIFIER + r'\s+)?' + _AUDIENCE_ROLE
+_AUDIENCE = (r'(?:(?:help|for|this is for|it is for|the dashboard is for|(?:the\s+)?(?:target\s+|dashboard\s+)?audience\s*(?:is|are|:))\s*)?'
+             r'(' + _ONE_ROLE + r'(?:\s*(?:,|and|&)\s*' + _ONE_ROLE + r')?)')
+_SENTINEL = capabilities.Need(capability='unknown.unclassified')
 
 
-def audience_requirement(requirement):
+def _clauses(text):
+    return [c for c in (' '.join(part.split()).strip(' ,') for part in re.split(r'[.!?;\n]+', text)) if c]
+
+
+def _audience_role(text):
+    """The normalized role of a clause that is entirely audience context, else None."""
+    match = re.fullmatch(_AUDIENCE, ' '.join(text.split()).strip(' .!'), re.I)
+    return re.sub(r'^(?:the|our|my|a|an)\s+', '', ' '.join(match[1].lower().split())) if match else None
+
+
+def _audience_only(requirement):
+    """The row itself asserts nothing but an audience clause found in its original message."""
+    if requirement.mappings or requirement.properties or requirement.component_ids or requirement.source.kind != 'message':
+        return False
+    # The code-owned unclassified sentinel is not a requested behavior; any real need is.
+    if any(n != _SENTINEL for n in requirement.needs):
+        return False
+    role = _audience_role(requirement.text)
+    return role is not None and any(_audience_role(c) == role for c in _clauses(requirement.source.text))
+
+
+def _remainder(text):
+    """Clauses other than audience context and a bounded set of courtesy phrases."""
+    return [c for c in _clauses(text) if _audience_role(c) is None and not re.fullmatch(_COURTESY, c, re.I)]
+
+
+def audience_requirement(requirement, ledger=None):
     """Code-owned, bounded interview metadata; never downgrade free-form behavior.
 
-    Match the ENTIRE original message. A suffix requesting an unknown feature
-    cannot become audience metadata merely because its prefix names a role.
+    The row must be exactly an audience clause of its original message (code
+    evidence, not a model assertion). The rest of a mixed message must remain in
+    the ledger as other rows of the same source, or the audience row fails closed.
     """
-    if requirement.needs or requirement.mappings or requirement.source.kind != 'message':
+    if not _audience_only(requirement):
         return False
-    prefix = r'(?:(?:help|for|this is for|the dashboard is for|(?:the )?audience (?:is|:))\s+)?(?:our\s+|my\s+|the\s+|a\s+|an\s+)?'
-    return bool(re.fullmatch(prefix + _AUDIENCE_ROLE + r'[.!]?', ' '.join(requirement.source.text.strip().split()), re.I))
+    if not _remainder(requirement.source.text):
+        return True
+    return ledger is not None and any(r.source.id == requirement.source.id and r.id != requirement.id
+                                      and not _audience_only(r) for r in ledger.requirements)
 
 
-def _assignment(text, mapping):
-    if not mapping.field:
-        return None
-    field_pattern, label_pattern = re.escape(mapping.field), re.escape(mapping.label)
+_AGGREGATIONS = {'sum': 'sum', 'total': 'sum', 'avg': 'avg', 'average': 'avg', 'mean': 'avg', 'count': 'count',
+                 'min': 'min', 'minimum': 'min', 'max': 'max', 'maximum': 'max'}
+_AGGREGATION = r'(?:sum|total|avg|average|mean|count|min|minimum|max|maximum)'
+_GRAIN = r'(?:day|week|month|quarter|year)'
+_COURTESY = (r'(?:thanks|thank you|that is (?:all|everything)|that\'s (?:all|everything)|nothing else|'
+             r'(?:please\s+)?(?:plan|build) (?:it|the dashboard)(?: now)?)')
+
+
+def _assignment_pattern(mapping):
+    field, label = re.escape(mapping.field), re.escape(mapping.label)
     # A bounded audience prefix does not change a following positive definition.
     # Do not accept arbitrary comma clauses (negation, conditionals or quotations).
     # One optional qualifier word before the role ("regional", "global").
     audience = r'(?:for\s+(?:(?:the|our|my|a|an)\s+)?(?:[a-z][a-z-]*\s+)?' + _AUDIENCE_ROLE + r'\s*,\s*)?'
-    return re.search(r"(?:^|[.;\n])\s*" + audience + r"(?:please\s+)?(?:use\s+" + field_pattern + r"\s+(?:for|as)\s+" + label_pattern
-        + r"|" + label_pattern + r"\s*(?:means|is|uses|=|:)\s*" + field_pattern + r")(?=\s*(?:$|[,.;\n]))", text, re.I)
+    # The value is the bare field or an explicit aggregate of exactly that field:
+    # SUM(revenue), COUNT(DISTINCT order_id), the sum of revenue, the distinct
+    # count of order_id; optionally qualified by one date grain and date field.
+    # DISTINCT only qualifies COUNT: the ledger cannot represent SUM(DISTINCT x).
+    def value(name):
+        return (r'(?P<' + name + r'>(?:(?:daily|weekly|monthly|quarterly|yearly)\s+)?(?:'
+                + r'count\s*\(\s*(?:distinct\s+)?' + field + r'\s*\)|' + _AGGREGATION + r'\s*\(\s*' + field + r'\s*\)'
+                + r'|(?:the\s+)?(?:(?:distinct|unique)\s+count\s+of|count\s+of\s+(?:distinct|unique)|' + _AGGREGATION + r'\s+of)\s+' + field
+                + r'|' + field + r')(?:\s+(?:by|per)\s+' + _GRAIN + r'(?:\s+(?:of|on)\s+[a-z_][a-z0-9_]*)?)?)')
+    named = r'(?:(?:the|total|average|avg)\s+)?' + label + r'(?:e?s)?'
+    return re.compile(r"(?:^|[.;\n])\s*" + audience + r"(?:please\s+)?(?:use\s+" + value('used') + r"\s+(?:for|as)\s+" + named
+        + r"|" + named + r"\s*(?:means|is|uses|=|:)\s*" + value('value') + r")(?=\s*(?:$|[,.;\n]))", re.I)
+
+
+def _assignment(text, mapping):
+    return _assignment_pattern(mapping).search(text) if mapping.field else None
+
+
+def _definition(text, mapping):
+    """What the source's last explicit definition of this mapping states: aggregation, grain, date field."""
+    matches = list(_assignment_pattern(mapping).finditer(text)) if mapping.field else []
+    if not matches:
+        return None
+    value = ' '.join((matches[-1]['value'] or matches[-1]['used']).lower().split())
+    prefix = re.match(r'(daily|weekly|monthly|quarterly|yearly)\s+', value)
+    suffix = re.search(r'\s(?:by|per)\s+(' + _GRAIN + r')(?:\s+(?:of|on)\s+([a-z_][a-z0-9_]*))?$', value)
+    grain = {'daily': 'day'}.get(prefix[1], prefix[1].removesuffix('ly')) if prefix else suffix[1] if suffix else None
+    value = re.sub(r'^(?:daily|weekly|monthly|quarterly|yearly)\s+|^the\s+', '', value)
+    if re.match(r'(?:distinct|unique)\s+count\b|count\s*\(\s*distinct\b|count\s+of\s+(?:distinct|unique)\b', value):
+        aggregation = 'count_distinct'
+    else:
+        word = re.match(_AGGREGATION + r'(?=\s*\(|\s+of\b)', value)
+        aggregation = _AGGREGATIONS[word[0]] if word else None
+    return {'aggregation': aggregation, 'date_grain': grain, 'date_field': suffix[2] if suffix else None}
+
+
+def _defined_aggregation(text, mapping):
+    """The aggregation the source's last explicit definition of this mapping names, else None."""
+    return (_definition(text, mapping) or {}).get('aggregation')
+
+
+def _definition_clause(clause, mapping):
+    match = _assignment(clause, mapping)
+    return bool(match and not clause[match.end():].strip(' .,;'))
+
+
+def _definitions_only(text, mappings):
+    """Every clause of a row's own text is a positive definition of one of its mappings."""
+    clauses = _clauses(text)
+    return bool(clauses) and all(any(_definition_clause(c, m) for m in mappings) for c in clauses)
 
 
 def mapping_verdict(mapping, requirement, fields):
@@ -410,11 +520,18 @@ def mapping_verdict(mapping, requirement, fields):
     explicit = _assignment(text, mapping)
     if label != _normal(field) and not explicit:
         return capabilities.Verdict("needs_clarification", f"Confirm which field defines {mapping.label}; proposed {field} is not an explicit definition")
+    # An explicit aggregate definition (SUM(revenue), COUNT(DISTINCT order_id)) is
+    # authoritative. Count versus distinct count is never inferred from wording.
+    defined = _defined_aggregation(text, mapping)
+    counting = {mapping.aggregation, defined} & {"count", "count_distinct"}
+    if (counting or defined) and mapping.aggregation is not None and defined != mapping.aggregation:
+        return capabilities.Verdict("needs_clarification", f"Confirm {'count or distinct count' if counting else 'the aggregation'} for {mapping.label}"
+                                    + f", for example COUNT(DISTINCT {field})" * bool(counting))
     terms = {"sum": ("sum", "summed", "total", "totals"), "avg": ("avg", "average", "mean"),
              "count_distinct": ("count_distinct", "distinct", "unique"), "day": ("day", "daily")}
     for name in ("aggregation", "unit", "date_grain"):
         value = getattr(mapping, name)
-        if value is None:
+        if value is None or (name == "aggregation" and value == defined):
             continue
         candidates = terms.get(value, (value, value + "ly")) if name != "unit" else (value,)
         if not any(re.search(r"(?<![a-z0-9_])" + re.escape(v) + r"(?![a-z0-9_])", text, re.I) for v in candidates):
@@ -550,8 +667,9 @@ def _requirement_issues(snapshot, ledger, checker):
     """Internal issue targets never come from client/model claims."""
     fields, rows = schema(snapshot), []
     for r in ledger.requirements:
-        verdicts = [(f"need:{i}", checker.need(n, fields)) for i, n in enumerate(r.needs) if f'need:{i}' not in r.superseded]
-        if not r.needs and not audience_requirement(r):
+        context = audience_requirement(r, ledger)
+        verdicts = [] if context else [(f"need:{i}", checker.need(n, fields)) for i, n in enumerate(r.needs) if f'need:{i}' not in r.superseded]
+        if not r.needs and not context:
             verdicts.append(("unknown", capabilities.Verdict("unknown", "No registered capability covers this requirement")))
         verdicts += [(f"mapping:{i}", v) for i, m in enumerate(r.mappings) if (v := mapping_verdict(m, r, fields))]
         for slot, v in verdicts:
@@ -686,7 +804,7 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None):
     from dss.spec.models import DashboardSpec
     ops = [json.loads(line) for line in compile_recipe(DashboardSpec.model_validate(snapshot['spec']), 1).split('\n')[1:-1]]
     for r in ledger.requirements:
-        if audience_requirement(r):
+        if audience_requirement(r, ledger):
             continue
         choice = _choice(r, 'unknown', snapshot, ledger, checker)
         if choice and choice['action'] == 'drop':
@@ -840,6 +958,10 @@ def verification(snapshot, ledger, checker):
         if issue.resolution != "unresolved":
             resolved.setdefault(target.id, []).append((issue, slot))
     for r in ledger.requirements:
+        if audience_requirement(r, ledger):
+            proof[r.id] = [{'status': 'context', 'kind': 'audience', 'reason': 'Recognized audience clause of the original message; no capability assertion',
+                            'source_id': r.source.id}]
+            continue
         rows = []
         for need in r.needs:
             verdict = checker.need(need, fields)
@@ -856,8 +978,7 @@ def verification(snapshot, ledger, checker):
         for issue, slot in resolved.get(r.id, []):
             rows.append({"slot": slot, "resolution": issue.resolution,
                          "decision": _choice(r, slot, snapshot, ledger, checker)})
-        proof[r.id] = rows or ([{'status': 'context', 'kind': 'audience', 'reason': 'Recognized audience metadata; no capability assertion', 'source_id': r.source.id}]
-                              if audience_requirement(r) else [{"status": "unknown", "reason": "No registered capability covers this requirement"}])
+        proof[r.id] = rows or [{"status": "unknown", "reason": "No registered capability covers this requirement"}]
     return proof
 
 
