@@ -641,3 +641,6 @@ context. Task status lives in docs/plan.md, not here.
 - Question: how should planner/provider compatibility be restored?
 - Options: A isolate minimal counted request / B verify another planner / Recommend: A.
 - Next: architect recovers stash, isolates SDK/callback failure, authorizes fix, reruns checks.
+
+## 2026-10-20: Change conventions 1.2 (program)
+- What changed: contracts/conventions.md 1.1 -> 1.2 renames the Cloud Run service `dss` -> `dss-frontend` (keeps the submitted URL); this part's essentials Contracts row now says 1.2. Nothing this part reads or provides changed; no task affected.

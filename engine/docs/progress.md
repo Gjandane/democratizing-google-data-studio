@@ -294,3 +294,6 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond recorded knowledge.
 - Left open: none. Final reviewer: no findings.
 - Next: engine final audit/retro with blueprint-solution-architect in a new chat.
+
+## 2026-10-20: Change conventions 1.2 (program)
+- What changed: contracts/conventions.md 1.1 -> 1.2 renames the Cloud Run service `dss` -> `dss-frontend` (keeps the submitted URL); this part's essentials Contracts row now says 1.2. Nothing this part reads or provides changed; no task affected.

@@ -79,3 +79,26 @@ context. Task status lives in docs/plan.md, not here.
 - Checks: `lint` 0 errors in release, backend and frontend; `program` 0 problems; waits: frontend 10.1 on backend 11.8, release 3.3 on backend 11.8/12.4/12.5 + frontend 11.1. No delta audit (POC target).
 - Left open: release and frontend plan audits still pending from 2026-10-19; root and frontend essentials are slightly over one page (existing).
 - Next: backend 10.1, then backend 11.x/12.x; frontend 10.1 after backend 11.8.
+
+## 2026-10-20: Supplement screenshot-only synthetic data
+- Status: supplement delivered to the current planning documents; no additional review requested.
+- User direction: another architect is already reviewing; only supplement the changes.
+- What changed in this continuation: docs/synthetic-data-supplement.md and this append-only progress entry. The supplement explains the no-CSV flow, schema/count/seed API example, reusable Python function/CLI, local/GCS-backed storage, current task ownership and acceptance reminders.
+- Coordination: inspected the other architect's current task split (backend 12.1-12.5), synthetic-data.md 1.1 and latest program decisions. Those supersede this session's earlier v1.0 manifest draft; no shared plan/contract/architecture, task marker, approval status or deadline changed in this continuation.
+- Checks: embedded request parses as JSON; row_count=1000 and the revenue product references preceding declared numeric columns. No implementation, live CSV generation, full test suite or duplicate audit claimed.
+- Next: the existing architect review proceeds from current contracts/plans, with this supplement as explanatory context. No new build task or approval gate added.
+
+
+## 2026-10-20: Change final phases (release/program)
+- Request (user): audit the final steps once engine, backend and frontend are finished: local integration with the user's manual test of four dashboard types (CSV upload, research mode, screenshot recreation with synthetic data, BigQuery), then upload the consolidated working version to GitHub with empty env files and an md of features, capabilities and simplified architecture (graph engineering, harness with memories and OKF instead of RAG, Google Cloud diagrams) with a short pitch, and lastly deploy to Cloud Run; links: https://github.com/Gjandane/democratizing-google-data-studio and https://dss-frontend-872000338860.asia-southeast1.run.app.
+- Found: the prod URL serves the static frontend only (`/api/health` returns index.html), service `dss-frontend`, project wti-bigquery-poc; local main is 52 commits ahead of origin/main (fast-forward); gcloud credentials expired; the cup template was modified (the user's team details); no large blobs or forbidden paths in history; 121 frontend screenshots tracked.
+- User choices (cards): deploy the full image as `dss-frontend` (conventions.md 1.2); add GCS as a fifth manual source; the builder pushes after the user confirms; no further deck work.
+- What changed: contracts/conventions.md 1.2 (service name); docs/program.md (Delivery, Final phases, Integration checks, decision log); docs/PRD.md (goals 3-9, non-goals, success criteria, acceptance inputs); docs/architecture-essentials.md; docs/plan.md phases 2-4 re-sequenced: 2.1-2.3 unchanged, 2.4 manual CSV/research/BigQuery/GCS (L), 2.5 local reference/refusal/synthetic e2e (L, old 3.3 local half), 2.6 manual screenshot + synthetic (S), 3.1 README (M), 3.2 repo ready and first push (S), 4.1 Dockerfile and deploy to dss-frontend (M), 4.2 hosted e2e (S), 4.3 hosted reference/synthetic (M, old 3.3 hosted half), 4.4 README hosted and final push (S); old 4.2 deck task removed. Stale IDs fixed in contracts/synthetic-data.md (planned-implementation line), docs/synthetic-data-supplement.md and frontend/docs/plan.md; parts' essentials list conventions 1.2.
+- Change requests settled: none open in release.
+
+## 2026-10-20: Audit (delta, final phases)
+- Reviewer (blueprint-reviewer, opus, high): 1 blocker, 6 major, 6 minor; all 13 accepted by the user and applied.
+- Applied: B1 deploy guard (project number 872000338860 and the existing service URL checked before any mutation; .env parsed, not sourced); M1 every deploy sets SA, port 8080, ingress all, full env and secrets, traffic to latest, rollback note; M2 history path and blob checks plus review of tracked images; M3 strip-safe secret scan that skips empty values (new integration/check_repo.py); M4 d5 shows the reference/capability/synthetic nodes, 4.4 refreshes d8; M5 STOPs in 2.5 and 4.3, sizes L; M6 manual test split so CSV/research/BigQuery/GCS run right after 2.3; m1 stale IDs and PRD wording; m2 fetch, remote URL, declined files ignored, author emails shown; m3 all project values empty in .env.example; m4 README command rule and link check; m5 judges' access code, GCS reader role, hosted claims only where proven; m6 deck TBD decision in the 3.2 STOP, generated reference image.
+- Checks: `blueprint.py lint` release 0 errors 0 warnings; `program` 0 problems.
+- Left open: backend 11.8's latest entry asks the architect to rule on planner/provider compatibility; 2.5, 2.6 and 4.3 wait on it (and backend 12.x, frontend 10.1/11.1). 2.1-2.4 don't.
+- Next: release 2.1 (start scripts) once its session can commit (uncommitted part work in the tree).

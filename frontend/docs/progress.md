@@ -278,3 +278,7 @@ context. Task status lives in docs/plan.md, not here.
 - Affects: 10.1, 11.1 gates; no task content beyond the `If:`.
 - Checks: `lint` frontend 0 errors; `program` 0 problems, 10.1 waits on backend 11.8.
 - Left open: plan audit still pending from the 2026-10-19 reference/capability change.
+
+## 2026-10-20: Change conventions 1.2 (program)
+- What changed: contracts/conventions.md 1.1 -> 1.2 renames the Cloud Run service `dss` -> `dss-frontend` (keeps the submitted URL); this part's essentials Contracts row now says 1.2. Nothing this part reads or provides changed; no task affected.
+- Also: plan 11.1's `If:` now points at release 2.5 (old 3.3 renumbered).

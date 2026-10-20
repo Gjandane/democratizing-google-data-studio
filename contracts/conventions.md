@@ -1,11 +1,14 @@
 # Conventions (shared by every part)
-Version 1.1 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
+Version 1.2 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
 (added DSS_ALLOWED_TYPES, DSS_CONSOLIDATE_EVERY, DSS_ENGINE_TIMEOUT_S, background_p<n>.png, engine lock).
 1.1 (2026-10-19) Cloud Run deployment: one hosted service, access code, local build agent, DB backup
 (added PORT, DSS_STATIC_DIR, DSS_ACCESS_CODE, DSS_ENGINE_MODE, DSS_AGENT_SERVER,
 DSS_DB_PATH, GCP_REGION; sections Cloud deployment and Build agent), revised the same day by the
 delta audit before any build (DSS_AGENT_TOKEN, DSS_DEV, agent paths and `--dry-run`, roles,
 fail-closed start, backup cadence).
+1.2 (2026-10-20) Cloud Run service renamed `dss` -> `dss-frontend` (keeps the submitted URL
+https://dss-frontend-872000338860.asia-southeast1.run.app; the full image replaces the earlier
+static-frontend revision of that service). No other name, path or behaviour changed.
 Only the architect at the program root edits this file. Parts read it; they never edit it.
 
 ## Ports and URLs
@@ -102,7 +105,7 @@ backend stores them in SQLite. The API key is write-only through the API: it is 
   a run.
 
 ## Cloud deployment
-- One Cloud Run service (name `dss`, region `GCP_REGION`, execution environment gen2) runs one
+- One Cloud Run service (name `dss-frontend`, region `GCP_REGION`, execution environment gen2) runs one
   container image built from the root `Dockerfile`: the backend plus the built frontend
   (`DSS_STATIC_DIR`), Playwright Chromium for `background_p<n>.png`, no engine.
   `DSS_ENGINE_MODE=agent`. Startup probe on `GET /api/health`. Never `DSS_DEV`.

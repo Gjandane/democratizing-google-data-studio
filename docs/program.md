@@ -77,28 +77,37 @@ Written 2026-10-18.
 ## Contracts
 | Contract | Version | Provider | Consumers | Conformance check |
 |---|---|---|---|---|
-| contracts/conventions.md | 1.1 | program | engine, backend, frontend, release | release: `uv run --project integration python integration/check_contracts.py` (the one root `.env.example` has every name); manual: each part's config reads these names, ports and paths |
+| contracts/conventions.md | 1.2 | program | engine, backend, frontend, release | release: `uv run --project integration python integration/check_contracts.py` (the one root `.env.example` has every name); manual: each part's config reads these names, ports and paths |
 | contracts/recipe.md | 1.0 | backend (recipe), engine (events) | engine, backend, release | engine: `uv run pytest tests/test_contract.py`; backend: `uv run pytest tests/test_recipe_contract.py` |
 | contracts/api.md | 1.4 | backend | frontend, release | backend: `uv run pytest tests/test_api_contract.py`; frontend: `npm test -- contract`; both against contracts/fixtures/api/ |
-| contracts/dashboard-intent.md | 1.1 | backend | frontend, release | backend: capability/reference/feasibility tests; frontend: contract and reference tests; release: task 3.3 |
-| contracts/synthetic-data.md | 1.1 | backend | frontend, release | backend synthetic tests, frontend 11.1, release 3.3 |
+| contracts/dashboard-intent.md | 1.1 | backend | frontend, release | backend: capability/reference/feasibility tests; frontend: contract and reference tests; release: tasks 2.5 and 4.3 |
+| contracts/synthetic-data.md | 1.1 | backend | frontend, release | backend synthetic tests, frontend 11.1, release 2.5, 2.6 and 4.3 |
 
 ## Delivery
-- Targets: one GitHub repo (this folder; the user pushes) and one Cloud Run service `dss` in the
-  user's GCP project (`bash deploy/deploy.sh`, after the user confirms; the user owns the billing).
+- Targets: one GitHub repo, https://github.com/Gjandane/democratizing-google-data-studio (this
+  folder, branch `main`; the release builder pushes only after the user confirms on a card, change
+  2026-10-20 final phases), and one Cloud Run service `dss-frontend` in the user's GCP project,
+  region asia-southeast1, URL https://dss-frontend-872000338860.asia-southeast1.run.app (the URL
+  already submitted; `bash deploy/deploy.sh`, after the user confirms; the user owns the billing).
+- Final order (change 2026-10-20 final phases): local integration and the user's manual acceptance
+  of five dashboard sources (CSV upload, research mode, screenshot + synthetic data, BigQuery,
+  GCS) -> README and the first GitHub push -> Cloud Run deploy and hosted acceptance -> final push.
 - Start everything locally: `./start.ps1` (Windows) or `./start.sh`: backend on 8000, frontend on 5173.
 - Hosted: the Cloud Run URL plus the access code; builds need `uv run --project backend dss-agent`
   running on the user's machine.
 - Ships: all code, the planning docs (docs/, AGENTS.md, CLAUDE.md: they show the process), the
-  submission deck `deck/AI-Builder-Cup-Submission.pptx` and `.pdf` (filled from the root
-  `Submission Template _ AI Builder Cup.pptx`, which stays unchanged), README, MIT LICENSE, a sample
-  CSV (e-commerce sales) as the guaranteed demo path. Never `.env`, `data/`, `.chrome-profile/`.
+  submission deck draft `deck/AI-Builder-Cup-Submission.pptx` and `.pdf` as built by release 1.3
+  (no further deck work: change 2026-10-20 final phases), README (pitch, features, capabilities,
+  simplified architecture), MIT LICENSE, a sample CSV (e-commerce sales) as the guaranteed demo
+  path. Never `.env`, `data/`, `.chrome-profile/`; every `.env.example` has names only.
 - CI: none.
 
 ## Roadmap
 Re-planned 2026-10-19 (change 2026-10-19, revised by its delta audit). State then: engine 7/9
 (4.2 in progress), frontend 10/11, backend 0 done (no code yet: the critical path), release 0/11.
 Times are targets for 2026-10-19/20 (MPST). Backend runs in two sessions (A and B) on disjoint files.
+Release task IDs in items 1-6 are the pre-2026-10-20 numbering; the current order is "Final
+phases" below.
 1. 01:30-09:00: backend A 1.1-1.3, 3.1-3.3 (critical path); backend B, once 1.3 is done: 5.1
    (cloud mode), then 2.1; engine 4.2; frontend 5.1 (access gate, agent panel; against the
    fixtures); release 1.1, 1.2 (diagrams), 1.3 (deck draft).
@@ -121,8 +130,8 @@ Times are targets for 2026-10-19/20 (MPST). Backend runs in two sessions (A and 
 - Required scope change 2026-10-19 (task IDs per backend's split, change 2026-10-20): backend 9.7
   (done), backend 10.1, then backend 11.1-11.8 and 12.1-12.5; frontend 10.1 follows backend 11.8,
   then frontend 11.1 follows backend 12.3 (synthetic API complete; the backend prototype label
-  from 12.5 is checked in release 3.3 if 12.5 lands later); release 3.3 follows backend 11.8,
-  12.4, 12.5 and frontend 11.1, i.e. all required feature work. These take precedence
+  from 12.5 is checked in release 2.5 if 12.5 lands later); release 2.5 follows backend 11.8,
+  12.4, 12.5 and frontend 10.1, 11.1, i.e. all required feature work. These take precedence
   over further stretch expansion; existing release infrastructure can continue.
   Images and feasibility cannot be silently cut. If these gates threaten the deadline, report
   the conflict for the user's scope decision. Earlier clock slots are historical targets.
@@ -131,12 +140,26 @@ Times are targets for 2026-10-19/20 (MPST). Backend runs in two sessions (A and 
   eval script (backend 7.2), history re-edit, consolidation (backend 6.2),
   episodic depth (backend 6.1), then the agent client (backend 5.3). Without 5.3 the hosted app
   runs in agent mode with no agent: Build shows the offline panel, the live build is shown from
-  the local app, and the deck takes release 4.2's local-only path. Backend 5.2 is the minimum for
+  the local app. Backend 5.2 is the minimum for
   that fallback; Cloud Run without the engine can't build in local mode.
 - If engine chart ops slip: set `DSS_ALLOWED_TYPES` to the types the engine passes; the spec node
   and validator then only use those.
-- Must survive: reference style/recreation and feasibility rejection (release 3.3), plus CSV -> interview -> prototype -> one comment edit -> recipe -> live build -> link
+- Must survive: reference style/recreation and feasibility rejection (release 2.5 and 4.3), plus CSV -> interview -> prototype -> one comment edit -> recipe -> live build -> link
   (locally), and the same flow at the Cloud Run URL at least to the recipe.
+- Final phases (change 2026-10-20 final phases), once backend 12.5 and frontend 11.1 are done
+  (engine is done):
+  1. Local: release 2.1 start scripts, 2.2 dry-run e2e, 2.3 live e2e and 2.4 the user's manual
+     acceptance of CSV, research, BigQuery and GCS (STOP) need no further part work; 2.5
+     reference/synthetic e2e waits on backend 12.5 and frontend 11.1; 2.6 the user's manual
+     screenshot + synthetic acceptance (STOP) follows it.
+  2. GitHub: release 3.1 README, 3.2 repo ready and first push (STOP before the push).
+  3. Cloud Run: release 4.1 Dockerfile and deploy to `dss-frontend` (STOP before the deploy),
+     4.2 hosted e2e through the local agent, 4.3 hosted reference/synthetic acceptance, 4.4
+     README hosted section and final push (STOP before the push).
+  If the deadline nears with Cloud Run unfinished, the repo from 3.2 is already the working
+  version: report it and let the user decide; never skip 2.4 or 2.6 to reach the deploy. If 2.5 or 2.6 is
+  blocked near the deadline, the user decides on a card (change flow) whether to push with the
+  screenshot feature tagged "planned"; never silently.
 
 ## Integration checks
 - `uv run --project integration python integration/check_contracts.py`: the recipe and event
@@ -151,7 +174,10 @@ Times are targets for 2026-10-19/20 (MPST). Backend runs in two sessions (A and 
   a `https://datastudio.google.com/` link; with `dss-agent --dry-run` the same run reaches `done`
   without touching Data Studio.
 
-- Required image/capability acceptance: release 3.3 runs `integration/e2e_references.py --live`
+- Manual acceptance (release 2.4 and 2.6): the user builds one dashboard per source through the local UI
+  (CSV upload, research mode, screenshot + synthetic data, BigQuery table, CSV in GCS); each row in
+  docs/acceptance.md has a Data Studio link and the user's PASS.
+- Required image/capability acceptance: release 2.5 (local) and 4.3 (hosted) run `integration/e2e_references.py --live`
   locally and with `--server <Cloud Run URL>`; scenario oracle is dashboard-intent.md.
 
 ## Research facts (2026-10-18)
@@ -214,3 +240,8 @@ Times are targets for 2026-10-19/20 (MPST). Backend runs in two sessions (A and 
 | 2026-10-20 | Deadline moved to 2026-10-23 01:05 MPST | keep 2026-10-20 01:05 | user request (exact time confirmed) | change 2026-10-20 |
 | 2026-10-20 | Cross-part gates follow backend's task split: frontend 10.1 needs backend 11.8, frontend 11.1 needs backend 12.3, release 3.3 needs backend 11.8, 12.4, 12.5 and frontend 11.1 | frontend 11.1 waits for backend 12.5 | frontend starts as soon as the synthetic API is complete; release 3.3 already checks the backend label | change 2026-10-20 (user choice) |
 | 2026-10-20 | synthetic-data.md 1.1: generation table plus immediate best-effort DB backups after reservation and after registration; startup fails in-flight jobs and cleans their own artifacts; replay stays idempotent | immutable manifests + startup reconciliation; fail-closed 503 on backup failure | same guarantee for the POC with the existing backup path, no new files or error code | change 2026-10-20 (user choice; backend audit finding 4) |
+| 2026-10-20 | Final phases re-sequenced: local integration + manual acceptance of five sources -> README + GitHub push -> Cloud Run -> final push; release 3.3 split into local (2.5) and hosted (4.3) | old order (Cloud Run before README/repo) | user's order: test locally first, publish the working version, deploy last | change 2026-10-20 final phases (user choice) |
+| 2026-10-20 | Deploy the full image as service `dss-frontend` (conventions.md 1.2), replacing its static-frontend revision | new service `dss` with a new URL | keeps the already-submitted URL; same origin as before | change 2026-10-20 final phases (user choice) |
+| 2026-10-20 | The release builder pushes to origin main after the user confirms on a card | the user pushes | user choice; history is checked for secrets first | change 2026-10-20 final phases (user choice) |
+| 2026-10-20 | No further deck work: the 1.3 draft ships; README is the judge-facing document | finish deck with screenshots and benchmark | already submitted; user choice | change 2026-10-20 final phases (user choice) |
+| 2026-10-20 | GCS joins the four manual acceptance sources | four sources only | README claims GCS; every claimed source gets a tested row | change 2026-10-20 final phases (user choice) |

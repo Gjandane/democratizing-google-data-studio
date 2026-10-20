@@ -61,7 +61,7 @@ tests/          offline fakes; tests/live/ explicitly marked live
 |---|---|---|---|
 | ../contracts/api.md | 1.4 | provides | `uv run pytest tests/test_api_contract.py` |
 | ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.0 | provides recipes; consumes events | `uv run pytest tests/test_recipe_contract.py` |
-| ../contracts/conventions.md | 1.1 | consumes | manual: env names, ports, paths and IDs match |
+| ../contracts/conventions.md | 1.2 | consumes | manual: env names, ports, paths and IDs match (1.2 renames the Cloud Run service only) |
 | ../contracts/dashboard-intent.md | 1.1 | provides | `uv run pytest tests/test_api_contract.py tests/test_feasibility.py` |
 | ../contracts/synthetic-data.md | 1.1 | provides | `uv run pytest tests -k synthetic` |
 
