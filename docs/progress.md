@@ -172,3 +172,18 @@ context. Task status lives in docs/plan.md, not here.
   or live integration rerun in this documentation-only session.
 - Next: open backend/ for task 14.1, then this root for release 2.2 (M); restore the saved
   driver and rerun its Done when and root Test (all). All later release tasks stay in order.
+
+## 2026-10-21: Task 2.2 End-to-end flow 1 and 3, dry-run engine
+- Status: blocked
+- Plan check: off
+- What changed: recovered driver; later answers explicitly define all three aggregates and monthly order_date. Preserved in stash `blueprint: task 2.2 failed attempt 2026-10-21 02:11`; no part edits.
+- Checks: `uv run --project integration python integration/e2e_flow1.py --version2` FAIL: upload, interview start and all three answers passed; planning rejected. Test (all) `check_contracts.py` PASS 9/9. Read-only reviewer: no findings. No benchmark. Services stopped; `.env` restored (`DSS_ENGINE_DRY_RUN=0`).
+- Decisions: obey the part-failure rule; preserve audience context and feasibility enforcement.
+- Tried and failed: explicit SUM(revenue), COUNT(DISTINCT order_id), SUM(quantity), monthly order_date did not clear feasibility after backend 14.1.
+- Gotchas: none.
+- Left open: full flow and benchmark verification.
+- Blocked because: (a) backend repair requires forbidden part edits.
+- Question: How should backend resolve these explicit metric definitions and the ordinary theme request?
+- Options: A architect plans backend repair / B architect authorizes revised fixture/decision flow / Recommend: A.
+- Evidence: build `b_04db6ec42f78`, POST `/plan` HTTP 409, body excerpts: `{"error":{"code":"feasibility_blocked","detail":{"assessment_id":"assessment_93df75178f30"}}}`; "proposed order_id is not an explicit definition"; "proposed quantity is not an explicit definition". GET `/feasibility` HTTP 200: seven unresolved issues, including explicit formulas, revenue sum confirmation and unknown blue-theme request.
+- Next: architect resolves backend feasibility; recover the 02:11 stash with `git stash apply`, then rerun release 2.2.
