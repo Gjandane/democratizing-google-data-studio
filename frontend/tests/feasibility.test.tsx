@@ -238,6 +238,132 @@ describe('Explicit requirements and decisions', () => {
   });
 });
 
+describe('Background refetch keeps the last assessment (task 12.1)', () => {
+  const docs: BuildEvent = { name: 'docs.updated', data: { docs: [] } };
+  const pendingGet = () => {
+    let resolve!: (value: Assessment) => void;
+    const get = vi.spyOn(api, 'getFeasibility').mockImplementation(() => new Promise((r) => { resolve = r; }));
+    return { get, resolve: (value: Assessment) => act(async () => resolve(value)) };
+  };
+  async function gatesWithRecipe() {
+    setMockAssessment(id, ready);
+    render(<Gates />);
+    await waitFor(() => expect(disabled('Generate plan')).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'Generate recipe' }));
+    await waitFor(() => expect(disabled('Build in Data Studio')).toBe(false));
+  }
+
+  it('keeps a blocked issue list, its selection and focus on Use this alternative while the GET is pending', async () => {
+    await panel();
+    expect(screen.getByText('Resolve these requirements before generating or building.')).toBeTruthy();
+    const issue = within(assessmentPanel()).getAllByRole('group')[0]!;
+    const radio = within(issue).getByRole('radio', { name: 'Geo map of revenue by region' }) as HTMLInputElement;
+    fireEvent.click(radio);
+    const use = within(issue).getByRole('button', { name: 'Use this alternative' });
+    use.focus();
+    const { get } = pendingGet();
+    fire(finished('elsewhere', 'interview'));
+    fire(docs);
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(within(assessmentPanel()).getAllByRole('group')[0]).toBe(issue);
+    expect(document.activeElement).toBe(use);
+    expect(use.matches(':disabled')).toBe(false);
+    expect(radio.checked).toBe(true);
+    expect(screen.queryByText('Loading feasibility…')).toBeNull();
+  });
+
+  it('keeps Generate plan, recipe and Build enabled for a loaded ready assessment until the refetch lands, then follows it', async () => {
+    await gatesWithRecipe();
+    const { get, resolve } = pendingGet();
+    fire(docs);
+    fire(finished('elsewhere', 'interview'));
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('Your requirements are resolved.')).toBeTruthy();
+    expect(disabled('Generate plan')).toBe(false);
+    expect(disabled('Regenerate')).toBe(false);
+    expect(disabled('Build in Data Studio')).toBe(false);
+    expect(screen.queryByText('Loading feasibility…')).toBeNull();
+    await resolve(fixtures.feasibilityAlternatives);
+    await screen.findByText('Animate GPS points along a route.');
+    expect(disabled('Generate plan')).toBe(true);
+    expect(disabled('Regenerate')).toBe(true);
+    expect(disabled('Build in Data Studio')).toBe(true);
+  });
+
+  it('keeps the gates closed after a run until its refetch lands, never reopening on the pre-run assessment', async () => {
+    setMockAssessment(id, ready);
+    render(<Gates />);
+    await waitFor(() => expect(disabled('Generate plan')).toBe(false));
+    fire({ name: 'run.started', data: { run_id: 'chat', node: 'interview' } });
+    expect(disabled('Generate plan')).toBe(true);
+    const { resolve } = pendingGet();
+    fire(finished('chat', 'interview'));
+    expect(disabled('Generate plan')).toBe(true);
+    await resolve(ready);
+    expect(disabled('Generate plan')).toBe(false);
+  });
+
+  it('fails closed when a background refetch fails, and stays closed while Retry is pending', async () => {
+    await gatesWithRecipe();
+    vi.spyOn(api, 'getFeasibility').mockRejectedValueOnce(new ApiError(500, 'failed', 'Try loading again.'));
+    fire(docs);
+    await screen.findByText("Couldn't load feasibility");
+    expect(disabled('Generate plan')).toBe(true);
+    expect(disabled('Regenerate')).toBe(true);
+    expect(disabled('Build in Data Studio')).toBe(true);
+    const { resolve } = pendingGet();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry feasibility' }));
+    expect(screen.getByText("Couldn't load feasibility")).toBeTruthy();
+    expect(disabled('Generate plan')).toBe(true);
+    expect(disabled('Build in Data Studio')).toBe(true);
+    await resolve(ready);
+    expect(screen.queryByText("Couldn't load feasibility")).toBeNull();
+    expect(disabled('Generate plan')).toBe(false);
+    expect(disabled('Build in Data Studio')).toBe(false);
+  });
+
+  it('drops a late response for an older refetch, in the panel and the gates', async () => {
+    setMockAssessment(id, ready);
+    render(<Gates />);
+    await waitFor(() => expect(disabled('Generate plan')).toBe(false));
+    let resolveOld!: (value: Assessment) => void;
+    vi.spyOn(api, 'getFeasibility').mockImplementationOnce(() => new Promise((r) => { resolveOld = r; })).mockResolvedValueOnce(fixtures.feasibilityAlternatives);
+    fire(docs);
+    fire(finished('newer'));
+    await screen.findByText('Animate GPS points along a route.');
+    await act(async () => resolveOld(ready));
+    expect(screen.getByText('Animate GPS points along a route.')).toBeTruthy();
+    expect(screen.queryByText('Your requirements are resolved.')).toBeNull();
+    expect(disabled('Generate plan')).toBe(true);
+  });
+
+  it('drops a GET sent before a discard once the discard response lands', async () => {
+    const saved = fixtures.feasibilityPending;
+    await panel(saved);
+    const { resolve } = pendingGet();
+    fire(docs);
+    vi.spyOn(api, 'discardComments').mockResolvedValue({ ...saved, id: 'after_discard', pending_comments: null });
+    fireEvent.click(screen.getByRole('button', { name: 'Discard pending comments' }));
+    await screen.findByText('Pending comments discarded. Review the current assessment.');
+    expect(screen.queryByRole('list', { name: 'Saved comments' })).toBeNull();
+    await resolve(saved);
+    expect(screen.queryByRole('list', { name: 'Saved comments' })).toBeNull();
+  });
+
+  it.each([
+    ['no issues', ready],
+    ['only resolved issues', { ...fixtures.feasibilityAlternatives, state: 'ready', issues: fixtures.feasibilityAlternatives.issues.map((issue) => ({ ...issue, resolution: 'dropped' })) } as Assessment],
+  ])('renders a ready assessment with %s as one line of text', async (_, value) => {
+    await panel(value);
+    const region = assessmentPanel();
+    expect(region.textContent).toBe('FeasibilityYour requirements are resolved.');
+    expect(within(region).queryAllByRole('button')).toHaveLength(0);
+    expect(within(region).queryAllByRole('group')).toHaveLength(0);
+    expect(within(region).getByText('Your requirements are resolved.').parentElement).toBe(region);
+    expect(region.className).toContain('flex');
+  });
+});
+
 
 describe('Saved comment batches and stale repair', () => {
   const saved = fixtures.feasibilityPending;

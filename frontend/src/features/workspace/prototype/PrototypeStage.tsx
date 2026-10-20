@@ -129,7 +129,8 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
 
   return (
     <div className="mt-6 flex flex-col gap-4">
-      <ReferencePanel buildId={build.id} version={build.current_version} disabled={busy} onReadyChange={onReferenceReadyChange} />
+      {/* Collapsed so the canvas top shows above the fold; chat's Attach reference opens it. */}
+      <ReferencePanel buildId={build.id} version={build.current_version} disabled={busy} defaultOpen={false} onReadyChange={onReferenceReadyChange} />
       {!audit.hidden && (
         <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
           <div aria-live="polite" className="text-body text-text-muted">

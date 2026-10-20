@@ -46,9 +46,9 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 
 - Headless CDP keyboard checks: Enter activation needs an `Input.dispatchKeyEvent` char event with `text: "\r"`; keyDown/keyUp alone may move focus without clicking.
 
-- Resource-panel tests: a GET spy call only means a refetch started; await the loaded control before asserting its disabled state (loading temporarily removes controls).
+- Resource-panel tests: a GET spy call only means a refetch started, and a background refetch keeps the old content, controls and gates: await what the new result renders, or hold the GET on a pending promise to assert the in-between state.
 
-- Feasibility test helpers must wait for loading to clear rather than issue text: resolved requirements are intentionally hidden.
+- Feasibility test helpers: "Loading feasibility…" shows only before the first load, so wait for it to clear once; after that await the new result's text (resolved requirements are hidden, a ready assessment is one line).
 - Never `git stash` (not even to compare with baseline): it stashes the whole program repo, other parts and concurrent sessions included, and `pop` rewrites LF files as CRLF (core.autocrlf=true). Rerun a suspect test alone instead.
 - Headless Chrome driven by separate CDP scripts: `Emulation.setDeviceMetricsOverride` resets when the client disconnects; size the window with `Browser.setWindowBounds` instead (headless adds 26x100 px: 1306x900 gives a 1280x800 viewport).
 

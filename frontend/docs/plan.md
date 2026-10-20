@@ -182,7 +182,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: backend 12.5 is not `[x]` yet -> the label inside the backend-rendered prototype is not checked here (the UI's own source/prototype labels still are); release 2.5 checks it. Note this under Left open.
 
 ## Phase 12: Audit fixes (final re-audit 2026-10-20, after Phase 11)
-- [ ] 12.1 Strip test, steady feasibility refetch and Prototype fold
+- [x] 12.1 Strip test, steady feasibility refetch and Prototype fold
   - Goal: test the reference_extract and reference_delete strip phrases (10.1 Done when 7); a background refetch of the assessment or reference set keeps the panel, its controls and focus in place, and the gates keep their last loaded state until it lands (no "Loading feasibility…" blink, no Generate/Build flicker after each chat reply); on Prototype the References panel starts collapsed and a ready assessment with no open issue is one line, so the canvas top shows above the fold at 1280x800.
   - Spec: docs/reference-ui.md#Controls and states
   - Files: src/features/workspace/FeasibilityPanel.tsx, src/features/workspace/ReferencePanel.tsx, src/features/workspace/WorkspaceShell.tsx, src/features/workspace/prototype/PrototypeStage.tsx, src/features/workspace/chat/ChatPanel.tsx, tests/references.test.tsx, tests/feasibility.test.tsx, tests/prototype.test.tsx, AGENTS.md, screenshots/

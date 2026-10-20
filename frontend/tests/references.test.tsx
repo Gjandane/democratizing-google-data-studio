@@ -4,6 +4,9 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../src/api/client';
 import { ApiError, type Build, type BuildEvent } from '../src/api/types';
+import { ActivityStrip } from '../src/features/activity/ActivityStrip';
+import { reduceActivity } from '../src/features/activity/activity';
+import { GENERIC, presetFor } from '../src/features/activity/presets';
 import { DoneStage } from '../src/features/history/DoneStage';
 import { ReferencePanel } from '../src/features/workspace/ReferencePanel';
 import { WorkspaceShell } from '../src/features/workspace/WorkspaceShell';
@@ -199,6 +202,76 @@ describe('Required references', () => {
     await waitFor(() => expect(button.disabled).toBe(false));
   });
 
+  it('keeps the saved set, its controls, focus and readiness during a background refetch', async () => {
+    const get = vi.spyOn(api, 'getReferences').mockResolvedValue(fixtures.referenceSet);
+    const ready = vi.fn();
+    render(<ReferencePanel buildId={buildId} onReadyChange={ready} />);
+    const image = await screen.findByRole('img');
+    await waitFor(() => expect(ready).toHaveBeenLastCalledWith(true));
+    ready.mockClear();
+    let resolve!: (value: null) => void;
+    get.mockReturnValue(new Promise((r) => { resolve = r; }));
+    const remove = screen.getByRole('button', { name: 'Remove references' });
+    remove.focus();
+    await fire({ name: 'docs.updated', data: { docs: [] } });
+    await fire(done('elsewhere'));
+    expect(get).toHaveBeenCalledTimes(3);
+    expect(screen.getByRole('img')).toBe(image);
+    expect(document.activeElement).toBe(remove);
+    expect(remove.matches(':disabled')).toBe(false);
+    expect(screen.queryByText('Loading references…')).toBeNull();
+    await act(async () => resolve(null));
+    await screen.findByText(/No references yet/);
+    expect(ready).not.toHaveBeenCalledWith(false);
+  });
+
+  it('never flickers Generate plan while a reference refetch is pending', async () => {
+    vi.spyOn(api, 'getBuild').mockResolvedValue({ ...fixtures.build, stage: 'interview' });
+    const get = vi.spyOn(api, 'getReferences').mockResolvedValue(null);
+    render(<MemoryRouter initialEntries={[`/builds/${buildId}`]}><Routes><Route path="/builds/:id" element={<WorkspaceShell />} /></Routes></MemoryRouter>);
+    const button = await screen.findByRole('button', { name: 'Generate plan' }) as HTMLButtonElement;
+    await waitFor(() => expect(button.disabled).toBe(false));
+    let resolve!: (value: null) => void;
+    get.mockReturnValue(new Promise((r) => { resolve = r; }));
+    const feasibility = vi.spyOn(api, 'getFeasibility');
+    const flips: boolean[] = [];
+    const observer = new MutationObserver(() => flips.push(button.disabled));
+    observer.observe(button, { attributes: true, attributeFilter: ['disabled'] });
+    await fire({ name: 'docs.updated', data: { docs: [] } });
+    expect(button.disabled).toBe(false);
+    await waitFor(() => expect(feasibility).toHaveBeenCalled());
+    await act(async () => { await feasibility.mock.results.at(-1)!.value; });
+    expect(button.disabled).toBe(false);
+    await act(async () => resolve(null));
+    expect(button.disabled).toBe(false);
+    observer.disconnect();
+    expect(flips).toEqual([]);
+  });
+
+  it('keeps Generate plan closed after Remove references until the post-delete assessment lands', async () => {
+    vi.spyOn(api, 'getBuild').mockResolvedValue({ ...fixtures.build, stage: 'interview' });
+    vi.spyOn(api, 'getReferences').mockResolvedValue(fixtures.referenceSet);
+    render(<MemoryRouter initialEntries={[`/builds/${buildId}`]}><Routes><Route path="/builds/:id" element={<WorkspaceShell />} /></Routes></MemoryRouter>);
+    const button = await screen.findByRole('button', { name: 'Generate plan' }) as HTMLButtonElement;
+    await waitFor(() => expect(button.disabled).toBe(false));
+    let resolveDelete!: () => void;
+    vi.spyOn(api, 'deleteReferences').mockReturnValue(new Promise((r) => { resolveDelete = r; }));
+    const real = api.getFeasibility;
+    const feasibility = vi.spyOn(api, 'getFeasibility');
+    fireEvent.click(screen.getByRole('button', { name: 'Remove references' }));
+    expect(button.disabled).toBe(true);
+    // The GET sent when Remove started lands before the DELETE does.
+    await waitFor(() => expect(feasibility).toHaveBeenCalled());
+    await act(async () => { await feasibility.mock.results.at(-1)!.value; });
+    let resolveGet!: () => void;
+    feasibility.mockImplementation((id) => new Promise((r) => { resolveGet = () => r(real(id)); }));
+    await act(async () => resolveDelete());
+    await screen.findByText('References removed.');
+    expect(button.disabled).toBe(true);
+    await act(async () => resolveGet());
+    await waitFor(() => expect(button.disabled).toBe(false));
+  });
+
   it('keeps Attach reference working in the Build view and guards recipe/Build after a failed refresh', async () => {
     const get = vi.spyOn(api, 'getReferences').mockResolvedValue(null);
     const run = vi.spyOn(api, 'runBuild');
@@ -226,5 +299,17 @@ describe('Required references', () => {
     expect(build.disabled).toBe(true);
     fireEvent.click(build);
     expect(run).not.toHaveBeenCalled();
+  });
+});
+
+describe('Activity strip', () => {
+  it.each(['reference_extract', 'reference_delete'])('shows a %s phrase after its run.started', (node) => {
+    const preset = presetFor(node);
+    expect(preset).not.toBe(GENERIC);
+    const phrase = preset.phrases[0]!;
+    const activity = reduceActivity([], { name: 'run.started', data: { run_id: 'r_1', node } }, Date.now() - 1000);
+    render(<ActivityStrip activity={activity} />);
+    expect(screen.getByText(phrase)).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe(`${phrase}…`);
   });
 });

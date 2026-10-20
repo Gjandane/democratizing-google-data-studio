@@ -21,8 +21,10 @@ const referenceError = (error: unknown) => {
 };
 
 /** One retained reference set. Chat opens this same stage panel; it has no second SSE connection. */
-export function ReferencePanel({ buildId, version = 1, readOnly = false, disabled = false, onReadyChange, onSavedChange }: {
+export function ReferencePanel({ buildId, version = 1, readOnly = false, disabled = false, defaultOpen = true, onReadyChange, onSavedChange }: {
   buildId: string; version?: number; readOnly?: boolean; disabled?: boolean; onReadyChange?: (ready: boolean) => void;
+  /** Starts collapsed when false (Prototype); Attach reference still opens it. */
+  defaultOpen?: boolean;
   /** The saved set once loaded (null: none); undefined while loading or after a failed load. */
   onSavedChange?: (saved: ReferenceSet | null | undefined) => void;
 }) {
@@ -43,6 +45,7 @@ export function ReferencePanel({ buildId, version = 1, readOnly = false, disable
   const [status, setStatus] = useState('');
   const [focusRequest, setFocusRequest] = useState(0);
   const panel = useRef<HTMLElement>(null);
+  const summary = useRef<HTMLElement>(null);
   const firstMode = useRef<HTMLInputElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const upload = useRef<HTMLButtonElement>(null);
@@ -57,9 +60,10 @@ export function ReferencePanel({ buildId, version = 1, readOnly = false, disable
   const [externalBusy, setExternalBusy] = useState(false);
   const locked = busy || disabled || externalBusy;
   useRefocusAfter(busy, upload);
+  // A background refetch keeps the loaded set and readiness; an error stays (closed) until a GET succeeds.
   useLayoutEffect(() => {
-    readiness.current?.(loaded && !loading && !loadError && !busy);
-  }, [loaded, loading, loadError, busy]);
+    readiness.current?.(loaded && !loadError && !busy);
+  }, [loaded, loadError, busy]);
   useLayoutEffect(() => {
     savedChange.current?.(loaded && !loadError ? saved : undefined);
   }, [loaded, loadError, saved]);
@@ -68,6 +72,8 @@ export function ReferencePanel({ buildId, version = 1, readOnly = false, disable
     if (!focusRequest) return;
     panel.current?.scrollIntoView?.({ block: 'nearest' });
     firstMode.current?.focus();
+    // Read-only, loading or busy: the first choice can't take focus, so the panel's summary does.
+    if (document.activeElement !== firstMode.current) summary.current?.focus();
   }, [focusRequest]);
 
   useLayoutEffect(() => {
@@ -82,12 +88,12 @@ export function ReferencePanel({ buildId, version = 1, readOnly = false, disable
     let current = true;
     const load = async (initial = false) => {
       const seq = ++fetchSeq.current;
-      setLoadError(null);
       setLoading(true);
       try {
         const value = await api.getReferences(buildId);
         if (!current || seq !== fetchSeq.current) return;
         setLoading(false);
+        setLoadError(null);
         setSaved(value);
         setLoaded(true);
         if (initial && value && !dirty.current) { setMode(value.mode); setInstructions(value.instructions); }
@@ -152,11 +158,10 @@ export function ReferencePanel({ buildId, version = 1, readOnly = false, disable
 
   const reload = () => {
     const seq = ++fetchSeq.current;
-    setLoadError(null);
     setLoading(true);
     api.getReferences(buildId).then((value) => {
       if (!mounted.current || seq !== fetchSeq.current) return;
-      setLoading(false); setSaved(value); setLoaded(true);
+      setLoading(false); setLoadError(null); setSaved(value); setLoaded(true);
       if (value && !dirty.current) { setMode(value.mode); setInstructions(value.instructions); }
     }, (reason: unknown) => {
       if (mounted.current && seq === fetchSeq.current) { setLoading(false); setLoadError(referenceError(reason)); }
@@ -209,11 +214,11 @@ export function ReferencePanel({ buildId, version = 1, readOnly = false, disable
 
   return (
     <section ref={panel} aria-label="References" className="min-w-0 rounded-panel border border-border bg-surface p-4">
-      <details open>
-        <summary className={`cursor-pointer rounded-control text-title font-semibold text-text ${focusRing}`}>References</summary>
+      <details open={defaultOpen}>
+        <summary ref={summary} className={`cursor-pointer rounded-control text-title font-semibold text-text ${focusRing}`}>References</summary>
         <div className="mt-3 flex min-w-0 flex-col gap-3">
           {!loaded && !loadError && <LoadingState>Loading references…</LoadingState>}
-          {loadError && <ErrorState title="Couldn't load references" message={loadError} onRetry={reload} retryLabel="Retry references" />}
+          {loadError && <ErrorState title="Couldn't load references" message={loadError} onRetry={reload} retryLabel="Retry references" retryLoading={loading} />}
           {loaded && !saved && <p className="text-body text-text-muted">No references yet. Add a style example or a dashboard to recreate.</p>}
           {saved && <div className="min-w-0 space-y-2">
             <p className="text-body font-medium text-text">Saved mode: {modeName(saved.mode)}</p>

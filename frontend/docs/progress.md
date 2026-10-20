@@ -371,3 +371,14 @@ context. Task status lives in docs/plan.md, not here.
 - Tasks affected: 12.1 none (built as written); 12.2 removed.
 - Change requests: none open.
 - Next: finish task 12.1, then a re-audit (architect): blockers only.
+
+## 2026-10-20: Task 12.1 Strip test, steady feasibility refetch and Prototype fold
+- Status: done
+- Plan check: off
+- What changed: FeasibilityPanel and ReferencePanel keep the last assessment/set, controls and focus during a background refetch (loading text only before the first load; error kept until a GET succeeds); Prototype starts References collapsed (`defaultOpen`); a ready assessment with no open issue is one line. Tests for strip phrases, refetch, gates and fold.
+- Checks: `npm test` PASS (17 files/376 tests); `npm run typecheck` PASS; 12 new tests fail on HEAD code. Manual (mock, headless CDP): `screenshots/12.1-prototype-{1280x800,1440x900}.png`, canvas top 326 px, no overflow; keyboard: focus on Use this alternative kept through a held docs.updated refetch, Enter saves; Attach reference opens and focuses Use style.
+- Decisions: gates may only close while a refetch is pending (min with last emitted), so a finished run never reopens them on the pre-run assessment; referencesReady/refreshKey changes close the gates until their refetch lands (review P2). Mutation responses bump the request seq (`adopt`). Attach focus falls back to the summary. Draft-comments hint only beside Replan. WorkspaceShell/ChatPanel unchanged. AGENTS gotchas updated.
+- Tried and failed: none.
+- Gotchas: none new.
+- Left open: none.
+- Next: re-audit (architect); 12.2 was removed by the Phase 12 triage.

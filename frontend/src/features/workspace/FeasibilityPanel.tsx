@@ -26,7 +26,8 @@ export function FeasibilityPanel({ buildId, referencesReady = true, readOnly = f
   const id = useId();
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const current = useRef<Assessment | null>(null);
-  const [loading, setLoading] = useState(true);
+  // A GET is in flight. The last assessment, its controls and the gates stay until it lands.
+  const [refreshing, setRefreshing] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState('');
@@ -45,6 +46,7 @@ export function FeasibilityPanel({ buildId, referencesReady = true, readOnly = f
   const runs = useRef(new Set<string>());
   const notify = useRef(onReadyChange);
   notify.current = onReadyChange;
+  const shown = useRef<FeasibilityGates>(closed);
 
   const assessmentNotify = useRef(onAssessmentChange);
   assessmentNotify.current = onAssessmentChange;
@@ -57,33 +59,40 @@ export function FeasibilityPanel({ buildId, referencesReady = true, readOnly = f
     setAssessment(value);
     assessmentNotify.current?.(value);
   }, []);
+  // A mutation's own response is newer than any GET sent before it: drop those.
+  const adopt = (value: Assessment) => { ++seq.current; setRefreshing(false); accept(value); };
+  // The error stays until a GET succeeds, so a retry or background refetch never reopens the gates early.
   const load = useCallback(async () => {
     const request = ++seq.current;
-    setLoading(true);
-    setLoadError(null);
+    setRefreshing(true);
     try {
       const value = await api.getFeasibility(buildId);
       if (!mounted.current || request !== seq.current) return;
       accept(value);
-      setLoading(false);
+      setLoadError(null);
+      setRefreshing(false);
     } catch (reason) {
       if (!mounted.current || request !== seq.current) return;
-      setLoading(false);
+      setRefreshing(false);
       setLoadError(messageOf(reason));
     }
   }, [buildId, accept]);
 
   useLayoutEffect(() => {
-    const ready = !loading && !loadError && !busy && !externalBusy && referencesReady && (assessment?.state === 'ready' || assessment?.state === 'stale')
+    const ready = !loadError && !busy && !externalBusy && referencesReady && (assessment?.state === 'ready' || assessment?.state === 'stale')
       && assessment.issues.every((issue) => issue.resolution !== 'unresolved');
-    notify.current?.(ready ? { planReady: !assessment.pending_comments, buildReady: assessment.state === 'ready' && !assessment.prototype_stale && !assessment.pending_comments } : closed);
-  }, [assessment, loading, loadError, busy, externalBusy, referencesReady]);
+    const gates = ready ? { planReady: !assessment.pending_comments, buildReady: assessment.state === 'ready' && !assessment.prototype_stale && !assessment.pending_comments } : closed;
+    // While a refetch is pending a gate may close (a run, busy, references) but opens only on the new result.
+    const next = refreshing ? { planReady: gates.planReady && shown.current.planReady, buildReady: gates.buildReady && shown.current.buildReady } : gates;
+    shown.current = next;
+    notify.current?.(next);
+  }, [assessment, refreshing, loadError, busy, externalBusy, referencesReady]);
   useLayoutEffect(() => {
-    if (focusRequest && !loading && !busy) {
+    if (focusRequest && !refreshing && !busy) {
       heading.current?.focus();
       setFocusRequest(0);
     }
-  }, [focusRequest, loading, busy]);
+  }, [focusRequest, refreshing, busy]);
 
   useEffect(() => {
     mounted.current = true;
@@ -122,12 +131,17 @@ export function FeasibilityPanel({ buildId, referencesReady = true, readOnly = f
     });
     return () => { mounted.current = false; ++seq.current; unsubscribe(); };
   }, [buildId, load]);
-  // Reference mutations without a run (Remove) also invalidate feasibility.
-  useLayoutEffect(() => { void load(); }, [load, referencesReady, refreshKey]);
+  // Reference mutations without a run (Remove) also invalidate feasibility: close the gates until the refetch lands.
+  // Declared after the gate effect, so this wins over the gates it emitted from the old assessment in the same commit.
+  useLayoutEffect(() => {
+    shown.current = closed;
+    notify.current?.(closed);
+    void load();
+  }, [load, referencesReady, refreshKey]);
 
   const check = async (kind: 'check' | 'reapply' | 'replan' = 'check') => {
     const value = current.current;
-    if (locked.current || runs.current.size > 0 || externalBusy || loading || loadError || readOnly || !referencesReady) return;
+    if (locked.current || runs.current.size > 0 || externalBusy || !value || loadError || readOnly || !referencesReady) return;
     if (kind !== 'check' && (!value?.id || !['ready', 'stale'].includes(value.state) || value.issues.some((issue) => issue.resolution === 'unresolved'))) return;
     if (kind === 'reapply' && !value?.pending_comments) return;
     if (kind === 'replan' && (!canReplan || localCommentsPending || value?.pending_comments || !value?.prototype_stale)) return;
@@ -159,13 +173,13 @@ export function FeasibilityPanel({ buildId, referencesReady = true, readOnly = f
   };
   const discard = async () => {
     const assessmentId = current.current?.id;
-    if (!assessmentId || !current.current?.pending_comments || locked.current || runs.current.size > 0 || loading || loadError || externalBusy || readOnly || !referencesReady) return;
+    if (!assessmentId || !current.current?.pending_comments || locked.current || runs.current.size > 0 || loadError || externalBusy || readOnly || !referencesReady) return;
     const request = seq.current;
     locked.current = true; setBusy(true); setError(null); setStatus('Discarding pending comments…');
     try {
       const value = await api.discardComments(buildId, assessmentId);
       if (!mounted.current) return;
-      if (current.current?.id === assessmentId && request === seq.current) accept(value);
+      if (current.current?.id === assessmentId && request === seq.current) adopt(value);
       else await load();
       setStatus('Pending comments discarded. Review the current assessment.');
     } catch (reason) {
@@ -180,14 +194,14 @@ export function FeasibilityPanel({ buildId, referencesReady = true, readOnly = f
   };
   const decide = async (decision: FeasibilityDecision) => {
     const assessmentId = current.current?.id;
-    if (!assessmentId || locked.current || loading || loadError || externalBusy || readOnly || !referencesReady) return;
+    if (!assessmentId || locked.current || loadError || externalBusy || readOnly || !referencesReady) return;
     const request = seq.current;
     locked.current = true; setBusy(true); setError(null); setStatus('Saving your decision…');
     try {
       const value = await api.decideFeasibility(buildId, assessmentId, [decision]);
       if (!mounted.current) return;
       // A refetch or newer assessment arrived while the decision was in flight.
-      if (current.current?.id === assessmentId && request === seq.current) accept(value);
+      if (current.current?.id === assessmentId && request === seq.current) adopt(value);
       setStatus('Decision saved. Review the current assessment before continuing.');
       await load();
     } catch (reason) {
@@ -202,14 +216,18 @@ export function FeasibilityPanel({ buildId, referencesReady = true, readOnly = f
       if (mounted.current) { locked.current = false; setBusy(false); setFocusRequest((n) => n + 1); }
     }
   };
-  const disabled = readOnly || busy || externalBusy || loading || Boolean(loadError) || !referencesReady;
+  const disabled = readOnly || busy || externalBusy || !assessment || Boolean(loadError) || !referencesReady;
   const resolved = assessment && ['ready', 'stale'].includes(assessment.state) && assessment.issues.every((issue) => issue.resolution !== 'unresolved');
+  // Nothing to act on: heading, summary and any status share one line, so the stage content stays above the fold.
+  const oneLine = !loadError && assessment?.state === 'ready' && resolved && !assessment.prototype_stale && !assessment.pending_comments;
+  const replan = !readOnly && canReplan && assessment?.prototype_stale && !assessment.pending_comments;
   return (
-    <section aria-labelledby={`${id}-heading`} className="mt-4 min-w-0 rounded-panel border border-border bg-surface p-4">
+    <section aria-labelledby={`${id}-heading`} className={`mt-4 min-w-0 rounded-panel border border-border bg-surface ${oneLine ? 'flex flex-wrap items-baseline gap-x-3 px-4 py-2' : 'p-4'}`}>
       <h3 ref={heading} id={`${id}-heading`} tabIndex={-1} className={`rounded-control text-title font-semibold text-text ${focusRing}`}>Feasibility</h3>
-      {loading && <LoadingState>Loading feasibility…</LoadingState>}
-      {loadError && <ErrorState className="mt-3" title="Couldn't load feasibility" message={loadError} onRetry={() => { setFocusRequest((n) => n + 1); void load(); }} retryLabel="Retry feasibility" />}
-      {!loading && !loadError && assessment && <div className="mt-2 space-y-3">
+      {oneLine && <p className="min-w-0 text-body text-text-muted">Your requirements are resolved.</p>}
+      {!assessment && !loadError && <LoadingState>Loading feasibility…</LoadingState>}
+      {loadError && <ErrorState className="mt-3" title="Couldn't load feasibility" message={loadError} onRetry={() => { setFocusRequest((n) => n + 1); void load(); }} retryLabel="Retry feasibility" retryLoading={refreshing} />}
+      {!loadError && assessment && !oneLine && <div className="mt-2 space-y-3">
         <p className="text-body text-text-muted">{assessment.state === 'ready' ? 'Your requirements are resolved.' : assessment.state === 'blocked' ? 'Resolve these requirements before generating or building.' : assessment.state === 'stale' ? 'Requirements changed. Replan the prototype or reapply saved comments before continuing.' : 'Check what this app supports before generating or building.'}</p>
         {assessment.prototype_stale && <p className="text-body font-medium text-danger">This prototype is out of date. Update the plan before generating a recipe or building.</p>}
         {assessment.issues.filter((issue) => issue.resolution === 'unresolved').map((issue) => <fieldset key={`${assessment.id}-${issue.id}`} disabled={disabled} className="min-w-0 space-y-2 rounded-control border border-border p-3">
@@ -241,10 +259,10 @@ export function FeasibilityPanel({ buildId, referencesReady = true, readOnly = f
           <Button disabled={disabled || !assessment.id} onClick={() => void discard()}>Discard pending comments</Button>
         </div>}
       </section>}
-      {!readOnly && canReplan && assessment?.prototype_stale && !assessment.pending_comments && <Button className="mt-3" disabled={disabled || !resolved || !assessment.id || localCommentsPending} aria-describedby={localCommentsPending ? `${id}-drafts` : undefined} onClick={() => void check('replan')}>Replan</Button>}
-      {canReplan && localCommentsPending && <p id={`${id}-drafts`} className="mt-2 text-body text-text-muted">Apply or remove your draft comments before replanning.</p>}
-      {error && <p role="alert" className="mt-2 text-body text-danger">{error}</p>}
-      <p role="status" className="mt-2 text-label text-text-muted">{status}</p>
+      {replan && <Button className="mt-3" disabled={disabled || !resolved || !assessment.id || localCommentsPending} aria-describedby={localCommentsPending ? `${id}-drafts` : undefined} onClick={() => void check('replan')}>Replan</Button>}
+      {replan && localCommentsPending && <p id={`${id}-drafts`} className="mt-2 text-body text-text-muted">Apply or remove your draft comments before replanning.</p>}
+      {error && <p role="alert" className={`${oneLine ? '' : 'mt-2 '}text-body text-danger`}>{error}</p>}
+      <p role="status" className={`${status && !oneLine ? 'mt-2 ' : ''}min-w-0 text-label text-text-muted`}>{status}</p>
     </section>
   );
 }

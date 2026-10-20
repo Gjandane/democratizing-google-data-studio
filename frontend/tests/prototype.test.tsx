@@ -6,8 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, httpApi } from '../src/api/client';
 import type { OpenBuildEvents, StreamHandlers } from '../src/api/events';
 import { ApiError, type Build, type BuildEvent } from '../src/api/types';
+import { InterviewStage } from '../src/features/workspace/chat/InterviewStage';
 import { useBuildStream } from '../src/features/workspace/chat/useBuildStream';
+import { ConnectStage } from '../src/features/workspace/connect/ConnectStage';
 import { PrototypeStage } from '../src/features/workspace/prototype/PrototypeStage';
+import { openReferencePanel } from '../src/features/workspace/stretch';
 import { fixtures } from '../src/mocks/fixtures';
 import { resetMockState, setMockAssessment } from '../src/mocks/api';
 
@@ -360,6 +363,48 @@ describe('Stale prototype', () => {
     expect(screen.getByRole('list', { name: 'Pending comments' })).toBeTruthy();
     view.rerender(<PrototypeStage build={fixtures.build} applying={false} commentsError={null} assessment={{ ...fixtures.feasibilityPending, pending_comments: { id: 'saved', comments: [{ component_id: 'p1_kpi_revenue', text: 'Make it animate' }] } }} />);
     expect(screen.queryByRole('list', { name: 'Pending comments' })).toBeNull();
+  });
+});
+
+describe('References fold (task 12.1)', () => {
+  const details = () => screen.getByRole('region', { name: 'References' }).querySelector('details')!;
+  const shell = () => render(<MemoryRouter initialEntries={[`/builds/${fixtures.build.id}`]}><Routes><Route path="/builds/:id" element={<WorkspaceShell />} /></Routes></MemoryRouter>);
+
+  it('starts collapsed on Prototype and open on Connect and Interview', async () => {
+    render(<PrototypeStage build={fixtures.build} applying={false} commentsError={null} />);
+    expect(details().open).toBe(false);
+    cleanup();
+    const created = await api.createBuild({ archetype: 'executive', mode: 'data' });
+    render(<ConnectStage build={created} onBuildChange={() => {}} />);
+    expect(details().open).toBe(true);
+    cleanup();
+    render(<InterviewStage build={{ ...fixtures.build, stage: 'interview' }} messages={[]} />);
+    expect(details().open).toBe(true);
+  });
+
+  it('opens from chat Attach reference on Prototype and focuses the panel', async () => {
+    shell();
+    const style = await screen.findByRole('radio', { name: 'Use style' });
+    await waitFor(() => expect(style.matches(':disabled')).toBe(false));
+    expect(details().open).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Attach reference' }));
+    expect(details().open).toBe(true);
+    expect(document.activeElement).toBe(style);
+  });
+
+  it('focuses the panel summary when its controls are busy', async () => {
+    render(<PrototypeStage build={fixtures.build} applying commentsError={null} />);
+    await screen.findByText(/No references yet/);
+    act(() => openReferencePanel(fixtures.build.id));
+    expect(details().open).toBe(true);
+    expect(document.activeElement).toBe(within(screen.getByRole('region', { name: 'References' })).getByText('References', { exact: true }));
+  });
+
+  it('shows a ready assessment as one line above the panel', async () => {
+    shell();
+    const feasibility = await screen.findByRole('region', { name: 'Feasibility' });
+    await within(feasibility).findByText('Your requirements are resolved.');
+    expect(feasibility.textContent).toBe('FeasibilityYour requirements are resolved.');
   });
 });
 
