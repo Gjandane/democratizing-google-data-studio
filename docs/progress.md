@@ -117,3 +117,14 @@ context. Task status lives in docs/plan.md, not here.
 - Applied to: ~/.claude/skills/blueprint-solution-architect/references/audit.md (new "Severity bar" section, plan-audit step 3, Re-audits, final brief, verdicts) and references/change.md (Scope gate); ~/.claude/agents/blueprint-reviewer.md; the same in the Codex copies ~/.agents/skills/blueprint-solution-architect/references/{audit,change}.md and ~/.codex/agents/blueprint-reviewer.toml; scripts/blueprint.py `final_audit_state` (heading must be "Audit (final" or "Final audit"; verdict read by leading word, then uppercase only), copied to all four copies (md5 identical).
 - Checks: `program` now shows frontend "final audit DEFECTS" and release "not due" (were wrongly ACCEPTED); `lint` 0 errors 0 warnings; Codex reviewer TOML parses; no SKILL.md frontmatter touched; `claude` CLI not on PATH, so no plugin validate.
 - Left open: open fix tasks (backend 13.2-13.8, frontend 12.1-12.2) predate the new bar; moving the non-blockers to Later is a change in each part, the user's call.
+
+## 2026-10-20: Task 2.1 Start scripts
+- Status: done
+- Plan check: off
+- What changed: new start.sh (Git Bash/Linux) and start.ps1 (PS 5.1): refuse if 8000/5173 already listen or frontend/node_modules missing; start backend (`uv run uvicorn dss.main:app --port 8000` in backend/) and frontend (`npm run dev` in frontend/); wait until both ports listen, print both URLs; Ctrl+C or either child exiting kills both process trees (taskkill /T /F on Windows), exit 1 on failure.
+- Checks: start.ps1 (`powershell -ExecutionPolicy Bypass -File .\start.ps1`) and start.sh (Git Bash) each: both URLs printed, `curl -s localhost:8000/api/health` -> {"status":"ok"}, localhost:5173 -> 200, Ctrl+C -> "Stopped."; `netstat -ano | grep -E ":(8000|5173) "` printed nothing (after TIME_WAIT cleared) PASS; Test (all) `check_contracts.py` PASS 9/9.
+- Decisions: readiness = both ports listening (netstat/ss or Get-NetTCPConnection), 90 s cap, abort early if a child dies; no auto-install (prints the install hint); user OK'd stopping a stray backend (PID 16496) on 8000 for the test; AGENTS.md: added the localhost-probe gotcha.
+- Tried and failed: curl and Invoke-WebRequest probes (free localhost ports time out here, see Known gotchas).
+- Gotchas: in AGENTS.md Known gotchas. npm.cmd prints "Terminate batch job (Y/N)?" on Ctrl+C in PowerShell; taskkill clears it, harmless.
+- Left open: P3 start.sh untested on Linux/macOS (Unix stop uses pkill -P; bash 3.2 `set -u` on empty array) - start.sh; README (3.1) should give the `-ExecutionPolicy Bypass` form for start.ps1.
+- Next: Task 2.2 End-to-end flow 1 and 3, dry-run engine.

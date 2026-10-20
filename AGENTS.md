@@ -64,4 +64,5 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - `blueprint.py start` (folder mode) dies with PermissionError on `.chrome-profile/lockfile` while the engine's Chrome (CDP 9222) runs: close that Chrome first, then rerun start.
 - Diagram "planned" tags are hardcoded in deck/diagrams/*.html and go stale as parts finish tasks: recheck them against `blueprint.py program` and re-render before using the PNGs.
 - `PowerPoint.Application` here is WPS Office (wpp.exe), not MS PowerPoint: `Slide.Duplicate()` is a no-op, `FindBySlideID` returns null, `Close()` on a modified deck hangs (set `Saved=-1`); a killed build leaves `wpp.exe /Automation` blocking COM (RPC_E_CALL_REJECTED): stop that process only.
+- Free localhost ports don't refuse here, they time out (curl rc 28, Invoke-WebRequest stalls ~2 s): test a port with netstat/`Get-NetTCPConnection -State Listen`, not an HTTP probe. The 2.1 netstat grep also lists TIME_WAIT lines for ~2 min after any probe.
 <!-- blueprint-solution:end -->

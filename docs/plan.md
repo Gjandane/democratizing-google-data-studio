@@ -33,7 +33,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: Google Sans Flex isn't installed -> PowerPoint substitutes it in the pptx view and the PDF; note it under Decisions and in README.
 
 ## Phase 2: Local integration
-- [ ] 2.1 Start scripts
+- [x] 2.1 Start scripts
   - Goal: `./start.sh` and `./start.ps1` start backend and frontend with the commands from their AGENTS.md and stop both on Ctrl+C.
   - Files: start.sh, start.ps1
   - Depends on: 1.1
