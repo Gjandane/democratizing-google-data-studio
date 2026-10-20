@@ -661,3 +661,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: live logs `.blueprint/task-11.8-live-timeout.log`, `-live-final2.log`.
 - Left open: P2 execution-gate fulfillment block not durable (check re-reports ready; no test hits `coverage_errors` branch) - src/dss/spec/requirements.py:658. P3 Windows 8.3 short names could alias a reference file past the basename rule - src/dss/spec/models.py.
 - Next: Task 11.9 One model-call retry on transient errors.
+
+## 2026-10-20: Task 11.9 One model-call retry on transient errors
+- Status: done
+- Plan check: off
+- What changed: llm.py adds `RetryingGemini(Gemini)` (returned by `llm_for`): a call failing with APIError 429/500/503 before any response retries once after `RETRY_DELAY_S` (1 s); 504, other 4xx and a stream that already yielded a chunk never retry. graph.py sets the `retry_listener` ContextVar per run, so a retry adds a `{"node": "model_retry", "status": code}` span to that run's single trace. New tests/test_llm_retry.py fakes the provider at the router's genai client (real ADK Gemini path).
+- Checks: `uv run pytest tests/test_llm_retry.py` PASS (with test_llm_timeouts: 30); Test (all) `uv run pytest` PASS (729, 7 deselected); `git diff --check` PASS. Reviewer: 1 P2 (open), 1 P3 (fixed: aclosing on inner generators, plus test).
+- Decisions: retry at the model, not google-genai `HttpRetryOptions` (offline-testable, visible in the trace; ADK ignores `Gemini.retry_options` when `client=` is passed). Same LlmRequest resent (ADK preprocessing is idempotent). Only the status code is logged. "Both attempts counted in usage": trace tokens sum every reported usage; a failed attempt reports none. Injected fakes (`llm=`) are not wrapped. No dependencies; AGENTS.md unchanged.
+- Tried and failed: none.
+- Gotchas: none.
+- Left open: P2 consolidate (background task inherits the execute run's listener) and eval judge retries are not recorded in their own traces - src/dss/harness/nodes/consolidate.py, src/dss/ops/eval.py.
+- Next: Task 12.1 Parameterized deterministic CSV generator and CLI.

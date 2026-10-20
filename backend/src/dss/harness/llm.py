@@ -2,15 +2,52 @@
 import asyncio
 import json
 import logging
+from contextlib import aclosing
+from contextvars import ContextVar
 
 from google import genai
 from google.adk.models.google_llm import Gemini
 from google.genai import types
+from google.genai.errors import APIError
 
 logger = logging.getLogger(__name__)
 
 PLANNER_NODES = frozenset({"plan", "spec"})
 PLANNER_TIMEOUT_MS, WORKER_TIMEOUT_MS = 120_000, 30_000
+# 504 is our own deadline (the client timeout Google enforces): retrying would just wait again.
+RETRY_CODES = frozenset({429, 500, 503})
+RETRY_DELAY_S = 1.0
+# The running agent run's hook for retries (one trace per run); None outside a run.
+retry_listener = ContextVar("dss_llm_retry_listener", default=None)
+
+
+class RetryingGemini(Gemini):
+    """Gemini with one retry when a call fails with 429, 500 or 503 before any response.
+
+    A streamed call that already yielded a chunk is never retried (that would repeat output).
+    Gemini's request preprocessing is idempotent, so the retry resends the same request.
+    Only the status code is logged: provider messages may echo request text."""
+
+    async def generate_content_async(self, llm_request, stream=False):
+        try:
+            yielded = False
+            # aclosing: an early close (a cancelled stream) closes the provider stream now.
+            async with aclosing(super().generate_content_async(llm_request, stream)) as responses:
+                async for response in responses:
+                    yielded = True
+                    yield response
+            return
+        except APIError as exc:
+            if yielded or exc.code not in RETRY_CODES:
+                raise
+            code = exc.code
+        logger.warning("Model call failed with HTTP %s; retrying once", code)
+        if (listener := retry_listener.get()) is not None:
+            listener(code)
+        await asyncio.sleep(RETRY_DELAY_S)
+        async with aclosing(super().generate_content_async(llm_request, stream)) as responses:
+            async for response in responses:
+                yield response
 
 
 async def list_models(key):
@@ -91,5 +128,5 @@ class ModelRouter:
         if not key:
             from dss.harness.guardrails import RunError
             raise RunError("llm_unavailable", "Set the Google API key in Settings", 503)
-        return Gemini(model=self.model_for(node), client=genai.Client(
+        return RetryingGemini(model=self.model_for(node), client=genai.Client(
             api_key=key, http_options=types.HttpOptions(timeout=self.timeout_ms(node))))

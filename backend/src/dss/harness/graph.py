@@ -13,6 +13,7 @@ from google.genai import types
 
 from dss.db import new_id, now
 from dss.harness.guardrails import RunError, check_reply
+from dss.harness.llm import retry_listener
 from dss.harness.tracing import Trace
 
 
@@ -37,6 +38,9 @@ class AgentHarness:
         self.active_builds.add(build_id)
         run_id = run_id or new_id("r")
         trace = Trace(self.db, run_id, build_id, action)
+        # A retried model call stays in this run's trace: the retry is a span, and both
+        # attempts' reported usage adds to the trace's tokens.
+        retry_hook = retry_listener.set(lambda code: trace.spans.append({"node": "model_retry", "status": code}))
         status, error, reply = "error", "llm_unavailable", None
         runner = None
         code_error = None
@@ -340,6 +344,7 @@ class AgentHarness:
                 await self.emit(build_id, run_id, "run.finished", {
                     "run_id": run_id, "node": action, "status": status, "error": error_message or error})
             finally:
+                retry_listener.reset(retry_hook)
                 if publication_safe:
                     self.active_builds.discard(build_id)
                 if runner is not None:

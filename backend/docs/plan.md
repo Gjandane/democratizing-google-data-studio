@@ -293,7 +293,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: no endpoint bypasses the gate; screenshots are never used as fake complete dashboards.
   - If: resuming -> the second failed attempt (`stash@{0}`, 2026-10-20 09:37) is already applied to the working tree; build on it, don't re-apply it.
   - If: a live plan/spec call fails `llm_unavailable` with a `504` near 30 s -> the cause is `src/dss/harness/llm.py` `llm_for`'s fixed `HttpOptions(timeout=30000)`, which google-genai sends to Google as the server deadline (architect diagnosis 2026-10-20, `.blueprint/task-11.8-architect-*.log`). Set the timeout on the client: 120 s for the planner model (plan/spec), 30 s for the worker model (architecture.md#External APIs and services). Editing llm.py is allowed outside Files; add an offline test that checks each node's client timeout. Retries are task 11.9, not this task.
-- [ ] 11.9 One model-call retry on transient errors
+- [x] 11.9 One model-call retry on transient errors
   - Goal: a Gemini call that fails with 429, 500 or 503 retries once before `llm_unavailable`; a 504 (our own server-enforced deadline) and 4xx errors don't retry.
   - Spec: docs/architecture.md#External APIs and services
   - Files: src/dss/harness/llm.py, src/dss/harness/graph.py, tests/test_llm_retry.py
