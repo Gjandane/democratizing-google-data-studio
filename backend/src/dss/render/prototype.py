@@ -10,7 +10,7 @@ from pathlib import Path
 import re
 
 from dss.data.bigquery import quoted, table_uri
-from dss.spec.layout import box
+from dss.spec.layout import box, decoration_text_style, decoration_text_errors
 from dss.spec.models import reference_image
 from dss.spec.validate import catalog
 
@@ -214,6 +214,9 @@ def chart_option(item, rows, theme, width):
 def render(spec, *, layer=None, data=None, folder=None):
     from dss.spec.layout import require_synthetic_label
     require_synthetic_label(spec)
+    text_errors = decoration_text_errors(spec)
+    if text_errors:
+        raise ValueError(text_errors[0]['message'])
     theme = spec.theme
     data = data or {}
     known = catalog()
@@ -241,16 +244,15 @@ def render(spec, *, layer=None, data=None, folder=None):
                     defaults.update({aliases.get(k, k): v for k, v in item.style.items() if k in (*aliases, 'background', 'font-size', 'font-weight', 'border-radius', 'opacity')})
                     style += ''.join(f';{k}:{css_value(v)}' + ('px' if isinstance(v, (int, float)) and k in ('font-size','border-radius') else '') for k, v in defaults.items())
                 extra = item.kind if kind == 'decoration' else item.type
-                from dss.spec.models import SYNTHETIC_LABEL_ID
-                if item.id == SYNTHETIC_LABEL_ID:
-                    style += ';font-family:Arial;line-height:20px;padding:16px'
+                if kind == 'decoration' and item.text and not (item.kind == 'logo' and item.style.get('image_path')):
+                    style += ';' + decoration_text_style(item, theme)
                 parts.append(f'<div class="item {kind} {extra}" data-cid="{escape(item.id, quote=True)}" data-label="{escape(label, quote=True)}" title="{escape(label, quote=True)}" data-kind="{kind}" style="{escape(style, quote=True)}">')
                 if kind == 'decoration':
                     if item.kind == 'logo' and item.style.get('image_path'):
                         url = image_url(item.style['image_path'], folder)
                         parts.append(f'<img src="{url}" alt="{escape(label, quote=True)}">')
                     else:
-                        parts.append(escape(item.text or ''))
+                        parts.append('<div style="display:flow-root">' + escape(item.text or '') + '</div>')
                 else:
                     label_html = escape(label, quote=True)
                     if item.type not in ('text', 'date_range', 'dropdown'):

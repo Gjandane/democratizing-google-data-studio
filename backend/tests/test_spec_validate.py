@@ -172,3 +172,44 @@ def test_theme_defaults_and_mixed_case_match_provider_schema():
         assert rule['pattern'] == '^#[0-9A-Fa-f]{6}$'
         assert rule['minLength'] == rule['maxLength'] == 7
     Draft202012Validator(schema).validate(spec)
+
+
+@pytest.mark.parametrize('kind,text,width,rows,style,fits', [
+    ('title', 'Sales overview', 12, 2, {}, False),  # final audit reproduction
+    ('title', 'Sales overview', 12, 3, {}, True),
+    ('title', 'Sales overview', 12, 2, {'font_size': 16}, True),
+    ('title', 'Sales overview', 12, 4, {'font-size': '40px', 'font-weight': 'bold'}, True),
+    ('title', 'Sales overview', 12, 4, {'font_size': 60}, False),
+    ('title', 'Sales\noverview', 12, 3, {}, False),
+    ('title', 'Sales\noverview', 12, 5, {}, True),
+    ('title', 'Weekly regional revenue performance overview ' * 3, 3, 4, {}, False),
+    ('title', 'Weekly regional revenue performance overview ' * 3, 3, 35, {}, True),
+    ('title', 'W' * 100, 2, 4, {}, False),
+    ('title', 'W' * 100, 2, 35, {}, True),
+    ('subtitle', 'Regional revenue', 12, 2, {}, True),
+    ('subtitle', 'Regional\nrevenue', 12, 2, {}, False),
+    ('subtitle', 'Regional\nrevenue', 12, 4, {}, True),
+    ('subtitle', 'Regional revenue', 12, 2, {'font_size': '32px'}, False),
+    ('text', 'Regional revenue', 12, 2, {}, False),
+    ('text', 'Regional revenue', 12, 4, {}, True),
+])
+def test_decoration_content_bounds(kind, text, width, rows, style, fits):
+    spec = sample()
+    spec['pages'][0]['decorations'][0].update(kind=kind, text=text, style=style,
+        grid=dict(col=1, row=1, w=width, h=rows))
+    errors = validate_spec(spec)
+    assert (errors == []) == fits, errors
+    if not fits:
+        assert errors[0]['path'] == 'pages.0.decorations.0.grid'
+        assert 'text does not fit' in errors[0]['message']
+
+
+@pytest.mark.parametrize('style', [
+    {'font_size': True}, {'font_size': -1}, {'font_size': 0}, {'font_size': '120%'},
+    {'font_size': 'large'}, {'font_size': '1px;color:red'}, {'font_size': float('inf')},
+    {'font_weight': 'bolder'}, {'font-weight': 123},
+])
+def test_invalid_decoration_font_is_a_validation_diagnostic(style):
+    spec = sample()
+    spec['pages'][0]['decorations'][0]['style'] = style
+    assert [e['path'] for e in validate_spec(spec)] == ['pages.0.decorations.0.style']

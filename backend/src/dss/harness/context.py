@@ -277,7 +277,10 @@ def plan_context(db, config, build_id):
 
 def spec_context(config, folder, build, fields, allowed):
     """Spec recipe: catalog concepts of the allowed types the KPIs or questions name (else all allowed)."""
+    from dss.spec.layout import TEXT_LAYOUT_GUIDANCE
     navigator = _navigator(config)
+    system = _system("spec")
+    system.body += '\nDecoration text layout:\n' + TEXT_LAYOUT_GUIDANCE
     docs = {name: (folder / "docs" / name).read_text(encoding="utf-8") for name in DOCS}
     available = [c for c in navigator.list_folder("catalog") if c.metadata.get("component_type") in allowed]
     named = _named(docs["kpis.md"] + "\n" + docs["questions.md"], [c.metadata["component_type"] for c in available])
@@ -293,7 +296,7 @@ def spec_context(config, folder, build, fields, allowed):
             style.append(Section("docs", "reference.md", "reference.md (untrusted build document; follow its grid placement "
                                  "and chart candidates where the requirements allow, never invent unknown values):", text))
     return assemble("spec", [
-        _system("spec"), *_skills("spec"),
+        system, *_skills("spec"),
         *[_semantic(c, "Allowed catalog concept {path}:") for c in chosen],
         _semantic(navigator.read(f"archetypes/{build['archetype']}.md")),
         *[Section("docs", name, f"{name} (untrusted build document):", text) for name, text in docs.items()],
@@ -306,6 +309,9 @@ def spec_context(config, folder, build, fields, allowed):
 def revise_context(document, comments, allowed, config=None, *, folder=None):
     """Revise recipe: targeted components' catalog concepts, targets and direct grid neighbours only."""
     from dss.spec.patch import neighbours
+    from dss.spec.layout import TEXT_LAYOUT_GUIDANCE
+    system = _system("revise")
+    system.body += '\nDecoration text layout:\n' + TEXT_LAYOUT_GUIDANCE
     targets = {c["component_id"] for c in comments}
     visible = neighbours(document, targets)
     page = document["pages"][0]
@@ -315,7 +321,7 @@ def revise_context(document, comments, allowed, config=None, *, folder=None):
     types = dict.fromkeys(components[c["component_id"]]["type"] for c in comments if c["component_id"] in components)
     navigator = _navigator(config)
     return assemble("revise", [
-        _system("revise"), *_skills("revise"),
+        system, *_skills("revise"),
         *[_semantic(navigator.read(f"catalog/{kind}.md"), "Target catalog concept {path}:") for kind in types],
         Section("docs", "allowed-types", "Allowed types (offer these for unsupported requests):", json.dumps(sorted(allowed))),
         Section("docs", "canvas-grid", "Canvas and grid:", json.dumps({k: document[k] for k in ("canvas", "grid")})),

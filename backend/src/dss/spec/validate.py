@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from dss.config import BACKEND_DIR
 from dss.memory.semantic import parse_concept
 from dss.spec.models import DashboardSpec, image_paths, reference_image
-from dss.spec.layout import box, synthetic_errors
+from dss.spec.layout import box, synthetic_errors, decoration_text_errors
 
 
 def synthetic_participation(db, build_id, folder):
@@ -49,6 +49,7 @@ def validate_spec(value, *, allowed=None, high_priority=(), catalog_root=None):
     allowed = allowed_types() if allowed is None else set(allowed)
     errors = []
     errors.extend({'path': 'pages.0.decorations', 'message': message} for message in synthetic_errors(spec))
+    errors.extend(decoration_text_errors(spec))
     def error(path, message):
         errors.append({"path": path, "message": message})
     fields = {}

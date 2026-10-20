@@ -131,6 +131,14 @@ def test_empty_escaping_catalog_and_theme(dashboard, monkeypatch):
     assert 'No data' in html and '#FFF0AA' in html
     assert '<script>bad()' not in html
     assert '\\u003c/script' in html and 'title="AAAA' in html
+    # Non-text decorations do not participate in text layout or its font constraints.
+    panel = dashboard.pages[0].decorations[0].model_copy(deep=True)
+    panel.id, panel.kind, panel.text = 'p1_panel', 'panel', None
+    panel.style = {'font_size': 'large', 'font_weight': 600.0}
+    dashboard.pages[0].decorations.append(panel)
+    from dss.spec.validate import validate_spec
+    assert validate_spec(dashboard) == []
+    assert 'data-cid="p1_panel"' in render(dashboard)
     monkeypatch.setattr('dss.render.prototype.catalog', lambda: {})
     with pytest.raises(ValueError, match='catalog'):
         render(dashboard)
@@ -248,6 +256,71 @@ def test_synthetic_background_has_visible_label_pixels(dashboard, tmp_path):
             assert page.screenshot(clip=bounds) == expected
         finally:
             browser.close()
+
+
+def test_heading_content_and_background_bounds(dashboard):
+    """Independent DOM ranges assert visible text, contract geometry and matching pixels."""
+    import base64
+    from playwright.sync_api import sync_playwright
+    from dss.spec.layout import with_synthetic_label
+    from dss.spec.models import Decoration
+    from dss.spec.validate import validate_spec
+    evidence = Path('.blueprint/qa/task-13.3')
+    evidence.mkdir(parents=True, exist_ok=True)
+    dashboard.theme.radius = 1000  # Rounded backgrounds must not mask heading glyphs.
+    dashboard.pages[0].components = []
+    dashboard.pages[0].decorations = [
+        Decoration(id='p1_title', kind='title', text='Weekly sales overview', grid=dict(col=1,row=1,w=12,h=3)),
+        Decoration(id='p1_large', kind='title', text='Revenue by region', style={'font_size':40},
+                   grid=dict(col=1,row=5,w=12,h=4)),
+        Decoration(id='p1_subtitle', kind='subtitle', text='Weekly revenue\nRegional performance',
+                   grid=dict(col=1,row=10,w=12,h=4)),
+        Decoration(id='p1_wrap', kind='title', text='Regional revenue performance across business units',
+                   grid=dict(col=1,row=15,w=4,h=12)),
+        Decoration(id='p1_word', kind='subtitle', text='W' * 90,
+                   style={'font-size':'18px', 'font-weight': 'bold'}, grid=dict(col=6,row=15,w=4,h=12)),
+    ]
+    spec = with_synthetic_label(dashboard, True)
+    assert validate_spec(spec) == []
+    html = render(spec)
+    (evidence / 'prototype.html').write_text(html, encoding='utf-8')
+    background_path = evidence / 'background_p1.png'
+    background.capture(render(spec, layer='decoration'), background_path, 1200, spec.canvas.height)
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        try:
+            page = browser.new_page(viewport={'width':1200, 'height':spec.canvas.height})
+            page.set_content(html)
+            page.screenshot(path=str(evidence / 'prototype.png'), full_page=True)
+            for item in spec.pages[0].decorations:
+                locator = page.locator(f'[data-cid="{item.id}"]')
+                assert locator.text_content() == item.text
+                bounds = locator.bounding_box()
+                expected = box(spec.canvas, spec.grid, item.grid)
+                assert bounds == dict(x=expected['x'],y=expected['y'],width=expected['w'],height=expected['h'])
+                assert 0 <= bounds['x'] < bounds['x'] + bounds['width'] <= 1200
+                assert 0 <= bounds['y'] < bounds['y'] + bounds['height'] <= spec.canvas.height
+                assert locator.evaluate('''el => {
+                    const b=el.getBoundingClientRect(), s=getComputedStyle(el), pad=parseFloat(s.paddingTop);
+                    const inner=el.firstElementChild, r=document.createRange(); r.selectNodeContents(inner);
+                    return inner.getBoundingClientRect().height <= b.height-2*pad+.01 &&
+                        [...r.getClientRects()].every(t => t.top>=b.top+pad-.01 && t.bottom<=b.bottom-pad+.01 &&
+                            t.left>=b.left+pad-.01 && t.right<=b.right-pad+.01);
+                }''')
+            expected_png = page.screenshot()
+            encoded = base64.b64encode(background_path.read_bytes()).decode()
+            page.set_content(f'<body style="margin:0"><img src="data:image/png;base64,{encoded}"></body>')
+            page.locator('img').wait_for()
+            assert page.screenshot() == expected_png
+        finally:
+            browser.close()
+
+
+def test_clipped_heading_cannot_be_rendered(dashboard):
+    dashboard.pages[0].decorations[0].grid.h = 2
+    for layer in ('all', 'decoration'):
+        with pytest.raises(ValueError, match='text does not fit'):
+            render(dashboard, layer=layer)
 
 
 async def test_render_node_events_and_api(client, app, build_id, dashboard, tmp_path, monkeypatch):

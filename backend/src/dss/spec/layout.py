@@ -1,4 +1,101 @@
 """One integer geometry implementation shared by HTML and recipes."""
+from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
+import math
+import re
+
+
+TEXT_LAYOUT_GUIDANCE = (
+    'Decoration text uses title 28px bold, subtitle 18px normal, other text 16px normal; '
+    'line-height is 1.25 times font size. Titles/subtitles have zero padding; other decorations '
+    'have 16px padding on each side. Text preserves newlines and wraps anywhere. '
+    'font_size/font-size overrides accept positive px numbers (or px strings); '
+    'font_weight/font-weight accepts normal, bold or 100..900. '
+    'A default one-line title needs h>=3 (44px); h=2 is only 24px and cannot fit 28px text. '
+    'Allocate more rows for larger fonts, multiple lines or long headings. '
+    'Keep all boxes in bounds, avoid covering other items, and preserve the synthetic footer.'
+)
+
+
+def decoration_text_style(item, theme):
+    """Canonical text CSS, also used in Chromium's validation document."""
+    from dss.spec.models import SYNTHETIC_LABEL_ID
+    size = item.style.get('font-size', item.style.get('font_size',
+        28 if item.kind == 'title' else 18 if item.kind == 'subtitle' else 16))
+    if isinstance(size, bool) or not re.fullmatch(r'[0-9]+(?:\.[0-9]+)?(?:px)?', str(size)):
+        raise ValueError('Decoration font size must be a positive pixel number')
+    size = float(str(size).removesuffix('px'))
+    if not math.isfinite(size) or not 0 < size <= 1200:
+        raise ValueError('Decoration font size must be between 0 and 1200px')
+    weight = str(item.style.get('font-weight', item.style.get('font_weight',
+        700 if item.kind == 'title' else 400)))
+    if weight not in ('normal', 'bold') and not re.fullmatch(r'[1-9]00', weight):
+        raise ValueError('Decoration font weight must be normal, bold or 100..900')
+    family = re.sub(r'[^\w\s#(),.%+\-]', '', theme.font_family)
+    padding = 0 if item.kind in ('title', 'subtitle') else 16
+    if item.id == SYNTHETIC_LABEL_ID:
+        family, size, weight, padding = 'Arial', 16, '400', 16
+    return (f'font-family:{family};font-size:{size:g}px;font-weight:{weight};'
+            f'line-height:{size * 1.25:g}px;padding:{padding}px;'
+            'white-space:pre-wrap;overflow-wrap:anywhere;overflow:visible')
+
+
+@lru_cache(maxsize=256)
+def _text_fits(cases):
+    # Never run Playwright's sync API on an async API handler's event-loop thread.
+    # Cache geometry/style/content only: layout-only revisions reuse the measurements.
+    def measure():
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(timeout=10000)
+            try:
+                page = browser.new_page()
+                page.set_default_timeout(5000)
+                page.set_content('<div id="box"><div id="text" style="display:flow-root"></div></div>')
+                return page.evaluate('''cases => cases.map(([text, style, width, height]) => {
+                    const box = document.getElementById('box'), inner = document.getElementById('text');
+                    box.style.cssText = `box-sizing:border-box;width:${width}px;height:${height}px;${style}`;
+                    inner.textContent = text;
+                    const outer = box.getBoundingClientRect(), content = inner.getBoundingClientRect();
+                    const padding = parseFloat(getComputedStyle(box).paddingTop);
+                    const range = document.createRange(); range.selectNodeContents(inner);
+                    return content.height <= height - 2 * padding + .01 &&
+                        [...range.getClientRects()].every(r => r.left >= outer.left + padding - .01 &&
+                            r.right <= outer.right - padding + .01 && r.top >= outer.top + padding - .01 &&
+                            r.bottom <= outer.bottom - padding + .01);
+                })''', cases)
+            finally:
+                browser.close()
+    with ThreadPoolExecutor(max_workers=1) as worker:
+        return worker.submit(measure).result()
+
+
+def decoration_text_errors(spec):
+    """Fail closed before clipped text can be published or baked into a background."""
+    errors = []
+    cases, paths = [], []
+    for p, page in enumerate(spec.pages):
+        for i, item in enumerate(page.decorations):
+            if not item.text or (item.kind == 'logo' and item.style.get('image_path')):
+                continue
+            path = f'pages.{p}.decorations.{i}'
+            try:
+                bounds = box(spec.canvas, spec.grid, item.grid, height=page.height)
+            except ValueError:
+                continue  # The ordinary geometry validator owns this diagnostic.
+            try:
+                style = decoration_text_style(item, spec.theme)
+            except ValueError as exc:
+                errors.append(dict(path=path + '.style', message=str(exc)))
+                continue
+            cases.append((item.text, style, bounds['w'], bounds['h']))
+            paths.append(path)
+    for path, fits in zip(paths, _text_fits(tuple(cases)) if cases else []):
+        if not fits:
+            errors.append(dict(path=path + '.grid', message=
+                'Decoration text does not fit its content box; increase grid width/height '
+                'or reduce font size/text while keeping boxes in bounds and the synthetic footer clear'))
+    return errors
 
 def overlaps(a, b):
     return a['x'] < b['x'] + b['w'] and b['x'] < a['x'] + a['w'] and a['y'] < b['y'] + b['h'] and b['y'] < a['y'] + a['h']

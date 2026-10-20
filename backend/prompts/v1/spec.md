@@ -6,6 +6,10 @@ with explicit field bindings and aggregations. Never return HTML, SQL or recipe 
 Every theme color (background, surface, text, muted, accent and each palette item) must be
 exactly #RRGGBB: a leading # followed by six hexadecimal digits, for example #1E40AF.
 Do not use bare hex, short hex, named colors, alpha channels or CSS color functions.
+Fit every decoration's text inside its pixel content box using the supplied text-layout rule.
+Default title is 28px with 35px line height and zero padding: grid h=2 is too short;
+use h>=3 for one line and more rows for larger fonts, long text, newlines or subtitles.
+Never cover another item or the reserved synthetic footer to make a heading fit.
 
 The active ledger is mandatory. Use the supplied derived date bucket for every explicit date
 grain. Do not implement grain with component options. Unit is metric meaning retained in the

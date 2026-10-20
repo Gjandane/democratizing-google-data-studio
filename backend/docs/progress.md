@@ -808,3 +808,14 @@ context. Task status lives in docs/plan.md, not here.
 - Why: retro 2026-10-20 found audits kept adding fix tasks; user picked 13.3 only (over the 2-task budget by one) and all P2s to Later.
 - Tasks affected: 13.3 stays (already in progress); 13.4-13.8 removed; no [x] task touched.
 - Change requests: none outstanding.
+
+## 2026-10-20: Task 13.3 Fit heading text in prototype and background
+- Status: done
+- Plan check: off
+- What changed: shared styles and cached Chromium measurements reject clipped headings; prototype/background use identical wrapping, fonts and padding. Prompts explain required heading space.
+- Checks: `uv run pytest tests/test_render.py tests/test_spec_validate.py tests/test_synthetic_label.py` PASS (208); `uv run pytest -m live tests/live/test_backend_flow.py` PASS (3, retry); Test (all) `uv run pytest` PASS (1106, 9 deselected, 418.91s). Real 12-component render/background PASS (1.59s). Chromium bounds and identical background pixels checked; prototype, background and live title/subtitle crops visually inspected. Independent reviewer: no findings. `git diff --check -- .` PASS.
+- Decisions: one cached measurement batch per content/style/geometry, on a worker thread. Heading padding 0, line height 1.25; default title needs 3 rows. Boxes never grow automatically; synthetic footer and repair budgets unchanged. Rounded backgrounds cannot clip fitted text. Added context-section ordering gotcha to AGENTS.md. No dependencies.
+- Tried and failed: extra context section broke ordering assertions; merged guidance into existing sections. Fixed reviewer-found empty-decoration font handling. Initial live interview failed before spec; retry passed.
+- Gotchas: evidence/logs in `.blueprint/qa/task-13.3/` and `.blueprint/task-13.3-*`.
+- Left open: none.
+- Next: final architect audit of the completed backend plan.

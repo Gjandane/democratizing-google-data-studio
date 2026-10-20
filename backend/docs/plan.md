@@ -361,7 +361,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_agent_client.py tests/test_execute.py` passes; run `uv run pytest tests/test_agent_client.py::test_stalled_retry_cannot_outlast_the_budget_and_stops_the_engine` five times in fresh processes on Windows, each within the existing 1.5 s + 0.5 s limit, with closed HTTP client and dead engine/descendants. Separately cover a close/teardown stall without an unbounded test hang; no request starts after expiry and the first long-poll timeout is unchanged. `uv run pytest` passes.
   - Review focus: preserve the deadline/tolerance and process ownership; do not make a timing failure pass by increasing budgets or omitting cleanup assertions.
-- [ ] 13.3 Fit heading text in prototype and background
+- [x] 13.3 Fit heading text in prototype and background
   - Goal: default and revised title/subtitle decorations remain fully visible or fail validation before publication.
   - Spec: docs/architecture.md#Prototype renderer; docs/architecture.md#Layout
   - Files: src/dss/render/prototype.py, src/dss/spec/layout.py, src/dss/spec/validate.py, src/dss/harness/context.py, prompts/v1/spec.md, skills/spec.md, tests/test_render.py, tests/test_spec_validate.py, tests/test_synthetic_label.py
