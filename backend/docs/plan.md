@@ -327,7 +327,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_synthetic_api.py tests/test_api_contract.py` passes with FakeLLM: a zero-source build with a recreate reference gets a locally validated Proposal (one call, <=12k counted input/6k output, no repair, <=20 assumptions of <=240 chars, no rows in context); style-only or no reference -> `422 synthetic_schema_unavailable`; generating with a stale proposal or reference -> `409 synthetic_proposal_stale`; a user-edited spec keeps the original assumptions plus an "edited by user" note. `uv run pytest` passes.
   - Review focus: proposal is a suggestion, never a reconstruction; no bulk rows from the model.
-- [ ] 12.4 Immediate backups and interrupted-job recovery
+- [x] 12.4 Immediate backups and interrupted-job recovery
   - Goal: reservation and registration each trigger an immediate DB backup through the existing backup routine, so an acknowledged job survives container replacement; startup fails in-flight jobs and cleans only their own artifacts before serving.
   - Spec: ../contracts/synthetic-data.md#HTTP workflow and provenance; ../contracts/synthetic-data.md#Storage
   - Files: src/dss/api/synthetic_data.py, src/dss/main.py, src/dss/db.py, src/dss/harness/nodes/synthetic_generate.py, tests/test_synthetic_recovery.py

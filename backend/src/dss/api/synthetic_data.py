@@ -160,6 +160,8 @@ async def generate(build_id: str, request: Request):
         existing = job(connection, build_id, body.generation_key)
     if existing is not None:
         if existing["request_hash"] == digest:
+            # A replay can arrive while the original reservation is still backing up.
+            await state.db.immediate_backup()
             return {"run_id": existing["run_id"]}
         raise RunError("synthetic_request_conflict", "This generation key was used for a different request", 409,
                        {"generation_key": body.generation_key})
@@ -180,11 +182,33 @@ async def generate(build_id: str, request: Request):
     with state.db.connect() as connection:
         connection.execute(
             "INSERT INTO synthetic_generations(generation_key,build_id,request_hash,run_id,source_id,bq_table,state,"
-            "retry_ready,created_at,spec_json,assumptions_json) VALUES(?,?,?,?,?,?,'queued',0,?,?,?)",
+            "retry_ready,created_at,spec_json,assumptions_json,bq_location) VALUES(?,?,?,?,?,?,'queued',0,?,?,?,?)",
             # The accepted exact spec as sent (canonical form only identifies the request).
             (body.generation_key, build_id, digest, run_id, source_id, table, created,
-             json.dumps(body.spec, ensure_ascii=False), json.dumps(assumptions)))
+             json.dumps(body.spec, ensure_ascii=False), json.dumps(assumptions), config.bq_location))
+
+    async def fail_unstarted():
+        # No node ran, so this reservation cannot own generated files or a BQ load.
+        with state.db.connect() as connection:
+            changed = connection.execute(
+                "UPDATE synthetic_generations SET state='failed',retry_ready=1,error_json=? "
+                "WHERE build_id=? AND generation_key=? AND state='queued'",
+                (json.dumps({"code": "synthetic_generation_failed",
+                             "message": node.FAILURES["synthetic_generation_failed"] + " Retry is available."}),
+                 build_id, body.generation_key)).rowcount
+        if changed:
+            await state.db.immediate_backup()
+
     state.harness.active_builds.add(build_id)
+    try:
+        # Persist the reservation before acknowledging it or starting any volume/BQ work.
+        await state.db.immediate_backup()
+    except BaseException:
+        try:
+            await fail_unstarted()
+        finally:
+            state.harness.active_builds.discard(build_id)
+        raise
     payload = {"config": config, "factory": state.bigquery_factory, "spec": spec, "build_id": build_id,
                "generation_key": body.generation_key, "source_id": source_id, "bq_table": table,
                "assumptions": assumptions, "created_at": created}
@@ -199,13 +223,7 @@ async def generate(build_id: str, request: Request):
         finally:
             state.harness.active_builds.discard(build_id)
             # A run that never reached the node generated nothing: fail it as retryable.
-            with state.db.connect() as connection:
-                connection.execute(
-                    "UPDATE synthetic_generations SET state='failed',retry_ready=1,error_json=? "
-                    "WHERE build_id=? AND generation_key=? AND state='queued'",
-                    (json.dumps({"code": "synthetic_generation_failed",
-                                 "message": node.FAILURES["synthetic_generation_failed"] + " Retry is available."}),
-                     build_id, body.generation_key))
+            await fail_unstarted()
     task = asyncio.create_task(background())
     state.engine_tasks.add(task)
     task.add_done_callback(state.engine_tasks.discard)

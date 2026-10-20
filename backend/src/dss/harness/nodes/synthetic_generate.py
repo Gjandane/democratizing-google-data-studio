@@ -18,7 +18,8 @@ from dss.harness.nodes.intake import register, write_doc
 NAME = "Synthetic sample data"
 CSV, METADATA, DOC = "sample.csv", "metadata.json", "synthetic-data.md"
 FAILURES = {"synthetic_generation_failed": "Sample data could not be generated.",
-            "synthetic_load_failed": "Sample data could not be loaded."}
+            "synthetic_load_failed": "Sample data could not be loaded.",
+            "generation_interrupted": "Sample data generation was interrupted by a restart."}
 
 
 class Failure(Exception):
@@ -136,10 +137,13 @@ def register_source(db, config, build_id, job, spec, result, profile):
         raise
 
 
-def cleanup(config, job, service):
+def cleanup(config, job, service, *, fence_missing=False):
     """Remove only this job's generated prefix and BigQuery table; True when both are gone.
 
-    service is None when no BigQuery client was ever created, so no load can exist."""
+    service is None when no BigQuery client was ever created, so no load can exist.
+    Startup fences absent jobs against a delayed remote submission. During a run,
+    an unobserved submission must retain ownership.
+    """
     cleaned = True
     try:
         folder = prefix(config.data_dir, job["build_id"], job["generation_key"])
@@ -149,10 +153,63 @@ def cleanup(config, job, service):
         cleaned = False
     if service is not None:
         try:
-            service.delete_loaded_table(job["bq_table"])
+            complete = (service.delete_loaded_table(job["bq_table"], fence_missing=True) if fence_missing
+                        else service.delete_loaded_table(job["bq_table"]))
+            if complete is False:
+                # An unobserved load can still create a table later. Retain ownership.
+                cleaned = False
         except Exception:
             cleaned = False
     return cleaned
+
+
+async def recover(db, config, factory):
+    """Before serving: fail orphaned workers and retry unfinished, job-owned cleanup.
+
+    The reserved row may predate a load or even its registration commit, so every
+    interrupted job must reconcile its table regardless of the restored state.
+    """
+    with db.connect() as conn:
+        succeeded = [dict(row) for row in conn.execute(
+            "SELECT * FROM synthetic_generations WHERE state='succeeded'")]
+        conn.execute("UPDATE synthetic_generations SET state='failed',retry_ready=0,error_json=? "
+                     "WHERE state IN ('queued','generating','loading')",
+                     (json.dumps({"code": "generation_interrupted",
+                                  "message": FAILURES["generation_interrupted"] +
+                                  " Retry becomes available after cleanup."}),))
+        pending = [dict(row) for row in conn.execute(
+            "SELECT * FROM synthetic_generations WHERE state='failed' AND retry_ready=0")]
+    # Volume files can outlive a container. Never serve a restored successful
+    # source whose completed CSV has disappeared or changed on that volume.
+    for job in succeeded:
+        folder = prefix(config.data_dir, job['build_id'], job['generation_key'])
+        try:
+            valid = ((folder / METADATA).is_file() and
+                     await asyncio.to_thread(digest, folder / CSV) == (job['bytes'], job['sha256']))
+        except OSError:
+            valid = False
+        if not valid:
+            raise RuntimeError('Stored synthetic sample data failed recovery validation')
+    if not pending:
+        return
+    await db.immediate_backup()
+    for job in pending:
+        try:
+            # Settings may have changed since reservation; job identity must not.
+            job_config = config.model_copy(update={'gcp_project_id': job['bq_table'].split('.')[0],
+                                                   'bq_location': job['bq_location'] or config.bq_location})
+            service = await asyncio.to_thread(factory, job_config)
+        except Exception:
+            # Still clean the owned files, but a missing client cannot prove BQ cleanup.
+            await asyncio.to_thread(cleanup, config, job, None)
+            continue
+        cleaned = await asyncio.to_thread(cleanup, config, job, service, fence_missing=True)
+        error = json.loads(job['error_json'])
+        error['message'] = FAILURES[error['code']] + (
+            " Retry is available." if cleaned else " Retry becomes available after cleanup.")
+        set_state(db, job['build_id'], job['generation_key'], 'failed',
+                  retry_ready=int(cleaned), error_json=json.dumps(error))
+    await db.immediate_backup()
 
 
 async def perform(harness, build_id, run_id, job):
@@ -177,7 +234,12 @@ async def perform(harness, build_id, run_id, job):
         error = {"code": code, "message": FAILURES[code] + (" Retry is available." if cleaned else
                                                             " Retry becomes available after cleanup.")}
         set_state(db, build_id, key, "failed", retry_ready=int(cleaned), error_json=json.dumps(error))
+        await db.immediate_backup()
         raise RunError(code, error["message"], 500, {"reason": reason} if reason else {}) from None
+    # Registration is already committed: backup failure must never roll it back or clean it.
+    # Defer cancellation until this boundary settles, or the harness can emit
+    # run.finished while the registered Source is still absent from the backup.
+    await db.immediate_backup()
     from dss.api.builds import build_response
     built = build_response(db, config, build_id)
     await harness.emit(build_id, run_id, "build.updated", {"build": built})

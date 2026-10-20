@@ -709,3 +709,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none.
 - Left open: none.
 - Next: Task 12.4 Immediate backups and interrupted-job recovery.
+
+## 2026-10-20: Task 12.4 Immediate backups and interrupted-job recovery
+- Status: done
+- Plan check: off
+- What changed: reservation/registration backups, startup interruption cleanup and checksum validation, durable failure/readiness, cancellation handling and bounded shutdown. Added tests/test_synthetic_recovery.py.
+- Checks: `uv run pytest tests/test_synthetic_recovery.py` PASS (21); recovery plus cloud tests PASS (43); Test (all) `uv run pytest` PASS (888, 8 live deselected, 3 dependency warnings). Read-only blueprint_reviewer: no remaining findings. `git diff --check -- .` PASS.
+- Decisions: reuse the existing backup routine/lock with a 3-second immediate budget; shutdown shares its remaining deadline. Reservation stores bq_location; recovery restores project/location. Extended bigquery.py outside Files because a missing load needs a same-job-ID SELECT 1 fence before retiring ownership; unresolved conflicts remain pending. Corrupt completed CSV/completion metadata stops startup. Failed cleanup retries on startup. Added the SQLite handle-closing gotcha to AGENTS.md.
+- Tried and failed: initial fixtures assumed dataclass Config, incomplete completion payload and automatic SQLite handle closure; corrected. Review exposed missing-job and cancellation boundaries; fixed and covered.
+- Gotchas: none beyond AGENTS.md.
+- Left open: none.
+- Next: Task 12.5 Synthetic label through prototype and report; live flow.

@@ -61,6 +61,7 @@ def create_app(config=None, *, model_lister=None, bigquery_factory=None):
         app.state.bigquery_factory = bigquery_factory or BigQuery
         from dss.spec.publication import recover
         await recover(app.state.db, app.state.settings.get(), app.state.bigquery_factory)
+        await synthetic_data.node.recover(app.state.db, app.state.settings.get(), app.state.bigquery_factory)
         from dss.harness.graph import AgentHarness
         app.state.harness = AgentHarness(app.state.db, app.state.bus, app.state.models)
         app.state.agent_jobs = AgentJobs(app.state)
@@ -73,6 +74,7 @@ def create_app(config=None, *, model_lister=None, bigquery_factory=None):
         try:
             yield
         finally:
+            shutdown_deadline = asyncio.get_running_loop().time() + SHUTDOWN_BACKUP_TIMEOUT_S
             try:
                 if config.engine_mode == "agent":
                     await app.state.agent_jobs.close()
@@ -84,7 +86,7 @@ def create_app(config=None, *, model_lister=None, bigquery_factory=None):
                 stop_backup.set()
                 if backup_task:
                     try:
-                        async with asyncio.timeout(SHUTDOWN_BACKUP_TIMEOUT_S):
+                        async with asyncio.timeout_at(shutdown_deadline):
                             await backup_task
                             await app.state.db.async_backup(force=True)
                     except TimeoutError:

@@ -12,6 +12,7 @@ from pathlib import Path
 from uuid import uuid4
 
 BACKUP_INTERVAL_S = 30
+IMMEDIATE_BACKUP_TIMEOUT_S = 3
 logger = logging.getLogger(__name__)
 
 
@@ -60,7 +61,7 @@ CREATE TABLE IF NOT EXISTS synthetic_generations (
  state TEXT NOT NULL CHECK(state IN ('queued','generating','loading','succeeded','failed')),
  retry_ready INTEGER NOT NULL DEFAULT 0, error_json TEXT, created_at TEXT NOT NULL,
  spec_json TEXT NOT NULL, assumptions_json TEXT NOT NULL,
- generator_version TEXT, sha256 TEXT, bytes INTEGER, PRIMARY KEY(build_id, generation_key));
+ generator_version TEXT, sha256 TEXT, bytes INTEGER, bq_location TEXT, PRIMARY KEY(build_id, generation_key));
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS consolidation (
  id INTEGER PRIMARY KEY CHECK(id=1), last_run_at TEXT, chats_since INTEGER NOT NULL DEFAULT 0);
@@ -104,6 +105,8 @@ class Database:
             shutil.copyfile(self.backup_path, self.path)
         with self.connect() as connection:
             connection.executescript(SCHEMA)
+            if 'bq_location' not in {row['name'] for row in connection.execute('PRAGMA table_info(synthetic_generations)')}:
+                connection.execute('ALTER TABLE synthetic_generations ADD COLUMN bq_location TEXT')
 
     def backup(self, *, force=False):
         """Snapshot locally with SQLite, then atomically replace the volume's copy."""
@@ -141,6 +144,8 @@ class Database:
                 await self.async_backup()
 
     async def async_backup(self, *, force=False):
+        if self.backup_path is None:
+            return
         # A stalled volume must not trap asyncio's default-executor shutdown.
         # The snapshot lock still serializes a worker that outlives its awaiter.
         result = Future()
@@ -156,6 +161,33 @@ class Database:
 
         threading.Thread(target=worker, name="dss-db-backup", daemon=True).start()
         await asyncio.wrap_future(result)
+
+    async def immediate_backup(self):
+        """Settle the best-effort durability boundary before propagating cancellation.
+
+        The daemon snapshot can outlive a stalled volume attempt; its existing
+        lock and dirty generation tracking still apply, without holding shutdown.
+        """
+        if self.backup_path is None:
+            return
+
+        async def attempt():
+            try:
+                async with asyncio.timeout(IMMEDIATE_BACKUP_TIMEOUT_S):
+                    await self.async_backup()
+            except TimeoutError:
+                logger.warning('Database backup exceeded the immediate budget; will retry')
+
+        backup = asyncio.create_task(attempt())
+        cancelled = None
+        while not backup.done():
+            try:
+                await asyncio.shield(backup)
+            except asyncio.CancelledError as exc:
+                cancelled = exc
+        backup.result()
+        if cancelled is not None:
+            raise cancelled
 
     def build_exists(self, build_id):
         with self.connect() as connection:

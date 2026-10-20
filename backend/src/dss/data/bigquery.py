@@ -193,19 +193,31 @@ class BigQuery:
         job.result(timeout=120)
         return self.client.get_table(table, timeout=30).num_rows
 
-    def delete_loaded_table(self, table):
-        return self._delete_after_job(self.load_job_id(table), table)
+    def delete_loaded_table(self, table, *, fence_missing=False):
+        return self._delete_after_job(self.load_job_id(table), table, fence_missing=fence_missing)
 
-    def _delete_after_job(self, job_id, table):
+    def _delete_after_job(self, job_id, table, *, fence_missing=False):
         # A timed-out result() may still be executing in BigQuery. Keep ownership
         # until its deterministic job is terminal, then remove the table.
         try:
             job = self.client.get_job(job_id, location=self.config.bq_location, timeout=30)
         except Exception as exc:
             if getattr(exc, 'code', None) == 404:
-                self.client.delete_table(table_uri(table), not_found_ok=True, timeout=30)
-                return False  # Submission may have been accepted but not observed yet.
-            raise
+                if not fence_missing:
+                    self.client.delete_table(table_uri(table), not_found_ok=True, timeout=30)
+                    return False  # Submission may have been accepted but not observed yet.
+                # A no-table query claims the SAME job identity as the load. Either
+                # it wins and a delayed load cannot start, or the load wins (409)
+                # and we reconcile that job below. Absence alone is not a fence.
+                try:
+                    job = self.client.query('SELECT 1', job_id=job_id, location=self.config.bq_location,
+                                            timeout=30, job_retry=None)
+                except Exception as conflict:
+                    if getattr(conflict, 'code', None) != 409:
+                        raise
+                    job = self.client.get_job(job_id, location=self.config.bq_location, timeout=30)
+            else:
+                raise
         if not job.done(timeout=30):
             job.cancel(timeout=30)
             try:
