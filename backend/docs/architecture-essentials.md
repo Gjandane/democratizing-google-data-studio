@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:d796cb67a30a (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:99497e802025 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 Read every build session. docs/architecture.md wins if they disagree.
 
@@ -39,9 +39,9 @@ tests/          offline fakes; tests/live/ explicitly marked live
   architecture.md#Implementation conventions. `/api/dev/*` requires `DSS_DEV=1`.
 - Tests: fixture keys/types, offline fakes unless marked live (architecture.md#Testing).
 - Research: discovery + metadata calls; <=20 scraper fetches, no retries.
-- References/feasibility: see architecture.md#Reference interpretation, #Capability verification,
-  #Interview feasibility recovery. Images are not data; issues block readiness and downstream
-  work, not clarification. Retain audience context; one extraction/action.
+- References/feasibility: architecture.md#Reference interpretation through #Conversational
+  definitions and supported styling. Images are not data; issues gate readiness, not clarification.
+  Retain context and confirmed definitions with provenance; one extraction/action.
 - Plan publication: each plan attempt makes a run-specific candidate view; publish it with spec
   and artifacts; clean only uncommitted candidates; never replace a published view.
 - Synthetic data (#Synthetic data, synthetic-data.md): schema/count/seed -> deterministic stdlib

@@ -384,6 +384,46 @@ Final-audit corrections (2026-10-19):
   A live isolated interview exercises the release wording and real extractor; release 2.2 remains
   the separate end-to-end verification through dry-run execution and a second version.
 
+### Conversational definitions and supported styling
+- Problem (release 2.2 retry, build b_04db6ec42f78): comma/conjunction-separated formulas
+  remain unconfirmed; later revenue charts lose the preceding definition; ordinary blue-theme
+  wording becomes an unknown requirement. Task 14.1's passing live wording did not cover these.
+  Inputs: original ordered messages/comments, extracted rows, confirmed mappings and provenance,
+  current schema, registry and candidate spec. Output: a reconciled ledger and assessment that
+  permit the existing supported flow without dropping intent or inventing metric definitions.
+- Recognize coordinated affirmative definitions, including commas and "and", without requiring
+  one formula per sentence. Bind each label to its own field/aggregation; retain COUNT versus
+  COUNT DISTINCT. Negated, hypothetical, quoted example or contradictory formulas are not
+  authorization. Gross/net and incompatible definitions still need explicit clarification.
+- Reuse a previously explicit, schema-valid definition for a later compatible request for the
+  same metric, with source provenance attached. Do not infer sameness from a shared field alone
+  or propagate definitions across different sources, units, meanings or incompatible grains.
+  Conflicts block until resolved explicitly. Reassessment/reload retains valid definitions;
+  schema or intent changes revalidate them. Existing failed ledgers must recover through the
+  normal bounded check/clarification path, without deleting sources or patching runtime files.
+- A qualitative request for a clean blue theme or dark blue component accent authorizes choosing
+  a suitable blue shade within already evidenced styling capabilities (such as style.colors,
+  style.background or style.border_color). Normalize to supported concrete values and preserve
+  the preference through spec/recipe validation. A color word alone does not authorize arbitrary
+  features; mixed animation/unknown requests remain blocked. "Proceed" is not acceptance of an
+  alternative or permission to drop an issue. Component comments retain their target, position,
+  field bindings and data; preserving those is a constraint, not an unknown executable feature.
+- Budget/invariants: keep the existing extraction token/row limits, one extraction per action,
+  one Workflow/trace, deterministic recomputation target and spec repair budget. No dependencies,
+  API changes, registry support grants without evidence, or extra model retry loops.
+- Exact regression conversation (backend-owned fixture; release's sample field names):
+  1. "The audience is sales executives. Track total revenue, order count, quantity sold and sales trends using only the uploaded columns."
+  2. "Compare regions and product categories over the full available date range; revenue is SUM(revenue), order count is COUNT(DISTINCT order_id), and quantity sold is SUM(quantity)."
+  3. "Use one executive overview page with KPI scorecards, a revenue trend grouped by order_date at monthly grain, and revenue by region. Use a clean blue theme; proceed with these choices."
+  After a valid prototype, comment: "Use a dark blue accent for this component; preserve its position and data."
+- Oracle: real API/graph with fake providers covers coordinated definitions and their forward
+  reuse, preserved monthly order_date, blue styling, reload and negative cases above. All three
+  exact answers must clear feasibility, permit readiness and pass plan preflight; a supported
+  candidate spec must pass fulfillment. The comment must validate and change only supported
+  styling. Live extraction must pass the same unchanged conversation and supported comment
+  through prototype/revision; preserve failed as well as successful evidence. No substitutions
+  of hex-only wording, silent drop decisions or injected ledger/spec in the live regression.
+
 ### Synthetic data
 - Problem: a reference can describe a dashboard without supplying its source data. Offer explicit
   synthetic generation instead of requiring a CSV before the app can proceed.
@@ -668,3 +708,4 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-20 | Keep fixes 13.1-13.3; defer former 13.4-13.8 to PRD Later and mark their design paragraphs as deferred | another five build sessions and re-audit | user-approved POC severity triage; no silent claim that deferred invariants are implemented | change triage phase 13 |
 | 2026-10-20 | Shared-schema recipe validation, Windows Job ownership/0.4 s cleanup, shared cached text fitting and existing context-section ordering | repeated schema loading, wrapper-only cleanup, enlarged heading boxes or changed context recipes | retain completed task decisions and unchanged repair/deadline limits | tasks 13.1-13.3; final re-audit |
 | 2026-10-21 | Preserve audience context and continue interview clarification while feasibility blocks readiness and side effects | rewrite release answers to evade the gate; suspend feasibility until a fixed answer count | release 2.2 demonstrated a core-flow failure; the interviewer must be able to collect missing definitions | change interview feasibility recovery (program root) |
+| 2026-10-21 | Recognize coordinated explicit formulas, reuse confirmed metric definitions with provenance, and normalize ordinary blue styling to evidenced capabilities | rewrite the integration fixture into isolated sentences and hex-only style requests; automatically drop unresolved rows | release 2.2 still fails after 14.1; persisted evidence shows parser boundaries, missing forward definition reuse and unclassified styling | change conversational definitions and styling (program root) |

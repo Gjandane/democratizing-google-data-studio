@@ -187,3 +187,29 @@ context. Task status lives in docs/plan.md, not here.
 - Options: A architect plans backend repair / B architect authorizes revised fixture/decision flow / Recommend: A.
 - Evidence: build `b_04db6ec42f78`, POST `/plan` HTTP 409, body excerpts: `{"error":{"code":"feasibility_blocked","detail":{"assessment_id":"assessment_93df75178f30"}}}`; "proposed order_id is not an explicit definition"; "proposed quantity is not an explicit definition". GET `/feasibility` HTTP 200: seven unresolved issues, including explicit formulas, revenue sum confirmation and unknown blue-theme request.
 - Next: architect resolves backend feasibility; recover the 02:11 stash with `git stash apply`, then rerun release 2.2.
+
+## 2026-10-21: Change conversational definitions and styling (release/program)
+- Status: planning resolution complete; backend implementation and release verification remain.
+- Ruling: option A, one backend follow-up 14.2 (M). Repair the supported conversation rather
+  than changing punctuation/theme wording or dropping feasibility issues to make the demo pass.
+- Evidence: read-only blueprint_explorer traced the persisted b_04db6ec42f78 ledger and
+  requirements.py: assignment boundaries omit comma/conjunction clauses; confirmed definitions
+  only update earlier rows, leaving later revenue charts without provenance; blue-theme wording
+  remains empty-needs/unknown. Monthly grain was already present. Task 14.1's live test used
+  separate formula sentences and hex colors, so it did not prove the release transcript.
+- What changed: backend architecture/essentials, PRD default and task 14.2 specify coordinated
+  affirmative definitions, compatible forward reuse, supported qualitative blue styling and
+  the exact three-answer/comment regression. Root plan gates 2.2 on 14.2 and corrects recovery
+  to stash subject `blueprint: task 2.2 failed attempt 2026-10-21 02:11`; program roadmap updated.
+  Script `reopen 2.2` changed blocked to todo, waiting on 14.2. Driver stash remains untouched.
+- Decisions: one M repair to an observed core-flow blocker before the existing deadline,
+  no feature/contract/dependency change. Preserve conflicting/unsupported-intent gates and
+  existing budgets. No delta audit required for this narrow POC correction; no final audit claimed.
+- Change requests settled: latest release 2.2 explicit-definitions/theme question planned as
+  backend 14.2. All existing acceptance, push and deploy STOPs remain in their tasks.
+- Checks: root Test (all) PASS 9/9; backend stamp PASS; release lint 0 errors/0 warnings;
+  backend lint 0 errors/4 pre-existing size warnings; program 0 problems, backend 14.2 next
+  and release 2.2 waiting; git diff --check PASS (line-ending notices only).
+  Backend implementation/live tests were not run in this documentation-only session.
+- Next: build backend 14.2 in backend/, then restore the 02:11 driver and rerun release 2.2
+  at this root, including v1/v2 dry-run and benchmarks. Existing later release order is unchanged.

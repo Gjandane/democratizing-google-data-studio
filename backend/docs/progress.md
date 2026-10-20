@@ -894,3 +894,24 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: P2 partial omission in a mixed message (extractor drops one clause but keeps a sibling) is not detected; pre-existing extraction trust - src/dss/spec/requirements.py. P3 non-aggregate distinct wording ("use customer_id for unique customers") now always asks - src/dss/spec/requirements.py. P3 bare roles ("Sales team.") count as context - src/dss/spec/requirements.py.
 - Next: release 2.2 at the program root recovers its saved driver and verifies both dry-run versions.
+
+## 2026-10-21: Change conversational definitions and styling (program root)
+- Status: planned; task 14.2 is ready, not implemented.
+- Source: release 2.2 retry b_04db6ec42f78 completed all three interview turns but POST /plan
+  returned feasibility_blocked for explicit formulas and ordinary theme wording.
+- Evidence: read-only explorer checked the persisted ledger and requirements.py assignment,
+  merge and mapping-verdict paths. Comma/conjunction boundaries miss order count/quantity;
+  later revenue charts do not inherit earlier explicit SUM provenance; blue styling remains
+  unclassified. Monthly date grain is present. The 14.1 live regression used different wording.
+- What changed: architecture.md adds Conversational definitions and supported styling and a
+  decision row; essentials summarized/stamped; PRD default records compatible definition reuse
+  and choice of a supported blue shade. Task 14.2 (M) carries the exact release interview/comment,
+  offline positive/negative/persisted-ledger checks and real live prototype/revision acceptance.
+- Decisions: one existing-goal blocker repair; no API, contract, dependency, token/repair budget
+  or unrelated deferred-hardening change. Do not replace ordinary prose with special test wording.
+  No delta audit required at POC; previous final audit does not verify 14.1/14.2.
+- Change requests settled: latest release 2.2 question planned as 14.2; release waits on it.
+- Checks: backend stamp PASS; lint 0 errors/4 existing size warnings; root Test (all) 9/9 PASS;
+  root lint 0 errors/0 warnings; program 0 problems; git diff --check PASS. No backend tests
+  or live runs performed in this planning-only session.
+- Next: build 14.2 here, then resume release 2.2 at the root using its latest 02:11 stash.

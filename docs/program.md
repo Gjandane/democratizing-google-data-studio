@@ -103,9 +103,10 @@ Written 2026-10-18.
 - CI: none.
 
 ## Roadmap
-Current priority (change 2026-10-21): build backend 14.1 (M, interview feasibility recovery)
+Current priority (change 2026-10-21, release retry): build backend 14.2 (M, conversational definitions and styling)
 in backend/, then resume release 2.2 at this root from its saved driver. Release 2.2 waits on
-14.1; earlier backend final-audit acceptance does not verify this new repair. This is one
+14.2; 14.1 is done but the exact release transcript still fails. Earlier backend final-audit
+acceptance does not verify these repairs. This is one
 core-flow blocker repair before the existing local acceptance, GitHub and Cloud Run sequence;
 no additional feature scope or broad audit-fix phase is added.
 
@@ -254,3 +255,4 @@ phases" below.
 | 2026-10-20 | GCS joins the four manual acceptance sources | four sources only | README claims GCS; every claimed source gets a tested row | change 2026-10-20 final phases (user choice) |
 | 2026-10-20 | Release 2.5 gates on frontend 10.3 and 11.2, the last tasks of frontend's split of 10.1 (10.1-10.3) and 11.1 (11.1-11.2); api.md 1.5 (consistency: cross-refs, complete `node` list); example fixtures for SyntheticDataset, a succeeded GenerationStatus and Assessment alternatives/pending/stale (dashboard-intent and synthetic-data keep 1.1, shapes unchanged); frontend consumes dashboard-intent and synthetic-data | keep the old gates; bump dashboard-intent and synthetic-data too | the old gates let release 2.5 start before frontend finishes; consumers test against shared fixtures instead of overrides; no shape changed, so no part rework | change 2026-10-20 frontend split (frontend delta audit) |
 | 2026-10-21 | Backend 14.1 repairs audience-context classification and interview clarification; release 2.2 waits, then recovers its saved driver | alter demo wording to evade feasibility; defer all checks until three answers | ordinary sales-audience context and incomplete metrics stopped the core flow; existing contract already requires clarification with readiness gated | change interview feasibility recovery |
+| 2026-10-21 | Backend 14.2 repairs coordinated formulas, forward reuse of confirmed definitions and supported blue styling; release 2.2 waits, then restores the 02:11 stash | change the release wording; drop unresolved requirements | 14.1 passed different wording, but release's explicit formulas and theme still block planning; one core-flow repair, no new feature or contract | change conversational definitions and styling |

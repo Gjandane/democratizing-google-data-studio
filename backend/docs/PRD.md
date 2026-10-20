@@ -81,6 +81,10 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
   whose every component passes validation, and `DSS_ENGINE_DRY_RUN=1` reaches `done`.
 
 ## Decided by default
+- Change 2026-10-21 (release retry): explicit metric definitions apply to later compatible
+  requests with provenance; ordinary blue-theme/accent wording permits choosing a supported
+  blue shade. Reason: these are existing interview/style goals, and requiring special formula
+  punctuation or hex-only user wording breaks the core flow. Unsupported behavior still blocks.
 - Change 2026-10-21: ordinary audience context is retained without requiring a capability;
   incomplete or unsupported requirements keep the interview open for clarification while
   readiness and downstream work remain gated. This repairs the release 2.2 blocker under the

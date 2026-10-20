@@ -40,15 +40,15 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: S
   - Needs: backend 1.1; frontend 1.1
   - Done when: manual: `./start.sh` in Git Bash and `./start.ps1` in PowerShell each print both URLs, `curl -s localhost:8000/api/health` returns ok and http://localhost:5173 loads; Ctrl+C leaves no process listening on 8000 or 5173 (`netstat -ano | grep -E ":(8000|5173) "` prints nothing).
-- [!] 2.2 End-to-end flow 1 and 3, dry-run engine
+- [ ] 2.2 End-to-end flow 1 and 3, dry-run engine
   - Goal: `integration/e2e_flow1.py` drives flow 1 through the API (sample CSV, scripted interview of 3 answers, plan, one comment, recipe, run) and, with `--version2`, flow 3 (new version, one comment, run) against the backend with `DSS_ENGINE_DRY_RUN=1`; it prints seconds per stage and the run's token totals from `GET /api/traces?build_id=`, and writes them to `deck/data/bench-<UTC date>-<mode>.json` (the deck's benchmark source).
   - Files: integration/e2e_flow1.py, deck/data/*.json
   - Depends on: 2.1
   - Size: M
-  - Needs: backend 4.2; backend 4.4; backend 14.1; engine 1.1
+  - Needs: backend 4.2; backend 4.4; backend 14.2; engine 1.1
   - Done when: with the parts started by `./start.sh` and `DSS_ENGINE_DRY_RUN=1` in .env, `uv run --project integration python integration/e2e_flow1.py --version2` exits 0, prints each stage reached for v1 and v2, a table of seconds per stage and input/output token totals, and writes the bench JSON with the same numbers, the server URL, the mode and the run date; it never prints the access code.
   - If: a step fails inside a part -> block this task with the part, the step and the API error body; never patch the part from here.
-  - If: resuming after backend 14.1 -> recover the saved driver with `blueprint.py restore 2.2` (stash subject `blueprint: task 2.2 failed attempt 2026-10-21 01:01`); keep the audience-plus-metrics first answer. Later scripted answers may explicitly define SUM(revenue), COUNT(DISTINCT order_id), SUM(quantity) and monthly order_date grain to make the three-answer fixture complete; never suppress a real feasibility issue or weaken the pass criteria.
+  - If: resuming after backend 14.2 -> find the stash by subject `blueprint: task 2.2 failed attempt 2026-10-21 02:11` with `git stash list`, then `git stash apply` its current reference (not the older 01:01 attempt; retain the stash until verified). Keep its exact three answers and dark-blue accent comment, now also the backend 14.2 regression. Never suppress a real feasibility issue, change the wording to evade it or weaken the pass criteria.
 - [ ] 2.3 End-to-end live build and UI walkthrough
   - Goal: the same flow with the real engine and the signed-in profile, plus the demo clicked through the UI.
   - Files: integration/e2e_flow1.py, deck/data/*.json
