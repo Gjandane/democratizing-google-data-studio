@@ -363,3 +363,11 @@ context. Task status lives in docs/plan.md, not here.
 - Docs: reference-ui.md Controls and states gains the collapsed-in-Prototype, confirm-before-loss and steady-refetch rules (12.1/12.2 Spec). implementation-notes gains the test traps (moved from AGENTS.md Known gotchas: fake timers, createObjectURL, compileRecipe, Modal focus) and the workspace-panel convention (shared EventSource fanout, shell-owned gates, obsolete responses dropped) from 10.1-10.2 Decisions. Essentials: `deps --write` re-dated rows; typescript row records 5.9.3 in range (own registry check). PRD Later: backend-blocked live legs (to release 2.5), mock CSV blob, chat sr-only height, bundle size.
 - Left open: AGENTS.md "Resource-panel tests" and "Feasibility test helpers" gotchas stay until 12.1 changes the loading behavior (12.1 updates them).
 - Next: task 12.1, then 12.2, then a re-audit (architect).
+
+## 2026-10-20: Change Phase 12 triage (severity bar)
+- Status: done
+- What changed: Phase 12 re-graded against the architect skill's new severity bar (POC: only blockers become tasks, at most 2 fix tasks). Kept, in 12.1 (in progress, unchanged): P1 10.1 Done when (7) strip phrases untested; P2 Prototype canvas below the fold at 1280x800 (the must-survive prototype/comment screen; POC checklist "core screens match the UI design"); P2 FeasibilityPanel unmount on refetch (not a blocker at POC, kept because the in-progress 12.1 diff already builds it). Removed 12.2 (unstarted): its 8 P3 findings go to the PRD `## Later` list (source audit 2026-10-20). reference-ui.md Controls and states drops the confirm-before-loss rule, which only 12.2 built.
+- Why: the 2026-10-20 retro found re-audits looping on P3-only fix phases (Phases 8, 9); Phase 12 was planned before the bar and accepted all 11 code findings. User picked the kept findings on a card.
+- Tasks affected: 12.1 none (built as written); 12.2 removed.
+- Change requests: none open.
+- Next: finish task 12.1, then a re-audit (architect): blockers only.
