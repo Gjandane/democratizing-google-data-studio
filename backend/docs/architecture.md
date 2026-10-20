@@ -79,6 +79,9 @@ Files per version: `data/builds/<id>/v<n>/` (../contracts/conventions.md).
   archetype-<x>) -> reply streamed as `message.delta`/`message.done`. When the interview has
   enough, the agent calls its tool `mark_ready_for_plan()` (never a text marker), which sets
   `ready_for_plan` and emits `build.updated`.
+  Feasibility issues are input to this conversation, not a reason to skip it: ask for missing
+  definitions and explain unsupported behavior while readiness remains false. Extraction,
+  provider and guardrail failures still use the existing error path.
 - **intake**: CSV upload -> column names to snake_case (dedupe with `_2`), UTF-8 with latin-1
   fallback, reject over 100 MB or zero rows (`422 invalid_source`, `detail.reason`) -> BigQuery
   load job with autodetect into `src_<build_id>_<file slug>` -> profile (type, null %, distinct
@@ -342,6 +345,44 @@ Final-audit corrections (2026-10-19):
   through GET, unchanged explicit checks and reload. Support alone must not overwrite a
   fulfillment failure with ready/non-stale. Replan/reapply may recover only after coverage of
   the repaired artifact passes; pending supported comments retain their explicit reapply flow.
+
+### Interview feasibility recovery
+- Problem (release 2.2, 2026-10-21): ordinary audience context was classified as an unknown
+  capability, and incomplete metric definitions bypassed the interviewer that should collect them.
+  Inputs are the original message, extracted requirements/provenance, existing ledger, schema
+  and current assessment. Outputs are a grounded next interview reply and updated assessment;
+  this change introduces no API fields, statuses or capability grants.
+- Audience and decision-making context does not itself request executable behavior. Recognize
+  it conservatively and retain it for interview/planning with context evidence. Handle both
+  standalone audience answers (including "The audience is sales executives.") and the same
+  clause within a message that also requests metrics. Check original source coverage: a mixed
+  message's chart, animation or unknown-feature request must remain in the requirement ledger.
+  Do not whitelist arbitrary empty-needs rows, whole messages with an audience prefix, or
+  model assertions that something is merely context.
+- An assessment blocked on missing definitions, unknown or unsupported behavior does not end
+  an otherwise valid interview turn. Feed the issues to the interviewer in the same run; ask
+  for definitions or explain a refusal and valid alternatives. Persist/stream the reply and
+  finish that conversational turn normally while assessment remains blocked and readiness false.
+  Extraction/validation/provider/guardrail failures still fail; do not catch all errors as clarification.
+- Later explicit answers reconcile the affected unresolved metric (field, aggregation, unit
+  and grain as applicable), preserving provenance and unrelated requirements/decisions. Never
+  guess gross/net or count/distinct-count. The interview has no fixed three-answer rule:
+  readiness requires enough interview information AND a ready assessment. An early readiness
+  tool call cannot bypass unresolved issues. Direct plan, recipe and run keep their existing gates.
+- Existing misclassified audience rows must recover on bounded reassessment without deleting
+  their source messages or accepting a user "drop" decision for harmless context. Cover both
+  empty-needs and unknown.unclassified sentinel representations, without clearing a genuine
+  unknown behavior, mapping or unsupported need. No general migration framework is required.
+- Budget: retain one requirement-extraction generation per incoming action, its 12k/4k token
+  and 40-requirement limits, existing interview budgets/tool limit and one Workflow/trace per
+  action. No extra extraction loop, web search, new dependency or increased repair budget.
+- Oracle: API/graph regressions cover audience-only and mixed audience/metrics, three successive
+  incomplete-to-explicit answers, gross/net ambiguity then explicit resolution, reload/reassessment
+  of persisted audience rows, and mixed audience plus GPS animation/unknown-feature requests.
+  Before resolution, attempted readiness is false and plan/recipe/run have no view, render,
+  compile, queue or engine side effects. After resolution, existing supported planning still works.
+  A live isolated interview exercises the release wording and real extractor; release 2.2 remains
+  the separate end-to-end verification through dry-run execution and a second version.
 
 ### Synthetic data
 - Problem: a reference can describe a dashboard without supplying its source data. Offer explicit
@@ -626,3 +667,4 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-20 | Fold durable implementation and test rules from tasks 9-12 into conventions | leave them in every session's gotchas | keep canonical recipes, intent provenance, staged publication and synthetic recovery explicit | final re-audit |
 | 2026-10-20 | Keep fixes 13.1-13.3; defer former 13.4-13.8 to PRD Later and mark their design paragraphs as deferred | another five build sessions and re-audit | user-approved POC severity triage; no silent claim that deferred invariants are implemented | change triage phase 13 |
 | 2026-10-20 | Shared-schema recipe validation, Windows Job ownership/0.4 s cleanup, shared cached text fitting and existing context-section ordering | repeated schema loading, wrapper-only cleanup, enlarged heading boxes or changed context recipes | retain completed task decisions and unchanged repair/deadline limits | tasks 13.1-13.3; final re-audit |
+| 2026-10-21 | Preserve audience context and continue interview clarification while feasibility blocks readiness and side effects | rewrite release answers to evade the gate; suspend feasibility until a fixed answer count | release 2.2 demonstrated a core-flow failure; the interviewer must be able to collect missing definitions | change interview feasibility recovery (program root) |

@@ -144,3 +144,31 @@ context. Task status lives in docs/plan.md, not here.
 - Evidence: build `b_63e4d5fbd1df`, run `r_bb51e67be2ec`, node `interview`, trace status `error`, error `feasibility_blocked`; POST messages accepted 202, subsequent GET feasibility 200:
   `{"state":"blocked","issues":[{"requirement":"The audience is sales executives.","status":"unknown","reason":"No registered capability covers this requirement; clarify the requested behavior"}]}` (excerpt; remaining issues request explicit fields for order count, quantity and sales).
 - Next: architect resolves backend interview feasibility; recover the named stash, then rerun task 2.2.
+
+## 2026-10-21: Change interview feasibility recovery (release/program)
+- Status: planning resolution complete; implementation and end-to-end verification remain.
+- Ruling on release 2.2: option A, repair backend behavior. Ordinary audience context is not
+  an unsupported feature; incomplete metrics must be clarified through the interview while
+  readiness and planning/build side effects remain blocked. Do not evade the failure by
+  deleting the audience answer or disabling feasibility.
+- Evidence: read-only explorer identified the audience recognizer/source-coverage gap in
+  backend/src/dss/spec/requirements.py and the graph route that skips interview on any
+  blocked assessment. The failed driver is still in stash subject
+  `blueprint: task 2.2 failed attempt 2026-10-21 01:01`; it was not restored or altered here.
+- What changed: backend planning docs specify one M task 14.1 with offline API/graph,
+  persisted-ledger recovery, negative enforcement and live-interview checks. Root plan gates
+  2.2 on backend 14.1 and records driver recovery plus explicit metric definitions in later
+  scripted answers. `blueprint.py reopen 2.2` changed blocked to todo; it is waiting on 14.1,
+  not ready or passed. Program roadmap/decision log updated.
+- Scope: existing core-flow blocker before the 2026-10-23 01:05 MPST deadline, one additional
+  backend build session; no feature expansion, new dependency, transport/contract change or
+  engine/frontend work. Architecture edits are planning-only under Program change mode.
+  No delta audit required for this narrow POC correction; no fresh final audit claimed.
+- Change requests settled: task 2.2's audience/incomplete-metric question planned as backend
+  14.1. Existing release sequence and user acceptance/push/deploy STOPs remain.
+- Checks: root check_contracts.py PASS 9/9; release lint 0 errors/0 warnings; backend stamp
+  PASS and lint 0 errors/4 existing size warnings; program 0 problems and correctly waits
+  release 2.2 on backend 14.1; scoped git diff --check PASS. No backend implementation tests
+  or live integration rerun in this documentation-only session.
+- Next: open backend/ for task 14.1, then this root for release 2.2 (M); restore the saved
+  driver and rerun its Done when and root Test (all). All later release tasks stay in order.

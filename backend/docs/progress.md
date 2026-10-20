@@ -856,3 +856,30 @@ context. Task status lives in docs/plan.md, not here.
   lint 0 errors/4 historical warnings; scoped diff whitespace PASS. Commit backend docs only.
 - Left open: no blocker or unverified dependency. Known P2/P3 limitations in PRD Later.
 - Next: nothing left to build in backend; root integration audit after other parts are accepted.
+
+## 2026-10-21: Change interview feasibility recovery (program root)
+- Status: planned; backend 14.1 is ready, not implemented.
+- Source: release task 2.2 failed on its first ordinary audience/metrics answer. Its trace
+  reported feasibility_blocked for "The audience is sales executives." and incomplete mappings.
+- Evidence: read-only explorer traced the bounded audience recognizer and original-source
+  match in src/dss/spec/requirements.py, plus the blocked-assessment route in harness/graph.py
+  that bypasses the interviewer. Existing tests require that bypass; readiness already has
+  independent assessment checks. Persisted source digests mean a prompt-only repair would
+  not recover old misclassified rows. No new live run or code fix is claimed.
+- Ruling: context remains context with source coverage; actual requirements still require
+  capability/data evidence. Continue valid conversational turns to clarify missing definitions,
+  with readiness and all dependent side effects gated. Preserve extraction/provider/guardrail
+  error handling, provenance, budgets and genuine unknown/unsupported behavior.
+- What changed: architecture.md new Interview feasibility recovery spec and decision row,
+  essentials summary/stamp, PRD default, and plan task 14.1 (M). Contracts remain unchanged:
+  dashboard-intent 1.1 already requires interview clarification and gates ready_for_plan.
+- Decisions: one blocker repair, not another general audit-fix phase; no new dependency,
+  API shape or product feature. No delta audit required for this narrow POC change.
+  Historical ACCEPTED final audit predates 14.1 and does not verify the repair.
+- Checks: backend stamp PASS; lint 0 errors/4 pre-existing size warnings; program 0 problems;
+  root check_contracts.py 9/9 PASS; scoped git diff --check PASS. Backend tests not run in this
+  documentation-only session; the focused, live and full commands are task 14.1's Done when.
+- Change requests settled: release 2.2's interview-feasibility question is planned as 14.1;
+  no other new request in the latest backend entry.
+- Next: builder in backend/ completes 14.1; then release 2.2 recovers its saved driver and
+  verifies both dry-run versions at the program root.

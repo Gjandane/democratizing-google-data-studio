@@ -81,6 +81,10 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
   whose every component passes validation, and `DSS_ENGINE_DRY_RUN=1` reaches `done`.
 
 ## Decided by default
+- Change 2026-10-21: ordinary audience context is retained without requiring a capability;
+  incomplete or unsupported requirements keep the interview open for clarification while
+  readiness and downstream work remain gated. This repairs the release 2.2 blocker under the
+  existing interview/feasibility goals; no fixed answer count or capability bypass is introduced.
 - Interview runs one LLM turn per user message (stateless run per request) rather than a
   long-lived human-input node: simpler with REST; the episodic store holds the chat.
 - Graph: one ADK Workflow with an action router (interview_turn, plan, revise, build, audit,
