@@ -2,7 +2,7 @@ import { Activity, ArrowLeft, ChartColumn, CircleCheck, Database, FileText, Hamm
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
-import { ApiError, type Build, type Message, type Stage } from '../../api/types';
+import { ApiError, type Assessment, type Build, type Message, type Stage } from '../../api/types';
 import { Button, buttonClass } from '../../components/Button';
 import { ErrorState } from '../../components/ErrorState';
 import { focusRing } from '../../components/focus';
@@ -137,6 +137,8 @@ function StageArea({
   // in this session stays open in done); a done build opened from History has no such run and shows the Done view.
   const [referencesReady, setReferencesReady] = useState(false);
   const [feasibility, setFeasibility] = useState<FeasibilityGates>({ planReady: false, buildReady: false });
+  const [assessment, setAssessment] = useState<Assessment | null>(null);
+  const [assessmentRefresh, refreshAssessment] = useState(0);
   const showBuild = build.stage === 'build' || ((build.stage === 'prototype' || build.stage === 'done') && buildOpen);
   // A result from an earlier version's run doesn't belong to the current version.
   const run = buildRun.finished && buildRun.finished.version !== build.current_version ? idleRun : buildRun;
@@ -178,7 +180,7 @@ function StageArea({
             </Button>
           )}
         </div>
-        {build.stage !== 'done' && <FeasibilityPanel key={`${build.id}-${build.current_version}`} buildId={build.id} referencesReady={referencesReady} readOnly={build.stage === 'build' || build.stage === 'plan'} onReadyChange={setFeasibility} />}
+        {build.stage !== 'done' && <FeasibilityPanel key={`${build.id}-${build.current_version}`} buildId={build.id} referencesReady={referencesReady} readOnly={build.stage === 'build' || build.stage === 'plan'} onReadyChange={setFeasibility} onAssessmentChange={setAssessment} refreshKey={assessmentRefresh} canReplan={build.stage === 'prototype'} localCommentsPending={pendingComments > 0} />}
         {showBuild ? (
           <>
             <div className="mt-6"><ReferencePanel buildId={build.id} version={build.current_version} readOnly={build.stage !== 'prototype'} onReadyChange={setReferencesReady} /></div>
@@ -191,7 +193,7 @@ function StageArea({
         ) : build.stage === 'plan' ? (
           <PlanStage build={build} progress={progress} planning={planning} />
         ) : build.stage === 'prototype' ? (
-          <PrototypeStage build={build} applying={applying} commentsError={commentsError} stretchRuns={stretchRuns} onPendingChange={onPendingChange} onReferenceReadyChange={setReferencesReady} />
+          <PrototypeStage assessment={assessment} onAssessmentInvalidated={() => refreshAssessment((n) => n + 1)} build={build} applying={applying} commentsError={commentsError} stretchRuns={stretchRuns} onPendingChange={onPendingChange} onReferenceReadyChange={setReferencesReady} />
         ) : (
           <DoneStage
             build={build}

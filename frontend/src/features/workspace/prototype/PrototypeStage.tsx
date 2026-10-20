@@ -1,7 +1,7 @@
 import { CircleCheck, MousePointerClick, ScanSearch } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api } from '../../../api/client';
-import { ApiError, type Build } from '../../../api/types';
+import { ApiError, type Assessment, type Build } from '../../../api/types';
 import { Button } from '../../../components/Button';
 import { EmptyState } from '../../../components/EmptyState';
 import { Spinner } from '../../../components/Spinner';
@@ -13,6 +13,8 @@ import { PrototypeCanvas } from './PrototypeCanvas';
 import type { PendingComment, Target } from './types';
 
 interface PrototypeStageProps {
+  assessment?: Assessment | null;
+  onAssessmentInvalidated?: () => void;
   onReferenceReadyChange?: (ready: boolean) => void;
   build: Build;
   /** A `revise` run is open (also true when another tab started it). */
@@ -26,7 +28,7 @@ interface PrototypeStageProps {
 
 const noRuns: StretchRuns = {};
 
-export function PrototypeStage({ build, applying, commentsError, stretchRuns = noRuns, onPendingChange, onReferenceReadyChange }: PrototypeStageProps) {
+export function PrototypeStage({ build, applying, commentsError, stretchRuns = noRuns, onPendingChange, onReferenceReadyChange, assessment, onAssessmentInvalidated }: PrototypeStageProps) {
   const audit = useStretchAction('audit', 'ux_audit', stretchRuns);
   const auditing = audit.state === 'starting' || audit.state === 'running';
   const auditButton = useRef<HTMLButtonElement>(null);
@@ -45,6 +47,8 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sent = useRef<PendingComment[] | null>(null);
+  // A revise failure may persist the blocked batch before its assessment GET arrives.
+  const savedCandidate = useRef<PendingComment[] | null>(null);
   const nextId = useRef(0);
   const heading = useRef<HTMLHeadingElement>(null);
   const seenError = useRef(commentsError?.seq ?? 0);
@@ -58,10 +62,24 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
     const batch = sent.current;
     if (!batch) return;
     sent.current = null;
+    savedCandidate.current = null;
     const ids = new Set(batch.map((c) => c.id));
     setPending((list) => list.filter((c) => !ids.has(c.id)));
     setSubmitting(false);
   }, [specVersion]);
+
+  // Once GET confirms the server owns this batch, remove its local duplicate.
+  useLayoutEffect(() => {
+    const batch = savedCandidate.current;
+    const saved = assessment?.pending_comments?.comments;
+    if (!batch || !saved || batch.length !== saved.length || !batch.every((c, i) => c.component_id === saved[i]?.component_id && c.text === saved[i]?.text)) return;
+    const ids = new Set(batch.map((c) => c.id));
+    savedCandidate.current = null;
+    sent.current = null;
+    setPending((list) => list.filter((c) => !ids.has(c.id)));
+    setSubmitting(false);
+    setError(null);
+  }, [assessment]);
 
   // A failed run keeps the comments and says why.
   useLayoutEffect(() => {
@@ -92,12 +110,14 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
     const batch = pending;
     if (batch.length === 0 || submitting) return;
     sent.current = batch;
+    savedCandidate.current = batch;
     setError(null);
     setSubmitting(true);
     // The button disables as the batch starts: keep keyboard focus on the page.
     heading.current?.focus();
     api.postComments(build.id, batch.map(({ component_id, text }) => ({ component_id, text }))).catch((reason: unknown) => {
-      sent.current = null;
+      if (reason instanceof ApiError && reason.code === 'feasibility_blocked') onAssessmentInvalidated?.();
+      else { sent.current = null; savedCandidate.current = null; }
       setSubmitting(false);
       setError(reason instanceof ApiError ? reason.message : "Couldn't apply the comments. Try again.");
     });
@@ -141,6 +161,7 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
           )}
         </div>
       )}
+      {assessment?.prototype_stale && <p className="flex items-center gap-2 text-body text-text-muted"><span className="rounded-control bg-accent px-2 py-1 font-semibold text-on-accent">Stale</span> This preview shows the previous prototype. Replan or reapply saved comments to update it.</p>}
       <PrototypeCanvas
         url={api.prototypeUrl(build.id, specVersion)}
         title={`Prototype of ${build.title}`}

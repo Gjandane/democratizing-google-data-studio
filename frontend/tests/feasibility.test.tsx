@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { useState } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api } from '../src/api/client';
+import { api, httpApi } from '../src/api/client';
 import { ApiError, type Assessment, type BuildEvent, type Issue } from '../src/api/types';
 import { FeasibilityPanel, type FeasibilityGates } from '../src/features/workspace/FeasibilityPanel';
 import { WorkspaceShell } from '../src/features/workspace/WorkspaceShell';
@@ -34,7 +34,7 @@ const assessmentPanel = () => screen.getByRole('region', { name: 'Feasibility' }
 async function panel(value: Assessment = fixtures.feasibilityAlternatives) {
   setMockAssessment(id, value);
   render(<FeasibilityPanel buildId={id} />);
-  await screen.findByText(value.state === 'ready' ? 'Your requirements are resolved.' : value.issues[0]?.requirement ?? /Check what this app/);
+  await waitFor(() => expect(screen.queryByText('Loading feasibility…')).toBeNull());
 }
 
 describe('Feasibility recovery and gates', () => {
@@ -122,7 +122,7 @@ describe('Feasibility recovery and gates', () => {
     await screen.findByText(/This prototype is out of date/);
     expect(disabled('Generate recipe')).toBe(true);
     expect(disabled('Build in Data Studio')).toBe(true);
-    expect(disabled('Generate plan')).toBe(value.state !== 'ready');
+    expect(disabled('Generate plan')).toBe(false);
   });
 
   it('gates the actual shell Continue action on assessment and reference errors', async () => {
@@ -235,5 +235,182 @@ describe('Explicit requirements and decisions', () => {
 
   it('has a capability_check phrase for the activity strip', () => {
     expect(presetFor('capability_check').phrases).toContain('Checking what this app supports');
+  });
+});
+
+
+describe('Saved comment batches and stale repair', () => {
+  const saved = fixtures.feasibilityPending;
+  const resolved: Assessment = { ...saved, state: 'stale', prototype_stale: true, issues: saved.issues.map((issue) => ({ ...issue, resolution: 'dropped' })) };
+
+  it('restores every saved target/text after remount without implicit actions', async () => {
+    const reapply = vi.spyOn(api, 'reapplyComments');
+    const discard = vi.spyOn(api, 'discardComments');
+    setMockAssessment(id, saved);
+    const view = render(<FeasibilityPanel buildId={id} />);
+    await screen.findByRole('list', { name: 'Saved comments' });
+    view.unmount();
+    render(<FeasibilityPanel buildId={id} />);
+    const list = await screen.findByRole('list', { name: 'Saved comments' });
+    for (const comment of saved.pending_comments!.comments) {
+      expect(within(list).getByText(comment.component_id)).toBeTruthy();
+      expect(within(list).getByText(comment.text)).toBeTruthy();
+    }
+    expect(disabled('Reapply saved comments')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Reapply saved comments' }));
+    expect(reapply).not.toHaveBeenCalled(); expect(discard).not.toHaveBeenCalled();
+  });
+
+  it('reapplies once with current IDs, waits for its exact run and refetches before unlocking Build', async () => {
+    setMockAssessment(id, resolved);
+    const get = vi.spyOn(api, 'getFeasibility');
+    const post = vi.spyOn(api, 'reapplyComments').mockResolvedValue({ run_id: 'reapply' });
+    const recipe = vi.spyOn(api, 'compileRecipe'); const run = vi.spyOn(api, 'runBuild');
+    render(<Gates />);
+    const button = await screen.findByRole('button', { name: 'Reapply saved comments' });
+    expect(disabled('Generate recipe')).toBe(true);
+    expect(disabled('Generate plan')).toBe(true);
+    button.focus();
+    act(() => { fireEvent.click(button); fireEvent.click(button); });
+    expect(post).toHaveBeenCalledExactlyOnceWith(id, resolved.id, resolved.pending_comments!.id);
+    await screen.findByText('Reapplying saved comments…');
+    fire(finished('unrelated', 'revise'));
+    await waitFor(() => expect(get.mock.calls.length).toBeGreaterThan(1));
+    expect(disabled('Reapply saved comments')).toBe(true);
+    setMockAssessment(id, ready);
+    fire(finished('reapply', 'arbitrary_node'));
+    await screen.findByText('Your requirements are resolved.');
+    await waitFor(() => expect(disabled('Generate recipe')).toBe(false));
+    expect(screen.queryByRole('list', { name: 'Saved comments' })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Feasibility' }));
+    expect(recipe).not.toHaveBeenCalled(); expect(run).not.toHaveBeenCalled();
+  });
+
+  it('handles a fast reapply finish and reconnect before its POST returns', async () => {
+    setMockAssessment(id, resolved);
+    let resolve!: (value: { run_id: string }) => void;
+    vi.spyOn(api, 'reapplyComments').mockReturnValue(new Promise((r) => { resolve = r; }));
+    render(<FeasibilityPanel buildId={id} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Reapply saved comments' }));
+    fire(finished('fast', 'revise'));
+    await act(async () => resolve({ run_id: 'fast' }));
+    await screen.findByText('Prototype update finished. Review the current assessment.');
+    expect(disabled('Reapply saved comments')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Reapply saved comments' }));
+    setMockAssessment(id, ready);
+    fire({ name: 'ready', data: { build_id: id } });
+    await screen.findByText('Your requirements are resolved.');
+    await act(async () => resolve({ run_id: 'missed' }));
+    expect(screen.queryByText('Reapplying saved comments…')).toBeNull();
+  });
+
+  it('discards once and renders the server response without hiding independent issues or launching work', async () => {
+    const independent = fixtures.feasibilityAlternatives.issues[0]!;
+    const returned: Assessment = { ...saved, id: 'after_discard', issues: [independent], pending_comments: null };
+    setMockAssessment(id, saved);
+    const discard = vi.spyOn(api, 'discardComments').mockResolvedValue(returned);
+    const plan = vi.spyOn(api, 'generatePlan'); const recipe = vi.spyOn(api, 'compileRecipe'); const run = vi.spyOn(api, 'runBuild');
+    render(<FeasibilityPanel buildId={id} />);
+    const button = await screen.findByRole('button', { name: 'Discard pending comments' });
+    button.focus();
+    act(() => { fireEvent.click(button); fireEvent.click(button); });
+    await screen.findByText(independent.requirement);
+    expect(discard).toHaveBeenCalledExactlyOnceWith(id, saved.id);
+    expect(screen.queryByRole('list', { name: 'Saved comments' })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Feasibility' }));
+    expect(plan).not.toHaveBeenCalled(); expect(recipe).not.toHaveBeenCalled(); expect(run).not.toHaveBeenCalled();
+  });
+
+  it.each(['discardComments', 'reapplyComments'] as const)('a stale %s refetch keeps the batch until the server removes it', async (method) => {
+    setMockAssessment(id, resolved);
+    const get = vi.spyOn(api, 'getFeasibility');
+    vi.spyOn(api, method).mockRejectedValue(new ApiError(409, 'feasibility_stale', 'Requirements changed. Refresh.'));
+    render(<FeasibilityPanel buildId={id} />);
+    fireEvent.click(await screen.findByRole('button', { name: method === 'discardComments' ? 'Discard pending comments' : 'Reapply saved comments' }));
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+    await screen.findByRole('list', { name: 'Saved comments' });
+    expect(disabled('Reapply saved comments')).toBe(false);
+    get.mockResolvedValue(ready);
+    fire({ name: 'docs.updated', data: { docs: [] } });
+    await waitFor(() => expect(screen.queryByRole('list', { name: 'Saved comments' })).toBeNull());
+  });
+
+  it('keeps saved comments visible and repair actions disabled when a refetch fails', async () => {
+    await panel(resolved);
+    vi.spyOn(api, 'getFeasibility').mockRejectedValue(new ApiError(500, 'failed', 'Retry loading.'));
+    fire(finished('failed-refresh'));
+    await screen.findByText("Couldn't load feasibility");
+    expect(screen.getByRole('list', { name: 'Saved comments' })).toBeTruthy();
+    expect(disabled('Reapply saved comments')).toBe(true);
+    expect(disabled('Discard pending comments')).toBe(true);
+  });
+
+  it('enables explicit Replan for resolved stale intent; Build and recipe wait for a current prototype', async () => {
+    setMockAssessment(id, fixtures.feasibilityStale);
+    const plan = vi.spyOn(api, 'generatePlan').mockResolvedValue({ run_id: 'plan' });
+    const recipe = vi.spyOn(api, 'compileRecipe'); const run = vi.spyOn(api, 'runBuild');
+    render(<><FeasibilityPanel buildId={id} canReplan /><Gates /></>);
+    const button = await screen.findByRole('button', { name: 'Replan' });
+    expect(button.matches(':disabled')).toBe(false);
+    expect(disabled('Generate recipe')).toBe(true); expect(disabled('Build in Data Studio')).toBe(true);
+    act(() => { fireEvent.click(button); fireEvent.click(button); });
+    expect(plan).toHaveBeenCalledExactlyOnceWith(id);
+    setMockAssessment(id, { ...ready, prototype_stale: true });
+    fire(finished('plan', 'plan'));
+    await screen.findAllByText('Your requirements are resolved.');
+    expect(disabled('Generate recipe')).toBe(true);
+    setMockAssessment(id, ready);
+    fire(finished('current', 'spec'));
+    await waitFor(() => expect(disabled('Generate recipe')).toBe(false));
+    expect(recipe).not.toHaveBeenCalled(); expect(run).not.toHaveBeenCalled();
+  });
+
+  it('uses exact reapply JSON and encoded DELETE query, validating the returned assessment', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({ run_id: 'r' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify(ready)))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...ready, extra: true })));
+    await httpApi.reapplyComments('b/id', 'a?&', 'batch');
+    expect(fetch).toHaveBeenNthCalledWith(1, '/api/builds/b%2Fid/feasibility/reapply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assessment_id: 'a?&', batch_id: 'batch' }) });
+    expect(await httpApi.discardComments('b/id', 'a?&')).toEqual(ready);
+    expect(fetch).toHaveBeenNthCalledWith(2, '/api/builds/b%2Fid/feasibility/pending-comments?assessment_id=a%3F%26', { method: 'DELETE' });
+    await expect(httpApi.discardComments(id, 'a')).rejects.toMatchObject({ code: 'invalid_response' });
+  });
+
+  it('a failed reapply keeps the saved batch and offers explicit retry without building', async () => {
+    setMockAssessment(id, resolved);
+    const post = vi.spyOn(api, 'reapplyComments').mockResolvedValue({ run_id: 'failed-reapply' });
+    const recipe = vi.spyOn(api, 'compileRecipe'); const run = vi.spyOn(api, 'runBuild');
+    render(<FeasibilityPanel buildId={id} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Reapply saved comments' }));
+    await screen.findByText('Reapplying saved comments…');
+    fire({ name: 'run.finished', data: { run_id: 'failed-reapply', node: 'revise', status: 'error', error: 'Update timed out. Try again.' } });
+    await screen.findByText('Update timed out. Try again.');
+    await waitFor(() => expect(disabled('Reapply saved comments')).toBe(false));
+    expect(screen.getByRole('list', { name: 'Saved comments' })).toBeTruthy();
+    expect(post).toHaveBeenCalledTimes(1); expect(recipe).not.toHaveBeenCalled(); expect(run).not.toHaveBeenCalled();
+  });
+
+  it('a new mock comment batch replaces the old batch and invalidates its decisions', async () => {
+    setMockAssessment(id, resolved);
+    const comments = [{ component_id: 'p1_title', text: 'A different request' }];
+    await expect(api.postComments(id, comments)).rejects.toMatchObject({ code: 'feasibility_blocked' });
+    const current = await api.getFeasibility(id);
+    expect(current.pending_comments!.id).not.toBe(resolved.pending_comments!.id);
+    expect(current.pending_comments!.comments).toEqual(comments);
+    expect(current.issues[0]!.resolution).toBe('unresolved');
+    await expect(api.reapplyComments(id, current.id!, resolved.pending_comments!.id)).rejects.toMatchObject({ code: 'feasibility_stale' });
+  });
+
+  it('mock rejects expired IDs and unresolved reapply; discard preserves independent requirements/spec', async () => {
+    const unrelated = fixtures.feasibilityAlternatives.issues[0]!;
+    setMockAssessment(id, { ...saved, issues: [...saved.issues, unrelated], prototype_stale: true }, saved.issues.map((issue) => issue.id));
+    await expect(api.reapplyComments(id, saved.id!, saved.pending_comments!.id)).rejects.toMatchObject({ code: 'feasibility_blocked' });
+    await expect(api.reapplyComments(id, 'expired', saved.pending_comments!.id)).rejects.toMatchObject({ code: 'feasibility_stale' });
+    await expect(api.discardComments(id, 'expired')).rejects.toMatchObject({ code: 'feasibility_stale' });
+    const before = await api.getBuild(id);
+    const value = await api.discardComments(id, saved.id!);
+    expect(value.pending_comments).toBeNull(); expect(value.issues).toEqual([unrelated]);
+    expect(value.prototype_stale).toBe(true); expect(value.state).toBe('blocked');
+    expect((await api.getBuild(id)).spec_version).toBe(before.spec_version);
   });
 });

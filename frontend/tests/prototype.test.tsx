@@ -1,5 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { WorkspaceShell } from '../src/features/workspace/WorkspaceShell';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, httpApi } from '../src/api/client';
 import type { OpenBuildEvents, StreamHandlers } from '../src/api/events';
@@ -7,7 +9,7 @@ import { ApiError, type Build, type BuildEvent } from '../src/api/types';
 import { useBuildStream } from '../src/features/workspace/chat/useBuildStream';
 import { PrototypeStage } from '../src/features/workspace/prototype/PrototypeStage';
 import { fixtures } from '../src/mocks/fixtures';
-import { resetMockState } from '../src/mocks/api';
+import { resetMockState, setMockAssessment } from '../src/mocks/api';
 
 beforeEach(() => resetMockState());
 afterEach(() => {
@@ -319,7 +321,65 @@ describe('Prototype stage', () => {
   });
 });
 
-describe('useBuildStream: comments run', () => {
+describe('Stale prototype', () => {
+  it('guards the actual shell Replan action while unsent draft comments exist', async () => {
+    setMockAssessment(fixtures.build.id, fixtures.feasibilityStale);
+    const plan = vi.spyOn(api, 'generatePlan');
+    render(<MemoryRouter initialEntries={[`/builds/${fixtures.build.id}`]}><Routes><Route path="/builds/:id" element={<WorkspaceShell />} /></Routes></MemoryRouter>);
+    await screen.findByRole('button', { name: 'Replan' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Replan' }).matches(':disabled')).toBe(false));
+    loadFrame();
+    comment('Revenue (scorecard)', 'An unsent edit');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Replan' }).matches(':disabled')).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: 'Replan' }));
+    expect(plan).not.toHaveBeenCalled();
+    expect(screen.getByText('Apply or remove your draft comments before replanning.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove comment 1' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Replan' }).matches(':disabled')).toBe(false));
+  });
+
+  it('keeps the Stale label outside the shared canvas so target/pin geometry is unchanged', () => {
+    render(<PrototypeStage build={fixtures.build} applying={false} commentsError={null} assessment={fixtures.feasibilityStale} />);
+    loadFrame();
+    comment('Revenue (scorecard)', 'Still here');
+    const label = screen.getByText('Stale', { exact: true });
+    expect(screen.getByTestId('prototype-scale').contains(label)).toBe(false);
+    expect(pinAnchor(1).style.left).toBe('294px');
+    expect(pinAnchor(1).style.top).toBe('104px');
+  });
+
+  it('refreshes a blocked batch and transfers local comments only after GET confirms server ownership', async () => {
+    const refresh = vi.fn();
+    vi.spyOn(api, 'postComments').mockRejectedValue(new ApiError(409, 'feasibility_blocked', 'Resolve the saved comments.'));
+    const view = render(<PrototypeStage build={fixtures.build} applying={false} commentsError={null} onAssessmentInvalidated={refresh} />);
+    loadFrame();
+    comment('Revenue (scorecard)', 'Make it animate');
+    fireEvent.click(screen.getByRole('button', { name: 'Apply 1 comment' }));
+    await screen.findByText('Resolve the saved comments.');
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(screen.getByRole('list', { name: 'Pending comments' })).toBeTruthy();
+    view.rerender(<PrototypeStage build={fixtures.build} applying={false} commentsError={null} assessment={{ ...fixtures.feasibilityPending, pending_comments: { id: 'saved', comments: [{ component_id: 'p1_kpi_revenue', text: 'Make it animate' }] } }} />);
+    expect(screen.queryByRole('list', { name: 'Pending comments' })).toBeNull();
+  });
+});
+
+describe('Asynchronously blocked comments', () => {
+  it('transfers local comments after a revise run fails and its saved assessment arrives later', async () => {
+    vi.spyOn(api, 'postComments').mockResolvedValue({ run_id: 'blocked-later' });
+    const view = render(<PrototypeStage build={fixtures.build} applying={false} commentsError={null} />);
+    loadFrame();
+    comment('Revenue (scorecard)', 'Make it animate');
+    fireEvent.click(screen.getByRole('button', { name: 'Apply 1 comment' }));
+    await act(async () => {});
+    view.rerender(<PrototypeStage build={fixtures.build} applying={false} commentsError={{ seq: 1, text: 'Comments blocked. Resolve requirements.' }} />);
+    expect(screen.getByRole('list', { name: 'Pending comments' })).toBeTruthy();
+    view.rerender(<PrototypeStage build={fixtures.build} applying={false} commentsError={{ seq: 1, text: 'Comments blocked. Resolve requirements.' }} assessment={{ ...fixtures.feasibilityPending, pending_comments: { id: 'saved', comments: [{ component_id: 'p1_kpi_revenue', text: 'Make it animate' }] } }} />);
+    expect(screen.queryByRole('list', { name: 'Pending comments' })).toBeNull();
+    expect(screen.queryByText('Comments blocked. Resolve requirements.')).toBeNull();
+  });
+});
+
+describe('useBuildStream: comments run'  , () => {
   it('tracks applying and the error of a comments run', async () => {
     const created = await api.createBuild({ archetype: 'executive', mode: 'data' });
     const { open, fire } = fakeStream();

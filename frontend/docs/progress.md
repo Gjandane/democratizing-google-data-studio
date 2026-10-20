@@ -320,3 +320,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: see AGENTS.
 - Left open: none.
 - Next: 10.3 Pending comment batches and stale-prototype replan (deep).
+
+
+## 2026-10-20: Task 10.3 Pending comment batches and stale-prototype replan
+- Status: done
+- Plan check: off
+- What changed: Saved-batch targets/text survive remount; explicit reapply/discard use current IDs and server assessments. Resolved stale intent permits repair while recipe/Build stay gated; preview shows Stale.
+- Checks: `npm test` PASS (16 files/310 tests); `npm run typecheck` PASS; `git diff --check` PASS. Viewed all four `screenshots/10.3-{pending,stale}-{1280x800,1440x900}.png`. Keyboard reapply/discard return heading focus; no overflow; nine overlay targets align within 0.001 CSS px with Stale visible. Reviewer and web-design-guidelines: no remaining findings.
+- Decisions: Necessary extra WorkspaceShell relays assessment and blocked-POST refresh. Reapply shares run-ID completion/reconnect handling. savedCandidate preserves async blocked-batch identity independently of applied pins. Replan guards local drafts. Mock pendingIssueIds distinguishes batch-owned requirements. AGENTS records resolved-issue test timing.
+- Tried and failed: Updated obsolete stale-gate expectation and resolved-issue helper; fixed review findings for async handoff and draft loss. Restarted disconnected screenshot Chrome with a fresh profile; policy-rejected deletion replaced by reversible relocation to OS temp.
+- Gotchas: see AGENTS.
+- Left open: none.
+- Next: 11.1 Synthetic proposal, schema editor and generation (deep; needs backend 12.3).

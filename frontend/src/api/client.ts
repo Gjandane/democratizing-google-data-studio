@@ -51,6 +51,8 @@ export interface ApiClient {
   getFeasibility(buildId: string): Promise<Assessment>;
   checkFeasibility(buildId: string): Promise<RunAccepted>;
   decideFeasibility(buildId: string, assessmentId: string, decisions: FeasibilityDecision[]): Promise<Assessment>;
+  reapplyComments(buildId: string, assessmentId: string, batchId: string): Promise<RunAccepted>;
+  discardComments(buildId: string, assessmentId: string): Promise<Assessment>;
   getReferences(buildId: string): Promise<ReferenceSet | null>;
   uploadReferences(buildId: string, files: File[], mode: ReferenceMode, instructions: string): Promise<RunAccepted>;
   deleteReferences(buildId: string): Promise<void>;
@@ -155,6 +157,8 @@ export const httpApi: ApiClient = {
   getFeasibility: (id) => assessment('GET', buildPath(id, '/feasibility')),
   checkFeasibility: (id) => json('POST', buildPath(id, '/feasibility/check')),
   decideFeasibility: (id, assessmentId, decisions) => assessment('POST', buildPath(id, '/feasibility/decisions'), { assessment_id: assessmentId, decisions }),
+  reapplyComments: (id, assessmentId, batchId) => json('POST', buildPath(id, '/feasibility/reapply'), { assessment_id: assessmentId, batch_id: batchId }),
+  discardComments: (id, assessmentId) => assessment('DELETE', buildPath(id, `/feasibility/pending-comments?assessment_id=${seg(assessmentId)}`)),
   getReferences: async (id) => {
     const value: unknown = await json('GET', buildPath(id, '/reference-images'));
     if (value !== null && !isReferenceSet(value)) throw new ApiError(502, 'invalid_response', "Couldn't read the saved references. Try again.");

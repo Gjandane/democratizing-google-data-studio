@@ -47,6 +47,7 @@ export const MOCK_ACCESS_CODE = 'mock-access-code';
 interface MockState {
   assessments: Map<string, Assessment>;
   assessmentBusy: Set<string>;
+  pendingIssueIds: Map<string, Set<string>>;
   references: Map<string, ReferenceSet>;
   referenceFiles: Map<string, string>;
   referenceBusy: Set<string>;
@@ -71,6 +72,7 @@ function seed(): MockState {
   return {
     assessments: new Map([fixtures.build, fixtures.buildDone].map((build) => [build.id, { id: `assessment_${build.id}`, state: 'ready', input_digest: `digest_${build.id}`, prototype_stale: false, issues: [], pending_comments: null }])),
     assessmentBusy: new Set(),
+    pendingIssueIds: new Map(),
     references: new Map(),
     referenceFiles: new Map(),
     referenceBusy: new Set(),
@@ -143,7 +145,8 @@ export function setMockRunFailure(node: MockFailingNode, error: string | null | 
 }
 
 /** Overrides feasibility without mutating shared fixtures. For tests and previews. */
-export function setMockAssessment(buildId: string, assessment: Assessment): void {
+export function setMockAssessment(buildId: string, assessment: Assessment, pendingIssueIds?: string[]): void {
+  if (assessment.pending_comments) state.pendingIssueIds.set(buildId, new Set(pendingIssueIds ?? assessment.issues.map((issue) => issue.id)));
   state.assessments.set(buildId, clone(assessment));
 }
 
@@ -436,7 +439,7 @@ export function createMockApi(): ApiClient {
         const current = clone(currentAssessment(id));
         current.id = `assessment_${nextId('r')}`;
         current.input_digest ??= `digest_${id}`;
-        current.state = current.issues.some((issue) => issue.resolution === 'unresolved') ? 'blocked' : 'ready';
+        current.state = current.issues.some((issue) => issue.resolution === 'unresolved') ? 'blocked' : current.prototype_stale ? 'stale' : 'ready';
         state.assessments.set(id, current);
         state.assessmentBusy.delete(id);
       }]);
@@ -457,8 +460,40 @@ export function createMockApi(): ApiClient {
         issue.resolution = decision.action === 'drop' ? 'dropped' : 'accepted_alternative';
       }
       updated.id = `assessment_${nextId('r')}`;
-      updated.state = updated.issues.some((issue) => issue.resolution === 'unresolved') ? 'blocked' : 'ready';
+      updated.state = updated.issues.some((issue) => issue.resolution === 'unresolved') ? 'blocked' : updated.prototype_stale ? 'stale' : 'ready';
       state.assessments.set(id, updated);
+      return updated;
+    }),
+    reapplyComments: (id, assessmentId, batchId) => respond(() => {
+      const build = findBuild(id);
+      requireStage(build, ['prototype'], 'Open the prototype to reapply comments.');
+      const current = currentAssessment(id);
+      if (current.id !== assessmentId || current.pending_comments?.id !== batchId) throw new ApiError(409, 'feasibility_stale', 'The saved batch changed. Refresh and choose again.');
+      if (!['ready', 'stale'].includes(current.state) || current.issues.some((issue) => issue.resolution === 'unresolved')) throw new ApiError(409, 'feasibility_blocked', 'Resolve requirements first.');
+      if (state.assessmentBusy.has(id)) throw new ApiError(409, 'action_in_progress', 'Wait for the current action.');
+      state.assessmentBusy.add(id);
+      return startRun(build, 'revise', () => [() => {
+        const updated = clone(currentAssessment(id));
+        updated.id = `assessment_${nextId('r')}`;
+        updated.pending_comments = null; updated.prototype_stale = false; updated.state = 'ready';
+        state.assessments.set(id, updated);
+        state.pendingIssueIds.delete(id); state.assessmentBusy.delete(id);
+        build.spec_version = (build.spec_version ?? 0) + 1;
+        emit(id, { name: 'prototype.updated', data: { spec_version: build.spec_version } });
+        announce(build);
+      }]);
+    }),
+    discardComments: (id, assessmentId) => respond(() => {
+      const current = currentAssessment(id);
+      if (current.id !== assessmentId) throw new ApiError(409, 'feasibility_stale', 'The saved batch changed. Refresh and choose again.');
+      if (state.assessmentBusy.has(id)) throw new ApiError(409, 'action_in_progress', 'Wait for the current action.');
+      const updated = clone(current);
+      const owned = state.pendingIssueIds.get(id) ?? new Set<string>();
+      updated.issues = updated.issues.filter((issue) => !owned.has(issue.id));
+      updated.id = `assessment_${nextId('r')}`; updated.pending_comments = null;
+      // Preserve independent intent/prototype invalidation; abandoning a batch never edits the spec.
+      updated.state = updated.issues.some((issue) => issue.resolution === 'unresolved') ? 'blocked' : updated.prototype_stale ? 'stale' : 'ready';
+      state.pendingIssueIds.delete(id); state.assessments.set(id, updated);
       return updated;
     }),
     getReferences: (id) => respond(() => {
@@ -594,6 +629,9 @@ export function createMockApi(): ApiClient {
             emit(id, { name: 'docs.updated', data: { docs: clone(build.docs) } });
           },
           () => {
+            const assessment = clone(currentAssessment(id));
+            assessment.id = `assessment_${nextId('r')}`; assessment.state = 'ready'; assessment.prototype_stale = false;
+            state.assessments.set(id, assessment);
             build.spec_version = (build.spec_version ?? 0) + 1;
             emit(id, { name: 'prototype.updated', data: { spec_version: build.spec_version } });
             setStage(build, 'prototype');
@@ -637,6 +675,16 @@ export function createMockApi(): ApiClient {
           throw invalid('invalid_request', 'Send 1 to 20 comments, each with text.');
         }
         requireStage(build, ['prototype'], 'Comments apply to the prototype. Open the Prototype stage first.');
+        const current = clone(currentAssessment(id));
+        if (current.issues.some((issue) => issue.resolution === 'unresolved') || current.pending_comments) {
+          const owned = state.pendingIssueIds.get(id) ?? new Set<string>();
+          current.issues.forEach((issue) => { if (owned.has(issue.id)) issue.resolution = 'unresolved'; });
+          current.id = `assessment_${nextId('r')}`;
+          current.state = 'blocked';
+          current.pending_comments = { id: `batch_${nextId('r')}`, comments: clone(comments) };
+          state.assessments.set(id, current);
+          throw new ApiError(409, 'feasibility_blocked', 'Comments saved. Resolve the requirements, then reapply the saved batch.');
+        }
         requireModel();
         return startRun(build, 'revise', (runId) => [
           () => emit(id, { name: 'node.progress', data: { run_id: runId, node: 'revise', text: `Applying ${comments.length} comments` } }),
