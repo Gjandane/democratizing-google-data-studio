@@ -4,6 +4,7 @@ import { api } from '../../../api/client';
 import { ApiError, type Build, type EngineStatus, type Recipe } from '../../../api/types';
 import { Button, buttonClass } from '../../../components/Button';
 import { Spinner } from '../../../components/Spinner';
+import { SampleDataBanner } from '../connect/SyntheticDataPanel';
 import { failedCount, idleRun, type BuildRun } from './buildRun';
 import { EnginePanel, engineReady } from './EnginePanel';
 import { LiveViewPanel } from './LiveViewPanel';
@@ -150,6 +151,9 @@ export function BuildStage({ build, run: streamRun, referencesReady = true, feas
 
   return (
     <div className="mt-6 space-y-4">
+      <SampleDataBanner sources={build.sources}>
+        This dashboard is built from invented rows, and Data Studio shows it with the same label.
+      </SampleDataBanner>
       <EnginePanel refreshKey={engineKey} offlineSignal={offlineSignal} onEngine={setEngine} />
       <fieldset disabled={(!referencesReady || !feasibilityReady)} className="min-w-0"><RecipePanel recipe={recipe} run={run} generating={generating} error={recipeError} onGenerate={generate} /></fieldset>
       <LiveViewPanel frame={run.frame} running={run.running} />

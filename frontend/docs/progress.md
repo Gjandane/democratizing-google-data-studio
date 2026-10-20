@@ -343,3 +343,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: see AGENTS.
 - Left open: P2 replay after reconnect can wait for a missed run.finished - SyntheticDataPanel.tsx (11.2 job status fixes); "Loading sample data" label needs 11.2 job polling.
 - Next: 11.2 Synthetic status recovery, download and provenance (deep).
+
+## 2026-10-20: Task 11.2 Synthetic status recovery, download and provenance
+- Status: done
+- Plan check: off
+- What changed: Client+mock job list/status, datasets, CSV URL (mock jobs from shared job fixtures). SyntheticDataPanel recovers jobs on load, reconnect and an unanswered POST, polls every 2 s; Retry waits for retry_ready. Sources row: Synthetic badge, Download CSV, provenance details. Banner on Prototype/Build/Done; New dashboard for real-source builds.
+- Checks: `npm test` PASS (17 files/359 tests); `npm run typecheck` PASS. Viewed `screenshots/11.2-synthetic-{success,failed-retry,reload}-{1280x800,1440x900}.png` (reload: job API patched in page to hold "loading"); no overflow or console errors. Backend keyboard run: manual columns -> Generate -> polled "Loading sample data…" -> badge, CSV (200, 1,000 rows), provenance -> focus Start interview -> interview. Not run: screenshot -> proposal, plan -> prototype (backend failures, Left open).
+- Decisions: Panel always mounted (hidden) without sources; a found job selects Generate. Failed job with retry_ready false keeps polling until true. Job failures survive edits. Necessary extra: WorkspaceShell passes ConnectStage onAssessmentInvalidated. useBuildStream/types.ts unchanged. AGENTS adds stash and CDP-window gotchas.
+- Tried and failed: none.
+- Gotchas: see AGENTS.
+- Left open: backend reference upload 503 "Image decoder failed" and plan llm_unavailable (gemini-4-argon) blocked proposal and prototype legs, incl. backend prototype label (12.5): rerun with fixed backend. P3 mock Download CSV has no blob - src/mocks/api.ts. Pre-existing: chat bubble sr-only labels extend document height - chat (not 11.2 files).
+- Next: none in plan; all frontend tasks done.

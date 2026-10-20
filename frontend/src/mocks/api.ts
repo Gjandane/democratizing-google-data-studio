@@ -385,8 +385,8 @@ const agentMode = () => state.engine.mode === 'agent';
 /** Settings the hosted app lets the user change (contracts/api.md, PUT /api/settings). */
 const UNLOCKED_SETTINGS = new Set(['planner_model', 'worker_model']);
 
-/** Calls that work without the access code (contracts/api.md, Access), plus the two URL builders. */
-const UNGATED = new Set(['health', 'getSession', 'createSession', 'prototypeUrl', 'fileUrl']);
+/** Calls that work without the access code (contracts/api.md, Access), plus the URL builders. */
+const UNGATED = new Set(['health', 'getSession', 'createSession', 'prototypeUrl', 'fileUrl', 'syntheticCsvUrl']);
 
 /** Every other call answers `401 access_required` while the gate is on and the session isn't valid. */
 function gated(client: ApiClient): ApiClient {
@@ -648,7 +648,9 @@ export function createMockApi(): ApiClient {
         () => {
           state.syntheticBusy.delete(id);
           if (failed) {
-            Object.assign(job, { state: 'failed', retry_ready: true, error: { code: 'synthetic_load_failed', message: failed.error ?? 'Sample data could not be loaded.' } });
+            // The shared failed fixture (cleanup done, retry ready), with this run's key, id and error text.
+            const shape = clone(fixtures.syntheticJobFailed);
+            Object.assign(job, { ...shape, generation_key: key, run_id: job.run_id, error: { code: shape.error!.code, message: failed.error ?? shape.error!.message } });
             return;
           }
           const source = syntheticSource(build, spec);
@@ -656,7 +658,7 @@ export function createMockApi(): ApiClient {
           state.datasets.set(id, [...(state.datasets.get(id) ?? []), {
             ...clone(fixtures.syntheticDataset), source_id: source.id, generation_key: key, spec: clone(spec), assumptions: clone(proposal?.assumptions ?? []), created_at: now(),
           }]);
-          Object.assign(job, { state: 'succeeded', source_id: source.id });
+          Object.assign(job, { ...clone(fixtures.syntheticJobSucceeded), generation_key: key, run_id: job.run_id, source_id: source.id });
           addSources(build, [source]);
           emit(id, { name: 'docs.updated', data: { docs: clone(build.docs) } });
         },
@@ -665,6 +667,21 @@ export function createMockApi(): ApiClient {
       state.generations.set(`${id}:${key}`, { body, job });
       return accepted;
     }),
+    listSyntheticDatasets: (id) => respond(() => {
+      findBuild(id);
+      return state.datasets.get(id) ?? [];
+    }),
+    listSyntheticJobs: (id) => respond(() => {
+      findBuild(id);
+      return [...state.generations.entries()].filter(([at]) => at.startsWith(`${id}:`)).map(([, { job }]) => job).reverse().slice(0, 20);
+    }),
+    getSyntheticJob: (id, key) => respond(() => {
+      findBuild(id);
+      const generation = state.generations.get(`${id}:${key}`);
+      if (!generation) throw new ApiError(404, 'generation_not_found', 'No sample-data run has this key.', { generation_key: key });
+      return generation.job;
+    }),
+    syntheticCsvUrl: (id, sourceId) => `/api/builds/${encodeURIComponent(id)}/synthetic-data/${encodeURIComponent(sourceId)}/csv`,
     uploadStyleImages: (id, files) =>
       respond(() => {
         const tooLarge = oversizeError(files);

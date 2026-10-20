@@ -9,6 +9,7 @@ import type { BuildStream, StretchRuns } from '../chat/useBuildStream';
 import { useRefocusAfter, useStretchAction } from '../stretch';
 import { PendingList } from './PendingList';
 import { ReferencePanel } from '../ReferencePanel';
+import { SampleDataBanner } from '../connect/SyntheticDataPanel';
 import { PrototypeCanvas } from './PrototypeCanvas';
 import type { PendingComment, Target } from './types';
 
@@ -161,6 +162,9 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
           )}
         </div>
       )}
+      <SampleDataBanner sources={build.sources}>
+        The prototype runs on invented rows, so its numbers are placeholders, not your data or the values in your screenshot.
+      </SampleDataBanner>
       {assessment?.prototype_stale && <p className="flex items-center gap-2 text-body text-text-muted"><span className="rounded-control bg-accent px-2 py-1 font-semibold text-on-accent">Stale</span> This preview shows the previous prototype. Replan or reapply saved comments to update it.</p>}
       <PrototypeCanvas
         url={api.prototypeUrl(build.id, specVersion)}

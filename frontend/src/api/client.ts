@@ -5,6 +5,12 @@ import { withServiceNotice } from '../features/settings/serviceNotice';
 import { createMockApi } from '../mocks/api';
 import {
   ApiError,
+  arrayOf,
+  type GenerationStatus,
+  type Guard,
+  isGenerationStatus,
+  isSyntheticDataset,
+  type SyntheticDataset,
   isAssessment,
   type Assessment,
   type FeasibilityDecision,
@@ -66,6 +72,14 @@ export interface ApiClient {
   getSyntheticProposal(buildId: string): Promise<Proposal | null>;
   /** The explicit Generate sample data action; a retry of the same request reuses its `generation_key`. */
   generateSyntheticData(buildId: string, request: GenerationRequest): Promise<RunAccepted>;
+  /** Successful sample datasets with their provenance (seed, checksum, generator, assumptions). */
+  listSyntheticDatasets(buildId: string): Promise<SyntheticDataset[]>;
+  /** The latest 20 generation jobs, newest first: what a reload or reconnect recovers. */
+  listSyntheticJobs(buildId: string): Promise<GenerationStatus[]>;
+  /** One job's persisted state; `404` when the backend never registered the key. Never starts work. */
+  getSyntheticJob(buildId: string, generationKey: string): Promise<GenerationStatus>;
+  /** URL of a synthetic source's CSV attachment (`synthetic-sample.csv`). */
+  syntheticCsvUrl(buildId: string, sourceId: string): string;
   uploadStyleImages(buildId: string, files: File[]): Promise<RunAccepted>;
   startResearch(buildId: string, prompt: string): Promise<RunAccepted>;
   startInterview(buildId: string): Promise<RunAccepted>;
@@ -153,6 +167,13 @@ async function assessment(method: string, path: string, body?: unknown): Promise
   return value;
 }
 
+/** A JSON response checked against its contract guard; `unreadable` is the message when it doesn't match. */
+async function checkedJson<T>(method: string, path: string, guard: Guard<T>, unreadable: string): Promise<T> {
+  const value: unknown = await json(method, path);
+  if (!guard(value)) throw new ApiError(502, 'invalid_response', unreadable);
+  return value;
+}
+
 export const httpApi: ApiClient = {
   health: () => json('GET', '/health'),
   getSession: () => json('GET', '/session'),
@@ -206,6 +227,10 @@ export const httpApi: ApiClient = {
       throw error;
     }
   },
+  listSyntheticDatasets: (id) => checkedJson('GET', buildPath(id, '/synthetic-data'), arrayOf(isSyntheticDataset), "Couldn't read the sample data details. Try again."),
+  listSyntheticJobs: (id) => checkedJson('GET', buildPath(id, '/synthetic-data/jobs'), arrayOf(isGenerationStatus), "Couldn't read the sample-data runs. Try again."),
+  getSyntheticJob: (id, key) => checkedJson('GET', buildPath(id, `/synthetic-data/jobs/${seg(key)}`), isGenerationStatus, "Couldn't read the sample-data run. Try again."),
+  syntheticCsvUrl: (id, sourceId) => `/api${buildPath(id, `/synthetic-data/${seg(sourceId)}/csv`)}`,
   uploadStyleImages: (id, files) => upload(buildPath(id, '/style-images'), files),
   startResearch: (id, prompt) => json('POST', buildPath(id, '/research'), { prompt }),
   startInterview: (id) => json('POST', buildPath(id, '/interview/start')),

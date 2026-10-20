@@ -1,4 +1,4 @@
-import { Database, FileUp, Upload } from 'lucide-react';
+import { Database, Download, FileUp, Plus, Upload } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type DragEvent, type FormEvent } from 'react';
 import { api } from '../../../api/client';
 import { ApiError, type Build, type ReferenceSet, type Source, type SourceKind } from '../../../api/types';
@@ -6,12 +6,13 @@ import { Button } from '../../../components/Button';
 import { EmptyState } from '../../../components/EmptyState';
 import { ErrorState } from '../../../components/ErrorState';
 import { Input } from '../../../components/Input';
+import { focusRing } from '../../../components/focus';
 import { Spinner } from '../../../components/Spinner';
 import { Table, type Column as TableColumn } from '../../../components/Table';
-import { ARCHETYPE_INFO } from '../../history/NewBuildDialog';
+import { ARCHETYPE_INFO, NewBuildDialog } from '../../history/NewBuildDialog';
 import type { StretchRuns } from '../chat/useBuildStream';
 import { ResearchPanel } from './ResearchPanel';
-import { SyntheticDataPanel } from './SyntheticDataPanel';
+import { hasSyntheticSource, SYNTHETIC_LABEL, SyntheticBadge, SyntheticDataPanel, SyntheticDetails } from './SyntheticDataPanel';
 import { ReferencePanel } from '../ReferencePanel';
 
 type UriKind = 'gcs' | 'bigquery';
@@ -42,12 +43,31 @@ const KIND_LABELS: Record<SourceKind, string> = {
   gcs: 'GCS',
   bigquery: 'BigQuery',
   research: 'Research',
-  synthetic: 'Synthetic sample data',
+  synthetic: SYNTHETIC_LABEL,
 };
 
-const sourceColumns: TableColumn<Source>[] = [
-  { id: 'name', header: 'Name', cell: (s) => <span className="font-medium">{s.name}</span>, className: 'align-top' },
-  { id: 'kind', header: 'Kind', cell: (s) => KIND_LABELS[s.kind], className: 'align-top whitespace-nowrap' },
+const sourceColumns = (buildId: string): TableColumn<Source>[] => [
+  {
+    id: 'name',
+    header: 'Name',
+    className: 'align-top',
+    cell: (s) => (
+      <span className="flex flex-col items-start gap-1">
+        <span className="font-medium">{s.name}</span>
+        {s.kind === 'synthetic' && (
+          <a
+            href={api.syntheticCsvUrl(buildId, s.id)}
+            download="synthetic-sample.csv"
+            className={`inline-flex items-center gap-1 whitespace-nowrap rounded-sm text-label font-medium text-primary hover:text-primary-hover hover:underline ${focusRing}`}
+          >
+            <Download aria-hidden="true" className="size-3.5" />
+            Download CSV
+          </a>
+        )}
+      </span>
+    ),
+  },
+  { id: 'kind', header: 'Kind', cell: (s) => (s.kind === 'synthetic' ? <SyntheticBadge /> : KIND_LABELS[s.kind]), className: 'align-top whitespace-nowrap' },
   { id: 'bq_table', header: 'BigQuery table', cell: (s) => <span className="break-all text-caption">{s.bq_table}</span>, mono: true, className: 'align-top' },
   { id: 'rows', header: 'Rows', cell: (s) => s.row_count.toLocaleString(), align: 'right', className: 'align-top' },
   {
@@ -75,6 +95,8 @@ interface ConnectStageProps {
   onBuildChange: (build: Build) => void;
   /** Run state of the stretch actions, from the build's event stream. */
   stretchRuns?: StretchRuns;
+  /** Generated sample data changed the build's sources: read feasibility again. */
+  onAssessmentInvalidated?: () => void;
 }
 
 /**
@@ -83,7 +105,7 @@ interface ConnectStageProps {
  */
 const noRuns: StretchRuns = {};
 
-export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onReferenceReadyChange }: ConnectStageProps) {
+export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onReferenceReadyChange, onAssessmentInvalidated }: ConnectStageProps) {
   const fileInput = useRef<HTMLInputElement>(null);
   const chooseButton = useRef<HTMLButtonElement>(null);
   const uriInput = useRef<HTMLInputElement>(null);
@@ -100,8 +122,7 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
   const [uri, setUri] = useState('');
   const [uriError, setUriError] = useState<string | null>(null);
   const [choice, setChoice] = useState<DataChoice>('upload');
-  // The sample-data panel mounts on first choice and then stays (hidden), so its edits survive switching.
-  const [sampleOpened, setSampleOpened] = useState(false);
+  const [newDashboard, setNewDashboard] = useState(false);
   const [reference, setReference] = useState<ReferenceSet | null | undefined>(undefined);
   const [sampleBusy, setSampleBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -110,6 +131,7 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
   const isBusy = busy !== null;
   const hasSources = build.sources.length > 0;
   const generating = !hasSources && choice === 'generate';
+  const realSources = hasSources && !hasSyntheticSource(build.sources);
   const hadSources = useRef(hasSources);
 
   // Generated sample data replaces the panel with the Sources table: say so, and keep keyboard focus.
@@ -196,8 +218,12 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
     }
   };
 
-  /** The generation run finished: read the build in case its build.updated was missed. */
+  /**
+   * Generation succeeded: read the build (its sources and docs) in case build.updated was missed, and
+   * feasibility, which the new source may change. Nothing is decided or started for the user.
+   */
   const refreshBuild = async () => {
+    onAssessmentInvalidated?.();
     try {
       onBuildChange(await api.getBuild(latest.current.id));
     } catch {
@@ -250,10 +276,7 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
                   name="data-choice"
                   value={value}
                   checked={choice === value}
-                  onChange={() => {
-                    setChoice(value);
-                    if (value === 'generate') setSampleOpened(true);
-                  }}
+                  onChange={() => setChoice(value)}
                   className="peer sr-only"
                 />
                 <span className={choiceCard}>
@@ -266,7 +289,8 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
         </fieldset>
       )}
 
-      {sampleOpened && !hasSources && (
+      {/* Mounted (hidden) whenever there is no source, so it recovers an earlier job and keeps edits across switching. */}
+      {!hasSources && (
         <div hidden={!generating} className="min-w-0">
           <SyntheticDataPanel
             buildId={build.id}
@@ -274,6 +298,8 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
             disabled={isBusy}
             onBusyChange={setSampleBusy}
             onGenerated={() => void refreshBuild()}
+            onJobFound={() => setChoice('generate')}
+            onNewDashboard={() => setNewDashboard(true)}
           />
         </div>
       )}
@@ -400,7 +426,18 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
       <section aria-label="Sources">
         {hasSources ? (
           <div className="rounded-panel border border-border bg-surface p-4">
-            <Table columns={sourceColumns} rows={build.sources} rowKey={(s) => s.id} caption="Sources" showCaption />
+            <Table columns={sourceColumns(build.id)} rows={build.sources} rowKey={(s) => s.id} caption="Sources" showCaption />
+            <SyntheticDetails buildId={build.id} sources={build.sources} />
+            {realSources && (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
+                <p className="min-w-0 flex-1 text-body text-text-muted">
+                  Want invented sample data instead? It can't be mixed with these sources, so it needs a new dashboard.
+                </p>
+                <Button size="sm" variant="secondary" icon={<Plus aria-hidden="true" />} disabled={isBusy} onClick={() => setNewDashboard(true)}>
+                  New dashboard
+                </Button>
+              </div>
+            )}
           </div>
         ) : (
           <EmptyState
@@ -432,6 +469,7 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
           Start interview
         </Button>
       </div>
+      {newDashboard && <NewBuildDialog open onClose={() => setNewDashboard(false)} />}
     </div>
   );
 }

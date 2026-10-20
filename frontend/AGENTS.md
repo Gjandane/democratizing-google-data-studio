@@ -53,6 +53,8 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Resource-panel tests: a GET spy call only means a refetch started; await the loaded control before asserting its disabled state (loading temporarily removes controls).
 
 - Feasibility test helpers must wait for loading to clear rather than issue text: resolved requirements are intentionally hidden.
+- Never `git stash` (not even to compare with baseline): it stashes the whole program repo, other parts and concurrent sessions included, and `pop` rewrites LF files as CRLF (core.autocrlf=true). Rerun a suspect test alone instead.
+- Headless Chrome driven by separate CDP scripts: `Emulation.setDeviceMetricsOverride` resets when the client disconnects; size the window with `Browser.setWindowBounds` instead (headless adds 26x100 px: 1306x900 gives a 1280x800 viewport).
 
 ## Skills
 Use each skill only at its step, on that task's files. If one isn't installed in your tool, skip it and say so under Gotchas. The essentials' UI design section wins over a skill's generic advice.

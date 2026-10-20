@@ -187,7 +187,7 @@ function StageArea({
             <BuildStage build={build} run={run} referencesReady={referencesReady} feasibilityReady={feasibility.buildReady} />
           </>
         ) : build.stage === 'connect' ? (
-          <ConnectStage build={build} onBuildChange={onBuildChange} stretchRuns={stretchRuns} onReferenceReadyChange={setReferencesReady} />
+          <ConnectStage build={build} onBuildChange={onBuildChange} stretchRuns={stretchRuns} onReferenceReadyChange={setReferencesReady} onAssessmentInvalidated={() => refreshAssessment((n) => n + 1)} />
         ) : build.stage === 'interview' ? (
           <InterviewStage build={build} messages={messages} loadError={loadError} runErrors={runErrors} referencesReady={referencesReady} feasibilityReady={feasibility.planReady} onReferenceReadyChange={setReferencesReady} />
         ) : build.stage === 'plan' ? (

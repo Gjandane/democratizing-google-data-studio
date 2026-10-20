@@ -6,6 +6,7 @@ import { Button, buttonClass } from '../../components/Button';
 import { focusRing } from '../../components/focus';
 import { Panel } from '../../components/Panel';
 import { ReferencePanel } from '../workspace/ReferencePanel';
+import { SampleDataBanner } from '../workspace/connect/SyntheticDataPanel';
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -103,6 +104,9 @@ export function DoneStage({ build, failedOps = 0, onBuildChange, onNewVersion }:
           )}
         </div>
       </section>
+      <SampleDataBanner sources={build.sources}>
+        This report shows invented rows, not real data or values from your screenshot. Data Studio shows it with the same label.
+      </SampleDataBanner>
 
       <ReferencePanel buildId={build.id} version={build.current_version} readOnly />
       <Panel
