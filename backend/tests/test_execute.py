@@ -1,7 +1,67 @@
 import json
+import os
+import subprocess
+import sys
 import time
 import pytest
 from test_thin_slice import thin, load_checked as load, wait_done
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows job ownership")
+def test_owned_engine_reaps_descendants_after_root_exit_without_taskkill(monkeypatch):
+    import ctypes
+    from ctypes import wintypes as w
+    from dss.harness.nodes.execute import start_engine, terminate_tree
+    api = ctypes.WinDLL("kernel32", use_last_error=True)
+    api.OpenProcess.argtypes, api.OpenProcess.restype = [w.DWORD, w.BOOL, w.DWORD], w.HANDLE
+    api.WaitForSingleObject.argtypes, api.WaitForSingleObject.restype = [w.HANDLE, w.DWORD], w.DWORD
+    api.CloseHandle.argtypes = [w.HANDLE]
+    unrelated = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    process, child = None, None
+    def forbidden(*args, **kwargs):
+        pytest.fail("Owned engine cleanup must not launch taskkill")
+    monkeypatch.setattr(subprocess, "run", forbidden)
+    try:
+        code = ("import subprocess,sys; "
+                "child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); "
+                "print(child.pid,flush=True)")
+        process = start_engine([sys.executable, "-c", code], stdout=subprocess.PIPE, text=True)
+        pid = int(process.stdout.readline())
+        child = api.OpenProcess(0x100000, False, pid)  # SYNCHRONIZE; retain identity past exit
+        assert child
+        process.wait(timeout=3)
+        started = time.monotonic()
+        terminate_tree(process)
+        assert api.WaitForSingleObject(child, 300) == 0
+        assert time.monotonic() - started < .5
+        assert process.communicate(timeout=1)[0] == ""
+        assert unrelated.poll() is None
+    finally:
+        if process:
+            process._dss_job.close()
+            process.wait(timeout=3)
+            process.stdout.close()
+        if child:
+            api.CloseHandle(child)
+        unrelated.kill()
+        unrelated.wait(timeout=3)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows suspended startup")
+def test_job_assignment_failure_reaps_suspended_engine(tmp_path, monkeypatch):
+    from dss.harness.nodes.execute import _WindowsJob, start_engine
+    captured = []
+    def fail(job, process):
+        captured.append((job, process))
+        raise OSError("job assignment failed")
+    monkeypatch.setattr(_WindowsJob, "attach", fail)
+    marker = tmp_path / "started"
+    with pytest.raises(OSError, match="job assignment failed"):
+        start_engine([sys.executable, "-c", "import pathlib,sys; pathlib.Path(sys.argv[1]).touch()", str(marker)],
+                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    job, process = captured[0]
+    assert not marker.exists() and process.poll() is not None
+    assert job.handle is None and process.stdout.closed and process.stderr.closed
 
 
 def settle(client, app):

@@ -791,3 +791,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: evidence/logs in `.blueprint/qa/task-13.1/` and `.blueprint/task-13.1-*.log`; isolated live core reached done (12 validated lines, real engine dry-run: 11 skipped, zero failed). Viewed prototype PNG; existing heading clipping belongs to 13.3.
 - Left open: none in this task.
 - Next: Task 13.2 Bound retry expiry cleanup on Windows (deep; gpt-6.1-sol at high).
+
+## 2026-10-20: Task 13.2 Bound retry expiry cleanup on Windows
+- Status: done
+- Plan check: off
+- What changed: agent engines enter a Windows Job Object before running. Expiry closes HTTP off-thread; process waits, readers, pipe closure and main-loop exit share a bounded allowance. Retry workers recheck expiry before sending.
+- Checks: `uv run pytest tests/test_agent_client.py tests/test_execute.py -q` PASS (33); original stalled-server test PASS in five fresh Windows processes (1.531, 1.515, 1.500, 1.516, 1.500 s, each within the unchanged 2.0 s ceiling, client closed and engine/child stopped). Test (all) `uv run pytest` PASS (1075, 9 deselected, 466.62 s); `git diff --check` PASS. Independent reviewer: no findings.
+- Decisions: 0.4 s total cleanup allowance within the existing 0.5 s tolerance. Job handles own descendants after wrapper exit. Controlled stalls cover HTTP close, process wait, pipe close and heartbeat join. Budgets, dependencies and contracts unchanged.
+- Tried and failed: none.
+- Gotchas: logs, five timing XML files and reviewed diff in `.blueprint/task-13.2-*`.
+- Left open: none.
+- Next: Task 13.3 Fit heading text in prototype and background (deep; gpt-6.1-sol at high).

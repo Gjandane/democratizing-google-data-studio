@@ -477,6 +477,26 @@ def test_no_attempt_starts_at_the_deadline(tmp_path):
     assert starts[-1][2] == 5
 
 
+def test_retry_worker_rechecks_deadline_after_thread_scheduling(tmp_path, monkeypatch):
+    agent, http, clock, starts = scripted(tmp_path, [(0, 200)])
+    thread = threading.Thread
+    def delayed_thread(*args, target, **kwargs):
+        if kwargs.get("name") == "dss-agent-retry":
+            send = target
+            def target():
+                clock.advance(2)
+                send()
+        return thread(*args, target=target, **kwargs)
+    monkeypatch.setattr(client.threading, "Thread", delayed_thread)
+    with pytest.raises(client.AgentExit):
+        agent.attempt(http, "GET", "/jobs/next", 1, "HTTP 503", {})
+    assert starts == []
+    assert agent.close_http(http).wait(1) and http.is_closed
+    with pytest.raises(client.AgentExit):
+        agent.call(http, "GET", "/jobs/next")
+    assert starts == []
+
+
 class StalledServer:
     """A real socket server: the first request gets a 503, every later one a response whose header
     trickles in forever, so no single httpx timeout phase ever expires."""
@@ -520,7 +540,7 @@ class StalledServer:
 
 
 def test_stalled_retry_cannot_outlast_the_budget_and_stops_the_engine(tmp_path, wrapper, monkeypatch, caplog,
-                                                                      capfd):
+                                                                      capfd, record_property):
     monkeypatch.setenv("DSS_TEST_ENGINE_TRICKLE", "1")
     for name, value in (("BACKOFF_S", .05), ("BACKOFF_MAX_S", .2), ("RETRY_BUDGET_S", 1.5)):
         monkeypatch.setattr(client, name, value)
@@ -542,6 +562,7 @@ def test_stalled_retry_cannot_outlast_the_budget_and_stops_the_engine(tmp_path, 
             assert not runner.is_alive() and "error" in outcome
             assert http.is_closed
         assert stalled.first_failure and 1.5 <= outcome["ended"] - stalled.first_failure <= 1.5 + .5
+        record_property("retry_elapsed_s", outcome["ended"] - stalled.first_failure)
         assert "no answer in time" in str(outcome["error"])
         assert stalled.closed.wait(5)
         size = alive.stat().st_size
@@ -551,6 +572,118 @@ def test_stalled_retry_cannot_outlast_the_budget_and_stops_the_engine(tmp_path, 
         agent.stop.set()  # after a regression, ends the engine run that is still streaming
         stalled.stop()
     assert_no_token(caplog.text, *capfd.readouterr())
+
+
+@pytest.mark.parametrize("stall", ["http_close", "process_wait", "pipe_close"])
+def test_retry_expiry_bounds_stalled_cleanup(tmp_path, wrapper, monkeypatch, stall):
+    """A broken close/wait cannot keep the caller or the owned engine tree alive indefinitely."""
+    monkeypatch.setenv("DSS_TEST_ENGINE_TRICKLE", "1")
+    for name, value in (("BACKOFF_S", .02), ("RETRY_BUDGET_S", .3)):
+        monkeypatch.setattr(client, name, value)
+    server, release, entered = StalledServer(), threading.Event(), threading.Event()
+    agent = client.Agent(server.url, TOKEN, tmp_path, [sys.executable, str(wrapper)])
+    http, processes = agent.http(), []
+    start = client.start_engine
+    def pause():
+        entered.set()
+        release.wait()  # released by finally, even on a regression
+    if stall == "http_close":
+        close = http.close
+        def blocked_close():
+            pause()
+            close()
+        monkeypatch.setattr(http, "close", blocked_close)
+    def start_engine(*args, **kwargs):
+        process = start(*args, **kwargs)
+        processes.append(process)
+        if stall == "process_wait":
+            wait = process.wait
+            def blocked_wait(*args, **kwargs):
+                pause()
+                return wait(*args, **kwargs)
+            process.wait = blocked_wait
+        if stall == "pipe_close":
+            pipe = process.stdout
+            class BlockedPipe:
+                def __iter__(self):
+                    return iter(pipe)
+                def close(self):
+                    pause()
+                    pipe.close()
+            process.stdout = BlockedPipe()
+        return process
+    monkeypatch.setattr(client, "start_engine", start_engine)
+    outcome = {}
+    def run():
+        try:
+            agent.run_engine(http, JOB["run_id"], JOB, tmp_path)
+        except client.AgentExit as error:
+            outcome.update(error=error, ended=time.monotonic())
+    runner = threading.Thread(target=run, daemon=True)
+    try:
+        runner.start()
+        runner.join(5)
+        assert not runner.is_alive() and "error" in outcome
+        assert entered.is_set()
+        assert .3 <= outcome["ended"] - server.first_failure <= .3 + .5
+        assert processes and processes[0].poll() is not None
+        alive = tmp_path / "alive"
+        assert "c" in alive.read_text()
+        size = alive.stat().st_size
+        time.sleep(.2)
+        assert alive.stat().st_size == size
+    finally:
+        release.set()
+        agent.stop.set()
+        server.stop()
+        runner.join(3)
+        agent.close_http(http).wait(3)
+    assert http.is_closed
+
+
+def test_run_expiry_bounds_client_close_and_heartbeat_join(tmp_path, monkeypatch):
+    monkeypatch.setattr(client, "RETRY_BUDGET_S", .15)
+    monkeypatch.setattr(client, "BACKOFF_S", .01)
+    release, close_entered, beat_entered = threading.Event(), threading.Event(), threading.Event()
+    agent = client.Agent("http://127.0.0.1:1", TOKEN, tmp_path, ["dsengine"])
+    first, requests, closes = [], [], []
+    def handler(request):
+        requests.append(time.monotonic())
+        if not first:
+            first.append(time.monotonic())
+            return httpx.Response(503)
+        release.wait()
+        return httpx.Response(204)
+    http = httpx.Client(base_url=agent.server, transport=httpx.MockTransport(handler))
+    real_close = http.close
+    def close():
+        closes.append(1)
+        close_entered.set()
+        release.wait()
+        real_close()
+    def heartbeat():
+        beat_entered.set()
+        release.wait()
+    monkeypatch.setattr(http, "close", close)
+    monkeypatch.setattr(agent, "http", lambda: http)
+    monkeypatch.setattr(agent, "check", lambda: setattr(agent, "next_check", float("inf")))
+    monkeypatch.setattr(agent, "heartbeats", heartbeat)
+    outcome = {}
+    def run():
+        outcome.update(code=agent.run(), ended=time.monotonic())
+    runner = threading.Thread(target=run, daemon=True)
+    try:
+        runner.start()
+        runner.join(3)
+        assert not runner.is_alive() and outcome["code"] == 1
+        assert .15 <= outcome["ended"] - first[0] <= .15 + .5
+        assert close_entered.is_set() and beat_entered.is_set() and closes == [1]
+        assert len(requests) == 2 and requests[-1] - first[0] < .15
+    finally:
+        release.set()
+        runner.join(3)
+        agent.close_http(http).wait(3)
+    assert http.is_closed
 
 
 @pytest.mark.parametrize("response,code", [

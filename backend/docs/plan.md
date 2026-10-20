@@ -353,7 +353,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_spec_validate.py tests/test_spec_node.py tests/test_recipe_contract.py tests/test_api_contract.py` passes cases for missing-prefix/short/nonhex colors in every Theme color field and palette items, including legacy saved specs; invalid model output goes through the existing bounded repair and cannot publish a bad prototype/recipe. Recipe rejection starts no engine/job and preserves previous complete artifacts. Valid golden bytes remain unchanged. `uv run pytest -m live tests/live/test_backend_flow.py` validates every generated recipe line against ../contracts/recipe.schema.json and the ordinary core flow reaches done with the real configured engine in dry-run mode, with no fixture-spec injection; preserve isolated runtime and save evidence. `uv run pytest` passes.
   - Review focus: recipe 1.0 color constraints, strict local validation and provider schema compatibility; no engine/contract edits, dependency or repair-budget changes.
-- [ ] 13.2 Bound retry expiry cleanup on Windows
+- [x] 13.2 Bound retry expiry cleanup on Windows
   - Goal: the real stalled-server check passes within its existing tolerance, including client closure and engine teardown.
   - Spec: docs/architecture.md#Build consistency
   - Files: src/dss/agent/client.py, src/dss/harness/nodes/execute.py, tests/test_agent_client.py, tests/test_execute.py

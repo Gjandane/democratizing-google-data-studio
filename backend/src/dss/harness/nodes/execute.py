@@ -24,9 +24,111 @@ def engine_command():
     return [arg[1:-1] if len(arg) > 1 and arg[0] == arg[-1] and arg[0] in ('"', "'") else arg for arg in args]
 
 
+class _WindowsJob:
+    """An unnamed job owns only this engine and its descendants, even after its root exits."""
+
+    def __init__(self):
+        import ctypes
+        from ctypes import wintypes as w
+        self.ctypes, self.w = ctypes, w
+        self.api = ctypes.WinDLL("kernel32", use_last_error=True)
+        signatures = {
+            "CreateJobObjectW": ([w.LPVOID, w.LPCWSTR], w.HANDLE),
+            "AssignProcessToJobObject": ([w.HANDLE, w.HANDLE], w.BOOL),
+            "TerminateJobObject": ([w.HANDLE, w.UINT], w.BOOL),
+            "CloseHandle": ([w.HANDLE], w.BOOL),
+            "CreateToolhelp32Snapshot": ([w.DWORD, w.DWORD], w.HANDLE),
+            "Thread32First": ([w.HANDLE, w.LPVOID], w.BOOL),
+            "Thread32Next": ([w.HANDLE, w.LPVOID], w.BOOL),
+            "OpenThread": ([w.DWORD, w.BOOL, w.DWORD], w.HANDLE),
+            "ResumeThread": ([w.HANDLE], w.DWORD),
+        }
+        for name, (args, result) in signatures.items():
+            fn = getattr(self.api, name)
+            fn.argtypes, fn.restype = args, result
+        self.lock = threading.Lock()
+        self.handle = self.api.CreateJobObjectW(None, None)
+        if not self.handle:
+            raise ctypes.WinError(ctypes.get_last_error())
+
+    def attach(self, process):
+        c, w, api = self.ctypes, self.w, self.api
+        if not api.AssignProcessToJobObject(self.handle, int(process._handle)):
+            raise c.WinError(c.get_last_error())
+        # Popen closes the primary thread handle. Find it while CREATE_SUSPENDED guarantees
+        # that no engine code (and therefore no unowned child) has run yet.
+        class ThreadEntry(c.Structure):
+            _fields_ = [(name, w.DWORD) for name in
+                        ("size", "usage", "tid", "pid")] + [
+                        ("base", w.LONG), ("delta", w.LONG), ("flags", w.DWORD)]
+        snapshot = api.CreateToolhelp32Snapshot(0x4, 0)  # TH32CS_SNAPTHREAD
+        if snapshot == c.c_void_p(-1).value:
+            raise c.WinError(c.get_last_error())
+        try:
+            entry = ThreadEntry()
+            entry.size = c.sizeof(entry)
+            found = api.Thread32First(snapshot, c.byref(entry))
+            while found:
+                if entry.pid == process.pid:
+                    thread = api.OpenThread(0x2, False, entry.tid)  # THREAD_SUSPEND_RESUME
+                    if not thread:
+                        raise c.WinError(c.get_last_error())
+                    try:
+                        if api.ResumeThread(thread) == 0xffffffff:
+                            raise c.WinError(c.get_last_error())
+                    finally:
+                        api.CloseHandle(thread)
+                    return
+                found = api.Thread32Next(snapshot, c.byref(entry))
+            raise OSError("Suspended engine thread not found")
+        finally:
+            api.CloseHandle(snapshot)
+
+    def terminate(self):
+        with self.lock:
+            if self.handle and not self.api.TerminateJobObject(self.handle, 1):
+                raise self.ctypes.WinError(self.ctypes.get_last_error())
+
+    def close(self):
+        with self.lock:
+            if self.handle:
+                try:
+                    if not self.api.TerminateJobObject(self.handle, 1):
+                        raise self.ctypes.WinError(self.ctypes.get_last_error())
+                finally:
+                    self.api.CloseHandle(self.handle)
+                    self.handle = None
+
+
+def start_engine(args, **kwargs):
+    """Agent engines get a job before running on Windows; POSIX owns a process group."""
+    job = _WindowsJob() if os.name == "nt" else None
+    process = None
+    try:
+        if job:
+            kwargs["creationflags"] = kwargs.get("creationflags", 0) | 0x4  # CREATE_SUSPENDED
+        process = subprocess.Popen(args, start_new_session=os.name != "nt", **kwargs)
+        if job:
+            process._dss_job = job
+            job.attach(process)
+        return process
+    except BaseException:
+        if job:
+            job.close()
+        if process:
+            process.kill()  # assignment may have failed: the suspended root is still ours
+            process.wait(timeout=1)
+            for pipe in (process.stdout, process.stderr):
+                if pipe:
+                    pipe.close()
+        raise
+
+
 def terminate_tree(process):
     """Stop the wrapper and engine together so inherited pipes reach EOF."""
-    if os.name == "nt":
+    if job := getattr(process, "_dss_job", None):
+        job.terminate()
+    elif os.name == "nt":
         subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
     else:

@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 import httpx
 
 from dss.config import BACKEND_DIR, Config
-from dss.harness.nodes.execute import engine_command, environment, terminate_tree
+from dss.harness.nodes.execute import engine_command, environment, start_engine, terminate_tree
 
 HEARTBEAT_S = 10
 CHECK_S = 60
@@ -27,6 +27,7 @@ HTTP_TIMEOUT_S = 40  # longer than the long poll's wait + 10 s
 CONNECT_TIMEOUT_S = 10
 FLUSH_S = 1
 RETRY_BUDGET_S = 60
+CLEANUP_S = .4  # one allowance for close, engine reaping, readers and main-loop teardown
 BACKOFF_S, BACKOFF_MAX_S = 1, 10
 KILL_GRACE_S = 5  # as the local backend: the engine's own --timeout ends the run first
 STDERR_TAIL = 4000
@@ -68,6 +69,8 @@ class Agent:
         self.stop = threading.Event()
         self.clock = time.monotonic  # the retry deadline's clock (tests inject a fake)
         self.next_check = 0.0
+        self.cleanup_deadline = None
+        self.closing = {}
         try:
             self.version = package_version("dss-backend")
         except PackageNotFoundError:
@@ -101,6 +104,8 @@ class Agent:
         the first failure. Backoff and every later attempt, stalled I/O included, share that deadline."""
         deadline, delay, reason = None, BACKOFF_S, None
         while True:
+            if self.cleanup_deadline is not None:
+                raise self.expired("retry deadline expired", http)
             try:
                 if deadline is None:
                     response = http.request(method, "/api/agent" + path, **kwargs)
@@ -116,7 +121,7 @@ class Agent:
             deadline = deadline or self.clock() + RETRY_BUDGET_S
             remaining = deadline - self.clock()
             if remaining <= 0:
-                raise self.expired(reason)
+                raise self.expired(reason, http)
             logger.warning("Server unavailable (%s); retrying in %.1f s", reason, min(delay, remaining))
             if self.stop.wait(min(delay, remaining)):
                 raise Stopped()
@@ -135,8 +140,30 @@ class Agent:
             raise JobError(code)
         return response
 
-    def expired(self, reason):
+    def expired(self, reason, http):
+        if self.cleanup_deadline is None:
+            self.cleanup_deadline = time.monotonic() + CLEANUP_S
+        self.stop.set()
+        self.close_http(http)
         return AgentExit(f"Server unavailable for {RETRY_BUDGET_S} s ({reason}); exiting")
+
+    def remaining_cleanup(self):
+        return max(0, self.cleanup_deadline - time.monotonic())
+
+    def close_http(self, http):
+        """Close once, off-thread: a transport close must never delay engine termination."""
+        if http not in self.closing:
+            done = threading.Event()
+            self.closing[http] = done
+            def close():
+                try:
+                    http.close()
+                except Exception:
+                    logger.warning("HTTP client cleanup failed")
+                finally:
+                    done.set()
+            threading.Thread(target=close, name="dss-agent-close", daemon=True).start()
+        return self.closing[http]
 
     def attempt(self, http, method, path, deadline, reason, kwargs):
         """A retry ends by the deadline whatever the server does: none starts at or after it, and one
@@ -144,7 +171,7 @@ class Agent:
         the client closed, so its connection goes; the caller's AgentExit then stops any engine."""
         remaining = deadline - self.clock()
         if remaining <= 0:
-            raise self.expired(reason)
+            raise self.expired(reason, http)
         if "wait" in kwargs.get("params", {}):
             # A retried long poll only probes: waiting would outlast the remaining budget.
             kwargs = {**kwargs, "params": {**kwargs["params"], "wait": 0}}
@@ -152,6 +179,8 @@ class Agent:
         outcome, done = {}, threading.Event()
         def send():
             try:
+                if self.clock() >= deadline or self.stop.is_set():
+                    return
                 outcome["response"] = http.request(method, "/api/agent" + path, timeout=timeout, **kwargs)
             except BaseException as error:  # handed to the caller's thread
                 outcome["error"] = error
@@ -160,11 +189,14 @@ class Agent:
         threading.Thread(target=send, name="dss-agent-retry", daemon=True).start()
         # Short waits keep Ctrl+C responsive on Windows.
         while not done.wait(max(0.0, min(.5, deadline - self.clock()))):
+            if self.clock() >= deadline:
+                raise self.expired("no answer in time", http)
             if self.stop.is_set():
                 raise Stopped()
-            if self.clock() >= deadline:
-                http.close()
-                raise self.expired("no answer in time")
+        if self.clock() >= deadline:
+            raise self.expired("no answer in time", http)
+        if self.stop.is_set():
+            raise Stopped()
         if "error" in outcome:
             raise outcome["error"]
         return outcome["response"]
@@ -220,7 +252,8 @@ class Agent:
         beat = threading.Thread(target=self.heartbeats, name="dss-agent-heartbeat", daemon=True)
         beat.start()
         try:
-            with self.http() as http:
+            http = self.http()
+            try:
                 while not self.stop.is_set():
                     if time.monotonic() >= self.next_check:
                         self.check()
@@ -235,6 +268,11 @@ class Agent:
                         except ValueError:
                             raise AgentExit("The server answered the job poll without JSON; check the server URL") from None
                         self.run_job(http, job)  # one job at a time: no poll until it is reported
+            finally:
+                if self.cleanup_deadline is None:
+                    http.close()
+                else:
+                    self.close_http(http).wait(self.remaining_cleanup())
             return 0
         except Stopped:
             return 0
@@ -243,7 +281,7 @@ class Agent:
             return error.code
         finally:
             self.stop.set()
-            beat.join(timeout=1)
+            beat.join(timeout=1 if self.cleanup_deadline is None else self.remaining_cleanup())
 
     def folder(self, job):
         """Validate a job before any of its fields reaches a path or a command line."""
@@ -319,9 +357,8 @@ class Agent:
 
     def run_engine(self, http, run_id, job, folder):
         """Stream one run's events in batches; a 404 or exit here stops the engine tree."""
-        process = subprocess.Popen(self.engine_args(job, folder), cwd=BACKEND_DIR, stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
-            start_new_session=os.name != "nt")
+        process = start_engine(self.engine_args(job, folder), cwd=BACKEND_DIR, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
         lines, tail, expired = queue.Queue(), deque(maxlen=200), threading.Event()
         def read_stdout():
             for line in process.stdout:
@@ -360,13 +397,29 @@ class Agent:
             code = process.wait()
         finally:
             timer.cancel()
-            if process.poll() is None:
-                terminate_tree(process)
-            process.wait()
-            for reader in readers:
-                reader.join(timeout=5)
-            process.stdout.close()
-            process.stderr.close()
+            # Native job/group termination has no command-launch or socket timeout. It also
+            # kills inherited-pipe descendants whose wrapper has already exited.
+            terminate_tree(process)
+            cleanup_deadline = self.cleanup_deadline or time.monotonic() + 5
+            cleaned = threading.Event()
+            def cleanup():
+                try:
+                    process.wait(timeout=max(0, cleanup_deadline - time.monotonic()))
+                    for reader in readers:
+                        reader.join(timeout=max(0, cleanup_deadline - time.monotonic()))
+                    process.stdout.close()
+                    process.stderr.close()
+                except Exception:
+                    logger.warning("Engine cleanup failed")
+                finally:
+                    if owned := getattr(process, "_dss_job", None):
+                        owned.close()
+                    cleaned.set()
+            threading.Thread(target=cleanup, name="dss-agent-engine-cleanup", daemon=True).start()
+            if not cleaned.wait(max(0, cleanup_deadline - time.monotonic())):
+                logger.warning("Engine pipe cleanup did not finish in time")
+            if self.cleanup_deadline is not None:
+                self.close_http(http).wait(self.remaining_cleanup())
         return (-1 if expired.is_set() else code), self.redact("".join(tail))[-STDERR_TAIL:]
 
     def event(self, line):
