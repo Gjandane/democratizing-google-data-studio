@@ -6,6 +6,7 @@ import { httpApi } from '../src/api/client';
 import { openHttpBuildEvents, useBuildEvents } from '../src/api/events';
 import {
   ApiError,
+  isAssessment,
   STAGES,
   arrayOf,
   buildEventGuards,
@@ -26,7 +27,13 @@ import {
   toBuildEvent,
   type Guard,
 } from '../src/api/types';
+import { createMockApi, resetMockState, setMockAssessment } from '../src/mocks/api';
+import { fixtures } from '../src/mocks/fixtures';
 import { parseSse } from '../src/mocks/sse';
+import feasibilityFixture from '../../contracts/fixtures/dashboard-intent/feasibility.json';
+import feasibilityAlternatives from '../../contracts/fixtures/dashboard-intent/feasibility.alternatives.json';
+import feasibilityPending from '../../contracts/fixtures/dashboard-intent/feasibility.pending.json';
+import feasibilityStale from '../../contracts/fixtures/dashboard-intent/feasibility.stale.json';
 import referenceFixture from '../../contracts/fixtures/dashboard-intent/reference_set.json';
 import syntheticSourceFixture from '../../contracts/fixtures/synthetic-data/source.json';
 
@@ -183,7 +190,35 @@ describe('references and synthetic sources match the contract', () => {
   });
 });
 
-describe('the HTTP client speaks the contract', () => {
+describe('feasibility assessments match the contract', () => {
+  it.each([feasibilityFixture, feasibilityAlternatives, feasibilityPending, feasibilityStale])('accepts shared assessment $id', (value) => {
+    expect(problemsOf(isAssessment, value)).toEqual([]);
+  });
+
+  it('rejects missing, extra, type and enum errors at every nested level', () => {
+    const issue = feasibilityAlternatives.issues[0]!;
+    const alternative = issue.alternatives[0]!;
+    const { input_digest: _digest, ...missing } = feasibilityFixture;
+    const { reason: _reason, ...missingIssue } = issue;
+    const { label: _label, ...missingAlternative } = alternative;
+    const invalid = [
+      missing, { ...feasibilityFixture, extra: true }, { ...feasibilityFixture, state: 'approved' },
+      { ...feasibilityFixture, prototype_stale: 'false' }, { ...feasibilityFixture, id: 12 },
+      ...[missingIssue, { ...issue, extra: true }, { ...issue, status: 'supported' },
+        { ...issue, resolution: 'accepted' }, { ...issue, evidence: [12] },
+        { ...issue, alternatives: [missingAlternative] }, { ...issue, alternatives: [{ ...alternative, extra: true }] },
+        { ...issue, alternatives: [{ ...alternative, label: 12 }] }].map((value) => ({ ...feasibilityFixture, issues: [value] })),
+      { ...feasibilityPending, pending_comments: { comments: [] } },
+      { ...feasibilityPending, pending_comments: { ...feasibilityPending.pending_comments, extra: true } },
+      { ...feasibilityPending, pending_comments: { id: 'batch', comments: [{ component_id: 'title' }] } },
+      { ...feasibilityPending, pending_comments: { id: 'batch', comments: [{ component_id: 12, text: 'Rename' }] } },
+      { ...feasibilityPending, pending_comments: { id: 'batch', comments: [{ component_id: 'title', text: 'Rename', extra: true }] } },
+    ];
+    for (const value of invalid) expect(isAssessment(value), JSON.stringify(value)).toBe(false);
+  });
+});
+
+describe('the HTTP client speaks the contract' , () => {
   afterEach(() => vi.unstubAllGlobals());
 
   function stubFetch(status: number, body: string, type = 'application/json') {
@@ -191,6 +226,29 @@ describe('the HTTP client speaks the contract', () => {
     vi.stubGlobal('fetch', fetchMock);
     return fetchMock;
   }
+
+  it('gets and decides feasibility with exact paths and explicit choices only', async () => {
+    const fetchMock = stubFetch(200, JSON.stringify(feasibilityAlternatives));
+    await expect(httpApi.getFeasibility('b/one')).resolves.toEqual(feasibilityAlternatives);
+    const decisions = [{ issue_id: 'issue_gps', action: 'drop' as const, alternative_id: null }];
+    await httpApi.decideFeasibility('b/one', feasibilityAlternatives.id, decisions);
+    expect(fetchMock.mock.calls).toEqual([
+      ['/api/builds/b%2Fone/feasibility', { method: 'GET' }],
+      ['/api/builds/b%2Fone/feasibility/decisions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assessment_id: feasibilityAlternatives.id, decisions }) }],
+    ]);
+  });
+
+  it('checks feasibility with an empty POST and no automatic follow-up work', async () => {
+    const fetchMock = stubFetch(202, fixture['run_accepted.json'] ?? '');
+    await expect(httpApi.checkFeasibility('b/one')).resolves.toEqual(json('run_accepted.json'));
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith('/api/builds/b%2Fone/feasibility/check', { method: 'POST' });
+  });
+
+  it('fails closed on malformed GET and decision assessment responses', async () => {
+    stubFetch(200, JSON.stringify({ ...feasibilityFixture, unexpected: true }));
+    await expect(httpApi.getFeasibility('build')).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+    await expect(httpApi.decideFeasibility('build', 'assessment', [])).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+  });
 
   it('uploads reference files, mode and instructions as one multipart request', async () => {
     const fetchMock = stubFetch(202, fixture['run_accepted.json'] ?? '');
@@ -337,5 +395,37 @@ describe('the event stream speaks the contract', () => {
 
     unmount();
     expect(second.readyState).toBe(FakeEventSource.CLOSED);
+  });
+});
+
+
+describe('mock feasibility decisions', () => {
+  afterEach(() => resetMockState());
+
+  it('keeps new builds unchecked and fixture builds ready', async () => {
+    const api = createMockApi();
+    expect((await api.getFeasibility(fixtures.build.id)).state).toBe('ready');
+    const build = await api.createBuild({ archetype: 'executive', mode: 'data' });
+    expect(await api.getFeasibility(build.id)).toEqual({ id: null, state: 'unchecked', input_digest: null, prototype_stale: false, issues: [], pending_comments: null });
+  });
+
+  it('rejects stale or invalid decisions atomically and resolves only explicit choices', async () => {
+    const api = createMockApi();
+    const id = fixtures.build.id;
+    setMockAssessment(id, fixtures.feasibilityAlternatives);
+    const original = await api.getBuild(id);
+    await expect(api.decideFeasibility(id, 'old', [{ issue_id: 'issue_gps', action: 'drop', alternative_id: null }])).rejects.toMatchObject({ status: 409, code: 'feasibility_stale' });
+    await expect(api.decideFeasibility(id, fixtures.feasibilityAlternatives.id!, [
+      { issue_id: 'issue_gps', action: 'drop', alternative_id: null },
+      { issue_id: 'issue_revenue', action: 'accept_alternative', alternative_id: 'unoffered' },
+    ])).rejects.toMatchObject({ status: 422 });
+    expect(await api.getFeasibility(id)).toEqual(fixtures.feasibilityAlternatives);
+    const partial = await api.decideFeasibility(id, fixtures.feasibilityAlternatives.id!, [{ issue_id: 'issue_gps', action: 'accept_alternative', alternative_id: 'alt_region_map' }]);
+    expect(partial.state).toBe('blocked');
+    expect(partial.id).not.toBe(fixtures.feasibilityAlternatives.id);
+    const ready = await api.decideFeasibility(id, partial.id!, [{ issue_id: 'issue_revenue', action: 'drop', alternative_id: null }]);
+    expect(ready.state).toBe('ready');
+    expect(ready.issues.map((issue) => issue.resolution)).toEqual(['accepted_alternative', 'dropped']);
+    expect(await api.getBuild(id)).toEqual(original);
   });
 });

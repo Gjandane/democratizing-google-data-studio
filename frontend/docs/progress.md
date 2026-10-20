@@ -309,3 +309,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: see AGENTS.
 - Left open: none.
 - Next: 10.2 Feasibility panel, decisions and Generate/Build gates (deep).
+
+## 2026-10-20: Task 10.2 Feasibility panel, decisions and Generate/Build gates
+- Status: done
+- Plan check: off
+- What changed: Exact Assessment guards/shared fixtures, feasibility API/mocks, requirement/evidence/alternative panel, explicit decisions, recovery checks and fail-closed plan/recipe/Build gates.
+- Checks: `npm test` PASS (16 files/294 tests); `npm run typecheck` PASS; `git diff --check` PASS. Viewed eight `screenshots/10.2-feasibility-{unchecked,blocked,ready,error}-{1280x800,1440x900}.png`. Both viewports: no overflow; keyboard alternative/Enter returns heading focus; nine prototype overlay boxes aligned (<0.001 CSS px error). Live backend GPS request with invented CSV shows app-limitation copy and supported time-series alternatives. Reviewer and web-design-guidelines: no remaining findings.
+- Decisions: Shell owns FeasibilityGates (planReady/buildReady); panel reuses workspace SSE fanout, refetches after reference readiness changes, and rejects obsolete GET/decision responses. checkTicket invalidates late check responses on reconnect; pending run matches run_id only. Worker implemented decided client/mock/fixture/contract-test glue. AGENTS adds resource-refetch test timing gotcha. Pending-batch actions/replan remain task 10.3.
+- Tried and failed: corrected test preset export, loading-state assertion timing and screenshot overlay selector. Fixed review P2 delayed-POST/reconnect lock race, with regression.
+- Gotchas: see AGENTS.
+- Left open: none.
+- Next: 10.3 Pending comment batches and stale-prototype replan (deep).

@@ -4,6 +4,7 @@
 import type { ApiClient } from '../api/client';
 import {
   ApiError,
+  type Assessment,
   referenceValidation,
   type ReferenceSet,
   isArchetype,
@@ -44,6 +45,8 @@ export type MockFailingNode = 'plan' | 'interview';
 export const MOCK_ACCESS_CODE = 'mock-access-code';
 
 interface MockState {
+  assessments: Map<string, Assessment>;
+  assessmentBusy: Set<string>;
   references: Map<string, ReferenceSet>;
   referenceFiles: Map<string, string>;
   referenceBusy: Set<string>;
@@ -66,6 +69,8 @@ function seed(): MockState {
   const builds = new Map<string, Build>();
   for (const build of [fixtures.build, fixtures.buildDone]) builds.set(build.id, clone(build));
   return {
+    assessments: new Map([fixtures.build, fixtures.buildDone].map((build) => [build.id, { id: `assessment_${build.id}`, state: 'ready', input_digest: `digest_${build.id}`, prototype_stale: false, issues: [], pending_comments: null }])),
+    assessmentBusy: new Set(),
     references: new Map(),
     referenceFiles: new Map(),
     referenceBusy: new Set(),
@@ -136,6 +141,17 @@ export function setMockRunFailure(node: MockFailingNode, error: string | null | 
   if (error === undefined) delete state.runFailures[node];
   else state.runFailures[node] = error;
 }
+
+/** Overrides feasibility without mutating shared fixtures. For tests and previews. */
+export function setMockAssessment(buildId: string, assessment: Assessment): void {
+  state.assessments.set(buildId, clone(assessment));
+}
+
+const uncheckedAssessment = (): Assessment => ({ id: null, state: 'unchecked', input_digest: null, prototype_stale: false, issues: [], pending_comments: null });
+const currentAssessment = (id: string): Assessment => {
+  findBuild(id);
+  return state.assessments.get(id) ?? uncheckedAssessment();
+};
 
 const failureOf = (node: MockFailingNode) => () => (node in state.runFailures ? { error: state.runFailures[node] ?? null } : null);
 
@@ -410,6 +426,41 @@ export function createMockApi(): ApiClient {
         return source;
       }),
 
+    getFeasibility: (id) => respond(() => currentAssessment(id)),
+    checkFeasibility: (id) => respond(() => {
+      const build = findBuild(id);
+      requireStage(build, ['connect', 'interview', 'prototype'], 'Check feasibility before building.');
+      if (state.assessmentBusy.has(id)) throw new ApiError(409, 'action_in_progress', 'Wait for the current check.');
+      state.assessmentBusy.add(id);
+      return startRun(build, 'capability_check', () => [() => {
+        const current = clone(currentAssessment(id));
+        current.id = `assessment_${nextId('r')}`;
+        current.input_digest ??= `digest_${id}`;
+        current.state = current.issues.some((issue) => issue.resolution === 'unresolved') ? 'blocked' : 'ready';
+        state.assessments.set(id, current);
+        state.assessmentBusy.delete(id);
+      }]);
+    }),
+    decideFeasibility: (id, assessmentId, decisions) => respond(() => {
+      const current = currentAssessment(id);
+      if (!current.id || current.id !== assessmentId) throw new ApiError(409, 'feasibility_stale', 'Feasibility changed. Refresh and choose again.');
+      if (state.assessmentBusy.has(id)) throw new ApiError(409, 'action_in_progress', 'Wait for the current check.');
+      if (decisions.length < 1 || decisions.length > 20 || new Set(decisions.map((decision) => decision.issue_id)).size !== decisions.length) throw invalid('invalid_request', 'Choose 1 to 20 distinct requirements.');
+      const updated = clone(current);
+      for (const decision of decisions) {
+        const issue = updated.issues.find((entry) => entry.id === decision.issue_id);
+        if (!issue || issue.resolution !== 'unresolved' ||
+          (decision.action !== 'drop' && decision.action !== 'accept_alternative') ||
+          (decision.action === 'drop' ? decision.alternative_id !== null : !issue.alternatives.some((alternative) => alternative.id === decision.alternative_id))) {
+          throw invalid('invalid_request', 'Choose an offered alternative or explicitly drop the requirement.');
+        }
+        issue.resolution = decision.action === 'drop' ? 'dropped' : 'accepted_alternative';
+      }
+      updated.id = `assessment_${nextId('r')}`;
+      updated.state = updated.issues.some((issue) => issue.resolution === 'unresolved') ? 'blocked' : 'ready';
+      state.assessments.set(id, updated);
+      return updated;
+    }),
     getReferences: (id) => respond(() => {
       const build = findBuild(id);
       return state.references.get(`${id}:${build.current_version}`) ?? null;

@@ -50,10 +50,12 @@ export function InterviewStage({
   loadError,
   runErrors = {},
   referencesReady = true,
+  feasibilityReady = true,
   onReferenceReadyChange,
 }: {
   build: Build;
   referencesReady?: boolean;
+  feasibilityReady?: boolean;
   onReferenceReadyChange?: (ready: boolean) => void;
   messages: Message[] | null;
   loadError?: string | null;
@@ -85,7 +87,7 @@ export function InterviewStage({
   }, [awaitingRun, hasRunError]);
 
   const generate = async () => {
-    if (inFlight.current || !referencesReady) return;
+    if (inFlight.current || (!referencesReady || !feasibilityReady)) return;
     inFlight.current = true;
     setPlanning(true);
     setPlanError(null);
@@ -152,14 +154,14 @@ export function InterviewStage({
         )}
       </Panel>
 
-      <fieldset disabled={!referencesReady} className="flex min-w-0 flex-col gap-2">
+      <fieldset disabled={(!referencesReady || !feasibilityReady)} className="flex min-w-0 flex-col gap-2">
         <div className="flex flex-wrap items-center gap-3">
           <Button
             variant={build.ready_for_plan ? 'primary' : 'secondary'}
             data-ready={String(build.ready_for_plan)}
             icon={<Sparkles aria-hidden="true" />}
             loading={busy}
-            disabled={!referencesReady}
+            disabled={(!referencesReady || !feasibilityReady)}
             onClick={() => void generate()}
           >
             Generate plan

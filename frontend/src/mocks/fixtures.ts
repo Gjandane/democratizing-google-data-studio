@@ -1,3 +1,7 @@
+import feasibilityStaleJson from '../../../contracts/fixtures/dashboard-intent/feasibility.stale.json';
+import feasibilityPendingJson from '../../../contracts/fixtures/dashboard-intent/feasibility.pending.json';
+import feasibilityAlternativesJson from '../../../contracts/fixtures/dashboard-intent/feasibility.alternatives.json';
+import feasibilityJson from '../../../contracts/fixtures/dashboard-intent/feasibility.json';
 // The shared API fixtures, imported in place from ../contracts/fixtures/api/ (never copied)
 // and checked against the contract guards once, so the mock can only serve conforming data.
 import referenceSetJson from '../../../contracts/fixtures/dashboard-intent/reference_set.json';
@@ -17,6 +21,7 @@ import settingsJson from '../../../contracts/fixtures/api/settings.json';
 import tracesJson from '../../../contracts/fixtures/api/traces.json';
 import {
   arrayOf,
+  isAssessment,
   isApiErrorBody,
   isBuild,
   isBuildSummary,
@@ -51,6 +56,10 @@ function checkedEvents(body: string): BuildEvent[] {
 }
 
 export const fixtures = /* @__PURE__ */ (() => ({
+  feasibility: checked(isAssessment, feasibilityJson, 'feasibility.json'),
+  feasibilityAlternatives: checked(isAssessment, feasibilityAlternativesJson, 'feasibility.alternatives.json'),
+  feasibilityPending: checked(isAssessment, feasibilityPendingJson, 'feasibility.pending.json'),
+  feasibilityStale: checked(isAssessment, feasibilityStaleJson, 'feasibility.stale.json'),
   referenceSet: checked(isReferenceSet, referenceSetJson, 'reference_set.json'),
   build: checked(isBuild, buildJson, 'build.json'),
   buildDone: checked(isBuild, buildDoneJson, 'build.done.json'),

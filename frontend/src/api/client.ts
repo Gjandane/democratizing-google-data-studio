@@ -5,6 +5,9 @@ import { withServiceNotice } from '../features/settings/serviceNotice';
 import { createMockApi } from '../mocks/api';
 import {
   ApiError,
+  isAssessment,
+  type Assessment,
+  type FeasibilityDecision,
   isReferenceSet,
   referenceValidation,
   type ReferenceSet,
@@ -45,6 +48,9 @@ export interface ApiClient {
   getBuild(buildId: string): Promise<Build>;
   uploadSources(buildId: string, files: File[]): Promise<SourcesUploaded>;
   addSource(buildId: string, body: SourceUri): Promise<Source>;
+  getFeasibility(buildId: string): Promise<Assessment>;
+  checkFeasibility(buildId: string): Promise<RunAccepted>;
+  decideFeasibility(buildId: string, assessmentId: string, decisions: FeasibilityDecision[]): Promise<Assessment>;
   getReferences(buildId: string): Promise<ReferenceSet | null>;
   uploadReferences(buildId: string, files: File[], mode: ReferenceMode, instructions: string): Promise<RunAccepted>;
   deleteReferences(buildId: string): Promise<void>;
@@ -129,6 +135,12 @@ function filesForm(files: File[]): FormData {
   return form;
 }
 
+async function assessment(method: string, path: string, body?: unknown): Promise<Assessment> {
+  const value: unknown = await json(method, path, body);
+  if (!isAssessment(value)) throw new ApiError(502, 'invalid_response', "Couldn't read feasibility. Try again.");
+  return value;
+}
+
 export const httpApi: ApiClient = {
   health: () => json('GET', '/health'),
   getSession: () => json('GET', '/session'),
@@ -140,6 +152,9 @@ export const httpApi: ApiClient = {
   getBuild: (id) => json('GET', buildPath(id)),
   uploadSources: (id, files) => upload(buildPath(id, '/sources/upload'), files),
   addSource: (id, body) => json('POST', buildPath(id, '/sources'), body),
+  getFeasibility: (id) => assessment('GET', buildPath(id, '/feasibility')),
+  checkFeasibility: (id) => json('POST', buildPath(id, '/feasibility/check')),
+  decideFeasibility: (id, assessmentId, decisions) => assessment('POST', buildPath(id, '/feasibility/decisions'), { assessment_id: assessmentId, decisions }),
   getReferences: async (id) => {
     const value: unknown = await json('GET', buildPath(id, '/reference-images'));
     if (value !== null && !isReferenceSet(value)) throw new ApiError(502, 'invalid_response', "Couldn't read the saved references. Try again.");

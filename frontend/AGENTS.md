@@ -49,6 +49,8 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 
 - Headless CDP keyboard checks: Enter activation needs an `Input.dispatchKeyEvent` char event with `text: "\r"`; keyDown/keyUp alone may move focus without clicking.
 
+- Resource-panel tests: a GET spy call only means a refetch started; await the loaded control before asserting its disabled state (loading temporarily removes controls).
+
 ## Skills
 Use each skill only at its step, on that task's files. If one isn't installed in your tool, skip it and say so under Gotchas. The essentials' UI design section wins over a skill's generic advice.
 - frontend-design: build, before writing UI code.

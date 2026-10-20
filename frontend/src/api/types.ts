@@ -124,6 +124,29 @@ export function referenceValidation(files: File[], mode: ReferenceMode, instruct
   return null;
 }
 
+export interface Issue {
+  id: string;
+  requirement: string;
+  status: 'unsupported_product' | 'unsupported_app' | 'needs_data' | 'needs_clarification' | 'unknown';
+  reason: string;
+  evidence: string[];
+  alternatives: { id: string; label: string }[];
+  resolution: 'unresolved' | 'accepted_alternative' | 'dropped';
+}
+export interface Assessment {
+  id: string | null;
+  state: 'unchecked' | 'blocked' | 'ready' | 'stale';
+  input_digest: string | null;
+  prototype_stale: boolean;
+  issues: Issue[];
+  pending_comments: { id: string; comments: Comment[] } | null;
+}
+export interface FeasibilityDecision {
+  issue_id: string;
+  action: 'accept_alternative' | 'drop';
+  alternative_id: string | null;
+}
+
 export interface DocRef {
   /** Relative to the version's docs/. */
   path: string;
@@ -392,6 +415,19 @@ export const isMessage = shape<Message>({
 });
 
 export const isComment = shape<Comment>({ component_id: isString, text: isString });
+
+export const isIssue = shape<Issue>({
+  id: isString, requirement: isString,
+  status: oneOf(['unsupported_product', 'unsupported_app', 'needs_data', 'needs_clarification', 'unknown']),
+  reason: isString, evidence: arrayOf(isString),
+  alternatives: arrayOf(shape<Issue['alternatives'][number]>({ id: isString, label: isString })),
+  resolution: oneOf(['unresolved', 'accepted_alternative', 'dropped']),
+});
+export const isAssessment = shape<Assessment>({
+  id: nullable(isString), state: oneOf(['unchecked', 'blocked', 'ready', 'stale']),
+  input_digest: nullable(isString), prototype_stale: isBoolean, issues: arrayOf(isIssue),
+  pending_comments: nullable(shape<NonNullable<Assessment['pending_comments']>>({ id: isString, comments: arrayOf(isComment) })),
+});
 
 export const isTrace = shape<Trace>({
   run_id: isString,
