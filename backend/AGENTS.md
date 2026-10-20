@@ -35,35 +35,18 @@ Run from this folder (`backend/`) in bash.
 
 ## Known gotchas
 Traps that cost an earlier session time and that the other docs don't cover, one line each. Builders add lines; the architect sorts them into the docs at the final audit.
-- ADK 2.12 Workflow function events use the workflow as author; identify the node via node_info.path (e.g. dss_run@1/guardrail@1).
 - BigQuery rejects source_column_match=POSITION with autodetect; normalize upload headers, and use an explicit positional schema for GCS loads.
-- Gemini numeric Literal constraints require response_json_schema; response_schema conversion raises "Literal values must be strings".
 - Gemini's generic `400 INVALID_ARGUMENT` does not identify the invalid field; isolate worker/model/schema compatibility with a minimal live request before attributing it to `Any` or unions.
-- The worker rejects the revise schema's nested `maxItems` (20 changes, 40 operations); omit provider array maxima but retain Pydantic limits; title revisions need the renderer's default 28px in context.
 - HTTP clients normalize literal `..` path segments before sending: use `%2e%2e` when testing the API's invalid-name guard.
 - Starlette StaticFiles normalizes paths with OS separators: normalize backslashes before checking the API boundary for SPA fallback on Windows.
-- Uvicorn's graceful-shutdown timeout excludes lifespan teardown; bound backup waits separately and avoid non-daemon executor threads for volume I/O.
+- Uvicorn's graceful-shutdown timeout excludes lifespan teardown; backup I/O has a separate deadline (architecture.md#Implementation conventions).
 - httpx string headers must be ASCII; use byte header values when testing non-ASCII credentials at the server boundary.
 <!-- blueprint-solution:end -->
 - Config does not strip root .env values and GCP_PROJECT_ID there has leading whitespace; live tests pass a stripped project through PUT /api/settings (or DSS_LIVE_GCP_PROJECT).
-- Recipe JSONL is written with ensure_ascii=False, so U+2028/U+0085 can sit inside a line: split recipe text on LF only, never str.splitlines().
-- POST /run recompiles recipe.jsonl from spec.json: test fixtures need spec.json, and a fixture recipe written with plain write_text on Windows is CRLF (non-canonical) and gets rewritten; pass newline="\n".
 - Bash heredocs (even quoted 'EOF') in this shell can collapse backslashes in Python source (\0 became a NUL byte); write code with backslashes via the Write/Edit tools.
 - Developer API count_tokens rejects system_instruction/tools/generation_config; llm.count_tokens folds them into contents, which counts ~5% under the billed prompt_token_count (live: 8245 vs 8695).
-- Knowledge index.md links must target .md files or folders: Navigator.list_folder reads every local link and raises on a .json link; name capabilities.json in a code span instead.
-- Test modules share one import namespace: tests/live/ has an `__init__.py` so a live test may reuse an offline test's basename (tests/live/test_references.py vs tests/test_references.py); keep it.
-- Source column `type` is an API display type; feasibility uses `bq_type` and the view builder's `snake_names`/`date_like` projection to match real bindings.
-- Pending-comment staleness is derived from `pending_comments`; never fold it into general `prototype_stale`, or abandoning the batch cannot clear it.
-- Cloud SQLite backups can lag volume artifacts: preserve volume ownership/commit records when removing rollback files, or restart can delete a published resource.
-- BigQuery `QueryJob.result(timeout=...)` may leave the job running; retain candidate ownership until its deterministic job is terminal before retiring cleanup.
-- `Candidate.begin` snapshots rollback stage: call it before setting `stage='plan'`, including when planner initialization is deferred until after feasibility extraction.
-- Batch-backed comment history uses node `comment_batch`; requirements.json owns its intent. Re-extracting that history resurrects abandoned batches. Preserve supersession chains when later assignments override a property.
-- Interview Workflows stream every LlmAgent: structured extractor callbacks must ignore partial fragments and validate only the final accumulated response.
-- Metric assignment recognition requires a sentence-start definition (`Revenue means net_sales`); only a `For [the] [one qualifier] <audience role>,` prefix may precede it.
 - google-genai sends the client `HttpOptions(timeout)` to Google as the server deadline (504 when exceeded); a per-request timeout does not override it, so set it per node on the client.
 - Gemini max_output_tokens includes thinking; ADK may expose MAX_TOKENS as an error before scope handling. Bounded extraction needs a low thinking level and truncation-first handling.
-- Recipe 1.0 has no unit/grain chart options: retain units in the requirement ledger and implement explicit date grain with SQL view bucket fields.
 - csv.writer writes a null row of a single-column synthetic CSV as `""` (not a blank line): the typed BigQuery loader must load it as NULL and still count the row. With an explicit `null_marker=""` BigQuery does both (live-checked 12.2).
-- test_api_contract `shape()` compares every list item with the fixture's first item: heterogeneous lists (GenerationSpec columns) need an exact comparison instead.
 - SQLite's connection context manager does not close the handle: use `contextlib.closing` when inspecting backup snapshots, or Windows can block temporary-file cleanup.
 - Recipe preview rejects top-level boolean op arguments (for example `add_text.bold`); nested style booleans are accepted.

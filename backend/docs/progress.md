@@ -731,3 +731,52 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: none.
 - Next: backend plan complete; final architect audit.
+
+## 2026-10-20: Audit (final)
+- Status: DEFECTS. Re-audit after the 2026-10-19 final audit and completed tasks 9.1–12.5.
+  Eight repair tasks (13.1–13.8) appended; original task markers untouched. Full evidence and
+  per-command task ledger: docs/audit-final-2026-10-20.md.
+- What changed: plan.md adds color/recipe validation (P1), bounded Windows retry teardown,
+  heading sizing, accepted chart-option rendering, version-publication recovery, huge-number
+  validation, durable fulfillment refusal and conservative token enforcement. Architecture
+  specifies their invariants; essentials regenerated; AGENTS gotchas sorted into conventions;
+  PRD Later reconciles remaining optional limitations. Product source/tests and contracts unchanged.
+- Checks: Test (all) `uv run pytest` FAIL: 910 passed, 1 failed, 9 live deselected, 500.63s.
+  Stalled-retry timing: 2.031s vs 2.0s allowed; isolated rerun FAIL at 2.015s. All 37 distinct
+  Done-when task pytest commands PASS, representing all 41 completed tasks (identical commands
+  shared; original suites rerun too). Synthetic contract subset PASS: 182, 738 deselected.
+  Combined live check: 8 passed/1 failed; reference invalid-observations failure passed its
+  isolated rerun. Core, GPS refusal, explicit image mapping, synthetic typed intake/proposal/
+  label and real Chromium checks passed. Fresh uvicorn health PASS in 3.22s, no reload.
+- Live core-to-engine check: FAIL after successful real interview/plan/prototype. Generated
+  palette colors lack #; compiler emits them, real engine dry-run exits 2 at line 6 with
+  style.colors.items.pattern. No fixture spec substituted. Parent independently reproduced
+  huge integers -> OverflowError/API 500, version failure -> stranded v2/retry 422, ignored
+  horizontal/donut options, and fulfillment blocked -> check -> false ready/non-stale.
+- Synthetic generator: CLI PASS, 20 rows/1,529 bytes, checksum b70c89f0…; 100,000x10 measured
+  13.81s under tracemalloc, peak 0.2MiB traced, 6.3MiB output (30s/128MiB budgets pass).
+- Review: independent blueprint_reviewer confirmed findings and repair plan; applied table
+  rows_per_page coverage and version-recovery size M. Valid judge FakeLLM actually preserves
+  5/2 usage through ADK, disproving earlier blanket zero-usage claim; SDK extra-retry suspicion
+  also disproved. No built Non-goal/Decision contradiction found. All 17 dependency rows
+  FOUND/dated; installed direct ranges satisfied. Backend-scoped metadata-only tracked/history
+  scans found no .env or scanned credential/private-key pattern; not a whole-program audit.
+- Visual/release check: viewed fresh core/image/synthetic screenshots at spec canvases; core
+  heading clips, synthetic footer is visible. Documented startup PASS; real engine core flow
+  and heading visual acceptance FAIL, so no integration acceptance. Original manual research/
+  standalone agent demo and optional live consolidation/audit/judge checks not repeated; scope
+  and earlier evidence limits are explicit in the audit report. No actual report creation claimed.
+- Decisions: repair existing requirements rather than relax budgets, silently downgrade supported
+  options or increase timing tolerance. 13.1 first (P1), then the other seven repairs. No new
+  dependency or cross-part change. Durable task decisions now live in architecture conventions;
+  remaining environment quirks stay in AGENTS. Scoped docs commit only; unrelated changes untouched.
+- Mechanical: stamp PASS; lint 0 errors, 4 warnings (49 cumulative tasks, historical Spec sizes
+  11.3/11.4/12.2). AGENTS/essentials size warnings resolved. Diff whitespace checked before commit.
+- Left open: eight Phase 13 defects. Optional/deferred POC limits in PRD Later; no pending
+  user scope decision or unverified dependency. Ignored QA evidence in
+  .blueprint/qa/final-audit-2026-10-20/ and the live tests' documented evidence directories.
+  Test-created BigQuery tables/views remain in the previously authorized demo project for
+  diagnosis; root configuration and real user runtime were not edited.
+- Next: builder task 13.1 (M, deep: provider schema/local validation/real recipe boundary),
+  gpt-6.1-sol at high, in backend/. After Phase 13, rerun final audit; root integration follows
+  backend ACCEPTED and the other parts' gates, not this DEFECTS verdict.

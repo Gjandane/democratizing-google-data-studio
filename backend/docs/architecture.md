@@ -180,6 +180,14 @@ Final-audit corrections (2026-10-19):
   request, check the remaining deadline and bound the whole attempt, including stalled I/O,
   by that remainder. Backoff and HTTP 429/5xx share the deadline; expiration exits nonzero and
   cleans up a running engine. The first ordinary long poll keeps its >35 s timeout.
+- Deadline cleanup must not add an ordinary socket timeout or unbounded client close, process
+  wait or reader join. On the supported Windows machine the shortened stalled-server oracle
+  (1.5 s budget) exits and reaps its engine within budget + 0.5 s. Preserve that acceptance
+  tolerance; diagnose and bound teardown instead of hiding overruns by increasing the budget.
+- New-version creation is a publication transaction: copy/render to an owned staging location,
+  commit the complete destination and DB version pointer, or roll back only this attempt.
+  A copy, capture or DB failure leaves the old version usable and an immediate retry possible;
+  restart cleans an abandoned owned destination. Never remove a committed/existing version.
 
 ### Graph
 - Problem: one ADK 2.0 `Workflow` that is the harness's agent run for every action.
@@ -225,6 +233,13 @@ Final-audit corrections (2026-10-19):
   generating over budget. Record estimated section counts separately from the authoritative
   request count. Counting calls do not add generation calls or consume the research scraper
   quota; preserve all generation/repair limits.
+- The Developer API only counts contents: folding instructions/schema/tools into text has
+  measured undercount (8,245 folded vs 8,695 billed). Do not call that folded value an exact
+  effective-request count or compare it directly to the hard budget. Retain it separately,
+  use a conservative complete-request enforcement allowance, refit/recount against that bound,
+  and record the enforced bound and billed usage distinctly. Calibrate the allowance against
+  real structured/tool/vision/repair requests, including near-boundary cases; if the bound
+  cannot be established, refuse generation. No budget relaxation is authorized by this audit.
 - Oracle: unit tests assert section order, budget enforcement and the drop order.
 
 ### Episodic retrieval
@@ -320,6 +335,10 @@ Final-audit corrections (2026-10-19):
 - Oracle: tests/test_capabilities.py and tests/test_feasibility.py exercise all eleven contract cases,
   plus confirmed choices replayed against changed spec/registry and supported requests with no image.
   Live plan smoke compares expected refusal/mapping to the persisted ledger, not prose alone.
+- A saved dashboard that fails fulfillment at execution stays blocked or visibly prototype-stale
+  through GET, unchanged explicit checks and reload. Support alone must not overwrite a
+  fulfillment failure with ready/non-stale. Replan/reapply may recover only after coverage of
+  the repaired artifact passes; pending supported comments retain their explicit reapply flow.
 
 ### Synthetic data
 - Problem: a reference can describe a dashboard without supplying its source data. Offer explicit
@@ -355,6 +374,9 @@ Final-audit corrections (2026-10-19):
 - Budgets/oracle are contract sections Generator request/Acceptance oracle; offline generator
   tests cover deterministic bytes and relationships, API tests fake model/BQ/storage; one live
   screenshot-only path validates schema proposal, typed load and the final report label.
+- Validate numeric magnitude before float conversion. Arbitrarily large JSON integers in
+  decimal bounds, choice/lookup values or dependencies produce field-specific SyntheticError,
+  HTTP 422 and a clean nonzero CLI exit, never OverflowError/500/traceback or a partial CSV.
 
 ### Plan publication
 - Ownership: nodes/plan.py, view.py, render.py and data/bigquery.py stage docs,
@@ -432,6 +454,15 @@ Final-audit corrections (2026-10-19):
   `layer=decoration` hides components; a chart type the catalog lacks can't render (raises).
   Background: Playwright Chromium (sync API in a worker thread) screenshots `layer=decoration` at
   canvas size -> `background_p<n>.png` (POC: `background_p1.png`).
+- Supported options have matching visible semantics: bar orientation/stacking, pie donut,
+  scorecard compact formatting, table rows_per_page (within the 20-row query cap) and pivot row/column assignments. Derive both aggregate
+  grouping and displayed axes/cells from the accepted bindings; verify against independent
+  expected values, not the renderer's own serialization. Preserve compiler contract bytes.
+- Decoration text must fit its content box after font, wrapping, line height and padding;
+  title/subtitle defaults are part of that measurement. Reuse the geometry/style rule across
+  prototype, background and validation. Insufficient boxes are rejected into the existing
+  repair path, or deterministically laid out without obscuring other items. Never bake a
+  clipped heading into the final background; preserve the reserved synthetic footer.
 - Edge cases: empty query result -> chart shows "No data"; very long labels truncated with title attr.
 - Oracle: tests parse the HTML: one `data-cid` per spec item, boxes equal Layout's, decoration
   layer has no visible component; background.png has the canvas size.
@@ -459,6 +490,12 @@ Final-audit corrections (2026-10-19):
   `set_background_image`; one `set_style` per chart with the theme palette; then `save_report`,
   `get_link`. Boxes from Layout. Op ids `s001`... Deterministic: same spec -> byte-identical file.
 - Oracle: every line validates against the schema; golden spec -> golden recipe file; ids sequential.
+- All accepted Theme colors must meet the recipe's #RRGGBB constraint, including palette items;
+  invalid model colors are rejected into the existing bounded spec repair before publication.
+  The compiler/recipe endpoint must not publish a contract-invalid recipe from a legacy or
+  corrupted saved spec. Preserve the last complete recipe/stage on rejection. Verify live
+  model-produced recipes against the shared schema, then execute them with the real engine's
+  dry-run; fixture-only golden validation is insufficient release evidence.
 
 ## External APIs and services
 | Service | Used for | Auth | Limits and failure handling |
@@ -507,6 +544,31 @@ runtime dependency), pytest + pytest-asyncio (tests).
   copies/rename, and use daemon I/O with a shared 3 s shutdown deadline.
 - GCP configuration needs a project ID, not its display name; verify syntax/access before live
   paid runs. Never repair the root .env from a backend build task.
+- Recipe JSONL uses UTF-8, LF and ensure_ascii=False. Split on LF only: U+2028/U+0085 can occur
+  inside a JSON string. Compiler preview rejects top-level boolean arguments; nested style
+  booleans work. Run refreshes canonical recipe bytes from spec.json before execution.
+- Knowledge index links target Markdown files or folders; mention machine-readable JSON in a
+  code span because Navigator.list_folder parses every linked file as a concept.
+- Capability field bindings use bq_type, snake_names and date_like projection, not the API's
+  display type. Recipe 1.0 has no unit/grain chart options: keep units in the ledger and express
+  explicit date grain through SQL view bucket fields.
+- Pending-comment staleness comes from pending_comments alone, separate from prototype_stale,
+  so abandoning a batch clears only its own reason. comment_batch history is not re-extracted;
+  the ledger owns that intent. Preserve supersession chains for later property assignments.
+- Candidate.begin snapshots rollback stage before setting stage=plan, including deferred plan
+  initialization after extraction. Keep volume ownership/commit records when removing rollback
+  artifacts: SQLite backups can lag them. Retain candidate ownership until the deterministic
+  BigQuery job is terminal; result(timeout=...) can leave it running. Never clean a published view.
+- Interview streams every LlmAgent; structured extractors ignore partial fragments and validate
+  only the accumulated final response. Metric definitions start a sentence, optionally preceded
+  by `For [the] [one qualifier] <audience role>,`; suggestions alone cannot confirm a mapping.
+- Synthetic generator version dss-synthetic/1 seeds independent column streams from the canonical
+  seed/name/index/version, uses Decimal ticks and half-away-from-zero product rounding, and
+  publishes completed files without replacing existing output. Generation keys own deterministic
+  load jobs; unresolved cleanup retains ownership and retry_ready=false, including after restart.
+- Synthetic provenance is source-owned, including joined sources. Reserve a 64px footer for
+  p1_synthetic_sample_data; restore it on legacy reads, revisions and copied versions before
+  publishing artifacts. Neither model patches nor reference images may hide or replace it.
 
 ## Testing
 pytest, offline by default: FakeLLM (scripted responses by node), FakeBigQuery (in-memory rows
@@ -515,6 +577,9 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 - Fixtures needing `app.state.db/settings/harness` request `client` or `build_id` to run lifespan.
   Cwd tests must start outside backend. Encode dot-dot as `%2e%2e` for path-boundary tests; use
   byte headers for non-ASCII credentials under httpx.
+- Fixture recipes use newline="\n"; Windows CRLF is non-canonical and triggers recompilation.
+  tests/live/__init__.py isolates live/offline module basenames. API shape helpers compare every
+  list item with the first fixture item; heterogeneous lists need exact comparisons.
 - Final-audit evidence: `.blueprint/qa/final-audit/` (ignored). Prototype screenshots use the spec
   canvas (default 1200x900); frontend QA belongs to its part. A fixture render after a failed live
   plan proves render/build behavior only.
@@ -541,3 +606,4 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-20 | Plan delta audit: extraction inside the action's trace; app evidence from contracts; header-first image checks; explicit CSV null marker; 11.3/11.5/12.2 split | separate extraction run; manual engine review | one trace per action; engine files are another part's; reviewer findings | audit 2026-10-20 |
 | 2026-10-20 | Synthetic durability: generation table plus immediate best-effort DB backups after reservation and registration; startup fails in-flight jobs and cleans their own artifacts (synthetic-data.md 1.1) | immutable manifests + startup reconciliation; fail-closed 503 on backup failure | same POC guarantee on the existing backup path, no new files or error code | change 2026-10-20 (program root, user choice) |
 | 2026-10-20 | Gemini per-call timeout: planner 120 s, worker 30 s; one retry on 429/500/503, none on 504 | one 30 s timeout for all calls; 120 s for all | the fixed 30 s timeout cut off slow spec calls with a 504 (`llm_unavailable`) and blocked 11.8; a retry after our own deadline would just wait again | change 2026-10-20 (blocked 11.8, user choice) |
+| 2026-10-20 | Fold durable implementation and test rules from tasks 9-12 into conventions | leave them in every session's gotchas | keep canonical recipes, intent provenance, staged publication and synthetic recovery explicit | final re-audit |

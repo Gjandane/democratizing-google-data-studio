@@ -1,7 +1,6 @@
-<!-- essentials-of: docs/architecture.md sha256:c435ba122891 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:4d2e85cb208d (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
-One page, read at the start of every build session. A summary of docs/architecture.md, which
-wins if the two disagree.
+Read every build session. docs/architecture.md wins if they disagree.
 
 ## Stack
 - Python 3.12/uv; FastAPI/uvicorn (no reload), SSE; ADK 2.x Workflow/LlmAgent; Gemini planner
@@ -20,10 +19,10 @@ tests/          offline fakes; tests/live/ explicitly marked live
 ## Conventions
 - Harness vocabulary: ../harness-architecture.md. One API action = one agent run = one ADK
   Workflow invocation = exactly one `traces` row.
-- Context only via `harness/context.py`; no raw rows. Online counts include the whole request;
-  chars/4 is offline estimation. See architecture.md#Working memory assembly (task 9.6).
+- Context via `harness/context.py`; no raw rows. Enforce whole-request budgets;
+  chars/4 is offline estimation. See architecture.md#Working memory assembly.
 - The LLM writes only OKF build docs, the spec, a spec JSON patch or bounded structured
-  observations (pydantic-validated). HTML, background.png, view SQL, CSV rows and recipe: code.
+  observations (pydantic-validated). HTML, PNG, SQL, CSV and recipe: code.
 - Only consolidate writes runtime semantic memory (`data/knowledge/`); git knowledge is the seed.
 - Every OKF file: YAML frontmatter with non-empty `type`; folders have `index.md` and `log.md`.
 - Config: `../.env` via python-dotenv, settings table overrides; names in ../contracts/conventions.md.
@@ -36,10 +35,10 @@ tests/          offline fakes; tests/live/ explicitly marked live
 - Cloud: SPA/$PORT, code cookie/header, fail-closed startup; DB backup API every 30 s when dirty;
   agent token, model-only settings, 60 s whole-attempt retry deadline. Preview needs no engine;
   run recompiles the current spec; flat job image names (architecture.md#Build consistency).
-- Staged revision, cache hashes, consolidation snapshots, backup deadlines:
+- Staging, canonical recipes, intent provenance, synthetic recovery, backup deadlines:
   architecture.md#Implementation conventions. `/api/dev/*` only when `DSS_DEV=1`.
-- Tests: contract fixture keys/types; offline fakes unless marked live (architecture.md#Testing).
-- Research: one discovery + one metadata call; <=20 scraper fetches, no retries.
+- Tests: fixture keys/types, offline fakes unless marked live (architecture.md#Testing).
+- Research: discovery + metadata calls; <=20 scraper fetches, no retries.
 - References/feasibility (#Reference interpretation, #Capability verification): one set per
   version (style 1-3 images, recreate 1); images are never data. Registry + requirement ledger
   gate plan/render/compile/run; unknowns block; one extraction node per action (same trace).

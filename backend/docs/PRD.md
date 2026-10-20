@@ -110,6 +110,15 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
   long-running installation can fail consolidation while retaining its counter (audit 2026-10-19).
 - Verify Windows idle Ctrl+C responsiveness; an in-flight agent long poll can delay it up to
   25 seconds (audit 2026-10-19, not yet measured).
-- Live smoke checks for optional consolidation, UX audit, style extraction and judge schemas
-  remain unrun; offline checks pass (audit 2026-10-19). These are not evidence that the main
-  live planner works: Phase 8 must restore that path before final acceptance.
+- Live smoke checks for optional consolidation, UX audit and judge schemas remain unrun;
+  offline checks pass. Main planner and reference vision flows pass live; one reference call
+  returned invalid observations before its isolated retry passed (audit 2026-10-20).
+- Consolidate/judge retries do not have their own retry-listener binding; failed model events
+  can lose reported usage because the event error is raised before token accounting. Successful
+  judge responses do retain usage (runtime probe 5 input/2 output), superseding earlier progress
+  claims that every such trace is zero (audit 2026-10-20; optional observability refinement).
+- On filesystems without hard links, the local generator's no-replace fallback has a race with
+  a concurrent output writer; ordinary pre-existing outputs are refused. Duplicate JSON-key
+  errors identify the key but not its full nesting path (audit 2026-10-20).
+- Windows 8.3 aliases of local reference assets are not explicitly denied; case-collision
+  packaging on a case-sensitive filesystem remains untested here (audit 2026-10-20).
