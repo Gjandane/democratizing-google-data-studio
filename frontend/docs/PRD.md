@@ -47,6 +47,9 @@ view of the dashboard being built.
 3. Build: check engine sign-in (button to sign in) -> "Generate recipe" -> "Build in Data
    Studio" -> ops tick live -> link card.
 4. History: open a done build -> "New version" -> Prototype stage of v2.
+5. Screenshot-only (change 2026-10-19): Connect with no data -> attach a recreate reference ->
+   "Generate sample data" -> review schema, row count, seed -> generate -> download CSV ->
+   interview -> prototype, labeled as sample data throughout.
 
 ## Features
 | Must | Should | Won't (this version) |
@@ -59,6 +62,7 @@ view of the dashboard being built.
 | Settings modal; mock mode against fixtures | | |
 | access-code gate; build-agent status in Build | | |
 | | activity strip and run checklist (change 2026-10-19) | |
+| synthetic sample data: schema review, generate, CSV download, labels (change 2026-10-19) | | |
 
 ## Constraints
 - Deadline 2026-10-23 01:05 MPST (moved 2026-10-20) (whole program). Built against ../contracts/api.md with a mock
@@ -70,6 +74,7 @@ view of the dashboard being built.
 - `npm test` passes, including the contract test of the mock fixtures.
 - In mock mode (`VITE_MOCK=1`), flow 1 can be clicked through end to end.
 - Against the real backend, the same flow works without code changes.
+- Against the real backend, flow 5 reaches a labeled prototype without uploading a CSV.
 
 ## Decided by default
 - Mock mode via a small fixture-driven fake API (no MSW dependency), switched by `VITE_MOCK=1`.

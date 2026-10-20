@@ -22,7 +22,7 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
 - Relative /api; Vite proxy locally, backend static hosting on Cloud Run. Gate access with the
   cookie; never retain the code. Agent mode uses the agent panel instead of local sign-in.
 - Exact runtime contract guards; mocks import shared fixtures. One EventSource per build;
-  reconnect refetches state. Preserve Build/SSE compatibility in API 1.3.
+  reconnect refetches state. Build/SSE guards stay exact in API 1.4 (Source.kind adds synthetic).
 - Backend prototype iframe and pin overlay share one scaled 1200px canvas; no injected scripts.
   jsdom geometry is stubbed; verify real geometry at both UI viewports.
 - Use contract node names; run-card anchor is message count at start. Clock stays in strip/card.
@@ -36,12 +36,12 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
 - Never edit ../contracts/; a needed change is a blocked task.
 
 ## UI design
-- Direction: Studio Light â€” calm Data Studio-adjacent workspace, dense (8/10), blue data + amber for comments.
+- Direction: Studio Light: calm Data Studio-adjacent workspace, dense (8/10), blue data + amber for comments.
 - Tokens: src/styles/tokens.css; components use tokens only.
 - Palette: bg #F8FAFC, surface #FFFFFF, surface-muted #F1F5F9, text #0F172A, text-muted #475569, border #E2E8F0, primary #1E40AF (hover #1E3A8A, on #FFFFFF), accent #D97706 (comment pins, "Apply" CTA; on #000000), success #15803D, danger #DC2626, focus ring #1E40AF.
 - Type and spacing: Inter (UI), Fira Code (recipe lines, ids); 12/13/14/16/20/24 px, body 14; spacing 4/8/12/16/24/32; radius 6 controls, 10 panels; shadow only on popovers/modals.
 - Layout: top bar 48 px (logo, build title, stepper, Trace, Settings); left chat column 380 px fixed; stage area fills the rest; History is a single centered list (max 960 px). Stage areas: Connect (archetype, sources); Interview (sources summary, archetype card, questions answered so far, "Generate plan"); Plan (progress lines, docs); Prototype (scaled iframe, pins, pending list); Build (recipe ops, live status); Done (link card, versions, "New version"); above the chat input, the activity strip (task 6.1).
-- Activity: strip above the chat input (phrase Â· m:ss Â· tokens), 400 ms after `run.started`, in
+- Activity: strip above the chat input (phrase · m:ss · tokens), 400 ms after `run.started`, in
   a reserved slot; preset checklist card in the log, last step ticks only on `run.finished` ok.
 - Copy: sentence case, active voice; buttons are verbs ("Apply 3 comments"); errors say what to do next.
 - States: every data view has loading, empty and error; every control has hover, focus-visible and disabled.
@@ -50,9 +50,8 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
 - Avoid: emoji as icons, gray-on-gray text, popovers covering the element being commented, layout shift when pins appear.
 
 ## References and feasibility UI
-- Required style/recreate and synthetic-data controls; retained images, explicit decisions and
-  stale/blocked build gates. Reuse Studio Light. Full UI rules and visual oracle:
-  docs/reference-ui.md (both sections); dashboard-intent.md 1.1, synthetic-data.md 1.1.
+- Style/recreate and synthetic-data controls, explicit decisions, stale/blocked gates; Studio
+  Light. Full rules and visual oracle: docs/reference-ui.md (both sections).
 
 ## Contracts
 | Contract | Version | Role | Conformance check |
