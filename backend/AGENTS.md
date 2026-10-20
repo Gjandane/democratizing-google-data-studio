@@ -60,3 +60,5 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Batch-backed comment history uses node `comment_batch`; requirements.json owns its intent. Re-extracting that history resurrects abandoned batches. Preserve supersession chains when later assignments override a property.
 - Interview Workflows stream every LlmAgent: structured extractor callbacks must ignore partial fragments and validate only the final accumulated response.
 - Metric assignment recognition currently requires a sentence-start definition (`Revenue means net_sales`); an audience prefix before a comma prevents recognition.
+- Gemini max_output_tokens includes thinking; ADK may expose MAX_TOKENS as an error before scope handling. Bounded extraction needs a low thinking level and truncation-first handling.
+- Recipe 1.0 has no unit/grain chart options: retain units in the requirement ledger and implement explicit date grain with SQL view bucket fields.

@@ -627,3 +627,17 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: sanitized traces/ledgers and live logs remain in `.blueprint/qa/task-11.8/failures/` and `.blueprint/task-11.8-live*.log`.
 - Left open: both live failures; task unreviewed.
 - Next: resume 11.8 by recovering the stash; isolate the original interview's provider/streaming failure with a minimal diagnostic, repair clarification recognition, rerun required checks, then review.
+
+## 2026-10-20: Task 11.8 Gate recipe, run and new versions; live flow
+- Status: blocked
+- Plan check: off
+- What changed: gates/version copies/screenshot protection; streaming, thinking/truncation, audience definitions, daily grain and prompt fixes. Saved recoverably.
+- Checks: `uv run pytest tests/test_feasibility.py tests/test_api_contract.py -q --tb=short` PASS (105); Test (all) `uv run pytest --tb=short -q` PASS (692, 7 deselected). Live: intermediate 2 passed/1 failed; final 1 passed/2 failed. Review: no findings; diff check PASS.
+- Decisions: recover `git stash apply 1cc46e15b6588fae711b32769e724be38c9e7045`. Extraction/prompt/fixture edits outside Files enable live flow. No dependencies. AGENTS.md records traps.
+- Tried and failed: extraction fixed; image prototype passed once. Unsupported-option prompt fix unproven: final plan/spec calls fail llm_unavailable after counting.
+- Gotchas: logs `.blueprint/task-11.8-*.log`; evidence `.blueprint/qa/task-11.8/failures-resume/`; diagnostics `.blueprint/`.
+- Left open: required live flow.
+- Blocked because: (d) second-session repeated failures; unidentified provider cause.
+- Question: how should planner/provider compatibility be restored?
+- Options: A isolate minimal counted request / B verify another planner / Recommend: A.
+- Next: architect recovers stash, isolates SDK/callback failure, authorizes fix, reruns checks.

@@ -283,7 +283,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_feasibility.py tests/test_revise.py` passes oracle cases 6 (comment), 7 (accept -> reapply -> changed spec keeps authorized intent; changed text invalidates) and 9 and 10 (blocked comments -> choose -> reload -> reapply; abandon discards only that batch): a blocked batch changes no spec, recipe or spec_version; a supported batch still revises in one trace; an empty revision clears staleness only when code verifies the confirmed intent is met; no partial comment application. `uv run pytest` passes.
   - Review focus: no silent partial comment application; revise repair budget unchanged.
-- [~] 11.8 Gate recipe, run and new versions; live flow
+- [!] 11.8 Gate recipe, run and new versions; live flow
   - Goal: recipe and run endpoints recheck the current spec and assessment before compile/queue/subprocess; new versions copy references and recompute; allowed-type changes and legacy builds go through the same gate; the live flow proves it end to end.
   - Spec: docs/architecture.md#Capability verification; ../contracts/dashboard-intent.md#Enforcement
   - Files: src/dss/api/run.py, src/dss/api/builds.py, src/dss/api/feasibility.py, src/dss/recipe/compiler.py, src/dss/spec/requirements.py, tests/test_feasibility.py, tests/test_api_contract.py, tests/live/test_backend_flow.py
