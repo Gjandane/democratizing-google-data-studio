@@ -194,7 +194,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
 ## Phase 13: Audit fixes (final re-audit 2026-10-20, after Phase 12)
 - [x] 13.1 Steady feasibility focus test
   - Goal: make `npm test` reliable: the test "handles a finish arriving before the check POST returns" (tests/feasibility.test.tsx:67-78) checks heading focus before the refetch that moves it lands; it must await the focus instead, with the app code unchanged.
-  - Files: tests/feasibility.test.tsx
+  - Files: tests/feasibility.test.tsx, tests/references.test.tsx
   - Depends on: 12.1
   - Size: S
   - Done when: `npm test` passes in 4 full-suite runs in a row (report each run's totals) and `npm run typecheck` passes; the focus assertion at tests/feasibility.test.tsx:77 is awaited (`waitFor`), and every other post-action focus assertion in tests/feasibility.test.tsx and tests/references.test.tsx that follows a status message is awaited the same way; `git diff` touches no file under src/.

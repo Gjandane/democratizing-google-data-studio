@@ -401,3 +401,12 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none new.
 - Left open: none.
 - Next: re-audit (architect): blockers only.
+
+## 2026-10-20: Audit (final, re-audit after Phase 13)
+- Status: done
+- Verdict: ACCEPTED (0 P0, 0 P1, 1 P3 fixed in docs).
+- Checks rerun (re-audit: Test (all) plus 13.1's Done when; 13.1 touched tests only, no src/ file, so no earlier task's Files): `npm test` PASS in 4 full runs in a row, each 17 files/376 tests (the Phase 12 flake is gone); `npm run typecheck` PASS; `git diff 5d75607~1 5d75607 -- src/` empty; secrets: no .env on disk or in git history. No fresh screenshots (no UI change since 12.1's). Skipped: live-backend legs (still blocked, see PRD Later).
+- Reviewer (blueprint-reviewer, opus high, blockers only): every Done-when clause met; the five focus assertions left synchronous (feasibility 218, 233, 269; references 75, 287) rightly follow no status message; 13.1 Decisions match implementation-notes' await-focus rule; package.json matches the Verified table; no Non-goal built. P3: plan 13.1 Files omitted tests/references.test.tsx, which its Done when requires; fixed in plan.md.
+- Docs: plan.md 13.1 Files line. No new Decisions or Known gotchas to sort (13.1 recorded none).
+- Release checklist (POC): AGENTS.md Commands run the mock demo in under 5 minutes; core flow covered by `npm test` and the earlier audits' screenshots (screenshots/audit2-*, 12.1-prototype-*); known limitations in PRD `## Later`.
+- Next: nothing left to build. Retro, tag or a new version on the user's call.
