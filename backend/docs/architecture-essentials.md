@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:9e4031a2a47d (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:c435ba122891 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 One page, read at the start of every build session. A summary of docs/architecture.md, which
 wins if the two disagree.
@@ -30,7 +30,8 @@ tests/          offline fakes; tests/live/ explicitly marked live
 - Errors: `{"error": {code, message, detail}}`; codes from ../contracts/api.md.
 - Engine Popen argument list/cwd, read in a worker thread; reap the whole tree. Playwright sync in
   a worker thread (Windows). Provider schemas: response_json_schema; guard raw output before ADK
-  validation, sanitize model errors, callable context instructions.
+  validation, sanitize model errors, callable context instructions. Gemini timeout: planner
+  120 s, worker 30 s; one retry on 429/500/503, never 504.
 - One page per spec; component types limited to `DSS_ALLOWED_TYPES`. Sort `{field, order}`.
 - Cloud: SPA/$PORT, code cookie/header, fail-closed startup; DB backup API every 30 s when dirty;
   agent token, model-only settings, 60 s whole-attempt retry deadline. Preview needs no engine;

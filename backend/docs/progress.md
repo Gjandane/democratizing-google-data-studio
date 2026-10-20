@@ -644,3 +644,9 @@ context. Task status lives in docs/plan.md, not here.
 
 ## 2026-10-20: Change conventions 1.2 (program)
 - What changed: contracts/conventions.md 1.1 -> 1.2 renames the Cloud Run service `dss` -> `dss-frontend` (keeps the submitted URL); this part's essentials Contracts row now says 1.2. Nothing this part reads or provides changed; no task affected.
+
+## 2026-10-20: Change Gemini timeout unblocks 11.8; retry task 11.9
+- What changed: architect diagnosis of 11.8's `llm_unavailable` (`.blueprint/task-11.8-architect-*.log`): every remaining live failure is the `gemini-4-argon` spec call returning `504 DEADLINE_EXCEEDED` at ~29.6 s, caused by `llm.py` `llm_for`'s fixed `HttpOptions(timeout=30000)`, which google-genai sends to Google as `X-Server-Timeout`. Changing the timeout on each request didn't help: the client's 30 s still applied. Plan, extraction and the prompt fixes all succeed. Also found: architecture promised one retry on 429/5xx, but none was built. Edited architecture.md (External APIs row, decision log), essentials (Conventions), plan.md (two If: lines on 11.8; new task 11.9).
+- Why: user chose planner 120 s / worker 30 s, and a separate retry task with no retry on 504.
+- Tasks affected: 11.8 reopened (may edit llm.py; the stash@{0} attempt is already in the working tree); new 11.9 (S), depends on 11.8.
+- Change requests: none outstanding.

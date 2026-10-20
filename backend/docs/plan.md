@@ -283,7 +283,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_feasibility.py tests/test_revise.py` passes oracle cases 6 (comment), 7 (accept -> reapply -> changed spec keeps authorized intent; changed text invalidates) and 9 and 10 (blocked comments -> choose -> reload -> reapply; abandon discards only that batch): a blocked batch changes no spec, recipe or spec_version; a supported batch still revises in one trace; an empty revision clears staleness only when code verifies the confirmed intent is met; no partial comment application. `uv run pytest` passes.
   - Review focus: no silent partial comment application; revise repair budget unchanged.
-- [!] 11.8 Gate recipe, run and new versions; live flow
+- [ ] 11.8 Gate recipe, run and new versions; live flow
   - Goal: recipe and run endpoints recheck the current spec and assessment before compile/queue/subprocess; new versions copy references and recompute; allowed-type changes and legacy builds go through the same gate; the live flow proves it end to end.
   - Spec: docs/architecture.md#Capability verification; ../contracts/dashboard-intent.md#Enforcement
   - Files: src/dss/api/run.py, src/dss/api/builds.py, src/dss/api/feasibility.py, src/dss/recipe/compiler.py, src/dss/spec/requirements.py, tests/test_feasibility.py, tests/test_api_contract.py, tests/live/test_backend_flow.py
@@ -291,6 +291,16 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_feasibility.py tests/test_api_contract.py` passes all eleven ../contracts/dashboard-intent.md oracle cases (re-running 11.6/11.7's) plus: recipe/run on unchecked, stale, blocked or `prototype_stale` builds return `409 feasibility_blocked` and compile/queue/start nothing; a new version copies references and confirmed mappings, clears assessment ids and must recheck before recipe/run; narrowing DSS_ALLOWED_TYPES blocks a previously ready build; a supported no-image build and a legacy build recover via check. `uv run pytest -m live tests/live/test_backend_flow.py` additionally proves moving-GPS refusal, ambiguous revenue mapping clarified into a successful image-guided prototype, and the original core flow. `uv run pytest` passes.
   - Review focus: no endpoint bypasses the gate; screenshots are never used as fake complete dashboards.
+  - If: resuming -> the second failed attempt (`stash@{0}`, 2026-10-20 09:37) is already applied to the working tree; build on it, don't re-apply it.
+  - If: a live plan/spec call fails `llm_unavailable` with a `504` near 30 s -> the cause is `src/dss/harness/llm.py` `llm_for`'s fixed `HttpOptions(timeout=30000)`, which google-genai sends to Google as the server deadline (architect diagnosis 2026-10-20, `.blueprint/task-11.8-architect-*.log`). Set the timeout on the client: 120 s for the planner model (plan/spec), 30 s for the worker model (architecture.md#External APIs and services). Editing llm.py is allowed outside Files; add an offline test that checks each node's client timeout. Retries are task 11.9, not this task.
+- [ ] 11.9 One model-call retry on transient errors
+  - Goal: a Gemini call that fails with 429, 500 or 503 retries once before `llm_unavailable`; a 504 (our own server-enforced deadline) and 4xx errors don't retry.
+  - Spec: docs/architecture.md#External APIs and services
+  - Files: src/dss/harness/llm.py, src/dss/harness/graph.py, tests/test_llm_retry.py
+  - Depends on: 11.8
+  - Size: S
+  - Done when: `uv run pytest tests/test_llm_retry.py` passes with offline fakes: 429, 500 and 503 each retry exactly once and succeed on the second response; a second failure gives `llm_unavailable` with exactly two provider calls; 504, 400 and 403 make one call and fail; a retried call is one trace with both attempts counted in its usage; the per-call timeouts from 11.8 (planner 120 s, worker 30 s) are unchanged. `uv run pytest` passes.
+  - Review focus: never more than one retry per call; no retry on 504; sanitized errors.
 
 ## Phase 12: Screenshot-only synthetic data (change 2026-10-19)
 - [ ] 12.1 Parameterized deterministic CSV generator and CLI

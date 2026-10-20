@@ -463,7 +463,7 @@ Final-audit corrections (2026-10-19):
 ## External APIs and services
 | Service | Used for | Auth | Limits and failure handling |
 |---|---|---|---|
-| Gemini API (`gemini-4-argon`, `gemini-3.8-flash`) | LLM nodes | `GOOGLE_API_KEY` | errors -> `llm_unavailable`; one retry on 429/5xx |
+| Gemini API (`gemini-4-argon`, `gemini-3.8-flash`) | LLM nodes | `GOOGLE_API_KEY` | per-call timeout (sent to Google, which enforces it as a 504): planner (plan/spec) 120 s, worker 30 s; errors -> `llm_unavailable`; one retry on 429/500/503, none on 504 (task 11.9) |
 | BigQuery | loads, profile, view, aggregates | ADC (`gcloud auth application-default login`) | errors surfaced with BigQuery's message |
 | GCS | CSV source URIs (read by BigQuery load jobs) | ADC | bad URI -> `422 invalid_source` |
 | Google Search (ADK tool) | research discovery (stretch) | API key | one model call; provider-internal fetches opaque |
@@ -540,3 +540,4 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-19 | Synthetic schema/count/seed API and reusable Python generator; local folder or existing mounted GCS state | require user CSV; LLM emits rows; new storage service | user requested screenshot-only recreation with fake CSV generation | change synthetic-data 2026-10-19 |
 | 2026-10-20 | Plan delta audit: extraction inside the action's trace; app evidence from contracts; header-first image checks; explicit CSV null marker; 11.3/11.5/12.2 split | separate extraction run; manual engine review | one trace per action; engine files are another part's; reviewer findings | audit 2026-10-20 |
 | 2026-10-20 | Synthetic durability: generation table plus immediate best-effort DB backups after reservation and registration; startup fails in-flight jobs and cleans their own artifacts (synthetic-data.md 1.1) | immutable manifests + startup reconciliation; fail-closed 503 on backup failure | same POC guarantee on the existing backup path, no new files or error code | change 2026-10-20 (program root, user choice) |
+| 2026-10-20 | Gemini per-call timeout: planner 120 s, worker 30 s; one retry on 429/500/503, none on 504 | one 30 s timeout for all calls; 120 s for all | the fixed 30 s timeout cut off slow spec calls with a 504 (`llm_unavailable`) and blocked 11.8; a retry after our own deadline would just wait again | change 2026-10-20 (blocked 11.8, user choice) |
