@@ -224,3 +224,21 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: in AGENTS.md Known gotchas.
 - Left open: P1 (cross-part, backend): contracts/api.md lets `Comment.component_id` name a decoration, but backend revise rejected the dark-blue accent on decoration `p1_header_title` with `invalid_request` ("Revision patch was rejected after one repair", build b_bfc3d33c9f3b, run r_af4884f172b5, step v1 comment); the architect decides backend fix or contract note. Backend plan nondeterminism (~1 in 3 runs) also for the architect. P3: with one data component v2 reuses v1's target (any-changed check still guards).
 - Digest: `integration/e2e_flow1.py [--server URL] [--version2] [--mode dry-run|live]` -> exit 0/1; writes `deck/data/bench-<UTC date>-<mode>.json` {run_date, server_url, mode, build_id, version2, stages[{version, stage, seconds, run_id, input_tokens, output_tokens, changed?}], totals}.
+
+## 2026-10-21: Task 2.3 End-to-end live build and UI walkthrough
+- Status: blocked
+- Plan check: off
+- What changed: `integration/e2e_flow1.py` gained `--live` (= `--mode live`; refuses `.env` `DSS_ENGINE_DRY_RUN=1`; after each run prints `v<n>: report <url>`, requires an https datastudio/lookerstudio `report_url`, adds `report_urls` to the bench JSON). Set aside in stash `blueprint: task 2.3 failed attempt 2026-10-21 07:52`. No part edits; services stopped; `.env` unchanged (`DSS_ENGINE_DRY_RUN=0`).
+- Checks: `DSS_ENGINE_DRY_RUN=0 uv run --project integration python integration/e2e_flow1.py --live` FAIL twice at v1 run (builds b_fb72b6479a8d, b_ae7f4bdaab30); every earlier stage passed. `dsengine check`: `{"chrome_running": true, "signed_in": true}`. Direct `dsengine run --screencast` on b_ae7f4bdaab30's recipe: same failure. No bench JSON; UI walkthrough not reached.
+- Decisions: user chose to block (card) over waiting for an engine fix in this session.
+- Tried and failed: rerun once per the flaky-live gotcha; same op, same timeout.
+- Gotchas: AGENTS.md: screencast-frame diagnosis line.
+- Left open: live e2e, bench JSON, manual link check, UI walkthrough at :5173.
+- Blocked because: (a) the fix is in engine/ (release never edits parts).
+- Question: Who fixes engine `_dismiss_access_review` for Data Studio's new "Review data access" dialog (Close/Acknowledge only, no "I understand and accept the risk." checkbox)?
+- Options: A architect plans an engine task: treat `review_accept` as optional (click `review_acknowledge` when the dialog is visible), update knowledge/datastudio-ui/linking.md and the save-path twin at ops/report.py:321 / B architect pins a template or URL that avoids the dialog / Recommend: A, smallest and matches current UI.
+- Evidence: engine events (b_ae7f4bdaab30 v1):
+  `{"event": "op_finished", "op_id": "s001", "op": "open_report", "status": "failed", "message": "operation timed out", "screenshot": null, "duration_ms": 20031}`
+  `{"event": "run_finished", "status": "failed", "report_url": null, "ok": 0, "failed": 1, "skipped": 16, "error_code": "open_report_failed"}`
+  Last screencast frame: dialog "Review data access", "This report was designed by another user...", buttons Close and Acknowledge only. Engine waits for `review_accept: 'role=checkbox[name="I understand and accept the risk."]'` (knowledge/datastudio-ui/linking.md:8; ops/report.py:46-48 returns False when it is not visible), so the editor never becomes ready.
+- Next: after the engine fix, `git stash apply` the 07:52 stash (by subject), start services, rerun the `--live` check, then the UI walkthrough.

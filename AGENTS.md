@@ -68,3 +68,4 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Stopping `./start.sh` with the Bash tool's TaskStop leaves uvicorn and vite listening: `taskkill /PID <pid> /T /F` the 8000/5173 owners (netstat) after.
 - Free localhost ports don't refuse here, they time out (curl rc 28, Invoke-WebRequest stalls ~2 s): test a port with netstat/`Get-NetTCPConnection -State Listen`, not an HTTP probe. The 2.1 netstat grep also lists TIME_WAIT lines for ~2 min after any probe.
 <!-- blueprint-solution:end -->
+- An engine op fails with `screenshot: null`: from engine/, `uv run dsengine run --screencast <recipe.jsonl> > cast.jsonl`, then base64-decode the last `frame` event's `data` (JPEG) to see the page it stuck on.
