@@ -213,3 +213,14 @@ context. Task status lives in docs/plan.md, not here.
   Backend implementation/live tests were not run in this documentation-only session.
 - Next: build backend 14.2 in backend/, then restore the 02:11 driver and rerun release 2.2
   at this root, including v1/v2 dry-run and benchmarks. Existing later release order is unchanged.
+
+## 2026-10-21: Task 2.2 End-to-end flow 1 and 3, dry-run engine
+- Status: done
+- Plan check: off
+- What changed: recovered `integration/e2e_flow1.py` from stash 02:11 (exact three answers and dark-blue comment kept). Comment target now a `data-kind="component"` (v1: label /trend/, as backend 14.2's live regression; v2: last other component); comment waits for its `revise` run ok, records `changed` (spec_version up) per comment, fails if no comment changed the spec; table gains "Spec changed". New `deck/data/bench-2026-10-20-dry-run.json` (UTC date). `.env` restored to `DSS_ENGINE_DRY_RUN=0`; services stopped.
+- Checks: `uv run --project integration python integration/e2e_flow1.py --version2` PASS exit 0 (build b_e4b4c5ddbce3): every v1/v2 stage reached, both comments changed the spec, tokens input=77474 output=4925, plan/prototype 56.5 s; access code unset locally (redaction covers it). Test (all) `check_contracts.py` PASS 9/9. Reviewer: P1 + P2 below, P2 fixed; rerun PASS.
+- Decisions: decoration target dropped: comment text says "preserve its ... data" and backend `Component.colors` is charts-only; old wait `spec_version > previous` hung 600 s on a valid "No change needed" revise. AGENTS.md: two gotchas (flaky live nodes, TaskStop leaves servers).
+- Tried and failed: 4 of 7 runs failed in live model nodes, each passing on rerun: revise `llm_unavailable` (50 s), plan `invalid_source`, plan `llm_unavailable` (0 tokens), plan `invalid_request` (135 s); revise `invalid_request` on decoration `p1_header_title` (the old target).
+- Gotchas: in AGENTS.md Known gotchas.
+- Left open: P1 (cross-part, backend): contracts/api.md lets `Comment.component_id` name a decoration, but backend revise rejected the dark-blue accent on decoration `p1_header_title` with `invalid_request` ("Revision patch was rejected after one repair", build b_bfc3d33c9f3b, run r_af4884f172b5, step v1 comment); the architect decides backend fix or contract note. Backend plan nondeterminism (~1 in 3 runs) also for the architect. P3: with one data component v2 reuses v1's target (any-changed check still guards).
+- Digest: `integration/e2e_flow1.py [--server URL] [--version2] [--mode dry-run|live]` -> exit 0/1; writes `deck/data/bench-<UTC date>-<mode>.json` {run_date, server_url, mode, build_id, version2, stages[{version, stage, seconds, run_id, input_tokens, output_tokens, changed?}], totals}.

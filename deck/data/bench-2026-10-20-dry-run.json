@@ -1,0 +1,119 @@
+{
+  "run_date": "2026-10-20T22:02:04.828167Z",
+  "server_url": "http://localhost:8000",
+  "mode": "dry-run",
+  "build_id": "b_e4b4c5ddbce3",
+  "version2": true,
+  "stages": [
+    {
+      "version": 1,
+      "stage": "upload",
+      "seconds": 26.766,
+      "run_id": null,
+      "input_tokens": 0,
+      "output_tokens": 0
+    },
+    {
+      "version": 1,
+      "stage": "interview start",
+      "seconds": 5.093,
+      "run_id": "r_51b9ca9b84e3",
+      "input_tokens": 2043,
+      "output_tokens": 19
+    },
+    {
+      "version": 1,
+      "stage": "interview answer 1",
+      "seconds": 15.203,
+      "run_id": "r_454249650abd",
+      "input_tokens": 6738,
+      "output_tokens": 488
+    },
+    {
+      "version": 1,
+      "stage": "interview answer 2",
+      "seconds": 15.234,
+      "run_id": "r_ef1b1cca21c6",
+      "input_tokens": 12433,
+      "output_tokens": 683
+    },
+    {
+      "version": 1,
+      "stage": "interview answer 3",
+      "seconds": 15.188,
+      "run_id": "r_fd3b3d7b0dbc",
+      "input_tokens": 15414,
+      "output_tokens": 849
+    },
+    {
+      "version": 1,
+      "stage": "plan/prototype",
+      "seconds": 56.531,
+      "run_id": "r_f45789dff506",
+      "input_tokens": 12991,
+      "output_tokens": 2449
+    },
+    {
+      "version": 1,
+      "stage": "comment",
+      "seconds": 16.359,
+      "run_id": "r_051593f65d79",
+      "changed": true,
+      "input_tokens": 13536,
+      "output_tokens": 244
+    },
+    {
+      "version": 1,
+      "stage": "recipe",
+      "seconds": 0.203,
+      "run_id": null,
+      "input_tokens": 0,
+      "output_tokens": 0
+    },
+    {
+      "version": 1,
+      "stage": "run",
+      "seconds": 2.187,
+      "run_id": "r_f3dd83a8c054",
+      "input_tokens": 0,
+      "output_tokens": 0
+    },
+    {
+      "version": 2,
+      "stage": "new version",
+      "seconds": 0.188,
+      "run_id": null,
+      "input_tokens": 0,
+      "output_tokens": 0
+    },
+    {
+      "version": 2,
+      "stage": "comment",
+      "seconds": 14.093,
+      "run_id": "r_dc308cf0bfb2",
+      "changed": true,
+      "input_tokens": 14319,
+      "output_tokens": 193
+    },
+    {
+      "version": 2,
+      "stage": "recipe",
+      "seconds": 0.281,
+      "run_id": null,
+      "input_tokens": 0,
+      "output_tokens": 0
+    },
+    {
+      "version": 2,
+      "stage": "run",
+      "seconds": 2.203,
+      "run_id": "r_b7bb2a853ceb",
+      "input_tokens": 0,
+      "output_tokens": 0
+    }
+  ],
+  "totals": {
+    "input_tokens": 77474,
+    "output_tokens": 4925
+  }
+}
