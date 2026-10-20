@@ -1,7 +1,7 @@
 // Shared by connect/ (style images, research) and prototype/ (audit), so it sits at workspace/ root.
 // The three stretch routes may be missing on the backend: a 404 hides the control instead of erroring.
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { ApiError, type RunAccepted } from '../../api/types';
+import { ApiError, type BuildEvent, type RunAccepted } from '../../api/types';
 import type { NodeRun, StretchNode, StretchRuns } from './chat/useBuildStream';
 
 /** The control disables itself while its action runs, which drops focus to the body: put it back when it ends. */
@@ -114,3 +114,16 @@ export function useStretchAction(route: StretchRoute, node: StretchNode, stretch
   }
   return { hidden: hidden || isStretchUnavailable(route), state, error, start };
 }
+
+// Fan out the workspace's existing SSE connection to required resource panels.
+const workspaceListeners = new Map<string, Set<(event: BuildEvent | 'open-references') => void>>();
+export function subscribeWorkspace(buildId: string, listener: (event: BuildEvent | 'open-references') => void): () => void {
+  const listeners = workspaceListeners.get(buildId) ?? new Set();
+  workspaceListeners.set(buildId, listeners);
+  listeners.add(listener);
+  return () => { listeners.delete(listener); if (!listeners.size) workspaceListeners.delete(buildId); };
+}
+export function publishWorkspace(buildId: string, event: BuildEvent | 'open-references'): void {
+  workspaceListeners.get(buildId)?.forEach((listener) => listener(event));
+}
+export const openReferencePanel = (buildId: string): void => publishWorkspace(buildId, 'open-references');

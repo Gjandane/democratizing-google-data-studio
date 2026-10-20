@@ -8,6 +8,7 @@ import { Panel } from '../../../components/Panel';
 import { LoadingState } from '../../../components/Spinner';
 import { ARCHETYPE_INFO } from '../../history/NewBuildDialog';
 import { Markdown } from './Markdown';
+import { ReferencePanel } from '../ReferencePanel';
 import type { RunErrors } from './useBuildStream';
 
 const KIND_LABELS: Record<SourceKind, string> = {
@@ -15,6 +16,7 @@ const KIND_LABELS: Record<SourceKind, string> = {
   gcs: 'GCS',
   bigquery: 'BigQuery',
   research: 'Research',
+  synthetic: 'Synthetic sample data',
 };
 
 const MODE_LABELS = { data: 'Data mode', research: 'Research mode' } as const;
@@ -47,8 +49,12 @@ export function InterviewStage({
   messages,
   loadError,
   runErrors = {},
+  referencesReady = true,
+  onReferenceReadyChange,
 }: {
   build: Build;
+  referencesReady?: boolean;
+  onReferenceReadyChange?: (ready: boolean) => void;
   messages: Message[] | null;
   loadError?: string | null;
   /** A failed plan or spec run lands the user back here: say why. */
@@ -79,7 +85,7 @@ export function InterviewStage({
   }, [awaitingRun, hasRunError]);
 
   const generate = async () => {
-    if (inFlight.current) return;
+    if (inFlight.current || !referencesReady) return;
     inFlight.current = true;
     setPlanning(true);
     setPlanError(null);
@@ -99,6 +105,7 @@ export function InterviewStage({
 
   return (
     <div className="mt-6 flex flex-col gap-4">
+      <ReferencePanel buildId={build.id} version={build.current_version} disabled={busy} onReadyChange={onReferenceReadyChange} />
       <Panel title="Sources">
         {build.sources.length === 0 ? (
           <p className="px-4 py-3 text-body text-text-muted">No sources added.</p>
@@ -145,13 +152,14 @@ export function InterviewStage({
         )}
       </Panel>
 
-      <div className="flex flex-col gap-2">
+      <fieldset disabled={!referencesReady} className="flex min-w-0 flex-col gap-2">
         <div className="flex flex-wrap items-center gap-3">
           <Button
             variant={build.ready_for_plan ? 'primary' : 'secondary'}
             data-ready={String(build.ready_for_plan)}
             icon={<Sparkles aria-hidden="true" />}
             loading={busy}
+            disabled={!referencesReady}
             onClick={() => void generate()}
           >
             Generate plan
@@ -169,7 +177,7 @@ export function InterviewStage({
         {!planError && runErrors.spec && (
           <ErrorState title="The spec didn't finish" message={runErrors.spec} onRetry={() => void generate()} retryLoading={busy} retryLabel="Generate plan again" />
         )}
-      </div>
+      </fieldset>
     </div>
   );
 }

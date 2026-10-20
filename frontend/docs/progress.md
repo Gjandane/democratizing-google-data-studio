@@ -297,3 +297,15 @@ context. Task status lives in docs/plan.md, not here.
 - What changed: contracts/api.md 1.5 (no shape or route change; complete `node` list adds reference_delete besides the 1.3/1.4 names; reference-ui.md presets line names it). New shared fixtures replace this part's override plan: dashboard-intent/feasibility.{alternatives,pending,stale}.json and synthetic-data/{dataset,job.succeeded}.json. Plan: 10.2 Done when (1) imports the three Assessment variants; 10.3 (1) names feasibility.pending.json; 11.1 (1) also imports dataset.json and job.succeeded.json; 11.2 uses them instead of overriding job.failed.json. Review focus lines, essentials Contracts row, reference-ui and implementation-notes cite api 1.5. Program: release 2.5 now needs frontend 10.3 and 11.2; program.md Parts table lists dashboard-intent and synthetic-data as consumed.
 - Affects: 10.2, 10.3, 11.1, 11.2 (unstarted; checks only). Supersedes the audit's override Decision.
 - Left open: none of (a)-(d) from the 2026-10-20 delta audit.
+
+
+## 2026-10-20: Task 10.1 Reference panel, chat attach and API 1.4 guards
+- Status: done
+- Plan check: off
+- What changed: Required style/recreate references, chat attachment, retained thumbnails, Replace/Remove, exact guards, synthetic Source support, mocks and activity labels.
+- Checks: `npm test` PASS (15 files/260 tests); `npm run typecheck` PASS. Both viewports: keyboard/removal focus, truncation, no overflow; viewed all eight `screenshots/10.1-references-{empty,saved,processing,failed}-{1280x800,1440x900}.png`. Live style/recreate extraction each finished ok. Reviewer/web-design-guidelines: no remaining findings.
+- Decisions: Chat focuses the same panel. stretch.ts subscribeWorkspace/publishWorkspace shares the existing SSE. ReferencePanel onReadyChange drives StageArea referencesReady, guarding plan/recipe/Build; panel remains available in Build view. Necessary extras: WorkspaceShell, useBuildStream, BuildStage and scoped prototype/build tests. Worker handled wiring/contract tests. AGENTS adds CDP Enter gotcha. Backend started with user permission.
+- Tried and failed: native disclosure timing fixed; mock undefined-response cloning fixed, with real DELETE coverage. Legacy tests now await references and scope prototype status, preserving assertions.
+- Gotchas: see AGENTS.
+- Left open: none.
+- Next: 10.2 Feasibility panel, decisions and Generate/Build gates (deep).

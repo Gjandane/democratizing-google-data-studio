@@ -16,6 +16,7 @@ import {
   isJob,
   isMessage,
   isRecipe,
+  isReferenceSet,
   isRunAccepted,
   isSession,
   isSettings,
@@ -26,6 +27,8 @@ import {
   type Guard,
 } from '../src/api/types';
 import { parseSse } from '../src/mocks/sse';
+import referenceFixture from '../../contracts/fixtures/dashboard-intent/reference_set.json';
+import syntheticSourceFixture from '../../contracts/fixtures/synthetic-data/source.json';
 
 const raw = import.meta.glob<string>('../../contracts/fixtures/api/*', { eager: true, query: '?raw', import: 'default' });
 const fixture: Record<string, string> = Object.fromEntries(
@@ -161,6 +164,25 @@ describe('the guards reject what the contract forbids', () => {
   });
 });
 
+describe('references and synthetic sources match the contract', () => {
+  it('accepts the shared reference fixture and rejects extra, missing, nested and mode mismatches', () => {
+    expect(problemsOf(isReferenceSet, referenceFixture)).toEqual([]);
+    expect(isReferenceSet({ ...referenceFixture, owner: 'me' })).toBe(false);
+    const { summary: _summary, ...missing } = referenceFixture;
+    expect(isReferenceSet(missing)).toBe(false);
+    expect(isReferenceSet({ ...referenceFixture, mode: 'copy' })).toBe(false);
+    expect(isReferenceSet({ ...referenceFixture, images: [{ ...referenceFixture.images[0], name: 12 }] })).toBe(false);
+    expect(isReferenceSet({ ...referenceFixture, images: [{ ...referenceFixture.images[0], extra: true }] })).toBe(false);
+    expect(isReferenceSet({ ...referenceFixture, images: [{ id: 'image', name: 'dashboard.png' }] })).toBe(false);
+  });
+
+  it('accepts the synthetic source inside a Build and rejects an unknown source kind', () => {
+    const build = json('build.json') as Record<string, unknown>;
+    expect(isBuild({ ...build, sources: [syntheticSourceFixture] })).toBe(true);
+    expect(isBuild({ ...build, sources: [{ ...syntheticSourceFixture, kind: 'invented' }] })).toBe(false);
+  });
+});
+
 describe('the HTTP client speaks the contract', () => {
   afterEach(() => vi.unstubAllGlobals());
 
@@ -169,6 +191,53 @@ describe('the HTTP client speaks the contract', () => {
     vi.stubGlobal('fetch', fetchMock);
     return fetchMock;
   }
+
+  it('uploads reference files, mode and instructions as one multipart request', async () => {
+    const fetchMock = stubFetch(202, fixture['run_accepted.json'] ?? '');
+    const files = [new File(['image one'], 'one.png', { type: 'image/png' }), new File(['image two'], 'two.jpg', { type: 'image/jpeg' })];
+    await httpApi.uploadReferences('b_3f9a0c12d4e5', files, 'style', 'Keep the blue palette.');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/api/builds/b_3f9a0c12d4e5/reference-images');
+    expect(init?.method).toBe('POST');
+    expect(init?.body).toBeInstanceOf(FormData);
+    const form = init?.body as FormData;
+    expect(form.getAll('files')).toEqual(files);
+    expect(form.get('mode')).toBe('style');
+    expect(form.get('instructions')).toBe('Keep the blue palette.');
+    expect([...form.keys()].sort()).toEqual(['files', 'files', 'instructions', 'mode']);
+  });
+
+  it('deletes references and accepts the empty 204 response', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(httpApi.deleteReferences('b_3f9a0c12d4e5')).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith('/api/builds/b_3f9a0c12d4e5/reference-images', expect.objectContaining({ method: 'DELETE' }));
+  });
+
+  it('rejects a saved reference response outside the contract', async () => {
+    stubFetch(200, JSON.stringify({ ...referenceFixture, mode: 'unknown' }));
+    await expect(httpApi.getReferences('b_3f9a0c12d4e5')).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+  });
+
+  it('maps an HTML 413 to reference upload limits', async () => {
+    stubFetch(413, '<html>Too large</html>', 'text/html');
+    const file = new File(['png'], 'dashboard.png', { type: 'image/png' });
+    const error: unknown = await httpApi.uploadReferences('b_3f9a0c12d4e5', [file], 'recreate', '').catch((reason: unknown) => reason);
+    expect(error).toMatchObject({ status: 413 });
+    expect((error as ApiError).message).toContain('5 MiB each and 15 MiB total');
+    expect((error as ApiError).message).not.toContain('32');
+    expect((error as ApiError).message).not.toContain('CSV');
+  });
+
+  it('maps a server 422 to reference-specific guidance', async () => {
+    stubFetch(422, JSON.stringify({ error: { code: 'invalid_source', message: 'Invalid source.' } }));
+    const file = new File(['png'], 'dashboard.png', { type: 'image/png' });
+    await expect(httpApi.uploadReferences('b_3f9a0c12d4e5', [file], 'recreate', '')).rejects.toMatchObject({
+      status: 422,
+      message: expect.stringContaining('reference images'),
+    });
+  });
 
   it('posts JSON to the relative /api path', async () => {
     const fetchMock = stubFetch(201, fixture['build.json'] ?? '');

@@ -47,6 +47,8 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Fake timers + mock API: mock `respond` uses `setTimeout(0)`, so `await api.x()` hangs under `vi.useFakeTimers`; wrap it (`await vi.runAllTimersAsync(); return promise`), see tests/activity.test.tsx `call`.
 - A Python edit on Windows without `encoding='utf-8'` writes a new non-ASCII literal (`·`, `…`) as cp1252.
 
+- Headless CDP keyboard checks: Enter activation needs an `Input.dispatchKeyEvent` char event with `text: "\r"`; keyDown/keyUp alone may move focus without clicking.
+
 ## Skills
 Use each skill only at its step, on that task's files. If one isn't installed in your tool, skip it and say so under Gotchas. The essentials' UI design section wins over a skill's generic advice.
 - frontend-design: build, before writing UI code.

@@ -3,6 +3,7 @@ import { api } from '../../../api/client';
 import { useBuildEvents, type OpenBuildEvents, type StreamStatus } from '../../../api/events';
 import { ApiError, type Build, type BuildEvent, type Message } from '../../../api/types';
 import { reduceActivity, type Activity } from '../../activity/activity';
+import { publishWorkspace } from '../stretch';
 import { idleRun, reduceBuildRun, type BuildRun } from '../build/buildRun';
 
 export interface Draft {
@@ -156,6 +157,7 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
   };
 
   const onEvent = (event: BuildEvent) => {
+    publishWorkspace(buildId, event);
     setBuildRun((r) => reduceBuildRun(r, event));
     const now = Date.now();
     // null until the first load lands: the run's card then sits after the whole loaded history.

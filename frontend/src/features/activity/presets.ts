@@ -77,6 +77,14 @@ export const PRESETS: Readonly<Record<string, Preset>> = {
       { label: 'Writing the style guide', seconds: 10 },
     ],
   },
+  reference_extract: {
+    title: 'Reading your references',
+    phrases: ['Inspecting your images', 'Reading the layout', 'Checking the style', 'Saving the reference summary'],
+  },
+  reference_delete: { phrases: ['Removing the reference', 'Updating your references'] },
+  capability_check: { phrases: ['Checking your requirements', 'Checking what this app supports', 'Preparing alternatives'] },
+  synthetic_schema: { phrases: ['Reading the reference fields', 'Proposing sample columns', 'Preparing the sample schema'] },
+  synthetic_generate: { phrases: ['Generating invented sample rows', 'Preparing the sample CSV', 'Loading sample data'] },
   ux_audit: {
     title: 'Auditing the prototype',
     phrases: ['Reviewing the prototype', 'Checking the contrast', 'Checking the layout', 'Writing suggestions'],

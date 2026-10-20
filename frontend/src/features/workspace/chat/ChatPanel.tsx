@@ -10,6 +10,7 @@ import { ErrorState } from '../../../components/ErrorState';
 import { TextArea } from '../../../components/Input';
 import { LoadingState, Spinner } from '../../../components/Spinner';
 import { Markdown } from './Markdown';
+import { openReferencePanel } from '../stretch';
 import { RUN_ERROR_FALLBACK, type BuildStream } from './useBuildStream';
 
 /** Within this many pixels of the end counts as "reading the newest". */
@@ -99,7 +100,15 @@ function Composer({ build, stream, onSent }: { build: Build; stream: BuildStream
           {stream.sendError}
         </p>
       )}
-      <div className="flex justify-end">
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={!['connect', 'interview', 'prototype'].includes(build.stage)}
+          onClick={() => openReferencePanel(build.id)}
+        >
+          Attach reference
+        </Button>
         <Button type="submit" variant="primary" icon={<Send aria-hidden="true" />} disabled={locked || empty} loading={sending}>
           Send
         </Button>

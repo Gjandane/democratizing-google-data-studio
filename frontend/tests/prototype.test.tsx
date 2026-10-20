@@ -89,7 +89,7 @@ describe('Prototype stage', () => {
     expect(url).toHaveBeenLastCalledWith(build.id, 3);
     expect(frame.getAttribute('src')).toBe(url.mock.results[0]?.value);
     expect(frame.getAttribute('scrolling')).toBe('no');
-    expect(screen.getByRole('status').textContent).toContain('Loading the prototype');
+    expect(screen.getByText('Loading the prototype…').closest('[role="status"]')?.textContent).toContain('Loading the prototype');
     expect(screen.queryAllByRole('button', { name: /^Comment on / })).toHaveLength(0);
     loadFrame();
     expect(screen.queryByText('Loading the prototype…')).toBeNull();
@@ -305,7 +305,7 @@ describe('Prototype stage', () => {
     fireEvent.click(within(alert).getByRole('button', { name: 'Reload' }));
     const after = screen.getByTitle(/^Prototype of /);
     expect(after).not.toBe(before);
-    expect(screen.getByRole('status').textContent).toContain('Loading the prototype');
+    expect(screen.getByText('Loading the prototype…').closest('[role="status"]')?.textContent).toContain('Loading the prototype');
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
   });
 

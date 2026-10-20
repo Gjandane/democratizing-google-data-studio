@@ -70,46 +70,10 @@ async function prototype() {
   return { build, ...stream };
 }
 
-const png = () => new File(['x'], 'style.png', { type: 'image/png' });
-const pick = (...files: File[]) => fireEvent.change(screen.getByLabelText('Style screenshots'), { target: { files } });
 const off = (el: HTMLElement) => (el as HTMLButtonElement).disabled;
 const accepted = (run_id: string) => Promise.resolve({ run_id });
 
-describe('Style screenshots', () => {
-  it('posts the files and follows the run: uploading, reading, saved', async () => {
-    const { build, fire } = await connect();
-    let resolve!: (v: { run_id: string }) => void;
-    const spy = vi.spyOn(api, 'uploadStyleImages').mockReturnValue(new Promise((r) => (resolve = r)));
-    const file = png();
-    pick(file);
-    await screen.findByText('Uploading 1 image…');
-    expect(spy).toHaveBeenCalledWith(build.id, [file]);
-    expect(off(screen.getByRole('button', { name: 'Add style screenshots' }))).toBe(true);
-    await act(async () => resolve({ run_id: 'r_style' }));
-    await fire(started('style_extract', 'r_style'));
-    await screen.findByText('Reading the style…');
-    await fire(done('style_extract', 'r_style'));
-    await screen.findByText('Style saved. The planner uses it.');
-    expect(off(screen.getByRole('button', { name: 'Add style screenshots' }))).toBe(false);
-  });
-
-  it('shows the run error and lets the user try again', async () => {
-    const { fire } = await connect();
-    vi.spyOn(api, 'uploadStyleImages').mockReturnValue(accepted('r_s'));
-    pick(png());
-    await screen.findByText('Reading the style…');
-    await fire(started('style_extract', 'r_s'));
-    await fire(done('style_extract', 'r_s', "Couldn't read the images. Upload clearer screenshots."));
-    expect((await screen.findByRole('alert')).textContent).toContain("Couldn't read the images");
-    expect(off(screen.getByRole('button', { name: 'Add style screenshots' }))).toBe(false);
-  });
-
-  it('shows the API validation message (mock rejects non png/jpg)', async () => {
-    await connect();
-    pick(new File(['x'], 'notes.txt', { type: 'text/plain' }));
-    expect((await screen.findByRole('alert')).textContent).toBe('Upload .png or .jpg images only.');
-  });
-});
+// Former style upload assertions now cover the required reference route in references.test.tsx.
 
 describe('Research prompt', () => {
   it('is hidden in data mode', async () => {
@@ -209,13 +173,7 @@ describe('UX audit', () => {
 describe('Missing stretch routes', () => {
   const missing = () => new ApiError(404, 'http_error', 'Not found');
 
-  it('hides the style control on 404 without an error', async () => {
-    await connect();
-    vi.spyOn(api, 'uploadStyleImages').mockRejectedValue(missing());
-    pick(png());
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'Add style screenshots' })).toBeNull());
-    expect(screen.queryByRole('alert')).toBeNull();
-  });
+  // Required references keep their 404 visible; references.test.tsx covers this replacement.
 
   it('hides the research control on 404 without an error', async () => {
     await connect('research');

@@ -11,7 +11,7 @@ import { Table, type Column as TableColumn } from '../../../components/Table';
 import { ARCHETYPE_INFO } from '../../history/NewBuildDialog';
 import type { StretchRuns } from '../chat/useBuildStream';
 import { ResearchPanel } from './ResearchPanel';
-import { StylePanel } from './StylePanel';
+import { ReferencePanel } from '../ReferencePanel';
 
 type UriKind = 'gcs' | 'bigquery';
 type Busy = { kind: 'upload'; count: number } | { kind: 'uri' } | { kind: 'start' } | null;
@@ -31,6 +31,7 @@ const KIND_LABELS: Record<SourceKind, string> = {
   gcs: 'GCS',
   bigquery: 'BigQuery',
   research: 'Research',
+  synthetic: 'Synthetic sample data',
 };
 
 const sourceColumns: TableColumn<Source>[] = [
@@ -58,6 +59,7 @@ const sourceColumns: TableColumn<Source>[] = [
 const message = (error: unknown, fallback: string) => (error instanceof ApiError ? error.message : fallback);
 
 interface ConnectStageProps {
+  onReferenceReadyChange?: (ready: boolean) => void;
   build: Build;
   onBuildChange: (build: Build) => void;
   /** Run state of the stretch actions, from the build's event stream. */
@@ -67,7 +69,7 @@ interface ConnectStageProps {
 /** The Connect stage: add CSV files, a GCS path or a BigQuery table, then start the interview. */
 const noRuns: StretchRuns = {};
 
-export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns }: ConnectStageProps) {
+export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onReferenceReadyChange }: ConnectStageProps) {
   const fileInput = useRef<HTMLInputElement>(null);
   const chooseButton = useRef<HTMLButtonElement>(null);
   const uriInput = useRef<HTMLInputElement>(null);
@@ -292,7 +294,7 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns }: Con
         </div>
       </form>
 
-      <StylePanel buildId={build.id} stretchRuns={stretchRuns} />
+      <ReferencePanel buildId={build.id} version={build.current_version} disabled={isBusy} onReadyChange={onReferenceReadyChange} />
       {build.mode === 'research' && <ResearchPanel buildId={build.id} stretchRuns={stretchRuns} />}
 
       {failure && (

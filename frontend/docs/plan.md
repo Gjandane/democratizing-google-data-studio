@@ -132,7 +132,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: the retry can never post `/plan` twice for one failed run, and can't stay disabled forever (a POST error, or a stage change without `run.started`, re-enables or removes it).
 
 ## Phase 10: Required references and feasibility (change 2026-10-19; split by delta audit 2026-10-20)
-- [ ] 10.1 Reference panel, chat attach and API 1.4 guards
+- [x] 10.1 Reference panel, chat attach and API 1.4 guards
   - Goal: one References panel (Connect, Interview, Prototype, and the chat's Attach reference button) uploads a style or recreate reference with instructions, shows the retained set, and replaces or removes it; types accept API 1.4 so a synthetic source never breaks the Build guard.
   - Spec: docs/reference-ui.md#Controls and states; ../contracts/dashboard-intent.md#Reference set
   - Files: src/api/client.ts, src/api/types.ts, src/mocks/api.ts, src/mocks/fixtures.ts, src/features/workspace/stretch.ts, src/features/workspace/ReferencePanel.tsx, src/features/workspace/connect/ConnectStage.tsx, src/features/workspace/connect/StylePanel.tsx, src/features/workspace/chat/ChatPanel.tsx, src/features/workspace/chat/InterviewStage.tsx, src/features/workspace/prototype/PrototypeStage.tsx, src/features/history/DoneStage.tsx, src/features/activity/presets.ts, tests/contract.test.ts, tests/references.test.tsx, tests/stretch.test.tsx, tests/connect.test.tsx, tests/chat.test.tsx, screenshots/

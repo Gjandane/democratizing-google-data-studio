@@ -78,7 +78,7 @@ export const STAGES = ['connect', 'interview', 'plan', 'prototype', 'build', 'do
 export const ARCHETYPES = ['executive', 'storytelling', 'operational', 'analytical'] as const;
 export const MODES = ['data', 'research'] as const;
 export const COLUMN_TYPES = ['string', 'number', 'date', 'datetime', 'boolean', 'geo'] as const;
-export const SOURCE_KINDS = ['upload', 'gcs', 'bigquery', 'research'] as const;
+export const SOURCE_KINDS = ['upload', 'gcs', 'bigquery', 'research', 'synthetic'] as const;
 export const VERSION_STATUSES = ['draft', 'building', 'published', 'failed'] as const;
 export const MESSAGE_ROLES = ['user', 'assistant', 'system'] as const;
 
@@ -102,6 +102,26 @@ export interface Source {
   bq_table: string;
   row_count: number;
   columns: Column[];
+}
+
+export type ReferenceMode = 'style' | 'recreate';
+export interface ReferenceSet {
+  id: string;
+  mode: ReferenceMode;
+  instructions: string;
+  images: { id: string; name: string; file: string }[];
+  summary: string;
+}
+
+/** User-facing reference constraints; backend also validates signatures and decoded images. */
+export function referenceValidation(files: File[], mode: ReferenceMode, instructions = ''): string | null {
+  if (mode === 'recreate' && files.length !== 1) return 'Recreate dashboard requires exactly 1 PNG/JPEG image.';
+  if (mode === 'style' && (files.length < 1 || files.length > 3)) return 'Use style accepts 1-3 PNG/JPEG images.';
+  if (files.reduce((sum, file) => sum + file.size, 0) > 15 * 1024 * 1024) return 'References must total at most 15 MiB; each image must be at most 5 MiB.';
+  if (files.some((file) => file.size > 5 * 1024 * 1024)) return 'Each reference image must be at most 5 MiB.';
+  if (files.some((file) => !((file.type === 'image/png' && /\.png$/i.test(file.name)) || (file.type === 'image/jpeg' && /\.jpe?g$/i.test(file.name))))) return 'Upload PNG/JPEG reference images only (.png, .jpg or .jpeg).';
+  if (instructions.length > 2000) return 'Reference instructions must be at most 2000 characters.';
+  return null;
 }
 
 export interface DocRef {
@@ -318,6 +338,14 @@ export const isSource = shape<Source>({
   bq_table: isString,
   row_count: isInt,
   columns: arrayOf(isColumn),
+});
+
+export const isReferenceSet = shape<ReferenceSet>({
+  id: isString,
+  mode: oneOf(['style', 'recreate']),
+  instructions: isString,
+  images: arrayOf(shape<ReferenceSet['images'][number]>({ id: isString, name: isString, file: isString })),
+  summary: isString,
 });
 
 export const isDocRef = shape<DocRef>({ path: isString, title: isString, type: isString });

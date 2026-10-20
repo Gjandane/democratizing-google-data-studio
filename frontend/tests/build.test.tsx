@@ -334,7 +334,7 @@ describe('Continue to build', () => {
       </MemoryRouter>,
     );
     const next = (await screen.findByRole('button', { name: 'Continue to build' })) as HTMLButtonElement;
-    expect(next.disabled).toBe(false);
+    await waitFor(() => expect(next.disabled).toBe(false));
     const frame = (await screen.findByTitle(/^Prototype of /)) as HTMLIFrameElement;
     const doc = frame.contentDocument!;
     doc.open();
@@ -364,7 +364,9 @@ describe('Continue to build', () => {
         </Routes>
       </MemoryRouter>,
     );
-    fireEvent.click(await screen.findByRole('button', { name: 'Continue to build' }));
+    const next = await screen.findByRole('button', { name: 'Continue to build' });
+    await waitFor(() => expect((next as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(next);
     await screen.findByRole('button', { name: 'Back to prototype' });
     expect(document.activeElement?.tagName).toBe('MAIN');
     (document.activeElement as HTMLElement).blur();

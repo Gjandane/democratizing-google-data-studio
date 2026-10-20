@@ -4,6 +4,8 @@
 import type { ApiClient } from '../api/client';
 import {
   ApiError,
+  referenceValidation,
+  type ReferenceSet,
   isArchetype,
   isComment,
   isMode,
@@ -42,6 +44,9 @@ export type MockFailingNode = 'plan' | 'interview';
 export const MOCK_ACCESS_CODE = 'mock-access-code';
 
 interface MockState {
+  references: Map<string, ReferenceSet>;
+  referenceFiles: Map<string, string>;
+  referenceBusy: Set<string>;
   session: Session;
   builds: Map<string, Build>;
   messages: Map<string, Message[]>;
@@ -61,6 +66,9 @@ function seed(): MockState {
   const builds = new Map<string, Build>();
   for (const build of [fixtures.build, fixtures.buildDone]) builds.set(build.id, clone(build));
   return {
+    references: new Map(),
+    referenceFiles: new Map(),
+    referenceBusy: new Set(),
     session: { required: false, ok: true },
     builds,
     messages: new Map([[fixtures.build.id, clone(fixtures.messages)]]),
@@ -402,6 +410,38 @@ export function createMockApi(): ApiClient {
         return source;
       }),
 
+    getReferences: (id) => respond(() => {
+      const build = findBuild(id);
+      return state.references.get(`${id}:${build.current_version}`) ?? null;
+    }),
+    uploadReferences: (id, files, mode, instructions) => respond(() => {
+      const build = findBuild(id);
+      requireStage(build, ['connect', 'interview', 'prototype'], 'Start a new version to change references.');
+      if (state.referenceBusy.has(id)) throw new ApiError(409, 'build_busy', 'Wait for the current reference upload.');
+      const problem = referenceValidation(files, mode, instructions);
+      if (problem) throw new ApiError(422, 'invalid_source', problem);
+      requireModel();
+      const key = `${id}:${build.current_version}`;
+      const images = files.map((file) => {
+        const imageId = nextId('s');
+        const name = `reference_${imageId}.${file.type === 'image/png' ? 'png' : 'jpg'}`;
+        const url = typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : '';
+        state.referenceFiles.set(`${key}:${name}`, url);
+        return { id: imageId, name: file.name.split(/[\\/]/).pop() ?? 'Reference image', file: name };
+      });
+      state.referenceBusy.add(id);
+      return startRun(build, 'reference_extract', () => [() => {
+        state.references.set(key, { ...clone(fixtures.referenceSet), id: nextId('s'), mode, instructions, images });
+        state.referenceBusy.delete(id);
+        emit(id, { name: 'docs.updated', data: { docs: clone(build.docs) } });
+      }]);
+    }),
+    deleteReferences: (id) => respond(() => {
+      const build = findBuild(id);
+      requireStage(build, ['connect', 'interview', 'prototype'], 'Start a new version to change references.');
+      if (state.referenceBusy.has(id)) throw new ApiError(409, 'build_busy', 'Wait for the current reference upload.');
+      state.references.delete(`${id}:${build.current_version}`);
+    }),
     uploadStyleImages: (id, files) =>
       respond(() => {
         const tooLarge = oversizeError(files);
@@ -650,13 +690,21 @@ export function createMockApi(): ApiClient {
         requireStage(build, ['prototype', 'done'], 'Wait for the build to finish, then start a new version.');
         const n = Math.max(0, ...build.versions.map((v) => v.n)) + 1;
         build.versions.push({ n, status: 'draft', report_url: null, created_at: now() });
+        const refs = state.references.get(`${id}:${build.current_version}`);
+        if (refs) {
+          state.references.set(`${id}:${n}`, clone(refs));
+          for (const image of refs.images) {
+            const url = state.referenceFiles.get(`${id}:${build.current_version}:${image.file}`);
+            if (url) state.referenceFiles.set(`${id}:${n}:${image.file}`, url);
+          }
+        }
         build.current_version = n;
         build.stage = 'prototype';
         touch(build);
         return build;
       }),
 
-    fileUrl: (id, name) => `/api/builds/${encodeURIComponent(id)}/files/${name.split('/').map(encodeURIComponent).join('/')}`,
+    fileUrl: (id, name) => state.referenceFiles.get(`${id}:${findBuild(id).current_version}:${name}`) || `/api/builds/${encodeURIComponent(id)}/files/${name.split('/').map(encodeURIComponent).join('/')}`,
 
     listTraces: (buildId) =>
       respond(() => newestFirst(state.traces.filter((t) => !buildId || t.build_id === buildId), (t) => t.started_at)),

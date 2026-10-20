@@ -61,7 +61,7 @@ function ResultCard({ run }: { run: BuildRun }) {
 }
 
 /** The Build stage: engine status, the recipe with live per-op status, the build action, the result. */
-export function BuildStage({ build, run: streamRun }: { build: Build; run: BuildRun }) {
+export function BuildStage({ build, run: streamRun, referencesReady = true }: { build: Build; run: BuildRun; referencesReady?: boolean }) {
   const [engine, setEngine] = useState<EngineStatus | null>(null);
   const [engineKey, setEngineKey] = useState(0);
   const [offlineSignal, setOfflineSignal] = useState(0);
@@ -90,6 +90,7 @@ export function BuildStage({ build, run: streamRun }: { build: Build; run: Build
 
   const buildId = build.id;
   const generate = async () => {
+    if (!referencesReady) return;
     setGenerating(true);
     setRecipeError(null);
     try {
@@ -108,11 +109,11 @@ export function BuildStage({ build, run: streamRun }: { build: Build; run: Build
   // Opened with a run already going (another tab, a reload): fetch the recipe once so the lines can tick.
   const going = running;
   useEffect(() => {
-    if (!going || recipe || autoCompiled.current) return;
+    if (!referencesReady || !going || recipe || autoCompiled.current) return;
     autoCompiled.current = true;
     void generate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [going, recipe]);
+  }, [going, recipe, referencesReady]);
 
   // The run has begun (or the stage moved on): the click is no longer pending.
   useEffect(() => {
@@ -120,6 +121,7 @@ export function BuildStage({ build, run: streamRun }: { build: Build; run: Build
   }, [build.stage]);
 
   const start = async () => {
+    if (!referencesReady) return;
     setStarting(true);
     setStartError(null);
     try {
@@ -144,12 +146,12 @@ export function BuildStage({ build, run: streamRun }: { build: Build; run: Build
   const ready = engine !== null && engineReady(engine);
   const agentOffline = engine?.mode === 'agent' && !engine.agent_connected;
   const signedOut = engine !== null && !agentOffline && !engine.signed_in;
-  const canBuild = ready && recipe !== null && !run.running && !starting && build.stage === 'prototype';
+  const canBuild = referencesReady && ready && recipe !== null && !run.running && !starting && build.stage === 'prototype';
 
   return (
     <div className="mt-6 space-y-4">
       <EnginePanel refreshKey={engineKey} offlineSignal={offlineSignal} onEngine={setEngine} />
-      <RecipePanel recipe={recipe} run={run} generating={generating} error={recipeError} onGenerate={generate} />
+      <fieldset disabled={!referencesReady} className="min-w-0"><RecipePanel recipe={recipe} run={run} generating={generating} error={recipeError} onGenerate={generate} /></fieldset>
       <LiveViewPanel frame={run.frame} running={run.running} />
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         {build.stage === 'done' ? (

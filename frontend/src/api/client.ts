@@ -5,6 +5,10 @@ import { withServiceNotice } from '../features/settings/serviceNotice';
 import { createMockApi } from '../mocks/api';
 import {
   ApiError,
+  isReferenceSet,
+  referenceValidation,
+  type ReferenceSet,
+  type ReferenceMode,
   isApiErrorBody,
   type Build,
   type BuildSummary,
@@ -41,6 +45,9 @@ export interface ApiClient {
   getBuild(buildId: string): Promise<Build>;
   uploadSources(buildId: string, files: File[]): Promise<SourcesUploaded>;
   addSource(buildId: string, body: SourceUri): Promise<Source>;
+  getReferences(buildId: string): Promise<ReferenceSet | null>;
+  uploadReferences(buildId: string, files: File[], mode: ReferenceMode, instructions: string): Promise<RunAccepted>;
+  deleteReferences(buildId: string): Promise<void>;
   uploadStyleImages(buildId: string, files: File[]): Promise<RunAccepted>;
   startResearch(buildId: string, prompt: string): Promise<RunAccepted>;
   startInterview(buildId: string): Promise<RunAccepted>;
@@ -133,6 +140,26 @@ export const httpApi: ApiClient = {
   getBuild: (id) => json('GET', buildPath(id)),
   uploadSources: (id, files) => upload(buildPath(id, '/sources/upload'), files),
   addSource: (id, body) => json('POST', buildPath(id, '/sources'), body),
+  getReferences: async (id) => {
+    const value: unknown = await json('GET', buildPath(id, '/reference-images'));
+    if (value !== null && !isReferenceSet(value)) throw new ApiError(502, 'invalid_response', "Couldn't read the saved references. Try again.");
+    return value;
+  },
+  uploadReferences: async (id, files, mode, instructions) => {
+    const problem = referenceValidation(files, mode, instructions);
+    if (problem) throw new ApiError(422, 'invalid_source', problem);
+    const form = filesForm(files);
+    form.append('mode', mode);
+    form.append('instructions', instructions);
+    try {
+      return await json('POST', buildPath(id, '/reference-images'), form);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 413) throw new ApiError(413, error.code, 'Reference images exceed the upload limit. Use at most 5 MiB each and 15 MiB total.');
+      if (error instanceof ApiError && error.status === 422) throw new ApiError(422, error.code, 'Could not read these reference images. Use valid, non-animated PNG/JPEG images, at most 20 million pixels each, and instructions up to 2000 characters.');
+      throw error;
+    }
+  },
+  deleteReferences: async (id) => { await send('DELETE', buildPath(id, '/reference-images')); },
   uploadStyleImages: (id, files) => upload(buildPath(id, '/style-images'), files),
   startResearch: (id, prompt) => json('POST', buildPath(id, '/research'), { prompt }),
   startInterview: (id) => json('POST', buildPath(id, '/interview/start')),

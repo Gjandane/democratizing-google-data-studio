@@ -5,6 +5,7 @@ import { ApiError, type Build, type Version } from '../../api/types';
 import { Button, buttonClass } from '../../components/Button';
 import { focusRing } from '../../components/focus';
 import { Panel } from '../../components/Panel';
+import { ReferencePanel } from '../workspace/ReferencePanel';
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -103,6 +104,7 @@ export function DoneStage({ build, failedOps = 0, onBuildChange, onNewVersion }:
         </div>
       </section>
 
+      <ReferencePanel buildId={build.id} version={build.current_version} readOnly />
       <Panel
         title="Versions"
         actions={

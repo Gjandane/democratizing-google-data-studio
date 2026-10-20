@@ -16,6 +16,7 @@ import { BuildStage } from './build/BuildStage';
 import { failedCount, idleRun, type BuildRun } from './build/buildRun';
 import { PlanStage } from './plan/PlanStage';
 import { PrototypeStage } from './prototype/PrototypeStage';
+import { ReferencePanel } from './ReferencePanel';
 import { STAGE_LABELS, Stepper } from './Stepper';
 
 type Load = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; build: Build };
@@ -133,6 +134,7 @@ function StageArea({
 }) {
   // The Build view shows in the build stage, and from the prototype or done stage once opened (a run that just finished
   // in this session stays open in done); a done build opened from History has no such run and shows the Done view.
+  const [referencesReady, setReferencesReady] = useState(false);
   const showBuild = build.stage === 'build' || ((build.stage === 'prototype' || build.stage === 'done') && buildOpen);
   // A result from an earlier version's run doesn't belong to the current version.
   const run = buildRun.finished && buildRun.finished.version !== build.current_version ? idleRun : buildRun;
@@ -155,7 +157,7 @@ function StageArea({
               <Button
                 variant="primary"
                 icon={<Hammer aria-hidden="true" />}
-                disabled={applying || pendingComments > 0}
+                disabled={applying || pendingComments > 0 || !referencesReady}
                 aria-describedby={pendingComments > 0 ? 'continue-hint' : undefined}
                 onClick={() => onBuildOpen(true)}
               >
@@ -175,15 +177,18 @@ function StageArea({
           )}
         </div>
         {showBuild ? (
-          <BuildStage build={build} run={run} />
+          <>
+            <div className="mt-6"><ReferencePanel buildId={build.id} version={build.current_version} readOnly={build.stage !== 'prototype'} onReadyChange={setReferencesReady} /></div>
+            <BuildStage build={build} run={run} referencesReady={referencesReady} />
+          </>
         ) : build.stage === 'connect' ? (
-          <ConnectStage build={build} onBuildChange={onBuildChange} stretchRuns={stretchRuns} />
+          <ConnectStage build={build} onBuildChange={onBuildChange} stretchRuns={stretchRuns} onReferenceReadyChange={setReferencesReady} />
         ) : build.stage === 'interview' ? (
-          <InterviewStage build={build} messages={messages} loadError={loadError} runErrors={runErrors} />
+          <InterviewStage build={build} messages={messages} loadError={loadError} runErrors={runErrors} referencesReady={referencesReady} onReferenceReadyChange={setReferencesReady} />
         ) : build.stage === 'plan' ? (
           <PlanStage build={build} progress={progress} planning={planning} />
         ) : build.stage === 'prototype' ? (
-          <PrototypeStage build={build} applying={applying} commentsError={commentsError} stretchRuns={stretchRuns} onPendingChange={onPendingChange} />
+          <PrototypeStage build={build} applying={applying} commentsError={commentsError} stretchRuns={stretchRuns} onPendingChange={onPendingChange} onReferenceReadyChange={setReferencesReady} />
         ) : (
           <DoneStage
             build={build}

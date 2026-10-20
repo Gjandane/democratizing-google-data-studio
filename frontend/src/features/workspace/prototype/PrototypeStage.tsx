@@ -8,10 +8,12 @@ import { Spinner } from '../../../components/Spinner';
 import type { BuildStream, StretchRuns } from '../chat/useBuildStream';
 import { useRefocusAfter, useStretchAction } from '../stretch';
 import { PendingList } from './PendingList';
+import { ReferencePanel } from '../ReferencePanel';
 import { PrototypeCanvas } from './PrototypeCanvas';
 import type { PendingComment, Target } from './types';
 
 interface PrototypeStageProps {
+  onReferenceReadyChange?: (ready: boolean) => void;
   build: Build;
   /** A `revise` run is open (also true when another tab started it). */
   applying: boolean;
@@ -24,7 +26,7 @@ interface PrototypeStageProps {
 
 const noRuns: StretchRuns = {};
 
-export function PrototypeStage({ build, applying, commentsError, stretchRuns = noRuns, onPendingChange }: PrototypeStageProps) {
+export function PrototypeStage({ build, applying, commentsError, stretchRuns = noRuns, onPendingChange, onReferenceReadyChange }: PrototypeStageProps) {
   const audit = useStretchAction('audit', 'ux_audit', stretchRuns);
   const auditing = audit.state === 'starting' || audit.state === 'running';
   const auditButton = useRef<HTMLButtonElement>(null);
@@ -106,6 +108,7 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
 
   return (
     <div className="mt-6 flex flex-col gap-4">
+      <ReferencePanel buildId={build.id} version={build.current_version} disabled={busy} onReadyChange={onReferenceReadyChange} />
       {!audit.hidden && (
         <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
           <div aria-live="polite" className="text-body text-text-muted">
