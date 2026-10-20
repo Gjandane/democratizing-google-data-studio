@@ -59,6 +59,7 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - `Candidate.begin` snapshots rollback stage: call it before setting `stage='plan'`, including when planner initialization is deferred until after feasibility extraction.
 - Batch-backed comment history uses node `comment_batch`; requirements.json owns its intent. Re-extracting that history resurrects abandoned batches. Preserve supersession chains when later assignments override a property.
 - Interview Workflows stream every LlmAgent: structured extractor callbacks must ignore partial fragments and validate only the final accumulated response.
-- Metric assignment recognition currently requires a sentence-start definition (`Revenue means net_sales`); an audience prefix before a comma prevents recognition.
+- Metric assignment recognition requires a sentence-start definition (`Revenue means net_sales`); only a `For [the] [one qualifier] <audience role>,` prefix may precede it.
+- google-genai sends the client `HttpOptions(timeout)` to Google as the server deadline (504 when exceeded); a per-request timeout does not override it, so set it per node on the client.
 - Gemini max_output_tokens includes thinking; ADK may expose MAX_TOKENS as an error before scope handling. Bounded extraction needs a low thinking level and truncation-first handling.
 - Recipe 1.0 has no unit/grain chart options: retain units in the requirement ledger and implement explicit date grain with SQL view bucket fields.

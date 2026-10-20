@@ -650,3 +650,14 @@ context. Task status lives in docs/plan.md, not here.
 - Why: user chose planner 120 s / worker 30 s, and a separate retry task with no retry on 504.
 - Tasks affected: 11.8 reopened (may edit llm.py; the stash@{0} attempt is already in the working tree); new 11.9 (S), depends on 11.8.
 - Change requests: none outstanding.
+
+## 2026-10-20: Task 11.8 Gate recipe, run and new versions; live flow
+- Status: done
+- Plan check: off
+- What changed: built on the stash@{0} attempt (execution gate in recipe/run, `copy_version`, extraction/prompt fixes). llm.py sets the client timeout per node (plan/spec 120 s, others 30 s). Review P1 fix: reference screenshots are refused as image components and logo decorations in validate_spec, compiler and prototype image_url (shared `models.reference_image`/`image_paths`).
+- Checks: `uv run pytest tests/test_feasibility.py tests/test_api_contract.py` PASS (112); `uv run pytest -m live tests/live/test_backend_flow.py` PASS (3); Test (all) `uv run pytest` PASS (711, 7 deselected); tests/test_llm_timeouts.py PASS (12); `git diff --check` PASS. Reviewer: 1 P1 (fixed), 1 P2, 2 P3 (fixed).
+- Decisions: timeout chosen by node (`PLANNER_NODES`), so a planner falling back to the worker model keeps 120 s. Screenshot rule = basename starts with `reference_` (casefold, either separator). Audience prefix allows one qualifier word. Outside Files: llm.py (plan If:), models.py, validate.py, prototype.py (screenshot guard), new tests/test_llm_timeouts.py, plus the earlier attempts' prompts/capability_check.py/fakes/tests. AGENTS.md gotchas updated. No dependencies.
+- Tried and failed: two earlier sessions (see above); the 30 s client deadline was the cause.
+- Gotchas: live logs `.blueprint/task-11.8-live-timeout.log`, `-live-final2.log`.
+- Left open: P2 execution-gate fulfillment block not durable (check re-reports ready; no test hits `coverage_errors` branch) - src/dss/spec/requirements.py:658. P3 Windows 8.3 short names could alias a reference file past the basename rule - src/dss/spec/models.py.
+- Next: Task 11.9 One model-call retry on transient errors.

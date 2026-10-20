@@ -37,6 +37,15 @@ def load(client, bid):
     assert result.json()["stage"] == "prototype"
 
 
+def load_checked(client, bid):
+    load(client, bid)
+    from fakes import ready_fixture
+    app = client.app
+    with app.state.db.connect() as conn:
+        version = conn.execute('SELECT current_version FROM builds WHERE id=?', (bid,)).fetchone()[0]
+    ready_fixture(app, bid, app.state.config.data_dir / 'builds' / bid / f'v{version}')
+
+
 def wait_done(client, bid):
     for _ in range(300):
         build = client.get(f"/api/builds/{bid}").json()
@@ -58,7 +67,7 @@ class Items(HTMLParser):
 
 def test_flow(thin):
     client, app, bid, folder = thin
-    load(client, bid)
+    load_checked(client, bid)
     spec = DashboardSpec.model_validate_json((folder / "spec.json").read_text())
     html = client.get(f"/api/builds/{bid}/prototype").text
     explicit = client.get(f"/api/builds/{bid}/prototype?layer=all")
@@ -140,7 +149,7 @@ def test_missing_and_busy(thin, monkeypatch):
     client, app, bid, folder = thin
     assert client.get('/api/builds/b_000000000000/prototype').status_code == 404
     assert client.post(f'/api/builds/{bid}/recipe').status_code == 409
-    load(client, bid)
+    load_checked(client, bid)
     assert client.post(f'/api/builds/{bid}/run').status_code == 409
     assert client.post(f'/api/builds/{bid}/recipe').status_code == 200
     monkeypatch.setenv("DSS_ENGINE_CMD", f'"{sys.executable}" "{ROOT / "tests/fake_engine.py"}"')
@@ -151,7 +160,7 @@ def test_missing_and_busy(thin, monkeypatch):
 @pytest.mark.parametrize("flag,stage,status", [("--broken","prototype","failed"),("--partial","done","partial")])
 def test_failure_and_partial(thin, monkeypatch, flag, stage, status):
     client, app, bid, folder = thin
-    load(client, bid)
+    load_checked(client, bid)
     assert client.post(f'/api/builds/{bid}/recipe').status_code == 200
     # Mode flag goes after the recipe positional argument.
     original = __import__('dss.harness.nodes.execute', fromlist=['engine_command'])
@@ -189,7 +198,7 @@ def test_all_recipe_mappings():
 
 def test_wrapper_timeout_releases_engine(thin, monkeypatch):
     client, app, bid, folder = thin
-    load(client, bid)
+    load_checked(client, bid)
     assert client.post(f"/api/builds/{bid}/recipe").status_code == 200
     monkeypatch.setenv("DSS_ENGINE_CMD", f'uv run --no-sync python "{ROOT / "tests/fake_engine.py"}"')
     monkeypatch.setenv("DSS_ENGINE_TIMEOUT_S", "1")
@@ -214,7 +223,7 @@ def test_wrapper_timeout_releases_engine(thin, monkeypatch):
 
 def test_cancel_terminates_engine_tree(thin, monkeypatch):
     client, app, bid, folder = thin
-    load(client, bid)
+    load_checked(client, bid)
     assert client.post(f"/api/builds/{bid}/recipe").status_code == 200
     monkeypatch.setenv("DSS_FAKE_HANG", "1")
     monkeypatch.setenv("DSS_ENGINE_TIMEOUT_S", "60")

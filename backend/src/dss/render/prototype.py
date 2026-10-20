@@ -11,6 +11,7 @@ import re
 
 from dss.data.bigquery import quoted, table_uri
 from dss.spec.layout import box
+from dss.spec.models import reference_image
 from dss.spec.validate import catalog
 
 
@@ -108,6 +109,8 @@ def aggregate_data(spec, service, folder):
 def image_url(path, folder):
     if not path or folder is None:
         return None
+    if reference_image(path):
+        raise ValueError('Reference screenshots cannot be dashboard images')
     root = Path(folder).resolve()
     target = (root / path).resolve()
     if not target.is_relative_to(root) or target.suffix.lower() not in ('.png', '.jpg', '.jpeg', '.webp'):

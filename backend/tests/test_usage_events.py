@@ -135,7 +135,8 @@ async def test_streamed_interview_counts_usage_once(client, app, build_id):
 
 def test_recipe_run_without_model_call_emits_no_usage(thin):
     client, app, build_id, _ = thin
-    load(client, build_id)
+    from test_thin_slice import load_checked
+    load_checked(client, build_id)
     assert client.post(f"/api/builds/{build_id}/recipe").status_code == 200
     stream = events(app, build_id)
     assert ("recipe" in [p.get("node") for k, p in stream if k == "run.started"])

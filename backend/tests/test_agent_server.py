@@ -46,6 +46,8 @@ def remote(tmp_path, monkeypatch):
         (folder / "background_p1.png").write_bytes(b"fake-background")
         with app.state.db.connect() as conn:
             conn.execute("UPDATE builds SET stage='prototype' WHERE id=?", (bid,))
+        from fakes import ready_fixture
+        ready_fixture(app, bid, folder)
         yield client, app, bid, folder
 
 
@@ -280,11 +282,14 @@ def test_all_recipe_inputs_in_order_and_bad_inputs_fail_before_lock(remote):
     client, app, bid, folder = remote
     add_images(folder, "logo.png", "background_p1.png", "logo.png")
     (folder / "logo.png").write_bytes(b"logo")
+    from fakes import ready_fixture
+    ready_fixture(app, bid, folder)
     run_id, job = accept(remote)
     assert job["files"] == ["recipe.jsonl", "background_p1.png", "logo.png"]
     finish(client, run_id, 1)
     settle(client, app)
     add_images(folder, "../dss.sqlite")
+    ready_fixture(app, bid, folder)
     response = client.post(f"/api/builds/{bid}/run")
     assert response.status_code == 400 and response.json()["error"]["code"] == "invalid_name"
     assert not app.state.engine_busy
@@ -377,6 +382,8 @@ def test_job_ships_recipe_of_revised_spec(remote, monkeypatch):
     from test_revise import seed_revision, revise_through_api
     client, app, bid, folder = remote
     seed_revision(app, bid, monkeypatch)
+    from fakes import ready_fixture
+    ready_fixture(app, bid, folder)
     assert client.post(f"/api/builds/{bid}/recipe").status_code == 200
     stale = (folder / "recipe.jsonl").read_text(encoding="utf-8")
     revised = revise_through_api(client, app, bid)
@@ -397,7 +404,7 @@ def test_refresh_failure_queues_no_job(remote):
     add_images(folder, None)  # an image without a path cannot compile
     heartbeat(client)
     response = client.post(f"/api/builds/{bid}/run")
-    assert response.status_code == 422 and response.json()["error"]["code"] == "invalid_recipe"
+    assert response.status_code == 409 and response.json()["error"]["code"] == "feasibility_blocked"
     assert client.get("/api/agent/jobs/next?wait=0", headers=AUTH).status_code == 204
     assert not app.state.agent_jobs.running and not app.state.engine_tasks
     assert not app.state.engine_busy and bid not in app.state.harness.active_builds
@@ -428,6 +435,10 @@ def test_recipe_request_cannot_mutate_unreleased_job_files(remote):
     finish(client, run_id, 1)
     settle(client, app)
     response = client.post(f"/api/builds/{bid}/recipe")
+    assert response.status_code == 409 and response.json()['error']['code'] == 'feasibility_blocked'
+    from fakes import ready_fixture
+    ready_fixture(app, bid, folder)
+    response = client.post(f"/api/builds/{bid}/recipe")
     assert response.status_code == 200
     assert "Changed mid-build" in (folder / "recipe.jsonl").read_text(encoding="utf-8")
 
@@ -453,6 +464,8 @@ def test_nested_images_package_to_plain_deduplicated_names(remote):
     from dss.agent.jobs import PLAIN, package
     client, app, bid, folder = remote
     nested_inputs(folder)
+    from fakes import ready_fixture
+    ready_fixture(app, bid, folder)
     originals = {path: (folder / path).read_bytes() for path in [*NESTED, "background_p1.png"]}
     run_id, job = accept(remote)
     canonical = compile_recipe(DashboardSpec.model_validate_json((folder / "spec.json").read_text()), 1)
@@ -530,6 +543,8 @@ def test_bad_image_paths_reject_before_queueing(remote, tmp_path, bad, code):
     elif bad == "link":
         bad = outside_link(folder, tmp_path)
     add_images(folder, "logo.png", bad)
+    from fakes import ready_fixture
+    ready_fixture(app, bid, folder)
     heartbeat(client)
     response = client.post(f"/api/builds/{bid}/run")
     assert response.status_code == (400 if code == "invalid_name" else 422), response.text
@@ -540,6 +555,7 @@ def test_bad_image_paths_reject_before_queueing(remote, tmp_path, bad, code):
     build = client.get(f"/api/builds/{bid}").json()
     assert build["stage"] == "prototype" and build["versions"][0]["status"] != "building"
     (folder / "spec.json").write_text(good, encoding="utf-8")
+    ready_fixture(app, bid, folder)
     run_id, job = accept(remote)  # the stage and lock are still usable
     assert job["files"] == ["recipe.jsonl", "background_p1.png"]
     finish(client, run_id, 1)

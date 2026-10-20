@@ -2,11 +2,14 @@
 import json
 import shlex
 from dss.spec.layout import box
-from dss.spec.models import DashboardSpec
+from dss.spec.models import DashboardSpec, image_paths, reference_image
 
 
 def compile_recipe(spec: DashboardSpec, version: int) -> str:
     """Compile the current spec without consulting settings or mutating the spec."""
+    # Logos are flattened into background_p<n>.png, so they are checked like image components.
+    if any(reference_image(path) for _, path in image_paths(spec)):
+        raise ValueError('Reference screenshots cannot be recipe images or backgrounds')
     project, dataset, table = spec.datasource.table.split(".")
     lines = [dict(recipe_version="1.0", build_id=spec.build_id, version=version,
                   report_name=spec.title, canvas=spec.canvas.model_dump(),

@@ -28,3 +28,15 @@ class FakeLLM(BaseLlm):
 
 async def fake_models(key):
     return ["models/gemini-3.8-flash", "models/gemini-4-argon"]
+
+
+def ready_fixture(app, build_id, folder):
+    """Establish real deterministic proof for directly written, intent-free fixtures."""
+    from dss.spec import capabilities, requirements as req
+    snapshot, ledger = req.inputs(app.state.db, build_id, folder), req.load(folder)
+    checker = capabilities.Checker(capabilities.load_registry())
+    assert not req.new_sources(snapshot, ledger), 'Use the assessment Workflow for new intent'
+    assessment = req.evaluate(snapshot, ledger, checker)
+    assert assessment.state == 'ready', assessment
+    assert not req.coverage_errors(snapshot, ledger, checker)
+    req.save(folder, ledger, assessment)

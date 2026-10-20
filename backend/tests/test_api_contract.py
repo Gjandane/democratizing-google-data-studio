@@ -38,7 +38,8 @@ def test_phase4_contract(thin):
     check(client.put("/api/settings", json={"bq_location":"US"}), "settings.json")
     check(client.get(f"/api/builds/{bid}/messages"), "messages.json")
     check(client.post(f"/api/builds/{bid}/run"), "error.json", 409)
-    load(client, bid)
+    from test_thin_slice import load_checked
+    load_checked(client, bid)
     check(client.post(f"/api/builds/{bid}/recipe"), "recipe.json")
     assert client.get(f"/api/builds/{bid}/spec").json() == json.loads((folder / "spec.json").read_text())
     assert "dss-canvas" in client.get(f"/api/builds/{bid}/prototype").text
@@ -62,6 +63,8 @@ def test_phase4_contract(thin):
 def test_recipe_contract_in_agent_mode_without_engine(agent_client, spec):
     client, app, folder = agent_client
     (folder / "spec.json").write_text(spec.model_dump_json(), encoding="utf-8")
+    from fakes import ready_fixture
+    ready_fixture(app, spec.build_id, folder)
     check(client.post(f"/api/builds/{spec.build_id}/recipe"), "recipe.json")
 
 

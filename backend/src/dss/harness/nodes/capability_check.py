@@ -46,6 +46,10 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         llm_request.config.response_mime_type = "application/json"
         llm_request.config.response_json_schema = provider_schema(req.Extraction)
         llm_request.config.max_output_tokens = MAX_OUTPUT_TOKENS
+        if model.model.startswith(('gemini-3', 'gemini-4')):
+            # Thinking shares max_output_tokens with JSON. This bounded extraction
+            # needs a low reasoning level so ordinary requests can finish in 4k.
+            llm_request.config.thinking_config = types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW)
         llm_request.contents = [types.Content(role="user", parts=[types.Part(text="Extract requirements from the supplied sources. Return JSON.")])]
         try:
             context = capability_context(snapshot, ledger, checker, pending)
@@ -61,6 +65,17 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
             return response("Requirement extraction could not proceed.")
 
     async def after_model(callback_context, llm_response):
+        if llm_response.partial:
+            # Interview streams its whole Workflow, including this JSON worker.
+            # Gemini sends fragments followed by the complete accumulated result.
+            # Do not validate or expose incomplete JSON/thought-only fragments.
+            return LlmResponse(partial=True)
+        if llm_response.finish_reason == types.FinishReason.MAX_TOKENS:
+            # ADK may report truncation as an error, even with accumulated text.
+            # Convert it to the documented scope refusal before generic errors.
+            state['scope'] = True
+            return LlmResponse(content=types.Content(role='model', parts=[types.Part(text='Requirement scope exceeded.')]),
+                               usage_metadata=llm_response.usage_metadata)
         if llm_response.error_code:
             return LlmResponse(error_code="llm_unavailable", error_message="Requirement extraction failed")
         # ADK also invokes this for before_model's short-circuit response.

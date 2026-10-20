@@ -209,6 +209,8 @@ def test_preview_rejects_unrecorded_argument_forms(value):
 def test_recipe_api_uses_current_spec(agent_client, spec):
     client, app, folder = agent_client
     (folder / 'spec.json').write_text(spec.model_dump_json(), encoding='utf-8')
+    from fakes import ready_fixture
+    ready_fixture(app, spec.build_id, folder)
     for _ in range(2):
         response = client.post('/api/builds/b_123456789abc/recipe')
         assert response.status_code == 200, response.text
@@ -233,6 +235,10 @@ def test_recipe_api_failure_publishes_nothing(agent_client, spec, failure, monke
     client, app, folder = agent_client
     previous = b'previous complete recipe\n'
     (folder / 'recipe.jsonl').write_bytes(previous)
+    # Start with an authorized prototype, then inject the compiler/preview failure.
+    (folder / 'spec.json').write_text(spec.model_dump_json(), encoding='utf-8')
+    from fakes import ready_fixture
+    ready_fixture(app, spec.build_id, folder)
     if failure in ('sort', 'direction'):
         # A spec.json that bypassed the validator: a malformed order or a legacy direction key.
         document = json.loads(spec.model_dump_json())
@@ -249,10 +255,11 @@ def test_recipe_api_failure_publishes_nothing(agent_client, spec, failure, monke
     if failure not in ('sort', 'direction'):
         (folder / 'spec.json').write_text(spec.model_dump_json(), encoding='utf-8')
     response = client.post('/api/builds/b_123456789abc/recipe')
-    assert response.status_code == 422
-    assert response.json()['error']['code'] == 'invalid_recipe'
+    expected = 'feasibility_blocked' if failure == 'compile' else 'invalid_recipe'
+    assert response.status_code == (409 if failure == 'compile' else 422)
+    assert response.json()['error']['code'] == expected
     assert 'secret' not in response.text and 'Traceback' not in response.text
     assert (folder / 'recipe.jsonl').read_bytes() == previous
     assert not (folder / 'recipe.jsonl.tmp').exists()
     with app.state.db.connect() as conn:
-        assert [tuple(row) for row in conn.execute('SELECT node,status FROM traces')] == [('recipe', 'error')]
+        assert [tuple(row) for row in conn.execute('SELECT node,status FROM traces')] == ([('recipe', 'error')] if failure == 'preview' else [])

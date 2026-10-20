@@ -1,7 +1,7 @@
 import json
 import time
 import pytest
-from test_thin_slice import thin, load, wait_done
+from test_thin_slice import thin, load_checked as load, wait_done
 
 
 def settle(client, app):
@@ -43,6 +43,9 @@ def test_fixture_run_and_versions(thin, monkeypatch):
     new = folder.parent / "v2"
     assert json.loads((new / "spec.json").read_text())["datasource"] == old_spec["datasource"]
     assert not (new / "recipe.jsonl").exists() and not (new / "events.jsonl").exists()
+    assert client.post(f"/api/builds/{bid}/recipe").json()['error']['code'] == 'feasibility_blocked'
+    from fakes import ready_fixture
+    ready_fixture(app, bid, new)
     assert client.post(f"/api/builds/{bid}/recipe").status_code == 200
     assert json.loads((new / "recipe.jsonl").read_text().splitlines()[0])["version"] == 2
 
@@ -154,7 +157,8 @@ def test_refresh_failure_starts_nothing(thin, monkeypatch, breakage):
         (folder / "spec.json").write_text("{", encoding="utf-8")
     seen = engine_inputs(monkeypatch)
     response = client.post(f"/api/builds/{bid}/run")
-    assert response.status_code == 422 and response.json()["error"]["code"] == "invalid_recipe"
+    code = 'feasibility_blocked' if breakage == 'uncompilable' else 'invalid_recipe'
+    assert response.status_code == (409 if breakage == 'uncompilable' else 422) and response.json()["error"]["code"] == code
     assert not seen and not app.state.engine_tasks
     assert not app.state.engine_busy and bid not in app.state.harness.active_builds
     build = client.get(f"/api/builds/{bid}").json()

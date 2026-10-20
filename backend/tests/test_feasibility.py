@@ -42,6 +42,217 @@ def source(app, bid, **fields):
             json.dumps([{"name": name, "type": kind} for name, kind in fields.items()])))
 
 
+@pytest.mark.parametrize('mode', ['local', 'agent'])
+@pytest.mark.parametrize('state', ['unchecked', 'stale', 'blocked', 'prototype_stale', 'pending_comments', 'allowlist'])
+def test_execution_gate_has_no_side_effects(thin, monkeypatch, mode, state):
+    from dss.api import run
+    client, app, bid, folder = thin
+    load(client, bid)
+    use_model(monkeypatch, app)
+    if state != 'unchecked':
+        _, ready = check(client, app, bid)
+        assert ready['state'] == 'ready' and not ready['prototype_stale']
+    ledger = req.load(folder)
+    if state == 'stale':
+        user(app, bid, 'New unassessed request')
+    elif state == 'blocked':
+        ledger.scope_error = 'Reduce the scope'
+        req.save(folder, ledger, req.evaluate(req.inputs(app.state.db, bid, folder), ledger, capabilities.Checker(capabilities.load_registry())))
+    elif state == 'prototype_stale':
+        ledger.prototype_stale = True
+        req.save(folder, ledger)
+    elif state == 'pending_comments':
+        ledger = req.stage_comments(ledger, [{'component_id': 'p1_revenue', 'text': 'Animate GPS'}])
+        req.save(folder, ledger)
+    elif state == 'allowlist':
+        monkeypatch.setenv('DSS_ALLOWED_TYPES', 'text')
+    app.state.config.engine_mode = mode
+    # A pre-existing recipe never grants permission. Even an offline agent must
+    # not hide the intent refusal behind a deployment precondition.
+    (folder / 'recipe.jsonl').write_bytes(b'previous complete recipe\n')
+    before = {p: p.read_bytes() for p in folder.rglob('*') if p.is_file()}
+    def refuse(*args, **kwargs):
+        pytest.fail('blocked request reached compilation or job preparation')
+    monkeypatch.setattr(run, 'compile_recipe', refuse)
+    monkeypatch.setattr(run, 'compile_current', refuse)
+    monkeypatch.setattr(app.state.agent_jobs, 'prepare', refuse)
+    with app.state.db.connect() as conn:
+        traces = conn.execute('SELECT count(*) FROM traces').fetchone()[0]
+    for endpoint in ('recipe', 'run'):
+        response = client.post(f'/api/builds/{bid}/{endpoint}')
+        assert response.status_code == 409, response.text
+        error = response.json()['error']
+        assert error['code'] == 'feasibility_blocked'
+        assert set(error['detail']) == {'assessment_id', 'issue_ids'}
+    assert all(p.read_bytes() == value for p, value in before.items())
+    assert not app.state.engine_busy and not app.state.engine_tasks and not app.state.harness.active_builds
+    assert not app.state.agent_jobs.jobs
+    with app.state.db.connect() as conn:
+        assert conn.execute('SELECT count(*) FROM traces').fetchone()[0] == traces
+    assert client.get(f'/api/builds/{bid}').json()['stage'] == 'prototype'
+
+
+def test_legacy_and_supported_no_image_recover_before_execution(thin, monkeypatch):
+    client, app, bid, folder = thin
+    load(client, bid)
+    assert client.post(f'/api/builds/{bid}/recipe').json()['error']['code'] == 'feasibility_blocked'
+    model = use_model(monkeypatch, app)
+    _, assessment = check(client, app, bid)
+    assert assessment['state'] == 'ready' and not assessment['prototype_stale']
+    assert model.calls == 0
+    assert client.post(f'/api/builds/{bid}/recipe').status_code == 200
+    assert client.post(f'/api/builds/{bid}/run').status_code == 202
+    client.portal.call(drain, app)
+    assert client.get(f'/api/builds/{bid}').json()['stage'] == 'done'
+
+
+def test_new_version_copies_intent_without_authorization(thin, monkeypatch):
+    client, app, bid, folder = thin
+    load(client, bid)
+    sid = user(app, bid, 'Show a bar chart of sum revenue by region')
+    animation_id = user(app, bid, 'Animate GPS points along a route')
+    use_model(monkeypatch, app, extracted(sid, component_ids=['p1_regions'],
+        mappings=[{'label': 'Revenue', 'field': 'revenue', 'aggregation': 'sum'}]),
+        extracted(animation_id, 'animation.temporal_playback', 'Animate GPS points along a route'))
+    _, blocked = check(client, app, bid)
+    assessment = choose(client, bid, blocked, drop(blocked['issues'][0])).json()
+    assert assessment['state'] == 'ready'
+    # Keep representative reference bytes/observations. Style is already fulfilled
+    # by the existing prototype; this fixture establishes the copied input proof.
+    reference = {'id': 'ref_copy', 'mode': 'style', 'instructions': '', 'images': [
+        {'id': 'img_copy', 'name': 'reference.png', 'file': 'reference_img_copy.png'}],
+        'summary': 'Blue', 'interpretation': {}}
+    (folder / 'references.json').write_text(json.dumps(reference), encoding='utf-8')
+    (folder / 'reference_img_copy.png').write_bytes(png())
+    ledger = req.load(folder)
+    snapshot, checker = req.inputs(app.state.db, bid, folder), capabilities.Checker(capabilities.load_registry())
+    req.save(folder, ledger, req.evaluate(snapshot, ledger, checker))
+    before = {p: p.read_bytes() for p in folder.rglob('*') if p.is_file()}
+    response = client.post(f'/api/builds/{bid}/versions')
+    assert response.status_code == 201, response.text
+    destination = folder.parent / 'v2'
+    copied = req.load(destination)
+    assert copied.assessment is None and copied.verification == {}
+    assert copied.requirements == ledger.requirements and copied.decisions == ledger.decisions
+    assert (destination / 'references.json').read_bytes() == (folder / 'references.json').read_bytes()
+    assert (destination / 'reference_img_copy.png').read_bytes() == png()
+    assert all(p.read_bytes() == value for p, value in before.items())
+    assert client.get(f'/api/builds/{bid}/feasibility').json()['state'] == 'unchecked'
+    for endpoint in ('recipe', 'run'):
+        assert client.post(f'/api/builds/{bid}/{endpoint}').json()['error']['code'] == 'feasibility_blocked'
+    _, fresh = check(client, app, bid)
+    assert fresh['state'] == 'ready' and fresh['id'] != assessment['id']
+    assert client.post(f'/api/builds/{bid}/recipe').status_code == 200
+
+
+@pytest.mark.parametrize('slot', ['component', 'logo'])
+@pytest.mark.parametrize('path', ['reference_img_123.png', 'images/reference_img_123.png', 'Reference_img_123.png',
+                                  'sub\\REFERENCE_img_123.png'])
+def test_screenshot_cannot_replace_bound_charts(thin, monkeypatch, slot, path):
+    from dss.recipe.compiler import compile_recipe
+    from dss.render.prototype import image_url
+    from dss.spec.models import DashboardSpec
+    from dss.spec.validate import validate_spec
+    client, app, bid, folder = thin
+    load(client, bid)
+    spec = DashboardSpec.model_validate_json((folder / 'spec.json').read_text(encoding='utf-8'))
+    page = spec.pages[0]
+    if slot == 'component':
+        page.components[0].type = 'image'
+        page.components[0].image_path = path
+    else:
+        # Logos are flattened into the recipe background image.
+        page.decorations.append(page.decorations[0].model_copy(update={
+            'id': 'p1_logo', 'kind': 'logo', 'text': None, 'style': {'image_path': path}}))
+    with pytest.raises(ValueError, match='Reference screenshots'):
+        compile_recipe(spec, 1)
+    # Plan/revise validation refuses it before any prototype is published.
+    assert any('Reference screenshots' in e['message'] for e in validate_spec(spec))
+    (folder / 'reference_img_123.png').write_bytes(png())
+    with pytest.raises(ValueError, match='Reference screenshots'):
+        image_url(path, folder)
+    # Through the API: a ready build with such a spec compiles and starts nothing.
+    (folder / 'spec.json').write_text(spec.model_dump_json(), encoding='utf-8')
+    use_model(monkeypatch, app)
+    check(client, app, bid)
+    (folder / 'recipe.jsonl').write_bytes(b'previous complete recipe\n')
+    for endpoint in ('recipe', 'run'):
+        response = client.post(f'/api/builds/{bid}/{endpoint}')
+        assert response.status_code in (409, 422), response.text
+    client.portal.call(drain, app)
+    assert (folder / 'recipe.jsonl').read_bytes() == b'previous complete recipe\n'
+    assert not app.state.engine_tasks and not app.state.agent_jobs.jobs
+
+
+def test_interview_extraction_validates_completed_stream_only(thin, monkeypatch):
+    from google.adk.models.llm_response import LlmResponse
+    from google.genai import types
+    client, app, bid, folder = thin
+    class Streamed(FakeLLM):
+        async def generate_content_async(self, request, stream=False):
+            assert stream
+            self.calls += 1
+            yield LlmResponse(partial=True, content=types.Content(role='model', parts=[types.Part(text='Thinking', thought=True)]))
+            yield LlmResponse(partial=True, content=types.Content(role='model', parts=[types.Part(text='{"requirements":[')]))
+            yield LlmResponse(content=types.Content(role='model', parts=[types.Part(text=self.response)]))
+    with app.state.db.connect() as conn:
+        conn.execute("UPDATE builds SET stage='interview' WHERE id=?", (bid,))
+    model = Streamed()
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: model)
+    sid = user(app, bid, 'Animate GPS points along a route')
+    model.response = json.dumps({'requirements': [extracted(sid, 'animation.temporal_playback')]})
+    async def interview():
+        from dss.harness.guardrails import RunError
+        with pytest.raises(RunError) as error:
+            await app.state.harness.run('interview', bid, {'config': app.state.settings.get(), 'text': 'Animate GPS points along a route'})
+        assert error.value.code == 'feasibility_blocked'
+    client.portal.call(interview)
+    assessment = client.get(f'/api/builds/{bid}/feasibility').json()
+    assert assessment['state'] == 'blocked' and assessment['issues'][0]['status'] == 'unsupported_app'
+    assert model.calls == 1 and req.load(folder).requirements[0].source.id == sid
+
+
+def test_confirmed_reapply_compiles_runs_and_carries_to_new_version(thin, monkeypatch):
+    from dss.spec.models import DataField
+    from test_revise import seed_revision, CommentFlow, response, op, post_batch, reapply_batch
+    client, app, bid, folder = thin
+    _, _, _, spec, *_ = seed_revision(app, bid, monkeypatch)
+    spec.datasource.fields.append(DataField(name='observed_at', type='DATE', label='Observed at', role='dimension'))
+    (folder / 'spec.json').write_text(spec.model_dump_json(), encoding='utf-8')
+    fake = CommentFlow(needs_by_text={'Animate GPS': [{'capability': 'animation.temporal_playback'}]}, response=response([
+        op('/pages/0/components/0/type', 'time_series'), op('/pages/0/components/0/date_dimension', 'observed_at'),
+        op('/pages/0/components/0/grid/h', 10)]))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
+    a = post_batch(client, app, bid, [{'component_id': 'p1_revenue', 'text': 'Animate GPS'}])
+    chosen = choose(client, bid, a, accept(a['issues'][0]))
+    assert chosen.status_code == 200
+    a = client.get(f'/api/builds/{bid}/feasibility').json()
+    a = reapply_batch(client, app, bid, a)
+    assert a['state'] == 'ready' and not a['prototype_stale']
+    decisions = req.load(folder).decisions
+    assert decisions[0]['applied']
+    assert client.post(f'/api/builds/{bid}/recipe').status_code == 200
+    assert client.post(f'/api/builds/{bid}/run').status_code == 202
+    client.portal.call(drain, app)
+    assert client.get(f'/api/builds/{bid}').json()['stage'] == 'done'
+    assert client.post(f'/api/builds/{bid}/versions').status_code == 201
+    destination = folder.parent / 'v2'
+    assert req.load(destination).assessment is None and req.load(destination).decisions == decisions
+    _, a = check(client, app, bid)
+    assert a['state'] == 'ready' and a['issues'][0]['resolution'] == 'accepted_alternative'
+    assert client.post(f'/api/builds/{bid}/recipe').status_code == 200
+    assert fake.extractions == 1 and fake.revisions == 1
+    # Changing a prerequisite must revoke the carried choice before queuing again.
+    data = json.loads((destination / 'spec.json').read_text(encoding='utf-8'))
+    data['datasource']['fields'] = [f for f in data['datasource']['fields'] if f['name'] != 'observed_at']
+    (destination / 'spec.json').write_text(json.dumps(data), encoding='utf-8')
+    for endpoint in ('recipe', 'run'):
+        result = client.post(f'/api/builds/{bid}/{endpoint}')
+        assert result.status_code == 409 and result.json()['error']['code'] == 'feasibility_blocked'
+    _, a = check(client, app, bid)
+    assert a['state'] == 'blocked' and any(i['resolution'] == 'unresolved' for i in a['issues'])
+
+
 def test_legacy_check_one_trace_no_side_effects(thin, monkeypatch):
     client, app, bid, folder = thin
     load(client, bid)
@@ -132,8 +343,9 @@ def test_native_product_exclusion_is_distinct(thin, monkeypatch):
     assert a["state"] == "blocked" and a["issues"][0]["status"] == "unsupported_product"
 
 
-@pytest.mark.parametrize("count,finish,raw", [(4001, "STOP", None), (4000, "MAX_TOKENS", '{"requirements":[')])
-def test_output_token_limit_blocks_without_repair(thin, monkeypatch, count, finish, raw):
+@pytest.mark.parametrize("count,finish,raw,error", [(4001, "STOP", None, None),
+    (4000, "MAX_TOKENS", '{"requirements":[', None), (100, "MAX_TOKENS", '{"requirements":[', 'MAX_TOKENS')])
+def test_output_token_limit_blocks_without_repair(thin, monkeypatch, count, finish, raw, error):
     from google.adk.models.llm_response import LlmResponse
     from google.genai import types
     client, app, bid, folder = thin
@@ -142,7 +354,7 @@ def test_output_token_limit_blocks_without_repair(thin, monkeypatch, count, fini
         async def generate_content_async(self, request, stream=False):
             self.calls += 1
             yield LlmResponse(content=types.Content(role="model", parts=[types.Part(text=self.response)]),
-                finish_reason=types.FinishReason(finish),
+                finish_reason=types.FinishReason(finish), error_code=error,
                 usage_metadata=types.GenerateContentResponseUsageMetadata(candidates_token_count=count))
     model = OverOutput(response=raw or json.dumps({"requirements": [extracted(sid)]}))
     monkeypatch.setattr(app.state.models, "llm_for", lambda _: model)
@@ -150,10 +362,27 @@ def test_output_token_limit_blocks_without_repair(thin, monkeypatch, count, fini
     assert a["state"] == "blocked" and "4k output" in a["issues"][0]["reason"] and model.calls == 1
 
 
+def test_gemini_extraction_reserves_bounded_output_for_json(thin, monkeypatch):
+    client, app, bid, folder = thin
+    sid = user(app, bid, 'Show a bar')
+    model = use_model(monkeypatch, app, extracted(sid))
+    model.model = 'gemini-3.8-flash'
+    check(client, app, bid)
+    config = model.requests[0].config
+    assert config.max_output_tokens == 4000
+    assert config.thinking_config.thinking_level == 'LOW'
+
+
 @pytest.mark.parametrize("text,field,agg,state", [
     ("Show Revenue; I have gross_sales and net_sales", "gross_sales", "sum", "blocked"),
     ("Revenue is gross_sales or net_sales; sum in USD by month", "gross_sales", "sum", "blocked"),
     ("Do not use gross_sales for Revenue", "gross_sales", None, "blocked"),
+    ("For the regional sales director, Revenue means net_sales; sum in USD by month", "net_sales", "sum", "ready"),
+    ("For our CFO, use net_sales for Revenue; sum in USD by month", "net_sales", "sum", "ready"),
+    ("For the global finance manager, Revenue means net_sales; sum in USD by month", "net_sales", "sum", "ready"),
+    ("For the CFO if asked, Revenue means gross_sales; sum in USD by month", "gross_sales", "sum", "blocked"),
+    ("For the regional sales director, do not use gross_sales for Revenue; sum in USD by month", "gross_sales", "sum", "blocked"),
+    ("If we ever change it, Revenue means gross_sales; sum in USD by month", "gross_sales", "sum", "blocked"),
     ("Use net_sales for Revenue; sum in USD by month", "net_sales", "sum", "ready"),
     ("Revenue means net_sales; average in USD by month", "net_sales", "sum", "blocked"),
     ("Revenue means net_sales; average in USD by month", "net_sales", "avg", "ready")])
@@ -167,6 +396,14 @@ def test_mapping_definition_and_aggregation_are_not_inferred(thin, monkeypatch, 
     assert a["state"] == state
     if state == "blocked":
         assert all(i["status"] == "needs_clarification" for i in a["issues"])
+
+
+@pytest.mark.parametrize('text,grain,ready', [('Show daily revenue trend', 'day', True),
+    ('Show monthly revenue trend', 'month', True), ('Show monthly revenue trend', 'day', False)])
+def test_date_grain_preserves_daily_and_monthly_meaning(text, grain, ready):
+    mapping = req.Mapping(label='revenue', field='revenue', date_grain=grain)
+    requirement = req.Requirement(id='r', source=req.Source(id='m', kind='message', text=text), text=text, mappings=[mapping])
+    assert (req.mapping_verdict(mapping, requirement, {'revenue': 'FLOAT'}) is None) == ready
 
 
 def test_removed_source_field_not_resurrected_by_old_spec(thin, monkeypatch):

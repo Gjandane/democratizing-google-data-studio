@@ -301,6 +301,8 @@ def test_engine_run_consolidates_in_the_background(thin, monkeypatch):
     load(client, bid)
     (folder / "docs").mkdir(exist_ok=True)
     write_doc(folder / "docs/brief.md", {"type": "Dashboard Brief", "title": "Dashboard Brief"}, "Brief from the run.")
+    from fakes import ready_fixture
+    ready_fixture(app, bid, folder)
     assert client.post(f"/api/builds/{bid}/recipe").status_code == 200
     assert client.post(f"/api/builds/{bid}/run").status_code == 202
     assert wait_done(client, bid)["stage"] == "done"

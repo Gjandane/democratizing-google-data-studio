@@ -328,6 +328,8 @@ def test_run_executes_revised_spec_not_compiled_recipe(setup, client, monkeypatc
     app,bid,folder,original,_,_ = setup
     monkeypatch.setenv('DSS_ENGINE_CMD', f'"{sys.executable}" "{ROOT / "tests/fake_engine.py"}"')
     monkeypatch.setenv('DSS_ENGINE_DRY_RUN', '1')
+    from fakes import ready_fixture
+    ready_fixture(app, bid, folder)
     assert client.post(f'/api/builds/{bid}/recipe').status_code == 200
     stale = (folder/'recipe.jsonl').read_text(encoding='utf-8')
     revised = revise_through_api(client, app, bid)

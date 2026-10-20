@@ -9,6 +9,9 @@ from google.genai import types
 
 logger = logging.getLogger(__name__)
 
+PLANNER_NODES = frozenset({"plan", "spec"})
+PLANNER_TIMEOUT_MS, WORKER_TIMEOUT_MS = 120_000, 30_000
+
 
 async def list_models(key):
     def fetch():
@@ -75,7 +78,13 @@ class ModelRouter:
             self.planner_model = self.worker_model
 
     def model_for(self, node):
-        return self.planner_model if node in {"plan", "spec"} else self.worker_model
+        return self.planner_model if node in PLANNER_NODES else self.worker_model
+
+    @staticmethod
+    def timeout_ms(node):
+        """google-genai sends the client timeout to Google as the server deadline (a 504 when
+        exceeded), and a per-request timeout does not override it: set it on the client."""
+        return PLANNER_TIMEOUT_MS if node in PLANNER_NODES else WORKER_TIMEOUT_MS
 
     def llm_for(self, node):
         key = self.settings.get().google_api_key.get_secret_value()
@@ -83,4 +92,4 @@ class ModelRouter:
             from dss.harness.guardrails import RunError
             raise RunError("llm_unavailable", "Set the Google API key in Settings", 503)
         return Gemini(model=self.model_for(node), client=genai.Client(
-            api_key=key, http_options=types.HttpOptions(timeout=30000)))
+            api_key=key, http_options=types.HttpOptions(timeout=self.timeout_ms(node))))

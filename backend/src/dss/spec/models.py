@@ -4,6 +4,23 @@ from pydantic import BaseModel, ConfigDict, Field
 
 TYPES = ("scorecard", "time_series", "bar", "pie", "table", "pivot_table", "geo_map", "scatter", "text", "image", "date_range", "dropdown")
 
+
+def reference_image(path):
+    """True for a stored reference screenshot (code names them reference_*), whatever the folder,
+    case or separator: a screenshot is evidence, never a recipe image, logo or background."""
+    return str(path).replace('\\', '/').rsplit('/', 1)[-1].casefold().startswith('reference_')
+
+
+def image_paths(spec):
+    """(path, image path) for every spec image asset: image components and logo decorations."""
+    for p, page in enumerate(spec.pages):
+        for i, c in enumerate(page.components):
+            if c.image_path:
+                yield f"pages.{p}.components.{i}.image_path", c.image_path
+        for i, d in enumerate(page.decorations):
+            if d.style.get('image_path'):
+                yield f"pages.{p}.decorations.{i}.style.image_path", d.style['image_path']
+
 class Model(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

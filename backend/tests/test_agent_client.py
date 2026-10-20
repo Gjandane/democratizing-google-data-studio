@@ -126,6 +126,8 @@ class LiveServer:
         (folder / "background_p1.png").write_bytes(b"fake-background")
         with self.app.state.db.connect() as conn:
             conn.execute("UPDATE builds SET stage='prototype' WHERE id=?", (bid,))
+        from fakes import ready_fixture
+        ready_fixture(self.app, bid, folder)
         return bid, folder
 
     def run(self, bid):
@@ -351,6 +353,8 @@ def test_nested_image_inputs_reach_the_engine_as_plain_files(server, wrapper, fa
     with running(agent):
         bid, source = server.queue_build()
         nested_inputs(source)
+        from fakes import ready_fixture
+        ready_fixture(server.app, bid, source)
         server.run(bid)
         assert server.finished(bid)["stage"] == "done"
     canonical = [json.loads(line) for line in

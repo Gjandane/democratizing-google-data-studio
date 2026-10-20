@@ -5,7 +5,7 @@ from dotenv import dotenv_values
 from pydantic import ValidationError
 from dss.config import BACKEND_DIR
 from dss.memory.semantic import parse_concept
-from dss.spec.models import DashboardSpec
+from dss.spec.models import DashboardSpec, image_paths, reference_image
 from dss.spec.layout import box
 
 
@@ -42,6 +42,9 @@ def validate_spec(value, *, allowed=None, high_priority=(), catalog_root=None):
             error(f"datasource.fields.{i}.name", "Field names must be unique")
         fields[field.name] = field
     ids, refs = set(), set()
+    for path, image in image_paths(spec):
+        if reference_image(image):
+            error(path, "Reference screenshots are evidence, never dashboard images or backgrounds")
     page = spec.pages[0]
     if page.index != 1:
         error("pages.0.index", "The single page must have index 1")

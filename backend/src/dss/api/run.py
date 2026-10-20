@@ -7,6 +7,7 @@ from dss.harness.guardrails import RunError
 from dss.harness.nodes.execute import execute
 from dss.harness.nodes.compile import perform as compile_current
 from dss.recipe.compiler import compile_recipe, preview
+from dss.spec.requirements import execution_preflight
 
 router = APIRouter(prefix="/api/builds")
 
@@ -25,15 +26,29 @@ def refresh(folder, version):
     compile_current(spec, version, folder)
 
 
+def gate(state, build_id, folder):
+    try:
+        read_spec(folder)
+        execution_preflight(state.db, build_id, folder)
+    except RunError:
+        raise
+    except ValueError:
+        raise RunError('invalid_recipe', 'Spec could not be compiled into a recipe', 422) from None
+
+
 @router.post("/{build_id}/recipe")
 async def recipe(build_id: str, request: Request):
     state = request.app.state
     build, folder = current(state, build_id)
     require_prototype(build)
+    if build_id in state.harness.active_builds:
+        raise RunError('wrong_stage', 'Another action is running', 409, {'stage': build['stage']})
     # An agent job keeps serving this folder's files until it is released.
     if any(job.data["build_id"] == build_id for job in state.agent_jobs.running.values()):
         raise RunError("wrong_stage", "A build is still running for this version", 409, {"stage": build["stage"]})
+    gate(state, build_id, folder)
     async def perform(run_id):
+        gate(state, build_id, folder)
         # Preview in code (never the engine): hosted agent mode has none. Preview before
         # publishing so a failure leaves the previous recipe in place.
         version = build["current_version"]
@@ -59,6 +74,7 @@ async def run(build_id: str, request: Request):
     require_prototype(build)
     if build_id in state.harness.active_builds:
         raise RunError("wrong_stage", "Another action is running", 409, {"stage": build["stage"]})
+    gate(state, build_id, folder)
     if not (folder / "recipe.jsonl").is_file():
         raise RunError("wrong_stage", "Compile the recipe before running it", 409, {"stage": build["stage"]})
     agent_mode = state.config.engine_mode == "agent"

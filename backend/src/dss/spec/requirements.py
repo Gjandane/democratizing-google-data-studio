@@ -370,6 +370,10 @@ def _normal(text):
     return re.sub(r"[^a-z0-9]", "", text.lower())
 
 
+_AUDIENCE_ROLE = (r'(?:(?:sales|finance|marketing|operations|product|engineering|executive|leadership)\s+'
+                  r'(?:director|manager|team|leaders?|analysts?)|ceo|cfo|cto|coo|executives?|analysts?|leadership)')
+
+
 def audience_requirement(requirement):
     """Code-owned, bounded interview metadata; never downgrade free-form behavior.
 
@@ -378,17 +382,19 @@ def audience_requirement(requirement):
     """
     if requirement.needs or requirement.mappings or requirement.source.kind != 'message':
         return False
-    role = (r'(?:(?:sales|finance|marketing|operations|product|engineering|executive|leadership)\s+'
-            r'(?:director|manager|team|leaders?|analysts?)|ceo|cfo|cto|coo|executives?|analysts?|leadership)')
     prefix = r'(?:(?:help|for|this is for|the dashboard is for|(?:the )?audience (?:is|:))\s+)?(?:our\s+|my\s+|the\s+|a\s+|an\s+)?'
-    return bool(re.fullmatch(prefix + role + r'[.!]?', ' '.join(requirement.source.text.strip().split()), re.I))
+    return bool(re.fullmatch(prefix + _AUDIENCE_ROLE + r'[.!]?', ' '.join(requirement.source.text.strip().split()), re.I))
 
 
 def _assignment(text, mapping):
     if not mapping.field:
         return None
     field_pattern, label_pattern = re.escape(mapping.field), re.escape(mapping.label)
-    return re.search(r"(?:^|[.;\n])\s*(?:please\s+)?(?:use\s+" + field_pattern + r"\s+(?:for|as)\s+" + label_pattern
+    # A bounded audience prefix does not change a following positive definition.
+    # Do not accept arbitrary comma clauses (negation, conditionals or quotations).
+    # One optional qualifier word before the role ("regional", "global").
+    audience = r'(?:for\s+(?:(?:the|our|my|a|an)\s+)?(?:[a-z][a-z-]*\s+)?' + _AUDIENCE_ROLE + r'\s*,\s*)?'
+    return re.search(r"(?:^|[.;\n])\s*" + audience + r"(?:please\s+)?(?:use\s+" + field_pattern + r"\s+(?:for|as)\s+" + label_pattern
         + r"|" + label_pattern + r"\s*(?:means|is|uses|=|:)\s*" + field_pattern + r")(?=\s*(?:$|[,.;\n]))", text, re.I)
 
 
@@ -405,7 +411,7 @@ def mapping_verdict(mapping, requirement, fields):
     if label != _normal(field) and not explicit:
         return capabilities.Verdict("needs_clarification", f"Confirm which field defines {mapping.label}; proposed {field} is not an explicit definition")
     terms = {"sum": ("sum", "summed", "total", "totals"), "avg": ("avg", "average", "mean"),
-             "count_distinct": ("count_distinct", "distinct", "unique")}
+             "count_distinct": ("count_distinct", "distinct", "unique"), "day": ("day", "daily")}
     for name in ("aggregation", "unit", "date_grain"):
         value = getattr(mapping, name)
         if value is None:
@@ -631,6 +637,41 @@ def plan_preflight(db, build_id, folder):
         ledger.verification = verification(snapshot, ledger, checker)
         save(folder, ledger, assessment)
         raise blocked(assessment)
+
+
+def execution_preflight(db, build_id, folder):
+    """Require a current proof before compilation or any engine/job side effect.
+
+    Recovery is explicit: an unchecked or expired assessment cannot authorize a
+    recipe just because deterministic support checks would succeed today.
+    Call while holding the build action lock, or without yielding before taking it.
+    """
+    snapshot, ledger, checker = inputs(db, build_id, folder), load(folder), capabilities.Checker(capabilities.load_registry())
+    current = get(snapshot, ledger, checker)
+    if current.state != 'ready' or current.prototype_stale:
+        raise blocked(current)
+    assessment = evaluate(snapshot, ledger, checker)
+    if assessment.state != 'ready':
+        save(folder, ledger, assessment)
+        raise blocked(assessment)
+    # Assessment proves support; coverage also proves that the saved dashboard
+    # actually fulfills the original requirements, including confirmed choices.
+    errors = coverage_errors(snapshot, ledger, checker)
+    if errors:
+        assessment.state = 'blocked'
+        assessment.issues = [Issue(id='issue_' + digest(error)[:24], requirement='Dashboard fulfillment',
+            status='needs_clarification', reason=error['message']) for error in errors[:MAX_ISSUES]]
+        save(folder, ledger, assessment)
+        raise blocked(assessment)
+
+
+def copy_version(db, build_id, folder, destination):
+    """Carry intent and valid choices, never the source version's authorization."""
+    snapshot, ledger, checker = inputs(db, build_id, folder), load(folder), capabilities.Checker(capabilities.load_registry())
+    updated = revalidate_decisions(snapshot, ledger, checker)
+    updated.prototype_stale = artifact_stale(snapshot, ledger, checker)
+    updated.assessment, updated.invalidated, updated.verification = None, False, {}
+    save(destination, updated)
 
 
 def coverage_errors(snapshot, ledger, checker, *, bindings=None):

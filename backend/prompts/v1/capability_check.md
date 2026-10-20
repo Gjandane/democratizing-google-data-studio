@@ -13,6 +13,19 @@ Extract proposed field mappings with the original label, field (null if ambiguou
 aggregation and date_grain. Do not choose gross vs net, sum vs average or a date grain without
 an explicit definition. Screenshot values are never dataset rows or confirmed definitions.
 
+For ordinary text, distinguish field labels from aggregation words: "total revenue" means
+label "revenue" with aggregation "sum", not a new label "Total revenue". Only add mappings
+for labels actually requested by the source. Do not invent a "Date" label for a trend;
+use the chart.time_series date_field prerequisite for its unambiguous typed date column.
+Keep ambiguous labels such as Revenue with gross_sales and net_sales unresolved. Daily means
+day grain, weekly means week, monthly means month; a review cadence is not a chart date grain.
+
+Registry values/value_type constrain Need.value. When both are null, value MUST be null.
+Exact titles belong in properties as {"path":"label","value":"the requested title"},
+alongside an argument.title need with null value. Grid/text/style values likewise use properties.
+A bar's primary category dimension is not an argument.breakdown request; breakdown means an
+explicit additional series/split field. Do not add features the source does not request.
+
 The current ledger is mandatory context. Never rewrite or remove its requirements. Extract
 only the new sources; code merges them. component_ids may propose existing spec bindings.
 At most 40 requirements and 4000 output tokens. No tools, searches, repair calls or prose verdicts.

@@ -127,6 +127,7 @@ async def new_version(build_id: str, request: Request):
                        {"stage": build["stage"]})
     document = read_spec(folder)
     async def perform(run_id):
+        from dss.spec.requirements import copy_version
         number = build["current_version"] + 1
         destination = folder.parent / f"v{number}"
         # Reuse deterministic render inputs and the existing view, never engine outputs.
@@ -139,6 +140,7 @@ async def new_version(build_id: str, request: Request):
                     shutil.copytree(path, destination / path.name)
                 else:
                     shutil.copy2(path, destination / path.name)
+            copy_version(state.db, build_id, folder, destination)
         import asyncio
         await asyncio.to_thread(copy_inputs)
         with state.db.connect() as conn:

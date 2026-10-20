@@ -491,10 +491,16 @@ def test_previews_need_access(tmp_path, monkeypatch):
 
 def test_reference_images_never_reach_recipes(ref):
     client, app, bid, folder, model, _ = ref
-    upload(client, app, bid, [("files", ("a.png", png(), "image/png"))])
+    from fakes import ready_fixture
+    ready_fixture(app, bid, folder)
     recipe = client.post(f"/api/builds/{bid}/recipe")
     assert recipe.status_code == 200, recipe.text
     assert "reference_" not in json.dumps(recipe.json())
+    before = (folder / 'recipe.jsonl').read_bytes()
+    upload(client, app, bid, [("files", ("a.png", png(), "image/png"))])
+    recipe = client.post(f"/api/builds/{bid}/recipe")
+    assert recipe.status_code == 409 and recipe.json()['error']['code'] == 'feasibility_blocked'
+    assert (folder / 'recipe.jsonl').read_bytes() == before
 
 
 def test_decoder_failure_answers_in_the_error_shape(ref, monkeypatch):
