@@ -21,6 +21,14 @@
   placement is checked in the manual screenshots.
 - Tests use the mock (`resetMockState()` per test; knobs `setMockEngine`, `setMockBuildOutcome`,
   `setMockSession`); no jest-dom: assert `el.disabled`, drive with `fireEvent`. Guards are exact.
+- Test traps: under fake timers wrap mock calls (`await vi.runAllTimersAsync(); return promise`,
+  tests/activity.test.tsx `call`), since mock `respond` uses `setTimeout(0)`; vitest has
+  `URL.createObjectURL`, so spy `prototypeUrl` with `mockImplementation(httpApi.prototypeUrl)` to
+  assert `?v=`; build-stage tests use `fixtures.build.id` (mock `compileRecipe` needs
+  `spec_version`); call `button.focus()` before `fireEvent.click` to assert Modal focus return.
+- Workspace panels (references, feasibility, synthetic) share the build's one EventSource through
+  stretch.ts `subscribeWorkspace`/`publishWorkspace`; WorkspaceShell owns the feasibility gates
+  (planReady/buildReady); a panel drops a response older than its latest request or assessment id.
 - Run `node` values are the api.md 1.5 names; StretchRoute `'audit'` is a route, not a node.
 - New actions (reference, feasibility, synthetic) match their run by the `run_id` from the `202`,
   never by node, and refetch their resource on that run's `run.finished`. The stretch 404-hide

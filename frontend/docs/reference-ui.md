@@ -2,7 +2,9 @@
 
 ## Controls and states
 - Reuse Studio Light tokens/components; no new page. References panel in Connect and Interview;
-  also reachable in Prototype. Chat has an Attach reference button opening the same panel.
+  also reachable in Prototype, where it starts collapsed (Attach reference expands it) so the
+  canvas top shows above the fold at 1280x800. Chat has an Attach reference button opening the same panel.
+- Remove references and Discard pending comments ask for confirmation first (they lose work).
 - Visible radio choices: Use style / Recreate dashboard; labeled instructions textarea; native
   file chooser (drag/drop optional). Explain file limits before selection and check them before
   upload: style 1-3, recreate exactly 1 PNG/JPEG, 5 MiB each, 15 MiB total; 413/422 get
@@ -16,7 +18,10 @@
   link/focus chat. Copy: "This app cannot animate GPS points"; never an unsupported universal claim.
   Evidence: link only http(s) entries (new tab, screen-reader text); show repo paths as mono text.
 - Fetch assessment/reference set on load, reconnect, docs.updated/run.finished and successful
-  mutations. Unchecked/unknown assessment shows Check feasibility; unresolved issues disable
+  mutations. A background refetch keeps the last assessment or set and its controls in place (no
+  unmount, layout shift or focus loss), and the gates keep their last loaded state until it lands;
+  loading text only before the first load. A ready assessment with no open issue is one line.
+  Unchecked/unknown assessment shows Check feasibility; unresolved issues disable
   Generate/Build. Resolved stale intent enables Replan (or Reapply saved comments), while Build
   stays disabled until the prototype is current. Show saved batch targets/text after reload and
   an explicit Discard pending comments action. Keep old preview visibly stale; server remains authority.

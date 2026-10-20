@@ -64,19 +64,19 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
 ## Dependencies
 | Package | Registry | Version | Why | Verified |
 | --- | --- | --- | --- | --- |
-| react | npm | ^19.3.1 | UI | 2026-10-18 (19.3.1) |
-| react-dom | npm | ^19.3.1 | UI | 2026-10-18 (19.3.1) |
-| react-router-dom | npm | ^7.18.0 | two routes | 2026-10-18 (7.18.4) |
-| react-markdown | npm | ^10.1.0 | chat and docs markdown | 2026-10-18 (10.1.0) |
-| lucide-react | npm | ^1.59.0 | icons | 2026-10-18 (1.59.0) |
-| vite | npm | ^8.3.0 | dev server + proxy | 2026-10-18 (8.3.4) |
-| @vitejs/plugin-react | npm | ^6.1.0 | React in Vite | 2026-10-18 (6.1.2) |
-| typescript | npm | >=5.5 <6 | types | 2026-10-18 (7.0.2) |
-| tailwindcss | npm | ^4.3.0 | styling | 2026-10-18 (4.3.3) |
-| @tailwindcss/vite | npm | ^4.3.0 | Tailwind v4 plugin | 2026-10-18 (4.3.3) |
-| vitest | npm | ^5.0.0 | tests | 2026-10-18 (5.0.5) |
-| @testing-library/react | npm | ^16.3.0 | component tests | 2026-10-18 (16.3.3) |
-| jsdom | npm | ^30.1.0 | test DOM | 2026-10-18 (30.1.3) |
-| @testing-library/dom | npm | ^10.4.0 | peer of @testing-library/react | 2026-10-18 (10.4.2) |
-| @types/react | npm | ^19.0.0 | strict typecheck | 2026-10-18 (19.3.0) |
-| @types/react-dom | npm | ^19.0.0 | strict typecheck | 2026-10-18 (19.3.0) |
+| react | npm | ^19.3.1 | UI | 2026-10-20 (19.3.1) |
+| react-dom | npm | ^19.3.1 | UI | 2026-10-20 (19.3.1) |
+| react-router-dom | npm | ^7.18.0 | two routes | 2026-10-20 (7.18.4) |
+| react-markdown | npm | ^10.1.0 | chat and docs markdown | 2026-10-20 (10.1.0) |
+| lucide-react | npm | ^1.59.0 | icons | 2026-10-20 (1.60.0) |
+| vite | npm | ^8.3.0 | dev server + proxy | 2026-10-20 (8.3.4) |
+| @vitejs/plugin-react | npm | ^6.1.0 | React in Vite | 2026-10-20 (6.1.2) |
+| typescript | npm | >=5.5 <6 | types | 2026-10-20 (5.9.3) |
+| tailwindcss | npm | ^4.3.0 | styling | 2026-10-20 (4.3.3) |
+| @tailwindcss/vite | npm | ^4.3.0 | Tailwind v4 plugin | 2026-10-20 (4.3.3) |
+| vitest | npm | ^5.0.0 | tests | 2026-10-20 (5.0.5) |
+| @testing-library/react | npm | ^16.3.0 | component tests | 2026-10-20 (16.3.3) |
+| jsdom | npm | ^30.1.0 | test DOM | 2026-10-20 (30.1.3) |
+| @testing-library/dom | npm | ^10.4.0 | peer of @testing-library/react | 2026-10-20 (10.4.2) |
+| @types/react | npm | ^19.0.0 | strict typecheck | 2026-10-20 (19.3.0) |
+| @types/react-dom | npm | ^19.0.0 | strict typecheck | 2026-10-20 (19.3.0) |
