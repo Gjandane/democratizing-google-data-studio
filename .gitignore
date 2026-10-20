@@ -22,3 +22,7 @@ __pycache__/
 # Deck: QA renders and Office lock files
 deck/render/
 ~$*
+
+# local media, not part of the repo
+/Democratize_datastudio.mp4
+/thinking.png

@@ -109,3 +109,11 @@ context. Task status lives in docs/plan.md, not here.
 - Why: settles "Left open (program root)" (a)-(d) of frontend's 2026-10-20 delta audit entry; without (a) 2.5 could start before frontend finishes.
 - Affects: release 2.5 gate only; 4.3 follows 2.5 unchanged.
 - Checks: `lint` release 0 errors 0 warnings, engine 0/0, backend 0 errors (4 earlier size warnings), frontend 0 errors (2 earlier warnings); `program` 0 problems; `check_contracts.py` 9/9 PASS; frontend `npm test -- contract` 31/31; new fixtures' keys match their sibling fixtures and contract types.
+
+## 2026-10-20: Retro
+- Status: done
+- Subject: the architect skill's audit loop (user: stuck in auditing, audits keep adding tasks). Evidence and proposals in docs/retro.md: 25 audit-fix tasks program-wide (backend 15, frontend 6, engine 4); frontend Phases 8-9 were P3-only fix phases from re-audits; every plan/delta audit applied all findings.
+- Proposals: P1 severity bar and fix budget, P2 converging re-audit, P3 reviewer severity definitions, P4 change scope gate against the deadline, P5 script verdict fix. All five approved and applied.
+- Applied to: ~/.claude/skills/blueprint-solution-architect/references/audit.md (new "Severity bar" section, plan-audit step 3, Re-audits, final brief, verdicts) and references/change.md (Scope gate); ~/.claude/agents/blueprint-reviewer.md; the same in the Codex copies ~/.agents/skills/blueprint-solution-architect/references/{audit,change}.md and ~/.codex/agents/blueprint-reviewer.toml; scripts/blueprint.py `final_audit_state` (heading must be "Audit (final" or "Final audit"; verdict read by leading word, then uppercase only), copied to all four copies (md5 identical).
+- Checks: `program` now shows frontend "final audit DEFECTS" and release "not due" (were wrongly ACCEPTED); `lint` 0 errors 0 warnings; Codex reviewer TOML parses; no SKILL.md frontmatter touched; `claude` CLI not on PATH, so no plugin validate.
+- Left open: open fix tasks (backend 13.2-13.8, frontend 12.1-12.2) predate the new bar; moving the non-blockers to Later is a change in each part, the user's call.
