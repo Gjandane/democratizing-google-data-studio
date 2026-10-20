@@ -672,3 +672,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none.
 - Left open: P2 consolidate (background task inherits the execute run's listener) and eval judge retries are not recorded in their own traces - src/dss/harness/nodes/consolidate.py, src/dss/ops/eval.py.
 - Next: Task 12.1 Parameterized deterministic CSV generator and CLI.
+
+## 2026-10-20: Task 12.1 Parameterized deterministic CSV generator and CLI
+- Status: done
+- Plan check: off
+- What changed: new src/dss/data/synthetic.py: strict Pydantic GenerationSpec (8 generator kinds), `parse_spec`, `canonical_json`, `generate_csv(spec, output_path) -> GenerationResult`, `SyntheticError(field, message)` and CLI `python -m dss.data.synthetic` (exit 2 on SyntheticError, 1 on OSError, JSON result on stdout). tests/test_synthetic.py (115) + tests/data/synthetic-spec.json (14 columns, every kind).
+- Checks: `uv run pytest tests/test_synthetic.py` PASS (115); CLI golden PASS (sha256 b70c89f0..., 1529 bytes); 100,000x10: 8.2 s under tracemalloc (0.9 s without), peak 0.2 MiB traced; Test (all) `uv run pytest` PASS (844, 7 deselected). Reviewer: 1 P2 fixed (product corner bounds raised decimal.InvalidOperation: now localcontext(prec=60)), 3 P3 partly fixed (deep-nesting/lone-surrogate/model-size errors, second-operand null and range-end tests).
+- Decisions: GENERATOR_VERSION `dss-synthetic/1`; per-column `random.Random` seeded by sha256(version, seed, column index, name, stream) with own getrandbits rejection sampling (no stdlib randrange internals). Probabilities compare 53 random bits. Products: integer ticks, round half away from zero. Empty strings rejected (empty = null); number values <=6 decimals and distinct by numeric value; product fields must differ. generate_csv accepts JSON text/bytes, mapping or model, refuses an existing output (also for the function), writes a `.partial` temp beside it, publishes via os.link (no-replace). Single-column null rows are written `""` by csv.writer.
+- Tried and failed: none.
+- Gotchas: added the `""` single-column null row to Known gotchas (12.2 loader).
+- Left open: P3 duplicate-JSON-key error names the bare key, not its path; P3 no-hard-link fallback uses lexists+os.replace (race) and leaves an empty created parent dir on failure - src/dss/data/synthetic.py.
+- Next: Task 12.2 Synthetic generation API, typed intake and download.

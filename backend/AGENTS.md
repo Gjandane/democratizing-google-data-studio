@@ -63,3 +63,4 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - google-genai sends the client `HttpOptions(timeout)` to Google as the server deadline (504 when exceeded); a per-request timeout does not override it, so set it per node on the client.
 - Gemini max_output_tokens includes thinking; ADK may expose MAX_TOKENS as an error before scope handling. Bounded extraction needs a low thinking level and truncation-first handling.
 - Recipe 1.0 has no unit/grain chart options: retain units in the requirement ledger and implement explicit date grain with SQL view bucket fields.
+- csv.writer writes a null row of a single-column synthetic CSV as `""` (not a blank line): the typed BigQuery loader must load it as NULL and still count the row.

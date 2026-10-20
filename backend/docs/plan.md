@@ -303,7 +303,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: never more than one retry per call; no retry on 504; sanitized errors.
 
 ## Phase 12: Screenshot-only synthetic data (change 2026-10-19)
-- [ ] 12.1 Parameterized deterministic CSV generator and CLI
+- [x] 12.1 Parameterized deterministic CSV generator and CLI
   - Goal: reusable network-free Python function and module CLI produce fake CSV from typed schema, row_count and seed, with bounded relations and reproducible output.
   - Spec: ../contracts/synthetic-data.md#Generator request
   - Files: src/dss/data/synthetic.py, tests/test_synthetic.py, tests/data/synthetic-spec.json
