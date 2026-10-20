@@ -187,7 +187,9 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
     with harness.db.connect() as conn:
         version = conn.execute('SELECT current_version FROM builds WHERE id=?', (build_id,)).fetchone()[0]
     folder = config.data_dir / 'builds' / build_id / f'v{version}'
-    original = DashboardSpec.model_validate_json((folder / 'spec.json').read_text(encoding='utf-8')).model_dump()
+    from dss.api.prototype import read_spec
+    original = read_spec(folder, db=harness.db, build_id=build_id).model_dump()
+    migrating = original['datasource']['synthetic'] and original != json.loads((folder / 'spec.json').read_text(encoding='utf-8'))
     allowed = allowed_types() & catalog().keys()
     context = None
     questions_file = folder / 'docs/questions.md'
@@ -233,7 +235,7 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
             if errors:
                 raise PatchError(json.dumps(errors))
             candidate = DashboardSpec.model_validate(candidate).model_dump()
-            changed = candidate != original
+            changed = candidate != original or migrating
             candidate['spec_version'] = original['spec_version'] + int(changed)
             proposed = deepcopy(state['snapshot'])
             proposed['spec'] = candidate

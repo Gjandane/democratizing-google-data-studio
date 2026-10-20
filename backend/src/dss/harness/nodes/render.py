@@ -28,7 +28,8 @@ async def perform(harness, build_id, run_id, payload, trace):
     candidate = payload.get('_publication')
     if candidate:
         folder = candidate.folder
-    spec = DashboardSpec.model_validate_json((folder / 'spec.json').read_text(encoding='utf-8'))
+    from dss.api.prototype import read_spec
+    spec = read_spec(folder, db=harness.db, build_id=build_id)
     try:
         worker = asyncio.create_task(asyncio.to_thread(artifacts, spec, payload['factory'](config), folder))
         try:

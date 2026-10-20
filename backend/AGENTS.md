@@ -66,3 +66,4 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - csv.writer writes a null row of a single-column synthetic CSV as `""` (not a blank line): the typed BigQuery loader must load it as NULL and still count the row. With an explicit `null_marker=""` BigQuery does both (live-checked 12.2).
 - test_api_contract `shape()` compares every list item with the fixture's first item: heterogeneous lists (GenerationSpec columns) need an exact comparison instead.
 - SQLite's connection context manager does not close the handle: use `contextlib.closing` when inspecting backup snapshots, or Windows can block temporary-file cleanup.
+- Recipe preview rejects top-level boolean op arguments (for example `add_text.bold`); nested style booleans are accepted.

@@ -720,3 +720,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: none.
 - Next: Task 12.5 Synthetic label through prototype and report; live flow.
+
+## 2026-10-20: Task 12.5 Synthetic label through prototype and report; live flow
+- Status: done
+- Plan check: off
+- What changed: source-authoritative sample-data footer across spec, prototype, background, recipe, revision and copied versions; screenshot-only live acceptance.
+- Checks: `uv run pytest tests/test_synthetic_label.py tests/test_render.py` PASS (47); `uv run pytest -m live tests/live/test_synthetic_flow.py` PASS (2); Test (all) `uv run pytest` PASS (911, 9 live deselected, 3 dependency warnings). `git diff --check -- .` PASS. Read-only blueprint_reviewer: no findings. Visually inspected prototype and compared live background label pixels exactly; evidence `.blueprint/qa/task-12.5/`.
+- Decisions: `datasource.synthetic` is code-owned; participation matches base source plus joins. Immutable `p1_synthetic_sample_data` gets a reserved 64px footer, fixed contrast/font and native recipe text. Legacy reads restore provenance without mutating feasibility inputs; revisions (including no-ops) and versions publish restored artifacts. Outside Files: api/prototype.py, api/run.py, harness/nodes/compile.py and render.py wire authoritative loads/recompilation. AGENTS.md records preview boolean limitation. No dependencies.
+- Tried and failed: incomplete source fixtures; unsupported preview bold argument; live test import corrected. Initial live spec repair returned llm_unavailable; rerun passed. Background preview appeared blank; exact pixel comparison confirmed correct PNG.
+- Gotchas: none beyond AGENTS.md.
+- Left open: none.
+- Next: backend plan complete; final architect audit.

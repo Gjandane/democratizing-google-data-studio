@@ -17,10 +17,10 @@ def require_prototype(build):
         raise RunError("wrong_stage", "This action needs a prototype", 409, {"stage": build["stage"]})
 
 
-def refresh(folder, version):
+def refresh(folder, version, *, db=None, build_id=None):
     """Recompile from the current spec; a failure keeps the previous complete recipe."""
     try:
-        spec = read_spec(folder)
+        spec = read_spec(folder, db=db, build_id=build_id)
     except ValueError:
         raise RunError("invalid_recipe", "Spec could not be compiled into a recipe", 422) from None
     compile_current(spec, version, folder)
@@ -28,7 +28,7 @@ def refresh(folder, version):
 
 def gate(state, build_id, folder):
     try:
-        read_spec(folder)
+        read_spec(folder, db=state.db, build_id=build_id)
         execution_preflight(state.db, build_id, folder)
     except RunError:
         raise
@@ -53,7 +53,7 @@ async def recipe(build_id: str, request: Request):
         # publishing so a failure leaves the previous recipe in place.
         version = build["current_version"]
         try:
-            spec = read_spec(folder)
+            spec = read_spec(folder, db=state.db, build_id=build_id)
             ops = preview(compile_recipe(spec, version))
         except RunError:
             raise
@@ -83,7 +83,7 @@ async def run(build_id: str, request: Request):
     # Revisions and replans replace spec.json without recompiling. Refresh synchronously before
     # any reservation: no await separates the checks above from the lock, and a failure starts
     # nothing and leaves stage, locks and the previous recipe as they were.
-    refresh(folder, build["current_version"])
+    refresh(folder, build["current_version"], db=state.db, build_id=build_id)
     run_id = new_id("r")
     job = state.agent_jobs.prepare(run_id, build_id, folder, build["current_version"]) if agent_mode else None
     with state.db.connect() as conn:

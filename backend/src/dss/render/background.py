@@ -3,6 +3,18 @@ from playwright.sync_api import sync_playwright
 
 
 def capture(html, path, width, height):
+    # Recipe compilation is also called synchronously by async API handlers.
+    import asyncio
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return _capture(html, path, width, height)
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=1) as worker:
+        return worker.submit(_capture, html, path, width, height).result()
+
+
+def _capture(html, path, width, height):
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         try:

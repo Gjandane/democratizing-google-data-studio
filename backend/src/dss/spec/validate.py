@@ -6,7 +6,20 @@ from pydantic import ValidationError
 from dss.config import BACKEND_DIR
 from dss.memory.semantic import parse_concept
 from dss.spec.models import DashboardSpec, image_paths, reference_image
-from dss.spec.layout import box
+from dss.spec.layout import box, synthetic_errors
+
+
+def synthetic_participation(db, build_id, folder):
+    """Same first-source + declared joins rule as the deterministic view builder."""
+    with db.connect() as conn:
+        sources = [dict(r) for r in conn.execute('SELECT kind,bq_table FROM sources WHERE build_id=? ORDER BY rowid', (build_id,))]
+    path = folder / 'docs/derived-fields.md'
+    if not path.is_file():
+        return any(s['kind'] == 'synthetic' for s in sources)
+    derived = parse_concept(path.name, path.read_text(encoding='utf-8')).metadata
+    joined = {j['table'] for j in derived.get('joins', [])}
+    selected = sources[:1] + [s for s in sources[1:] if s['bq_table'] in joined]
+    return any(s['kind'] == 'synthetic' for s in selected)
 
 
 def catalog(root=None):
@@ -34,6 +47,7 @@ def validate_spec(value, *, allowed=None, high_priority=(), catalog_root=None):
     rules = catalog(catalog_root)
     allowed = allowed_types() if allowed is None else set(allowed)
     errors = []
+    errors.extend({'path': 'pages.0.decorations', 'message': message} for message in synthetic_errors(spec))
     def error(path, message):
         errors.append({"path": path, "message": message})
     fields = {}

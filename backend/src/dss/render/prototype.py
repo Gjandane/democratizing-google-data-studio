@@ -212,6 +212,8 @@ def chart_option(item, rows, theme, width):
 
 
 def render(spec, *, layer=None, data=None, folder=None):
+    from dss.spec.layout import require_synthetic_label
+    require_synthetic_label(spec)
     theme = spec.theme
     data = data or {}
     known = catalog()
@@ -239,6 +241,9 @@ def render(spec, *, layer=None, data=None, folder=None):
                     defaults.update({aliases.get(k, k): v for k, v in item.style.items() if k in (*aliases, 'background', 'font-size', 'font-weight', 'border-radius', 'opacity')})
                     style += ''.join(f';{k}:{css_value(v)}' + ('px' if isinstance(v, (int, float)) and k in ('font-size','border-radius') else '') for k, v in defaults.items())
                 extra = item.kind if kind == 'decoration' else item.type
+                from dss.spec.models import SYNTHETIC_LABEL_ID
+                if item.id == SYNTHETIC_LABEL_ID:
+                    style += ';font-family:Arial;line-height:20px;padding:16px'
                 parts.append(f'<div class="item {kind} {extra}" data-cid="{escape(item.id, quote=True)}" data-label="{escape(label, quote=True)}" title="{escape(label, quote=True)}" data-kind="{kind}" style="{escape(style, quote=True)}">')
                 if kind == 'decoration':
                     if item.kind == 'logo' and item.style.get('image_path'):

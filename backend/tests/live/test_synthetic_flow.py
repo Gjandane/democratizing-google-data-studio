@@ -1,4 +1,4 @@
-"""Live typed synthetic intake through the unmodified API (real BigQuery; no model call)."""
+"""Live typed intake and screenshot-only synthetic dashboard flow through the real API."""
 import os
 import time
 
@@ -76,5 +76,116 @@ def test_synthetic_typed_load(tmp_path):
                 if spec is MIXED:
                     assert row["ids"] == sum(line.startswith("001,") for line in lines) > 0 and row["filled"] == 0
         finally:
+            for table in tables:
+                service.client.delete_table(table, not_found_ok=True)
+
+
+@pytest.mark.live
+def test_screenshot_only_to_labelled_prototype_and_recipe(tmp_path):
+    import csv
+    import io
+    import json
+    from pathlib import Path
+    import yaml
+    from playwright.sync_api import sync_playwright
+    from .test_backend_flow import live_app, revenue_reference, trace
+    from dss.config import BACKEND_DIR
+    from dss.spec.models import SYNTHETIC_LABEL_ID, SYNTHETIC_LABEL
+
+    app, config, project = live_app(tmp_path)
+    evidence = BACKEND_DIR / '.blueprint/qa/task-12.5'
+    evidence.mkdir(parents=True, exist_ok=True)
+    image = revenue_reference()
+    (evidence / 'reference.png').write_bytes(image)
+    tables = []
+    with TestClient(app) as client:
+        assert client.put('/api/settings', json={'gcp_project_id': project}).status_code == 200
+        service = BigQuery(app.state.settings.get())
+        bid = client.post('/api/builds', json={'title': 'Synthetic regional sales', 'archetype': 'executive', 'mode': 'data'}).json()['id']
+        url = f'/api/builds/{bid}'
+        folder = config.data_dir / 'builds' / bid / 'v1'
+        def action(response, seconds=300):
+            assert response.status_code == 202, response.text
+            wait(app, seconds)
+            result = trace(app, response.json()['run_id'])
+            assert result['status'] == 'ok', result['error']
+        try:
+            assert client.get(url).json()['sources'] == []
+            action(client.post(url + '/reference-images', data={'mode': 'recreate'},
+                files=[('files', ('sales.png', image, 'image/png'))]))
+            reference = client.get(url + '/reference-images').json()
+            action(client.post(url + '/synthetic-data/proposal', json={'reference_set_id': reference['id']}))
+            proposal = client.get(url + '/synthetic-data/proposal').json()
+            assert proposal and proposal['assumptions']
+            assert client.get(url).json()['sources'] == []
+            spec = {**proposal['spec'], 'row_count': 1000, 'seed': 42}
+            action(client.post(url + '/synthetic-data', json={'generation_key': 'screenshot_1000',
+                   'proposal_id': proposal['id'], 'spec': spec}))
+            source, = client.get(url).json()['sources']
+            tables.append(source['bq_table'])
+            assert source['kind'] == 'synthetic' and source['row_count'] == 1000
+            download = client.get(url + f"/synthetic-data/{source['id']}/csv")
+            assert download.status_code == 200
+            rows = list(csv.reader(io.StringIO(download.text)))
+            assert len(rows) == 1001 and rows[0] == [c['name'] for c in spec['columns']]
+            types = {'integer': 'INTEGER', 'number': 'NUMERIC', 'string': 'STRING', 'boolean': 'BOOLEAN', 'date': 'DATE'}
+            table = service.client.get_table(source['bq_table'])
+            assert [f.field_type for f in table.schema] == [types[c['type']] for c in spec['columns']]
+            action(client.post(url + '/interview/start'))
+            # Explicitly confirm the proposed definitions without assuming provider-chosen names.
+            action(client.post(url + '/messages', json={'text':
+                'For the regional sales director, use the generated sample schema and its assumed '
+                'definitions exactly as proposed. Revenue is the sum of the proposed revenue metric in USD; '
+                'use the proposed region field as its bar chart dimension. Recreate Revenue by region '
+                'as a static bar chart matching the reference. This is invented sample data, not '
+                'recovered original values. That is everything; please plan it. '
+                'Accepted schema: ' + json.dumps(spec)}))
+            ready = client.get(url + '/feasibility').json()
+            assert ready['state'] == 'ready', ready
+            action(client.post(url + '/plan'), 600)
+            assert client.get(url).json()['stage'] == 'prototype'
+            dashboard = client.get(url + '/spec').json()
+            assert dashboard['datasource']['synthetic']
+            assert any(d['id'] == SYNTHETIC_LABEL_ID and d['text'] == SYNTHETIC_LABEL
+                       for d in dashboard['pages'][0]['decorations'])
+            html = client.get(url + '/prototype').text
+            assert SYNTHETIC_LABEL in html
+            compiled = client.post(url + '/recipe')
+            assert compiled.status_code == 200, compiled.text
+            assert SYNTHETIC_LABEL in (folder / 'recipe.jsonl').read_text(encoding='utf-8')
+            derived = yaml.safe_load((folder / 'docs/derived-fields.md').read_text(encoding='utf-8').split('---', 2)[1])
+            tables.append(derived['view'])
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                try:
+                    page = browser.new_page(viewport={'width': 1200, 'height': dashboard['canvas']['height']})
+                    page.set_content(html, wait_until='networkidle')
+                    assert page.locator(f'[data-cid="{SYNTHETIC_LABEL_ID}"]').is_visible()
+                    page.screenshot(path=str(evidence / 'prototype.png'), full_page=True)
+                finally:
+                    browser.close()
+            (evidence / 'background_p1.png').write_bytes((folder / 'background_p1.png').read_bytes())
+            (evidence / 'proposal.json').write_text(json.dumps(proposal, indent=2), encoding='utf-8')
+            (evidence / 'spec.json').write_text(json.dumps(dashboard, indent=2), encoding='utf-8')
+            (evidence / 'recipe.jsonl').write_bytes((folder / 'recipe.jsonl').read_bytes())
+            cid = dashboard['pages'][0]['components'][0]['id']
+            # Synthetic data resolves missing rows, never unsupported GPS animation.
+            response = client.post(url + '/comments', json={'comments': [{'component_id': cid, 'text':
+                'Replace this with animated GPS points moving continuously along vehicle routes. '
+                'Temporal point playback is required, not a static aggregate map.'}]})
+            assert response.status_code == 202, response.text
+            wait(app)
+            blocked = client.get(url + '/feasibility').json()
+            assert blocked['state'] == 'blocked', blocked
+            assert any(i['status'] == 'unsupported_app' for i in blocked['issues']), blocked
+            assert client.post(url + '/plan').status_code == 409
+            (evidence / 'gps-assessment.json').write_text(json.dumps(blocked, indent=2), encoding='utf-8')
+        finally:
+            # Include a candidate view even if a later assertion failed.
+            path = folder / 'docs/derived-fields.md'
+            if path.exists():
+                derived = yaml.safe_load(path.read_text(encoding='utf-8').split('---', 2)[1])
+                if derived.get('view') not in tables:
+                    tables.append(derived['view'])
             for table in tables:
                 service.client.delete_table(table, not_found_ok=True)

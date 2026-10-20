@@ -35,16 +35,23 @@ def current(state, build_id):
     return build, folder
 
 
-def read_spec(folder):
+def read_spec(folder, *, db=None, build_id=None):
     if not (folder / "spec.json").is_file():
         raise RunError("wrong_stage", "Load a spec before this action", 409)
-    return DashboardSpec.model_validate_json((folder / "spec.json").read_text(encoding="utf-8"))
+    document = DashboardSpec.model_validate_json((folder / "spec.json").read_text(encoding="utf-8"))
+    if db is not None:
+        from dss.spec.validate import synthetic_participation
+        from dss.spec.layout import with_synthetic_label
+        document = with_synthetic_label(document, synthetic_participation(db, build_id, folder))
+    from dss.spec.layout import require_synthetic_label
+    require_synthetic_label(document)
+    return document
 
 
 @router.get("/{build_id}/prototype", response_class=HTMLResponse)
 def prototype(build_id: str, request: Request, layer: Literal["all", "decoration"] | None = Query(default=None)):
     _, folder = current(request.app.state, build_id)
-    dashboard = read_spec(folder)
+    dashboard = read_spec(folder, db=request.app.state.db, build_id=build_id)
     cache_path = folder / 'aggregate-cache.json'
     cache = json.loads(cache_path.read_text(encoding='utf-8')) if cache_path.exists() else {}
     data = {}
@@ -59,7 +66,7 @@ def prototype(build_id: str, request: Request, layer: Literal["all", "decoration
 @router.get("/{build_id}/spec")
 def spec(build_id: str, request: Request):
     _, folder = current(request.app.state, build_id)
-    return read_spec(folder).model_dump()
+    return read_spec(folder, db=request.app.state.db, build_id=build_id).model_dump()
 
 
 @router.post('/{build_id}/comments', status_code=202)
@@ -68,7 +75,7 @@ async def comments(build_id: str, body: Comments, request: Request):
     build, folder = current(state, build_id)
     if build['stage'] != 'prototype' or build_id in state.harness.active_builds:
         raise RunError('wrong_stage', 'Comments require an idle prototype', 409, {'stage':build['stage']})
-    document = read_spec(folder)
+    document = read_spec(folder, db=state.db, build_id=build_id)
     ids = {item.id for page in document.pages for item in page.components + page.decorations}
     values = [comment.model_dump() for comment in body.comments]
     if any(comment['component_id'] not in ids for comment in values):

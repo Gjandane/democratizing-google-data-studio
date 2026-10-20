@@ -223,6 +223,33 @@ def test_capture_and_artifact_order(dashboard, tmp_path, monkeypatch):
     assert '12,345.50' in (tmp_path / 'prototype.html').read_text(encoding='utf-8')
 
 
+def test_synthetic_background_has_visible_label_pixels(dashboard, tmp_path):
+    import base64
+    from playwright.sync_api import sync_playwright
+    from dss.spec.layout import with_synthetic_label
+    from dss.spec.models import SYNTHETIC_LABEL_ID
+    spec = with_synthetic_label(dashboard, True)
+    html = render(spec, layer='decoration')
+    path = tmp_path / 'background_p1.png'
+    background.capture(html, path, spec.canvas.width, spec.canvas.height)
+    assert struct.unpack('>II', path.read_bytes()[16:24]) == (1200, spec.canvas.height)
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        try:
+            page = browser.new_page(viewport={'width': 1200, 'height': spec.canvas.height})
+            page.set_content(html)
+            label = page.locator(f'[data-cid="{SYNTHETIC_LABEL_ID}"]')
+            assert label.inner_text() == 'Synthetic sample data'
+            bounds = label.bounding_box()
+            expected = label.screenshot()
+            encoded = base64.b64encode(path.read_bytes()).decode()
+            page.set_content(f'<body style="margin:0"><img src="data:image/png;base64,{encoded}"></body>')
+            page.locator('img').wait_for()
+            assert page.screenshot(clip=bounds) == expected
+        finally:
+            browser.close()
+
+
 async def test_render_node_events_and_api(client, app, build_id, dashboard, tmp_path, monkeypatch):
     from dss.harness.tracing import Trace
     from dss.db import new_id

@@ -3,6 +3,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 TYPES = ("scorecard", "time_series", "bar", "pie", "table", "pivot_table", "geo_map", "scatter", "text", "image", "date_range", "dropdown")
+SYNTHETIC_LABEL_ID = 'p1_synthetic_sample_data'
+SYNTHETIC_LABEL = 'Synthetic sample data'
 
 
 def reference_image(path):
@@ -102,6 +104,7 @@ class DataField(Model):
 class Datasource(Model):
     table: str = Field(pattern=r"^[^.\s]+\.[^.\s]+\.[^.\s]+$")
     fields: list[DataField] = Field(default_factory=list)
+    synthetic: bool = False
 
 class DashboardSpec(Model):
     spec_version: int = Field(ge=1)

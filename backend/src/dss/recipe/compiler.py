@@ -7,6 +7,9 @@ from dss.spec.models import DashboardSpec, image_paths, reference_image
 
 def compile_recipe(spec: DashboardSpec, version: int) -> str:
     """Compile the current spec without consulting settings or mutating the spec."""
+    from dss.spec.layout import require_synthetic_label
+    from dss.spec.models import SYNTHETIC_LABEL_ID, SYNTHETIC_LABEL
+    require_synthetic_label(spec)
     # Logos are flattened into background_p<n>.png, so they are checked like image components.
     if any(reference_image(path) for _, path in image_paths(spec)):
         raise ValueError('Reference screenshots cannot be recipe images or backgrounds')
@@ -39,6 +42,13 @@ def compile_recipe(spec: DashboardSpec, version: int) -> str:
                     optional["sort"] = c.sort.model_dump()
                 op("add_chart", chart_type=c.type, dimensions=c.dimensions, metrics=[m.model_dump() for m in c.metrics], title=c.label, options=c.options, **optional, **args)
                 op("set_style", component_id=c.id, style=dict(colors=spec.theme.palette))
+        if spec.datasource.synthetic:
+            label = next(d for d in page.decorations if d.id == SYNTHETIC_LABEL_ID)
+            bounds = box(spec.canvas, spec.grid, label.grid, height=page.height)
+            # Native text also makes provenance visible in recipe preview and editable reports.
+            op('add_text', component_id=label.id, text=SYNTHETIC_LABEL, x=bounds['x']+16,
+               y=bounds['y']+16, w=bounds['w']-32, h=bounds['h']-32,
+               font_size=16, color='#0F172A')
     op("save_report")
     op("get_link")
     if len(lines) > 1000:

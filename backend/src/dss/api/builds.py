@@ -125,7 +125,7 @@ async def new_version(build_id: str, request: Request):
     if build["stage"] not in ("done", "prototype") or build_id in state.harness.active_builds:
         raise RunError("wrong_stage", "A new version needs an idle prototype or completed build", 409,
                        {"stage": build["stage"]})
-    document = read_spec(folder)
+    document = read_spec(folder, db=state.db, build_id=build_id)
     async def perform(run_id):
         from dss.spec.requirements import copy_version
         number = build["current_version"] + 1
@@ -141,6 +141,19 @@ async def new_version(build_id: str, request: Request):
                 else:
                     shutil.copy2(path, destination / path.name)
             copy_version(state.db, build_id, folder, destination)
+            if document.datasource.synthetic:
+                from dss.render import background
+                from dss.render.prototype import render
+                (destination / 'spec.json').write_text(document.model_dump_json(indent=2), encoding='utf-8')
+                background.capture(render(document, layer='decoration', folder=destination),
+                                   destination / 'background_p1.png', document.canvas.width, document.pages[0].height)
+                cache = destination / 'aggregate-cache.json'
+                from dss.render.prototype import aggregate_sql
+                from hashlib import sha256
+                values = json.loads(cache.read_text(encoding='utf-8')) if cache.exists() else {}
+                data = {c.id: values.get(sha256(sql.encode()).hexdigest(), [])
+                        for p in document.pages for c in p.components if (sql := aggregate_sql(document, c))}
+                (destination / 'prototype.html').write_text(render(document, data=data, folder=destination), encoding='utf-8')
         import asyncio
         await asyncio.to_thread(copy_inputs)
         with state.db.connect() as conn:

@@ -8,7 +8,8 @@ from dss.harness.context import fit_request, spec_context
 from dss.harness.guardrails import RunError, check_reply
 from dss.memory.semantic import parse_concept
 from dss.spec.models import DashboardSpec
-from dss.spec.validate import allowed_types, catalog, high_questions
+from dss.spec.validate import allowed_types, catalog, high_questions, synthetic_participation
+from dss.spec.layout import with_synthetic_label
 from dss.harness.nodes.validate import make_validator
 from dss.spec import requirements as req
 from dss.spec.capabilities import Checker, load_registry
@@ -55,13 +56,14 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         build.update(table=derived['view'], spec_version=((row[0] if row else 0) or 0) + 1)
         expected = {k: build[k] for k in ('id', 'archetype', 'spec_version')}
         expected['build_id'] = expected.pop('id')
-        expected['datasource'] = {'table': build['table'], 'fields': fields}
+        synthetic = synthetic_participation(harness.db, build_id, folder)
+        expected['datasource'] = {'table': build['table'], 'fields': fields, 'synthetic': synthetic}
         allowed = allowed_types() & catalog().keys()
         if not allowed:
             raise RunError('invalid_request', 'DSS_ALLOWED_TYPES contains no catalog types', 422)
         prepared.update(context=spec_context(config, folder, build, fields, allowed), expected=expected,
             allowed=allowed, questions=high_questions((folder / 'docs/questions.md').read_text(encoding='utf-8')),
-            folder=folder, version=build['current_version'])
+            folder=folder, version=build['current_version'], synthetic=synthetic)
 
     def repair():
         if not state['errors']:
@@ -116,6 +118,11 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
 
     async def validate(node_input):
         prepare()
+        try:
+            value = DashboardSpec.model_validate_json(state['raw'])
+            state['raw'] = with_synthetic_label(value, prepared['synthetic']).model_dump_json()
+        except ValueError:
+            pass  # The existing bounded validator reports malformed model output.
         def verify(value):
             snapshot = req.inputs(harness.db, build_id, prepared['folder'])
             snapshot['spec'] = value

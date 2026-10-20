@@ -53,6 +53,9 @@ def pointer(document, path):
 
 
 def apply_scoped(document, operations, target):
+    from dss.spec.models import SYNTHETIC_LABEL_ID
+    if target == SYNTHETIC_LABEL_ID:
+        raise PatchError('Synthetic sample data label is read-only')
     original = items(document)
     if target not in original:
         raise PatchError('Comment item does not exist')
@@ -63,6 +66,8 @@ def apply_scoped(document, operations, target):
             if key not in op:
                 continue
             cid, group, suffix = pointer(candidate, op[key])
+            if cid == SYNTHETIC_LABEL_ID:
+                raise PatchError('Synthetic sample data label is read-only')
             touched.add(cid)
             if cid != target and (group != 'components' or not suffix or suffix[0] != 'grid'):
                 raise PatchError('Only necessary neighbour position changes are allowed')
