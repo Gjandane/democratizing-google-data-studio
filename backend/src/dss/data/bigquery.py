@@ -17,6 +17,9 @@ from dss.harness.guardrails import RunError
 
 MAX_SOURCE_BYTES = 100 * 1024 * 1024
 csv.field_size_limit(MAX_SOURCE_BYTES)
+# GenerationSpec column type -> declared BigQuery type (contracts/synthetic-data.md). NUMERIC keeps
+# the generator's fixed-scale decimals exact (<=6 places, |x| <= 10^12).
+SYNTHETIC_TYPES = {"integer": "INTEGER", "number": "NUMERIC", "string": "STRING", "boolean": "BOOLEAN", "date": "DATE"}
 
 
 def invalid(reason):
@@ -165,10 +168,39 @@ class BigQuery:
         return 'dss_view_' + sha256(table.encode()).hexdigest()
 
     def delete_view(self, table):
+        return self._delete_after_job(self.view_job_id(table), table)
+
+    @staticmethod
+    def load_job_id(table):
+        return 'dss_load_' + sha256(table.encode()).hexdigest()
+
+    def load_typed_csv(self, table, path, columns):
+        """Load a generated CSV with its declared schema; return the table's row count.
+
+        Unlike load_csv this never rewrites the file (no prepare_csv): header names and every
+        record, including all-empty ones, reach BigQuery. No autodetect; the empty field is the
+        explicit null marker so all-null columns keep their declared type.
+        """
+        self.ensure_dataset()
+        config = bigquery.LoadJobConfig(
+            source_format=bigquery.SourceFormat.CSV, autodetect=False, skip_leading_rows=1,
+            schema=[bigquery.SchemaField(name, SYNTHETIC_TYPES[kind], mode="NULLABLE") for name, kind in columns],
+            allow_quoted_newlines=True, encoding="UTF-8", write_disposition="WRITE_EMPTY", max_bad_records=0)
+        config.null_marker = ""
+        with open(path, "rb") as handle:
+            job = self.client.load_table_from_file(handle, table, job_config=config,
+                                                   job_id=self.load_job_id(table), timeout=30)
+        job.result(timeout=120)
+        return self.client.get_table(table, timeout=30).num_rows
+
+    def delete_loaded_table(self, table):
+        return self._delete_after_job(self.load_job_id(table), table)
+
+    def _delete_after_job(self, job_id, table):
         # A timed-out result() may still be executing in BigQuery. Keep ownership
-        # until its deterministic job is terminal, then remove the candidate.
+        # until its deterministic job is terminal, then remove the table.
         try:
-            job = self.client.get_job(self.view_job_id(table), location=self.config.bq_location, timeout=30)
+            job = self.client.get_job(job_id, location=self.config.bq_location, timeout=30)
         except Exception as exc:
             if getattr(exc, 'code', None) == 404:
                 self.client.delete_table(table_uri(table), not_found_ok=True, timeout=30)

@@ -46,20 +46,25 @@ def perform(db, build_id, payload):
         loaded.append({"id": item["id"], "kind": item["kind"], "name": item["name"],
                        "bq_table": item["table"], **profile})
     with db.connect() as connection:
-        existing = [{"id": row["id"], "kind": row["kind"], "name": row["name"], "bq_table": row["bq_table"],
-                     "row_count": row["row_count"], "columns": json.loads(row["columns_json"])}
-                    for row in connection.execute("SELECT * FROM sources WHERE build_id=? ORDER BY rowid", (build_id,))]
-        docs = config.data_dir / "builds" / build_id / f"v{version}" / "docs"
-        docs.mkdir(parents=True, exist_ok=True)
-        sources = existing + loaded
-        write_doc(docs / "data-profile.md", {"type": "BigQuery Table", "title": "Data profile", "sources": sources},
-                  "# Data profile\n\n" + "\n".join(f'- {source["name"]}: `{source["bq_table"]}` ({source["row_count"]} rows)' for source in sources) + "\n")
-        if not (docs / "index.md").exists():
-            write_doc(docs / "index.md", {"type": "Index", "title": "Build documents"}, "# Build documents\n\n- [Data profile](data-profile.md)\n")
-        if not (docs / "log.md").exists():
-            write_doc(docs / "log.md", {"type": "Log", "title": "Build log"}, "# Build log\n")
-        for source in loaded:
-            connection.execute("INSERT INTO sources VALUES(?,?,?,?,?,?,?)", (
-                source["id"], build_id, source["kind"], source["name"], source["bq_table"], source["row_count"], json.dumps(source["columns"])))
-        connection.execute("UPDATE builds SET updated_at=? WHERE id=?", (now(), build_id))
+        register(connection, config, build_id, version, loaded)
     return [public_source(source) for source in loaded]
+
+
+def register(connection, config, build_id, version, loaded):
+    """Rewrite the data profile and insert loaded sources inside the caller's transaction."""
+    existing = [{"id": row["id"], "kind": row["kind"], "name": row["name"], "bq_table": row["bq_table"],
+                 "row_count": row["row_count"], "columns": json.loads(row["columns_json"])}
+                for row in connection.execute("SELECT * FROM sources WHERE build_id=? ORDER BY rowid", (build_id,))]
+    docs = config.data_dir / "builds" / build_id / f"v{version}" / "docs"
+    docs.mkdir(parents=True, exist_ok=True)
+    sources = existing + loaded
+    write_doc(docs / "data-profile.md", {"type": "BigQuery Table", "title": "Data profile", "sources": sources},
+              "# Data profile\n\n" + "\n".join(f'- {source["name"]}: `{source["bq_table"]}` ({source["row_count"]} rows)' for source in sources) + "\n")
+    if not (docs / "index.md").exists():
+        write_doc(docs / "index.md", {"type": "Index", "title": "Build documents"}, "# Build documents\n\n- [Data profile](data-profile.md)\n")
+    if not (docs / "log.md").exists():
+        write_doc(docs / "log.md", {"type": "Log", "title": "Build log"}, "# Build log\n")
+    for source in loaded:
+        connection.execute("INSERT INTO sources VALUES(?,?,?,?,?,?,?)", (
+            source["id"], build_id, source["kind"], source["name"], source["bq_table"], source["row_count"], json.dumps(source["columns"])))
+    connection.execute("UPDATE builds SET updated_at=? WHERE id=?", (now(), build_id))

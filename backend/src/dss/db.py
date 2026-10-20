@@ -54,6 +54,13 @@ CREATE TABLE IF NOT EXISTS traces (
  input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL, latency_ms INTEGER NOT NULL,
  tool_calls INTEGER NOT NULL, status TEXT NOT NULL, error TEXT, spans_json TEXT NOT NULL,
  started_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS synthetic_generations (
+ generation_key TEXT NOT NULL, build_id TEXT NOT NULL REFERENCES builds(id), request_hash TEXT NOT NULL,
+ run_id TEXT NOT NULL, source_id TEXT NOT NULL, bq_table TEXT NOT NULL,
+ state TEXT NOT NULL CHECK(state IN ('queued','generating','loading','succeeded','failed')),
+ retry_ready INTEGER NOT NULL DEFAULT 0, error_json TEXT, created_at TEXT NOT NULL,
+ spec_json TEXT NOT NULL, assumptions_json TEXT NOT NULL,
+ generator_version TEXT, sha256 TEXT, bytes INTEGER, PRIMARY KEY(build_id, generation_key));
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS consolidation (
  id INTEGER PRIMARY KEY CHECK(id=1), last_run_at TEXT, chats_since INTEGER NOT NULL DEFAULT 0);

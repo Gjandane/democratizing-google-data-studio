@@ -65,13 +65,13 @@ class AgentHarness:
 
             async def router(node_input):
                 trace.span("router")
-                return Event(actions=EventActions(route=action if action in ("hello", "interview", "plan", "spec", "revise", "ux_audit", "reference_extract", "capability_check", "research", "intake", "create_build", "load_spec", "recipe", "execute", "versions", "reference_delete", "engine_login") else "unknown"))
+                return Event(actions=EventActions(route=action if action in ("hello", "interview", "plan", "spec", "revise", "ux_audit", "reference_extract", "capability_check", "research", "intake", "create_build", "load_spec", "recipe", "execute", "versions", "reference_delete", "engine_login", "synthetic_generate") else "unknown"))
 
             async def code_node(node_input):
                 nonlocal code_error
                 trace.span(action)
                 try:
-                    if action in ("load_spec", "recipe", "execute", "versions", "reference_delete", "engine_login"):
+                    if action in ("load_spec", "recipe", "execute", "versions", "reference_delete", "engine_login", "synthetic_generate"):
                         return await payload(run_id)
                     if action == "create_build":
                         return "Build created"
@@ -226,7 +226,7 @@ class AgentHarness:
                 workflow = Workflow(name="dss_run", edges=[
                     ("START", router), (router, {"spec": spec_agent}), (spec_agent, validate),
                     (validate, {"repair": spec_repair, "success": complete_spec}), (spec_repair, validate), (complete_spec, guardrail)])
-            elif action in ("intake", "create_build", "load_spec", "recipe", "execute", "versions", "reference_delete", "engine_login"):
+            elif action in ("intake", "create_build", "load_spec", "recipe", "execute", "versions", "reference_delete", "engine_login", "synthetic_generate"):
                 workflow = Workflow(name="dss_run", edges=[
                     ("START", router), (router, {action: code_node}), (code_node, guardrail)])
             else:
