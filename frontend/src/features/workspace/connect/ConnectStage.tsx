@@ -1,7 +1,7 @@
 import { Database, FileUp, Upload } from 'lucide-react';
-import { useEffect, useId, useRef, useState, type DragEvent, type FormEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type DragEvent, type FormEvent } from 'react';
 import { api } from '../../../api/client';
-import { ApiError, type Build, type Source, type SourceKind } from '../../../api/types';
+import { ApiError, type Build, type ReferenceSet, type Source, type SourceKind } from '../../../api/types';
 import { Button } from '../../../components/Button';
 import { EmptyState } from '../../../components/EmptyState';
 import { ErrorState } from '../../../components/ErrorState';
@@ -11,9 +11,20 @@ import { Table, type Column as TableColumn } from '../../../components/Table';
 import { ARCHETYPE_INFO } from '../../history/NewBuildDialog';
 import type { StretchRuns } from '../chat/useBuildStream';
 import { ResearchPanel } from './ResearchPanel';
+import { SyntheticDataPanel } from './SyntheticDataPanel';
 import { ReferencePanel } from '../ReferencePanel';
 
 type UriKind = 'gcs' | 'bigquery';
+type DataChoice = 'upload' | 'generate';
+
+const DATA_CHOICES: Record<DataChoice, { label: string; description: string }> = {
+  upload: { label: 'Upload/connect data', description: 'CSV files, a GCS path or a BigQuery table.' },
+  generate: { label: 'Generate sample data', description: 'Invented rows from columns you review. No data needed.' },
+};
+
+const choiceCard =
+  'flex h-full cursor-pointer flex-col gap-0.5 rounded-panel border border-border-strong bg-surface p-3 transition-[border-color,background-color] hover:border-text-muted peer-checked:border-primary peer-checked:bg-primary-soft peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-focus peer-disabled:cursor-not-allowed peer-disabled:opacity-50 peer-disabled:hover:border-border-strong';
+
 type Busy = { kind: 'upload'; count: number } | { kind: 'uri' } | { kind: 'start' } | null;
 interface Failure {
   title: string;
@@ -66,7 +77,10 @@ interface ConnectStageProps {
   stretchRuns?: StretchRuns;
 }
 
-/** The Connect stage: add CSV files, a GCS path or a BigQuery table, then start the interview. */
+/**
+ * The Connect stage: add CSV files, a GCS path or a BigQuery table, or (with no source yet) generate
+ * invented sample data, then start the interview.
+ */
 const noRuns: StretchRuns = {};
 
 export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onReferenceReadyChange }: ConnectStageProps) {
@@ -85,9 +99,27 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
   const [uriKind, setUriKind] = useState<UriKind>('gcs');
   const [uri, setUri] = useState('');
   const [uriError, setUriError] = useState<string | null>(null);
+  const [choice, setChoice] = useState<DataChoice>('upload');
+  // The sample-data panel mounts on first choice and then stays (hidden), so its edits survive switching.
+  const [sampleOpened, setSampleOpened] = useState(false);
+  const [reference, setReference] = useState<ReferenceSet | null | undefined>(undefined);
+  const [sampleBusy, setSampleBusy] = useState(false);
+  const [notice, setNotice] = useState('');
+  const startButton = useRef<HTMLButtonElement>(null);
 
   const isBusy = busy !== null;
   const hasSources = build.sources.length > 0;
+  const generating = !hasSources && choice === 'generate';
+  const hadSources = useRef(hasSources);
+
+  // Generated sample data replaces the panel with the Sources table: say so, and keep keyboard focus.
+  useLayoutEffect(() => {
+    if (!hadSources.current && hasSources && build.sources.some((s) => s.kind === 'synthetic')) {
+      setNotice('Synthetic sample data added. Review it under Sources, then start the interview.');
+      refocus(startButton.current);
+    }
+    hadSources.current = hasSources;
+  }, [hasSources, build.sources]);
 
   // A drop that misses the zone would open the file in the tab: ignore drops anywhere else.
   useEffect(() => {
@@ -164,6 +196,15 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
     }
   };
 
+  /** The generation run finished: read the build in case its build.updated was missed. */
+  const refreshBuild = async () => {
+    try {
+      onBuildChange(await api.getBuild(latest.current.id));
+    } catch {
+      // The stream's build.updated or the next reconnect brings the new source.
+    }
+  };
+
   const startInterview = async () => {
     if (latest.current.sources.length === 0 || busyRef.current) return;
     const id = latest.current.id;
@@ -198,7 +239,47 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
         </span>
       </p>
 
+      {!hasSources && (
+        <fieldset disabled={isBusy || sampleBusy} className="flex flex-col gap-2">
+          <legend className="mb-2 text-title font-semibold text-text">Add data</legend>
+          <div className="grid grid-cols-2 gap-2">
+            {(Object.keys(DATA_CHOICES) as DataChoice[]).map((value) => (
+              <label key={value} className="relative block">
+                <input
+                  type="radio"
+                  name="data-choice"
+                  value={value}
+                  checked={choice === value}
+                  onChange={() => {
+                    setChoice(value);
+                    if (value === 'generate') setSampleOpened(true);
+                  }}
+                  className="peer sr-only"
+                />
+                <span className={choiceCard}>
+                  <span className="text-body font-medium text-text">{DATA_CHOICES[value].label}</span>
+                  <span className="text-caption text-text-muted">{DATA_CHOICES[value].description}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
+
+      {sampleOpened && !hasSources && (
+        <div hidden={!generating} className="min-w-0">
+          <SyntheticDataPanel
+            buildId={build.id}
+            reference={reference}
+            disabled={isBusy}
+            onBusyChange={setSampleBusy}
+            onGenerated={() => void refreshBuild()}
+          />
+        </div>
+      )}
+
       <section
+        hidden={generating}
         aria-label="Upload CSV files"
         onDragOver={(e) => {
           e.preventDefault();
@@ -247,7 +328,7 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
         </div>
       </section>
 
-      <form onSubmit={(e) => void addUri(e)} className="flex flex-col gap-3 rounded-panel border border-border bg-surface p-4">
+      <form hidden={generating} onSubmit={(e) => void addUri(e)} className="flex flex-col gap-3 rounded-panel border border-border bg-surface p-4">
         <h3 className="text-title font-semibold text-text">Or add a table from Google Cloud</h3>
         <div role="radiogroup" aria-label="Source type" className="inline-flex w-fit rounded-control border border-border-strong p-0.5">
           {(Object.keys(URI_KINDS) as UriKind[]).map((kind) => (
@@ -294,7 +375,13 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
         </div>
       </form>
 
-      <ReferencePanel buildId={build.id} version={build.current_version} disabled={isBusy} onReadyChange={onReferenceReadyChange} />
+      <ReferencePanel
+        buildId={build.id}
+        version={build.current_version}
+        disabled={isBusy || sampleBusy}
+        onReadyChange={onReferenceReadyChange}
+        onSavedChange={setReference}
+      />
       {build.mode === 'research' && <ResearchPanel buildId={build.id} stretchRuns={stretchRuns} />}
 
       {failure && (
@@ -320,15 +407,23 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
             framed
             icon={<Database />}
             title="No sources yet"
-            description="Drop CSV files above or add a table from Google Cloud. Their columns show up here."
+            description={
+              generating
+                ? 'Generated sample data shows up here as Synthetic sample data.'
+                : 'Drop CSV files above or add a table from Google Cloud. Their columns show up here.'
+            }
             headingLevel={3}
           />
         )}
       </section>
 
       <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
+        <p role="status" className="sr-only">
+          {notice}
+        </p>
         {!hasSources && <p className="text-body text-text-muted">Add at least one source to start.</p>}
         <Button
+          ref={startButton}
           variant="primary"
           loading={busy?.kind === 'start'}
           disabled={!hasSources || isBusy}

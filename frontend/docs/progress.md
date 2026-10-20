@@ -332,3 +332,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: see AGENTS.
 - Left open: none.
 - Next: 11.1 Synthetic proposal, schema editor and generation (deep; needs backend 12.3).
+
+## 2026-10-20: Task 11.1 Synthetic proposal, schema editor and generation
+- Status: done
+- Plan check: off
+- What changed: Exact synthetic-data guards/fixtures; client+mock proposal/generate routes; Connect choice Upload/connect data vs Generate sample data; SyntheticDataPanel (proposal table, assumptions, JSON columns, row count, seed, request-bound key).
+- Checks: `npm test` PASS (17 files/343 tests); `npm run typecheck` PASS. Viewed all ten `screenshots/11.1-synthetic-{no-data,proposal,editing,invalid,busy}-{1280x800,1440x900}.png`; no overflow or console errors. CDP keyboard path: radio, Add a reference, columns, row count, seed, Generate (Enter); focus then lands on Start interview.
+- Decisions: Textarea holds only the `columns` array. Live backend 422 detail is `{field, reason}` relative to spec; specFieldErrors also accepts `detail.errors[]`. Keys `sd_<uuid>` stay bound until edit, 409 conflict, stale proposal or failed run. ReferencePanel `onSavedChange` feeds the panel. Mock run failures cover synthetic nodes. AGENTS adds line-ending detection.
+- Tried and failed: shell heredoc/Python patches missed CRLF lines; patched by byte-aware scripts or Edit.
+- Gotchas: see AGENTS.
+- Left open: P2 replay after reconnect can wait for a missed run.finished - SyntheticDataPanel.tsx (11.2 job status fixes); "Loading sample data" label needs 11.2 job polling.
+- Next: 11.2 Synthetic status recovery, download and provenance (deep).

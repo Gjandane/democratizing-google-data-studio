@@ -1,5 +1,6 @@
-// Types and runtime guards for ../contracts/api.md 1.1. Names in the "Types" block of the
-// contract are used exactly; the rest are named after their endpoint or event.
+// Types and runtime guards for ../contracts/api.md 1.5 (and the dashboard-intent and synthetic-data
+// contracts it cites). Names in the "Types" blocks are used exactly; the rest are named after their
+// endpoint or event.
 // A guard accepts exactly the contract's keys with the contract's JSON types (extra keys fail),
 // so tests/contract.test.ts can check the shared fixtures with them.
 
@@ -145,6 +146,63 @@ export interface FeasibilityDecision {
   issue_id: string;
   action: 'accept_alternative' | 'drop';
   alternative_id: string | null;
+}
+
+// Synthetic sample data (../contracts/synthetic-data.md 1.1). `Generator` is the contract's name;
+// it shadows the built-in generator type inside this module only.
+export const SPEC_COLUMN_TYPES = ['integer', 'number', 'string', 'boolean', 'date'] as const;
+export const GENERATION_STATES = ['queued', 'generating', 'loading', 'succeeded', 'failed'] as const;
+export type Generator =
+  | { kind: 'sequence'; start: number; step: number; prefix: string }
+  | { kind: 'integer'; min: number; max: number }
+  | { kind: 'decimal'; min: number; max: number; decimals: number }
+  | { kind: 'choice'; values: (string | number | boolean)[] }
+  | { kind: 'boolean'; true_probability: number }
+  | { kind: 'date'; start: string; end: string }
+  | { kind: 'product'; fields: string[]; decimals: number }
+  | { kind: 'lookup'; field: string; mapping: Record<string, string | number | boolean> };
+export interface ColumnSpec {
+  name: string;
+  type: (typeof SPEC_COLUMN_TYPES)[number];
+  nullable_fraction: number;
+  generator: Generator;
+}
+export interface GenerationSpec {
+  schema_version: 1;
+  row_count: number;
+  seed: number;
+  columns: ColumnSpec[];
+}
+/** POST /api/builds/{id}/synthetic-data: `generation_key` binds this exact request. */
+export interface GenerationRequest {
+  generation_key: string;
+  proposal_id: string | null;
+  spec: GenerationSpec;
+}
+export interface Proposal {
+  id: string;
+  reference_set_id: string;
+  spec: GenerationSpec;
+  assumptions: string[];
+}
+export interface SyntheticDataset {
+  source_id: string;
+  generation_key: string;
+  synthetic: true;
+  spec: GenerationSpec;
+  assumptions: string[];
+  generator_version: string;
+  sha256: string;
+  bytes: number;
+  created_at: string;
+}
+export interface GenerationStatus {
+  generation_key: string;
+  run_id: string;
+  state: (typeof GENERATION_STATES)[number];
+  source_id: string | null;
+  retry_ready: boolean;
+  error: { code: string; message: string } | null;
 }
 
 export interface DocRef {
@@ -346,6 +404,31 @@ export function oversizeError(files: File[]): ApiError | null {
   return total > UPLOAD_LIMIT_BYTES ? new ApiError(413, 'payload_too_large', UPLOAD_TOO_LARGE, { bytes: total }) : null;
 }
 
+/** The backend refuses a sample-data request body over 64 KiB (contracts/synthetic-data.md). */
+export const SYNTHETIC_LIMIT_BYTES = 64 * 1024;
+export const SYNTHETIC_TOO_LARGE = 'This sample-data request is over 64 KiB. Use fewer columns or shorter value lists, then generate again.';
+
+/** The 413 for a generation request over 64 KiB as sent (compact JSON), or null when it fits. */
+export function syntheticOversizeError(request: GenerationRequest): ApiError | null {
+  const bytes = new TextEncoder().encode(JSON.stringify(request)).length;
+  return bytes > SYNTHETIC_LIMIT_BYTES ? new ApiError(413, 'payload_too_large', SYNTHETIC_TOO_LARGE, { bytes }) : null;
+}
+
+/** One `422 invalid_generation_spec` problem: its path inside the spec (`row_count`, `columns[1].name`) and why. */
+export interface SpecFieldError {
+  field: string;
+  reason: string;
+}
+
+/** The field errors of a `422 invalid_generation_spec`: detail `{field, reason}`, or a list of them under `errors`. */
+export function specFieldErrors(error: ApiError): SpecFieldError[] {
+  const items = Array.isArray(error.detail.errors) ? (error.detail.errors as unknown[]) : [error.detail];
+  return items.flatMap((item) => {
+    if (!isRecord(item) || typeof item.field !== 'string' || typeof item.reason !== 'string') return [];
+    return [{ field: item.field.replace(/^spec\./, ''), reason: item.reason }];
+  });
+}
+
 // ---------- Guards ----------
 
 export const isStage = oneOf(STAGES);
@@ -427,6 +510,88 @@ export const isAssessment = shape<Assessment>({
   id: nullable(isString), state: oneOf(['unchecked', 'blocked', 'ready', 'stale']),
   input_digest: nullable(isString), prototype_stale: isBoolean, issues: arrayOf(isIssue),
   pending_comments: nullable(shape<NonNullable<Assessment['pending_comments']>>({ id: isString, comments: arrayOf(isComment) })),
+});
+
+const isNumber = primitive<number>((v) => typeof v === 'number' && Number.isFinite(v), 'a finite number');
+const isScalar = primitive<string | number | boolean>(
+  (v) => typeof v === 'string' || typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v)),
+  'a string, number or boolean',
+);
+const literal = <T extends string | number | boolean>(value: T): Guard<T> =>
+  primitive<T>((v) => v === value, JSON.stringify(value));
+
+function recordOf<T>(guard: Guard<T>): Guard<Record<string, T>> {
+  return (v, path = '$', problems): v is Record<string, T> => {
+    if (!isRecord(v)) return fail(path, problems, 'expected an object');
+    let ok = true;
+    for (const [key, item] of Object.entries(v)) ok = guard(item, `${path}.${key}`, problems) && ok;
+    return ok;
+  };
+}
+
+type Kind = Generator['kind'];
+const generatorGuards: { [K in Kind]: Guard<Extract<Generator, { kind: K }>> } = {
+  sequence: shape({ kind: literal('sequence'), start: isInt, step: isInt, prefix: isString }),
+  integer: shape({ kind: literal('integer'), min: isInt, max: isInt }),
+  decimal: shape({ kind: literal('decimal'), min: isNumber, max: isNumber, decimals: isInt }),
+  choice: shape({ kind: literal('choice'), values: arrayOf(isScalar) }),
+  boolean: shape({ kind: literal('boolean'), true_probability: isNumber }),
+  date: shape({ kind: literal('date'), start: isString, end: isString }),
+  product: shape({ kind: literal('product'), fields: arrayOf(isString), decimals: isInt }),
+  lookup: shape({ kind: literal('lookup'), field: isString, mapping: recordOf(isScalar) }),
+};
+
+/** A tagged union: `kind` picks the exact shape. */
+export const isGenerator: Guard<Generator> = (v, path = '$', problems): v is Generator => {
+  if (!isRecord(v)) return fail(path, problems, 'expected an object');
+  const kind = v.kind;
+  if (typeof kind !== 'string' || !Object.hasOwn(generatorGuards, kind)) {
+    return fail(`${path}.kind`, problems, `expected one of ${Object.keys(generatorGuards).join(' | ')}, got ${JSON.stringify(kind)}`);
+  }
+  return (generatorGuards[kind as Kind] as Guard<Generator>)(v, path, problems);
+};
+
+export const isColumnSpec = shape<ColumnSpec>({
+  name: isString,
+  type: oneOf(SPEC_COLUMN_TYPES),
+  nullable_fraction: isNumber,
+  generator: isGenerator,
+});
+export const isGenerationSpec = shape<GenerationSpec>({
+  schema_version: literal(1),
+  row_count: isInt,
+  seed: isInt,
+  columns: arrayOf(isColumnSpec),
+});
+export const isGenerationRequest = shape<GenerationRequest>({
+  generation_key: isString,
+  proposal_id: nullable(isString),
+  spec: isGenerationSpec,
+});
+export const isProposal = shape<Proposal>({
+  id: isString,
+  reference_set_id: isString,
+  spec: isGenerationSpec,
+  assumptions: arrayOf(isString),
+});
+export const isSyntheticDataset = shape<SyntheticDataset>({
+  source_id: isString,
+  generation_key: isString,
+  synthetic: literal(true),
+  spec: isGenerationSpec,
+  assumptions: arrayOf(isString),
+  generator_version: isString,
+  sha256: isString,
+  bytes: isInt,
+  created_at: isString,
+});
+export const isGenerationStatus = shape<GenerationStatus>({
+  generation_key: isString,
+  run_id: isString,
+  state: oneOf(GENERATION_STATES),
+  source_id: nullable(isString),
+  retry_ready: isBoolean,
+  error: nullable(shape<NonNullable<GenerationStatus['error']>>({ code: isString, message: isString })),
 });
 
 export const isTrace = shape<Trace>({

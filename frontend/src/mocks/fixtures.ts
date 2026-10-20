@@ -2,6 +2,12 @@ import feasibilityStaleJson from '../../../contracts/fixtures/dashboard-intent/f
 import feasibilityPendingJson from '../../../contracts/fixtures/dashboard-intent/feasibility.pending.json';
 import feasibilityAlternativesJson from '../../../contracts/fixtures/dashboard-intent/feasibility.alternatives.json';
 import feasibilityJson from '../../../contracts/fixtures/dashboard-intent/feasibility.json';
+import syntheticDatasetJson from '../../../contracts/fixtures/synthetic-data/dataset.json';
+import syntheticJobFailedJson from '../../../contracts/fixtures/synthetic-data/job.failed.json';
+import syntheticJobSucceededJson from '../../../contracts/fixtures/synthetic-data/job.succeeded.json';
+import syntheticProposalJson from '../../../contracts/fixtures/synthetic-data/proposal.json';
+import syntheticRequestJson from '../../../contracts/fixtures/synthetic-data/request.json';
+import syntheticSourceJson from '../../../contracts/fixtures/synthetic-data/source.json';
 // The shared API fixtures, imported in place from ../contracts/fixtures/api/ (never copied)
 // and checked against the contract guards once, so the mock can only serve conforming data.
 import referenceSetJson from '../../../contracts/fixtures/dashboard-intent/reference_set.json';
@@ -26,12 +32,17 @@ import {
   isBuild,
   isBuildSummary,
   isEngineStatus,
+  isGenerationRequest,
+  isGenerationStatus,
   isMessage,
+  isProposal,
   isRecipe,
   isReferenceSet,
   isRunAccepted,
   isSession,
   isSettings,
+  isSource,
+  isSyntheticDataset,
   isTrace,
   problemsOf,
   toBuildEvent,
@@ -61,6 +72,13 @@ export const fixtures = /* @__PURE__ */ (() => ({
   feasibilityPending: checked(isAssessment, feasibilityPendingJson, 'feasibility.pending.json'),
   feasibilityStale: checked(isAssessment, feasibilityStaleJson, 'feasibility.stale.json'),
   referenceSet: checked(isReferenceSet, referenceSetJson, 'reference_set.json'),
+  // contracts/fixtures/synthetic-data/
+  syntheticDataset: checked(isSyntheticDataset, syntheticDatasetJson, 'synthetic-data/dataset.json'),
+  syntheticJobFailed: checked(isGenerationStatus, syntheticJobFailedJson, 'synthetic-data/job.failed.json'),
+  syntheticJobSucceeded: checked(isGenerationStatus, syntheticJobSucceededJson, 'synthetic-data/job.succeeded.json'),
+  syntheticProposal: checked(isProposal, syntheticProposalJson, 'synthetic-data/proposal.json'),
+  syntheticRequest: checked(isGenerationRequest, syntheticRequestJson, 'synthetic-data/request.json'),
+  syntheticSource: checked(isSource, syntheticSourceJson, 'synthetic-data/source.json'),
   build: checked(isBuild, buildJson, 'build.json'),
   buildDone: checked(isBuild, buildDoneJson, 'build.done.json'),
   builds: checked(arrayOf(isBuildSummary), buildsJson, 'builds.json'),

@@ -9,6 +9,7 @@ import {
   type Assessment,
   type FeasibilityDecision,
   isReferenceSet,
+  isProposal,
   referenceValidation,
   type ReferenceSet,
   type ReferenceMode,
@@ -16,6 +17,8 @@ import {
   type Build,
   type BuildSummary,
   type Comment,
+  type GenerationRequest,
+  type Proposal,
   type EngineStatus,
   type Health,
   type Message,
@@ -30,6 +33,8 @@ import {
   type Source,
   type SourcesUploaded,
   type SourceUri,
+  SYNTHETIC_TOO_LARGE,
+  syntheticOversizeError,
   type Trace,
   UPLOAD_TOO_LARGE,
 } from './types';
@@ -56,6 +61,11 @@ export interface ApiClient {
   getReferences(buildId: string): Promise<ReferenceSet | null>;
   uploadReferences(buildId: string, files: File[], mode: ReferenceMode, instructions: string): Promise<RunAccepted>;
   deleteReferences(buildId: string): Promise<void>;
+  /** Proposes sample-data columns from the current recreate reference set (no data source needed). */
+  proposeSyntheticSchema(buildId: string, referenceSetId: string): Promise<RunAccepted>;
+  getSyntheticProposal(buildId: string): Promise<Proposal | null>;
+  /** The explicit Generate sample data action; a retry of the same request reuses its `generation_key`. */
+  generateSyntheticData(buildId: string, request: GenerationRequest): Promise<RunAccepted>;
   uploadStyleImages(buildId: string, files: File[]): Promise<RunAccepted>;
   startResearch(buildId: string, prompt: string): Promise<RunAccepted>;
   startInterview(buildId: string): Promise<RunAccepted>;
@@ -179,6 +189,23 @@ export const httpApi: ApiClient = {
     }
   },
   deleteReferences: async (id) => { await send('DELETE', buildPath(id, '/reference-images')); },
+  proposeSyntheticSchema: (id, referenceSetId) => json('POST', buildPath(id, '/synthetic-data/proposal'), { reference_set_id: referenceSetId }),
+  getSyntheticProposal: async (id) => {
+    const value: unknown = await json('GET', buildPath(id, '/synthetic-data/proposal'));
+    if (value !== null && !isProposal(value)) throw new ApiError(502, 'invalid_response', "Couldn't read the proposed schema. Try again.");
+    return value;
+  },
+  generateSyntheticData: async (id, request) => {
+    const tooLarge = syntheticOversizeError(request);
+    if (tooLarge) throw tooLarge;
+    try {
+      return await json('POST', buildPath(id, '/synthetic-data'), request);
+    } catch (error) {
+      // The generic 413 text is about 32 MB CSV uploads; this route's limit is 64 KiB of JSON.
+      if (error instanceof ApiError && error.status === 413) throw new ApiError(413, error.code, SYNTHETIC_TOO_LARGE, error.detail);
+      throw error;
+    }
+  },
   uploadStyleImages: (id, files) => upload(buildPath(id, '/style-images'), files),
   startResearch: (id, prompt) => json('POST', buildPath(id, '/research'), { prompt }),
   startInterview: (id) => json('POST', buildPath(id, '/interview/start')),

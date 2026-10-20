@@ -161,7 +161,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: ../contracts/dashboard-intent.md 1.1 (pending_comments, reapply, discard rules); the server stays the authority on stale and blocked states.
 
 ## Phase 11: Screenshot-only synthetic data (change 2026-10-19; split by delta audit 2026-10-20)
-- [ ] 11.1 Synthetic proposal, schema editor and generation
+- [x] 11.1 Synthetic proposal, schema editor and generation
   - Goal: Connect with no source offers Generate sample data; propose a schema from a recreate reference or enter one by hand; review it as JSON with row count and seed; generate once with a request-bound key.
   - Spec: docs/reference-ui.md#Synthetic data controls; ../contracts/synthetic-data.md#HTTP workflow and provenance
   - Files: src/api/client.ts, src/api/types.ts, src/mocks/api.ts, src/mocks/fixtures.ts, src/features/workspace/connect/ConnectStage.tsx, src/features/workspace/connect/SyntheticDataPanel.tsx, src/features/workspace/ReferencePanel.tsx, src/features/activity/presets.ts, tests/contract.test.ts, tests/synthetic.test.tsx, screenshots/

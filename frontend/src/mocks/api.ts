@@ -5,6 +5,12 @@ import type { ApiClient } from '../api/client';
 import {
   ApiError,
   type Assessment,
+  type ColumnSpec,
+  type GenerationRequest,
+  type GenerationStatus,
+  isGenerationSpec,
+  problemsOf,
+  type Proposal,
   referenceValidation,
   type ReferenceSet,
   isArchetype,
@@ -21,6 +27,8 @@ import {
   type Settings,
   type Source,
   type Stage,
+  type SyntheticDataset,
+  syntheticOversizeError,
   type Trace,
 } from '../api/types';
 import { emit } from './events';
@@ -38,8 +46,8 @@ const BUILD_STEP_MS = isTest ? 0 : 1200;
 export type MockBuildOutcome = 'ok' | 'partial' | 'failed';
 /** A 503 the mock answers on every action of that kind, whatever the settings say. */
 export type MockServiceFault = 'llm_unavailable' | 'gcp_not_configured' | null;
-/** The chat-side runs the mock can fail (setMockRunFailure). */
-export type MockFailingNode = 'plan' | 'interview';
+/** The runs the mock can fail (setMockRunFailure). */
+export type MockFailingNode = 'plan' | 'interview' | 'synthetic_schema' | 'synthetic_generate';
 
 /** The access code the mock accepts when the gate is on (setMockSession). */
 export const MOCK_ACCESS_CODE = 'mock-access-code';
@@ -51,6 +59,11 @@ interface MockState {
   references: Map<string, ReferenceSet>;
   referenceFiles: Map<string, string>;
   referenceBusy: Set<string>;
+  proposals: Map<string, Proposal>;
+  /** Generation requests by `<build id>:<generation_key>`: the canonical body and its job. */
+  generations: Map<string, { body: string; job: GenerationStatus }>;
+  datasets: Map<string, SyntheticDataset[]>;
+  syntheticBusy: Set<string>;
   session: Session;
   builds: Map<string, Build>;
   messages: Map<string, Message[]>;
@@ -76,6 +89,10 @@ function seed(): MockState {
     references: new Map(),
     referenceFiles: new Map(),
     referenceBusy: new Set(),
+    proposals: new Map(),
+    generations: new Map(),
+    datasets: new Map(),
+    syntheticBusy: new Set(),
     session: { required: false, ok: true },
     builds,
     messages: new Map([[fixtures.build.id, clone(fixtures.messages)]]),
@@ -155,6 +172,56 @@ const currentAssessment = (id: string): Assessment => {
   findBuild(id);
   return state.assessments.get(id) ?? uncheckedAssessment();
 };
+
+/** Synthetic writes: connect/interview only, no sources, no other action running (contracts/synthetic-data.md). */
+function requireSyntheticWrite(build: Build): void {
+  requireStage(build, ['connect', 'interview'], 'Sample data can only be added before the plan.');
+  if (build.sources.length > 0) {
+    throw new ApiError(409, 'synthetic_requires_empty_build', 'This build already has data. Start a new dashboard to use sample data.');
+  }
+  if ([state.syntheticBusy, state.referenceBusy, state.assessmentBusy].some((busy) => busy.has(build.id))) {
+    throw new ApiError(409, 'action_in_progress', 'Wait for the current action to finish.');
+  }
+}
+
+/** The first `invalid_generation_spec` problem, as the backend reports it: `{field, reason}` relative to the spec. */
+function specProblem(spec: unknown): { field: string; reason: string } | null {
+  const [first] = problemsOf(isGenerationSpec, spec, '$');
+  if (first) {
+    const at = first.indexOf(': ');
+    return { field: first.slice(0, at).replace(/^\$\.?/, '') || 'spec', reason: first.slice(at + 2) };
+  }
+  const { row_count, seed, columns } = spec as { row_count: number; seed: number; columns: ColumnSpec[] };
+  if (row_count < 1 || row_count > 100_000) return { field: 'row_count', reason: 'must be between 1 and 100000' };
+  if (seed < 0 || seed > 0xffffffff) return { field: 'seed', reason: 'must be between 0 and 4294967295' };
+  if (columns.length < 1 || columns.length > 40) return { field: 'columns', reason: 'must have 1 to 40 columns' };
+  const seen = new Set<string>();
+  for (const [i, column] of columns.entries()) {
+    if (!/^[a-z][a-z0-9_]{0,63}$/.test(column.name)) return { field: `columns[${i}].name`, reason: 'must be snake_case: a lowercase letter, then lowercase letters, digits or _' };
+    if (seen.has(column.name)) return { field: `columns[${i}].name`, reason: 'must be unique' };
+    seen.add(column.name);
+    const g = column.generator;
+    if ((g.kind === 'integer' || g.kind === 'decimal') && g.max < g.min) return { field: `columns[${i}].generator.max`, reason: 'must be >= min' };
+  }
+  return null;
+}
+
+/** The Source a successful generation registers; column types follow the accepted spec. */
+function syntheticSource(build: Build, spec: GenerationRequest['spec']): Source {
+  const { gcp_project_id, bq_dataset } = state.settings;
+  return {
+    id: nextId('s'),
+    kind: 'synthetic',
+    name: 'Synthetic sample data',
+    bq_table: `${gcp_project_id || 'my-gcp-project'}.${bq_dataset}.syn_${build.id}`,
+    row_count: spec.row_count,
+    columns: spec.columns.map((column) => ({
+      name: column.name,
+      type: column.type === 'integer' ? 'number' : column.type,
+      sample: column.generator.kind === 'choice' ? column.generator.values.slice(0, 2).map(String) : [],
+    })),
+  };
+}
 
 const failureOf = (node: MockFailingNode) => () => (node in state.runFailures ? { error: state.runFailures[node] ?? null } : null);
 
@@ -527,6 +594,76 @@ export function createMockApi(): ApiClient {
       requireStage(build, ['connect', 'interview', 'prototype'], 'Start a new version to change references.');
       if (state.referenceBusy.has(id)) throw new ApiError(409, 'build_busy', 'Wait for the current reference upload.');
       state.references.delete(`${id}:${build.current_version}`);
+    }),
+    proposeSyntheticSchema: (id, referenceSetId) => respond(() => {
+      const build = findBuild(id);
+      requireSyntheticWrite(build);
+      const reference = state.references.get(`${id}:${build.current_version}`);
+      if (!reference || reference.mode !== 'recreate') {
+        throw invalid('synthetic_schema_unavailable', 'A style reference shows how a dashboard looks, not its data. Switch the reference to Recreate dashboard, or enter the columns yourself.');
+      }
+      if (reference.id !== referenceSetId) throw new ApiError(409, 'synthetic_proposal_stale', 'The reference changed. Propose the schema again.');
+      requireModel();
+      state.syntheticBusy.add(id);
+      const failed = failureOf('synthetic_schema')();
+      return startRun(build, 'synthetic_schema', () => [() => {
+        state.syntheticBusy.delete(id);
+        if (!failed) state.proposals.set(id, { ...clone(fixtures.syntheticProposal), id: `proposal_${nextId('r')}`, reference_set_id: reference.id });
+      }], { failure: () => failed });
+    }),
+    getSyntheticProposal: (id) => respond(() => {
+      findBuild(id);
+      return state.proposals.get(id) ?? null;
+    }),
+    generateSyntheticData: (id, request) => respond(() => {
+      const tooLarge = syntheticOversizeError(request);
+      if (tooLarge) throw tooLarge;
+      const build = findBuild(id);
+      const { generation_key: key, proposal_id, spec } = request;
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(key)) throw invalid('invalid_request', 'Invalid request');
+      // Replay comes before every other check: the same key and request always answer its first run.
+      const body = JSON.stringify({ proposal_id, spec });
+      const replay = state.generations.get(`${id}:${key}`);
+      if (replay) {
+        if (replay.body !== body) throw new ApiError(409, 'synthetic_request_conflict', 'This generation key was already used for a different request.');
+        return { run_id: replay.job.run_id };
+      }
+      requireSyntheticWrite(build);
+      const problem = specProblem(spec);
+      if (problem) throw invalid('invalid_generation_spec', 'The generation spec is invalid', problem);
+      if (proposal_id !== null) {
+        const proposal = state.proposals.get(id);
+        const reference = state.references.get(`${id}:${build.current_version}`);
+        if (proposal?.id !== proposal_id || proposal.reference_set_id !== reference?.id) {
+          throw new ApiError(409, 'synthetic_proposal_stale', 'The proposal is out of date. Propose the schema again.');
+        }
+      }
+      requireGcp();
+      const job: GenerationStatus = { generation_key: key, run_id: '', state: 'queued', source_id: null, retry_ready: false, error: null };
+      const failed = failureOf('synthetic_generate')();
+      state.syntheticBusy.add(id);
+      const accepted = startRun(build, 'synthetic_generate', () => [
+        () => { job.state = 'generating'; },
+        () => { job.state = 'loading'; },
+        () => {
+          state.syntheticBusy.delete(id);
+          if (failed) {
+            Object.assign(job, { state: 'failed', retry_ready: true, error: { code: 'synthetic_load_failed', message: failed.error ?? 'Sample data could not be loaded.' } });
+            return;
+          }
+          const source = syntheticSource(build, spec);
+          const proposal = proposal_id ? state.proposals.get(id) : undefined;
+          state.datasets.set(id, [...(state.datasets.get(id) ?? []), {
+            ...clone(fixtures.syntheticDataset), source_id: source.id, generation_key: key, spec: clone(spec), assumptions: clone(proposal?.assumptions ?? []), created_at: now(),
+          }]);
+          Object.assign(job, { state: 'succeeded', source_id: source.id });
+          addSources(build, [source]);
+          emit(id, { name: 'docs.updated', data: { docs: clone(build.docs) } });
+        },
+      ], { failure: () => failed });
+      job.run_id = accepted.run_id;
+      state.generations.set(`${id}:${key}`, { body, job });
+      return accepted;
     }),
     uploadStyleImages: (id, files) =>
       respond(() => {

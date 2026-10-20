@@ -14,16 +14,23 @@ import {
   isBuild,
   isBuildSummary,
   isEngineStatus,
+  isGenerationRequest,
+  isGenerationStatus,
+  isGenerator,
   isJob,
   isMessage,
+  isProposal,
   isRecipe,
   isReferenceSet,
   isRunAccepted,
   isSession,
   isSettings,
   isSource,
+  isSyntheticDataset,
   isTrace,
   problemsOf,
+  specFieldErrors,
+  SYNTHETIC_LIMIT_BYTES,
   toBuildEvent,
   type Guard,
 } from '../src/api/types';
@@ -35,6 +42,11 @@ import feasibilityAlternatives from '../../contracts/fixtures/dashboard-intent/f
 import feasibilityPending from '../../contracts/fixtures/dashboard-intent/feasibility.pending.json';
 import feasibilityStale from '../../contracts/fixtures/dashboard-intent/feasibility.stale.json';
 import referenceFixture from '../../contracts/fixtures/dashboard-intent/reference_set.json';
+import syntheticDatasetFixture from '../../contracts/fixtures/synthetic-data/dataset.json';
+import syntheticJobFailedFixture from '../../contracts/fixtures/synthetic-data/job.failed.json';
+import syntheticJobSucceededFixture from '../../contracts/fixtures/synthetic-data/job.succeeded.json';
+import syntheticProposalFixture from '../../contracts/fixtures/synthetic-data/proposal.json';
+import syntheticRequestFixture from '../../contracts/fixtures/synthetic-data/request.json';
 import syntheticSourceFixture from '../../contracts/fixtures/synthetic-data/source.json';
 
 const raw = import.meta.glob<string>('../../contracts/fixtures/api/*', { eager: true, query: '?raw', import: 'default' });
@@ -187,6 +199,128 @@ describe('references and synthetic sources match the contract', () => {
     const build = json('build.json') as Record<string, unknown>;
     expect(isBuild({ ...build, sources: [syntheticSourceFixture] })).toBe(true);
     expect(isBuild({ ...build, sources: [{ ...syntheticSourceFixture, kind: 'invented' }] })).toBe(false);
+  });
+});
+
+describe('synthetic-data fixtures match the contract (synthetic-data.md 1.1)', () => {
+  const files = import.meta.glob('../../contracts/fixtures/synthetic-data/*.json', { eager: true, import: 'default' });
+  const cases: Array<[string, unknown, Guard<unknown>, unknown]> = [
+    ['proposal.json', syntheticProposalFixture, isProposal, fixtures.syntheticProposal],
+    ['request.json', syntheticRequestFixture, isGenerationRequest, fixtures.syntheticRequest],
+    ['dataset.json', syntheticDatasetFixture, isSyntheticDataset, fixtures.syntheticDataset],
+    ['job.succeeded.json', syntheticJobSucceededFixture, isGenerationStatus, fixtures.syntheticJobSucceeded],
+    ['job.failed.json', syntheticJobFailedFixture, isGenerationStatus, fixtures.syntheticJobFailed],
+    ['source.json', syntheticSourceFixture, isSource, fixtures.syntheticSource],
+  ];
+
+  it('has a check for every shared synthetic-data fixture', () => {
+    expect(Object.keys(files).map((path) => path.slice(path.lastIndexOf('/') + 1)).sort()).toEqual(cases.map(([name]) => name).sort());
+  });
+
+  it.each(cases)('%s passes its exact guard and src/mocks/fixtures.ts exposes it unchanged', (name, value, guard, exposed) => {
+    expect(problemsOf(guard, value, name)).toEqual([]);
+    expect(exposed).toEqual(value);
+  });
+
+  it('accepts every generator kind of the contract', () => {
+    const generators = [
+      { kind: 'sequence', start: 1, step: 1, prefix: 'ORD-' },
+      { kind: 'integer', min: 1, max: 8 },
+      { kind: 'decimal', min: 10, max: 100, decimals: 2 },
+      { kind: 'choice', values: ['East', 2, true] },
+      { kind: 'boolean', true_probability: 0.25 },
+      { kind: 'date', start: '2024-01-01', end: '2024-12-31' },
+      { kind: 'product', fields: ['quantity', 'unit_price'], decimals: 2 },
+      { kind: 'lookup', field: 'region', mapping: { East: 'Boston', West: 'Denver' } },
+    ];
+    for (const generator of generators) expect(problemsOf(isGenerator, generator)).toEqual([]);
+  });
+
+  it('rejects extra, missing, mistyped and mis-tagged synthetic shapes at every level', () => {
+    const proposal = syntheticProposalFixture;
+    const spec = proposal.spec;
+    const column = spec.columns[0]!;
+    const withGenerator = (generator: unknown) => ({ ...proposal, spec: { ...spec, columns: [{ ...column, generator }] } });
+    const { assumptions: _assumptions, ...noAssumptions } = proposal;
+    const { proposal_id: _proposalId, ...noProposalId } = syntheticRequestFixture;
+    const failed = syntheticJobFailedFixture;
+    const invalid: Array<[Guard<unknown>, unknown]> = [
+      [isProposal, { ...proposal, extra: true }],
+      [isProposal, noAssumptions],
+      [isProposal, { ...proposal, spec: { ...spec, schema_version: 2 } }],
+      [isProposal, { ...proposal, spec: { ...spec, row_count: 10.5 } }],
+      [isProposal, { ...proposal, spec: { ...spec, extra: true } }],
+      [isProposal, { ...proposal, spec: { ...spec, columns: [{ ...column, type: 'geo' }] } }],
+      [isProposal, { ...proposal, spec: { ...spec, columns: [{ ...column, nullable_fraction: '0' }] } }],
+      [isProposal, withGenerator({ kind: 'regex', pattern: '.*' })],
+      [isProposal, withGenerator({ kind: 'choice', values: [null] })],
+      [isProposal, withGenerator({ kind: 'integer', min: 1, max: 8, extra: 1 })],
+      [isProposal, withGenerator({ kind: 'integer', min: 1 })],
+      [isProposal, withGenerator({ kind: 'lookup', field: 'region', mapping: { East: [1] } })],
+      [isGenerationRequest, { ...syntheticRequestFixture, generation_key: 7 }],
+      [isGenerationRequest, noProposalId],
+      [isSyntheticDataset, { ...syntheticDatasetFixture, synthetic: false }],
+      [isSyntheticDataset, { ...syntheticDatasetFixture, bytes: '19784' }],
+      [isGenerationStatus, { ...failed, state: 'done' }],
+      [isGenerationStatus, { ...failed, error: { code: 'synthetic_load_failed' } }],
+      [isGenerationStatus, { ...failed, error: { ...failed.error, extra: true } }],
+      [isGenerationStatus, { ...syntheticJobSucceededFixture, retry_ready: 'false' }],
+    ];
+    for (const [guard, value] of invalid) expect(guard(value), JSON.stringify(value)).toBe(false);
+  });
+});
+
+describe('the HTTP client speaks the synthetic-data contract', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const headers = { 'Content-Type': 'application/json' };
+
+  function stubFetch(status: number, body: string, type = 'application/json') {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response(body, { status, headers: { 'Content-Type': type } }));
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  it('posts the proposal and the exact generation request as JSON to relative paths', async () => {
+    const fetchMock = stubFetch(202, fixture['run_accepted.json'] ?? '');
+    await expect(httpApi.proposeSyntheticSchema('b/one', 'ref_example')).resolves.toEqual(json('run_accepted.json'));
+    await expect(httpApi.generateSyntheticData('b/one', fixtures.syntheticRequest)).resolves.toEqual(json('run_accepted.json'));
+    expect(fetchMock.mock.calls).toEqual([
+      ['/api/builds/b%2Fone/synthetic-data/proposal', { method: 'POST', headers, body: JSON.stringify({ reference_set_id: 'ref_example' }) }],
+      ['/api/builds/b%2Fone/synthetic-data', { method: 'POST', headers, body: JSON.stringify(syntheticRequestFixture) }],
+    ]);
+  });
+
+  it('reads the proposal or null, and fails closed on a malformed one', async () => {
+    const fetchMock = stubFetch(200, JSON.stringify(syntheticProposalFixture));
+    await expect(httpApi.getSyntheticProposal('b/one')).resolves.toEqual(syntheticProposalFixture);
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith('/api/builds/b%2Fone/synthetic-data/proposal', { method: 'GET' });
+    stubFetch(200, 'null');
+    await expect(httpApi.getSyntheticProposal('b/one')).resolves.toBeNull();
+    stubFetch(200, JSON.stringify({ ...syntheticProposalFixture, rows: [] }));
+    await expect(httpApi.getSyntheticProposal('b/one')).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+  });
+
+  it('refuses a request over 64 KiB before sending, and maps a server 413 to the same 64 KiB message', async () => {
+    const fetchMock = stubFetch(413, '<html>Too large</html>', 'text/html');
+    const column = fixtures.syntheticRequest.spec.columns[0]!;
+    const big = { ...fixtures.syntheticRequest, spec: { ...fixtures.syntheticRequest.spec, columns: [{ ...column, generator: { kind: 'choice' as const, values: ['x'.repeat(SYNTHETIC_LIMIT_BYTES)] } }] } };
+    const local: unknown = await httpApi.generateSyntheticData('b', big).catch((reason: unknown) => reason);
+    expect(local).toMatchObject({ status: 413, message: expect.stringContaining('64 KiB') });
+    expect(fetchMock).not.toHaveBeenCalled();
+    const remote: unknown = await httpApi.generateSyntheticData('b', fixtures.syntheticRequest).catch((reason: unknown) => reason);
+    expect(remote).toMatchObject({ status: 413, message: expect.stringContaining('64 KiB') });
+    expect((remote as ApiError).message).not.toContain('32 MB');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps invalid_generation_spec field errors from the error detail', async () => {
+    const detail = { field: 'columns[1].name', reason: 'must be snake_case' };
+    stubFetch(422, JSON.stringify({ error: { code: 'invalid_generation_spec', message: 'The generation spec is invalid', detail } }));
+    const error = (await httpApi.generateSyntheticData('b', fixtures.syntheticRequest).catch((reason: unknown) => reason)) as ApiError;
+    expect(error).toMatchObject({ status: 422, code: 'invalid_generation_spec' });
+    expect(specFieldErrors(error)).toEqual([detail]);
+    const listed = new ApiError(422, 'invalid_generation_spec', 'Invalid.', { errors: [{ field: 'spec.seed', reason: 'too big' }, { nope: 1 }] });
+    expect(specFieldErrors(listed)).toEqual([{ field: 'seed', reason: 'too big' }]);
   });
 });
 

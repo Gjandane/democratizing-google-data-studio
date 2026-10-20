@@ -21,14 +21,18 @@ const referenceError = (error: unknown) => {
 };
 
 /** One retained reference set. Chat opens this same stage panel; it has no second SSE connection. */
-export function ReferencePanel({ buildId, version = 1, readOnly = false, disabled = false, onReadyChange }: {
+export function ReferencePanel({ buildId, version = 1, readOnly = false, disabled = false, onReadyChange, onSavedChange }: {
   buildId: string; version?: number; readOnly?: boolean; disabled?: boolean; onReadyChange?: (ready: boolean) => void;
+  /** The saved set once loaded (null: none); undefined while loading or after a failed load. */
+  onSavedChange?: (saved: ReferenceSet | null | undefined) => void;
 }) {
   const id = useId();
   const [saved, setSaved] = useState<ReferenceSet | null>(null);
   const [loading, setLoading] = useState(true);
   const readiness = useRef(onReadyChange);
   readiness.current = onReadyChange;
+  const savedChange = useRef(onSavedChange);
+  savedChange.current = onSavedChange;
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +60,9 @@ export function ReferencePanel({ buildId, version = 1, readOnly = false, disable
   useLayoutEffect(() => {
     readiness.current?.(loaded && !loading && !loadError && !busy);
   }, [loaded, loading, loadError, busy]);
+  useLayoutEffect(() => {
+    savedChange.current?.(loaded && !loadError ? saved : undefined);
+  }, [loaded, loadError, saved]);
 
   useLayoutEffect(() => {
     if (!focusRequest) return;
