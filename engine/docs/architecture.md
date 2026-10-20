@@ -120,7 +120,11 @@ marked `live` (excluded by default via `addopts = "-m 'not live'"`). Test (all) 
 
 ## Live editor conventions
 These conventions consolidate the verified build decisions and selector traps from tasks
-1.1–4.3. They describe the local editor workflow; the recipe contract remains the interface.
+1.1–5.4. They describe the local editor workflow; the recipe contract remains the interface.
+- Live runs call the ownership-validated browser startup helper before checking sign-in;
+  `check` stays read-only. Dry runs and header-only recipes never start Chrome.
+- Retry cleanup checks the remaining budget before keyboard/mouse calls, which have no timeout
+  argument; canvas bounding-box lookup uses the remaining timeout. Cleanup is best-effort.
 - Interpret chart-only extension arguments only for `add_chart`; the shared op schema allows
   identically named extras of other types on other ops.
 - Use the 1920 x 1200 editor viewport and 100% zoom. Place components with mouse geometry;
@@ -128,6 +132,11 @@ These conventions consolidate the verified build decisions and selector traps fr
   within ±4 px. Images need Preserve Aspect Ratio disabled for arbitrary recipe boxes.
 - Retain creations and their actual owning page before retry/navigation, so retry does not
   duplicate components. Append pages from the last page: Add page inserts after the current one.
+- Background uploads retain pending intent before submitting the file, then retain and scope
+  the created element before waiting for image loading. Resize before moving so edge placement
+  cannot hide resize handles. Sending a background back refreshes registry indices on its owning
+  page by element identity. `OpContext.state` also contains a source-field list: registry walks
+  must filter dictionary entries before reading component state.
 - Disambiguate the saved-report View action from the View menu. Saving a new report requires
   Save and share and the acknowledgement; return the saved URL without `/edit`.
 - Wait for lazy chart iframes and their rendered content; scorecards and tables render directly.
@@ -139,14 +148,16 @@ These conventions consolidate the verified build decisions and selector traps fr
   radios because Secondary sort repeats their labels. Drill-down adds dimension slots
   asynchronously; presets may add an unwanted breakdown, and single series may hide stacking.
 - Wait for the control menu to close before drawing. Escape the calendar opened by selecting
-  a date control. Cache source field names before selecting it: the Data panel clears its fields.
+  a date control. Cache source field names when the editor becomes ready, before selecting any
+  image or source-less control: those selections can clear the Data panel.
   A geo picker without compatible fields can omit Chart fields entirely; close it on failure.
 - Pivot tables need a row dimension, even with column dimensions. Date preset families such
   as Last 7 days need a second submenu selection.
 - Multiple series expose clickable multiColor swatches. Scope font options directly to avoid
   tooltip overlays. Select all text again before each formatting property; use Selection Mode
   to leave text editing before geometry/readback. Image Setup can require canvas deselection
-  and a top-left component click.
+  and a top-left component click. Poll exact title-font readback within the operation budget;
+  closing dropdown options can briefly appear in the combobox text.
 - Read text through logical blocks and BR elements to preserve blank lines; neither textContent
   nor innerText alone is a reliable whitespace oracle.
 - Live recipes use `DSS_TEST_TABLE`; shared contract fixtures contain an unavailable placeholder
@@ -165,3 +176,6 @@ These conventions consolidate the verified build decisions and selector traps fr
 | 2026-10-19 | Reuse created components on retry, record their real page and append pages from the end | recreate after transient failure; infer page from recipe order | prevents duplicates and preserves page indices | tasks 2.2, 4.1, 4.2 |
 | 2026-10-19 | Read rendered text by logical blocks/BR; verify loaded images and saved report state | textContent-only checks; immediate screenshots | preserves blank lines and avoids accepting loading placeholders | tasks 4.2, 3.1 |
 | 2026-10-19 | Owned-page CDP JPEG frames, monotonic 500 ms gating and acknowledgement of dropped frames | a background thread or an additional dependency | schema-valid opt-in streaming with deterministic cleanup | task 4.3 |
+| 2026-10-20 | Start the owned browser before sign-in checking; budget retry input using supported Playwright signatures | check before startup; timeout keywords on keyboard/mouse APIs | cold runs must work and retry cleanup must actually execute | tasks 5.1–5.2, final re-audit |
+| 2026-10-20 | Retain pending background uploads and element identity; refresh owning-page registry indices after reordering | upload again on retry; page-wide image lookup; stale paint-order indices | avoids duplicates and preserves later style targeting beside other images | task 5.3, final re-audit |
+| 2026-10-20 | Capture source fields at editor readiness; poll exact title-font readback and saved image loading | defer field lookup until after image selection; immediate readback | live acceptance exposed cleared field panels and asynchronous editor/view state | task 5.4, final re-audit |

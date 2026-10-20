@@ -42,7 +42,7 @@ engine replays a compiled recipe of UI ops deterministically, with no LLM in the
 | selectors in an OKF bundle (`knowledge/datastudio-ui/`) | read-back verification of boxes | self-healing selectors via LLM |
 
 ## Constraints
-- Deadline 2026-10-20 01:05 MPST (the whole program). Engine core ready by about 22:00.
+- Hard deadline 2026-10-23 01:05 MPST (the whole program; current program guide).
 - Windows 11 machine with Google Chrome installed; Python 3.12 + uv.
 - Data Studio UI can change; selectors live in data files so a fix is a data edit.
 
