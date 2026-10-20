@@ -819,3 +819,40 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: evidence/logs in `.blueprint/qa/task-13.3/` and `.blueprint/task-13.3-*`.
 - Left open: none.
 - Next: final architect audit of the completed backend plan.
+
+## 2026-10-20: Audit (final)
+- Status: ACCEPTED. Re-audit of completed fixes 13.1-13.3 and affected earlier behavior;
+  all 44 planned tasks complete. Independent reviewer found no remaining demonstrated P0/P1.
+  Full evidence, scope, skips and per-command ledger: docs/audit-reaudit-2026-10-20.md.
+- What changed: architecture conventions/decision log absorb the fixes; previously deferred
+  design paragraphs explicitly identify future hardening. Essentials updated and stamped;
+  duplicate convention gotchas removed from AGENTS. PRD Later retains approved P2 deferrals
+  and now records intermittent live planning/reference failures plus label/font polish.
+  Plan audit header records ACCEPTED. Product source, tests, dependencies and contracts unchanged.
+- Checks: Test (all) PASS, 1106 passed/9 live deselected/3 warnings, 387.27s. Re-ran 33 distinct
+  focused commands for 29 affected tasks and contract/render acceptance: 31 initially PASS;
+  2 live commands initially failed and passed unchanged isolated reruns. All offline commands
+  PASS. Fix suites 13.1/13.2/13.3 PASS (260/33/208). Original Windows stalled-server oracle
+  PASS in five fresh processes with unchanged 1.5s + 0.5s limit and cleanup assertions.
+- Live: core/GPS/image mapping PASS (3, 384.74s), real engine dry-run done with 12 valid recipe
+  lines/11 skipped/0 failed. Reference smoke initially invalid observations (19.19s), isolated
+  rerun PASS (20.34s). Synthetic suite 1 PASS / 1 FAIL (244.05s): heading-fit rejection exhausted
+  two repairs before publication; isolated screenshot-only rerun PASS (132.56s), labeled
+  prototype/recipe. Reviewer grades both intermittent failures P2, not remaining blockers.
+  Failed heading inputs were lost to pytest temp cleanup; cause remains unconfirmed, and
+  the retained observation excerpt is explicitly not a raw DB backup. No reliability rate
+  or uniformly first-pass-green claim. No prompt/config/code or repair-budget change for reruns.
+- Visual/release: parent and reviewer inspected fresh 1200px core/heading/synthetic images;
+  headings fit, background crops match, sample-data footer visible. Real Chromium 12-component
+  15s oracle PASS. Isolated documented uvicorn health 200 in 4.25s, no reload. Contract checks
+  PASS, including synthetic 185 passed/930 deselected; manual conventions review PASS.
+  No actual report creation, hosted deployment or whole-program integration acceptance claimed.
+- Decisions: no additional fix phase; POC blockers resolved, known limitations stay in Later.
+  Preserve shared schema shipping, Windows Job ownership/0.4s cleanup, shared cached text
+  fitting and stable context section ordering as lasting conventions. Test-created cloud
+  resources may remain in the demo project; user runtime/configuration untouched.
+- Mechanical: all 17 dependency rows FOUND; no new direct dependency. Backend-scoped secret
+  metadata/pattern review found no matches (not a whole-program certification). Stamp PASS;
+  lint 0 errors/4 historical warnings; scoped diff whitespace PASS. Commit backend docs only.
+- Left open: no blocker or unverified dependency. Known P2/P3 limitations in PRD Later.
+- Next: nothing left to build in backend; root integration audit after other parts are accepted.

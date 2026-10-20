@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:4d2e85cb208d (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:96ab46095f42 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 Read every build session. docs/architecture.md wins if they disagree.
 
@@ -35,8 +35,8 @@ tests/          offline fakes; tests/live/ explicitly marked live
 - Cloud: SPA/$PORT, code cookie/header, fail-closed startup; DB backup API every 30 s when dirty;
   agent token, model-only settings, 60 s whole-attempt retry deadline. Preview needs no engine;
   run recompiles the current spec; flat job image names (architecture.md#Build consistency).
-- Staging, canonical recipes, intent provenance, synthetic recovery, backup deadlines:
-  architecture.md#Implementation conventions. `/api/dev/*` only when `DSS_DEV=1`.
+- Staging, recipe schema shipping, text fitting, Windows cleanup and provenance:
+  architecture.md#Implementation conventions. `/api/dev/*` requires `DSS_DEV=1`.
 - Tests: fixture keys/types, offline fakes unless marked live (architecture.md#Testing).
 - Research: discovery + metadata calls; <=20 scraper fetches, no retries.
 - References/feasibility (#Reference interpretation, #Capability verification): one set per

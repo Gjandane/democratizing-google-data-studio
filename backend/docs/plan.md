@@ -1,5 +1,5 @@
 # Plan: backend
-Target: POC · Audit: done 2026-10-20 (final re-audit: DEFECTS, 8 repair tasks in Phase 13; details in docs/audit-final-2026-10-20.md; change 2026-10-20: 13.4-13.8 deferred to PRD Later)
+Target: POC · Audit: done 2026-10-20 (final re-audit: ACCEPTED; fixes 13.1-13.3 verified; details in docs/audit-reaudit-2026-10-20.md; known limitations in PRD Later)
 
 Markers: [ ] to do, [~] in progress, [x] done, [!] blocked. Only blueprint.py changes them.
 Sizes: S small, M a normal session, L needs a whole fresh session (never run unattended).

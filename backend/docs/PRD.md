@@ -111,8 +111,10 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 - Verify Windows idle Ctrl+C responsiveness; an in-flight agent long poll can delay it up to
   25 seconds (audit 2026-10-19, not yet measured).
 - Live smoke checks for optional consolidation, UX audit and judge schemas remain unrun;
-  offline checks pass. Main planner and reference vision flows pass live; one reference call
-  returned invalid observations before its isolated retry passed (audit 2026-10-20).
+  offline checks pass. Main planner and reference vision flows pass live, but reference
+  extraction intermittently rejects invalid observations: both audits saw an initial failure
+  followed by an unchanged isolated rerun pass. No reliability rate established; one-call
+  guardrail remains intact (P2, audit/re-audit 2026-10-20).
 - Consolidate/judge retries do not have their own retry-listener binding; failed model events
   can lose reported usage because the event error is raised before token accounting. Successful
   judge responses do retain usage (runtime probe 5 input/2 output), superseding earlier progress
@@ -133,3 +135,10 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
   unfulfilled requirement; execution still refuses (P2, was task 13.7; change 2026-10-20).
 - Huge integers (e.g. 10**400) in synthetic numeric bounds or choices raise OverflowError: the
   API returns 500 instead of 422 (P2, was task 13.6; change 2026-10-20).
+- Live generated labels can retain stray punctuation; an unavailable requested font (observed:
+  Inter) uses the browser fallback. Refine label copy and deterministic font fallback later
+  (P3, audit re-audit 2026-10-20); measured headings still fit prototype and background.
+- Screenshot-only live planning can exhaust two spec repairs after heading-fit rejection and
+  safely return `invalid_request` without publishing. An unchanged fresh rerun passed; the
+  original input is unavailable and the cause unconfirmed. First-attempt success is not
+  guaranteed (P2, audit re-audit 2026-10-20).

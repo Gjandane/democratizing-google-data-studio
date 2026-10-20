@@ -49,5 +49,3 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Gemini max_output_tokens includes thinking; ADK may expose MAX_TOKENS as an error before scope handling. Bounded extraction needs a low thinking level and truncation-first handling.
 - csv.writer writes a null row of a single-column synthetic CSV as `""` (not a blank line): the typed BigQuery loader must load it as NULL and still count the row. With an explicit `null_marker=""` BigQuery does both (live-checked 12.2).
 - SQLite's connection context manager does not close the handle: use `contextlib.closing` when inspecting backup snapshots, or Windows can block temporary-file cleanup.
-- Recipe preview rejects top-level boolean op arguments (for example `add_text.bold`); nested style booleans are accepted.
-- Context recipes have tested section shapes/order; append node guidance to existing system sections to preserve working-memory tracing contracts.

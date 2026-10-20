@@ -184,7 +184,8 @@ Final-audit corrections (2026-10-19):
   wait or reader join. On the supported Windows machine the shortened stalled-server oracle
   (1.5 s budget) exits and reaps its engine within budget + 0.5 s. Preserve that acceptance
   tolerance; diagnose and bound teardown instead of hiding overruns by increasing the budget.
-- New-version creation is a publication transaction: copy/render to an owned staging location,
+- Deferred hardening (change 2026-10-20; PRD Later, former 13.5): new-version creation is to
+  become a publication transaction: copy/render to an owned staging location,
   commit the complete destination and DB version pointer, or roll back only this attempt.
   A copy, capture or DB failure leaves the old version usable and an immediate retry possible;
   restart cleans an abandoned owned destination. Never remove a committed/existing version.
@@ -233,7 +234,8 @@ Final-audit corrections (2026-10-19):
   generating over budget. Record estimated section counts separately from the authoritative
   request count. Counting calls do not add generation calls or consume the research scraper
   quota; preserve all generation/repair limits.
-- The Developer API only counts contents: folding instructions/schema/tools into text has
+- Deferred hardening (change 2026-10-20; PRD Later, former 13.8): the Developer API only counts
+  contents; folding instructions/schema/tools into text has
   measured undercount (8,245 folded vs 8,695 billed). Do not call that folded value an exact
   effective-request count or compare it directly to the hard budget. Retain it separately,
   use a conservative complete-request enforcement allowance, refit/recount against that bound,
@@ -335,7 +337,8 @@ Final-audit corrections (2026-10-19):
 - Oracle: tests/test_capabilities.py and tests/test_feasibility.py exercise all eleven contract cases,
   plus confirmed choices replayed against changed spec/registry and supported requests with no image.
   Live plan smoke compares expected refusal/mapping to the persisted ledger, not prose alone.
-- A saved dashboard that fails fulfillment at execution stays blocked or visibly prototype-stale
+- Deferred hardening (change 2026-10-20; PRD Later, former 13.7): a saved dashboard that fails
+  fulfillment at execution is to stay blocked or visibly prototype-stale
   through GET, unchanged explicit checks and reload. Support alone must not overwrite a
   fulfillment failure with ready/non-stale. Replan/reapply may recover only after coverage of
   the repaired artifact passes; pending supported comments retain their explicit reapply flow.
@@ -374,7 +377,8 @@ Final-audit corrections (2026-10-19):
 - Budgets/oracle are contract sections Generator request/Acceptance oracle; offline generator
   tests cover deterministic bytes and relationships, API tests fake model/BQ/storage; one live
   screenshot-only path validates schema proposal, typed load and the final report label.
-- Validate numeric magnitude before float conversion. Arbitrarily large JSON integers in
+- Deferred hardening (change 2026-10-20; PRD Later, former 13.6): validate numeric magnitude
+  before float conversion. Arbitrarily large JSON integers in
   decimal bounds, choice/lookup values or dependencies produce field-specific SyntheticError,
   HTTP 422 and a clean nonzero CLI exit, never OverflowError/500/traceback or a partial CSV.
 
@@ -454,7 +458,8 @@ Final-audit corrections (2026-10-19):
   `layer=decoration` hides components; a chart type the catalog lacks can't render (raises).
   Background: Playwright Chromium (sync API in a worker thread) screenshots `layer=decoration` at
   canvas size -> `background_p<n>.png` (POC: `background_p1.png`).
-- Supported options have matching visible semantics: bar orientation/stacking, pie donut,
+- Deferred preview parity (change 2026-10-20; PRD Later, former 13.4): supported options are to
+  have matching visible semantics: bar orientation/stacking, pie donut,
   scorecard compact formatting, table rows_per_page (within the 20-row query cap) and pivot row/column assignments. Derive both aggregate
   grouping and displayed axes/cells from the accepted bindings; verify against independent
   expected values, not the renderer's own serialization. Preserve compiler contract bytes.
@@ -569,6 +574,18 @@ runtime dependency), pytest + pytest-asyncio (tests).
 - Synthetic provenance is source-owned, including joined sources. Reserve a 64px footer for
   p1_synthetic_sample_data; restore it on legacy reads, revisions and copied versions before
   publishing artifacts. Neither model patches nor reference images may hide or replace it.
+- Theme colors revalidate locally, including mutated/legacy specs; cache recipe-schema validators
+  and validate compiled headers/ops before publication. Ship `contracts/recipe.schema.json`
+  beside backend at runtime; the compiler loads that shared contract without an engine install.
+- On Windows, assign each agent engine to an owned Job Object before resuming it, so wrapper
+  exit cannot orphan descendants. Retry expiry shares a 0.4 s cleanup allowance across HTTP
+  close, process reaping, pipe/reader shutdown and the main loop; keep the 0.5 s test tolerance.
+- Decoration text uses shared CSS and cached Chromium measurements of content/style/geometry
+  in a worker thread. Titles/subtitles have zero padding and line-height 1.25; a default 28px
+  title needs three grid rows. Reject insufficient boxes into existing repair; never enlarge
+  them automatically. Prototype/background retain identical wrapping/fonts and footer protection.
+- Context recipes have tested section order and shapes. Append node guidance inside existing
+  system sections instead of adding sections that change working-memory tracing contracts.
 
 ## Testing
 pytest, offline by default: FakeLLM (scripted responses by node), FakeBigQuery (in-memory rows
@@ -607,3 +624,5 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-20 | Synthetic durability: generation table plus immediate best-effort DB backups after reservation and registration; startup fails in-flight jobs and cleans their own artifacts (synthetic-data.md 1.1) | immutable manifests + startup reconciliation; fail-closed 503 on backup failure | same POC guarantee on the existing backup path, no new files or error code | change 2026-10-20 (program root, user choice) |
 | 2026-10-20 | Gemini per-call timeout: planner 120 s, worker 30 s; one retry on 429/500/503, none on 504 | one 30 s timeout for all calls; 120 s for all | the fixed 30 s timeout cut off slow spec calls with a 504 (`llm_unavailable`) and blocked 11.8; a retry after our own deadline would just wait again | change 2026-10-20 (blocked 11.8, user choice) |
 | 2026-10-20 | Fold durable implementation and test rules from tasks 9-12 into conventions | leave them in every session's gotchas | keep canonical recipes, intent provenance, staged publication and synthetic recovery explicit | final re-audit |
+| 2026-10-20 | Keep fixes 13.1-13.3; defer former 13.4-13.8 to PRD Later and mark their design paragraphs as deferred | another five build sessions and re-audit | user-approved POC severity triage; no silent claim that deferred invariants are implemented | change triage phase 13 |
+| 2026-10-20 | Shared-schema recipe validation, Windows Job ownership/0.4 s cleanup, shared cached text fitting and existing context-section ordering | repeated schema loading, wrapper-only cleanup, enlarged heading boxes or changed context recipes | retain completed task decisions and unchanged repair/deadline limits | tasks 13.1-13.3; final re-audit |
