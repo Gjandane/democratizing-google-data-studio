@@ -1,0 +1,160 @@
+{
+  "template": "Submission Template _ AI Builder Cup.pptx",
+  "output": "deck/AI-Builder-Cup-Submission",
+  "remove_title_prefixes": [
+    "Note: Please download"
+  ],
+  "slides": [
+    {
+      "match": "Team Details",
+      "inline": true,
+      "body": [
+        "Team name: Prisma",
+        "Team leader name: Jan Daniel Gonzalvo",
+        "Problem Statement: Data Studio dashboards take hours of clicks and design skill"
+      ],
+      "notes": "We are team Prisma. The problem: people who know their data (analysts, managers, students) can't easily turn their questions into a good Data Studio dashboard, because building one takes hours of clicking plus design skill."
+    },
+    {
+      "match": "Brief about the idea",
+      "image": "deck/img/d1-solution.png",
+      "notes": "Democratizing Google Data Studio is an agentic web app. You bring data (a CSV, GCS or BigQuery tables) and a goal. An agent interviews you about audience, questions and KPIs, designs the dashboard as an HTML prototype you can comment on, then compiles a recipe and builds the real Data Studio dashboard in a visible Chrome window. The goal is a working dashboard link, not a mockup; the full compiler and live build are still being finished."
+    },
+    {
+      "match": "Opportunities",
+      "body": [
+        "Different: other tools generate charts or SQL; we build a real, editable Data Studio report from a compiled recipe.",
+        "How it solves the problem: a short interview turns business questions into a Dashboard Spec; click-to-comment fixes the design before any build.",
+        "USP: an agent harness with three memories built to learn from every build (retrieval, consolidation: planned), plus a deterministic engine that clicks Data Studio for you.",
+        "Opportunity: every team on Google Workspace already has Data Studio and BigQuery."
+      ],
+      "notes": "Three answers to the template's questions. Different: we output the real Data Studio report, not a picture of one. How it solves the problem: the interview plus the commentable prototype replace hours of clicking and design trial and error. USP: the harness (procedural, semantic and episodic memory) plus a compiled recipe that a Playwright engine replays, so the expensive model is only used for decisions, not clicks."
+    },
+    {
+      "match": "List of features",
+      "body": [
+        "Data in: CSV upload, CSV in GCS or BigQuery tables, all landing in BigQuery with a profiled schema.",
+        "Chat interview about audience, questions and KPIs; four dashboard archetypes as skills.",
+        "HTML prototype with click-to-comment edits.",
+        "Closed catalog of 12 Data Studio component types.",
+        "One-click build: compiled recipe, live build events, dashboard link (full compiler: planned).",
+        "History of builds; versions and Cloud Run hosting behind an access code: planned.",
+        "Spec and revise from comments: planned (in progress)."
+      ],
+      "notes": "Walk the list top to bottom, following one build. Be honest about status: the web app, the engine, intake, interview and plan are built; the spec node, revise from comments, the full compiler and cloud mode are still being built and are tagged planned on the diagrams."
+    },
+    {
+      "match": "Process flow diagram",
+      "image": "deck/img/d2-process-flow.png",
+      "notes": "Top row: what the user sees (add data, chat, review the plan, click to comment, build view, dashboard link). Middle row: the harness nodes behind each step. Bottom row: flow 3, history: open a past build, edit by comment or chat, and re-run it as a new dashboard version while v1 stays."
+    },
+    {
+      "match": "Wireframes/Mock diagrams",
+      "body": [
+        "Left: History of past builds. Center: the workspace with a stage stepper (Connect, Interview, Plan, Prototype, Build, Done).",
+        "Chat panel beside an HTML prototype of the dashboard; click any element to pin a comment, then apply all comments at once.",
+        "Build view streams each engine step and ends with the Data Studio link.",
+        "TBD: prototype screenshots (task 4.2)."
+      ],
+      "notes": "Describe the web app layout. Real screenshots of the running prototype replace this text in the final deck."
+    },
+    {
+      "match": "Architecture diagram",
+      "body": [
+        "Four parts with written contracts: the web app (frontend), the harness and API (backend), the dsengine CLI (engine) and the release checks.",
+        "The harness runs an ADK 2.0 graph with Gemini planner and worker models; three memories (episodic retrieval: planned).",
+        "Data lives in BigQuery: one SQL view per build.",
+        "The engine replays a compiled recipe in Data Studio with Playwright.",
+        "The next six slides open each layer."
+      ],
+      "notes": "This is the map for the next six slides: parts and data flow, the harness memories, the ADK graph, the token economy, the recipe and engine, and the Cloud Run deployment.",
+      "added": [
+        {
+          "title": "Parts and data flow",
+          "image": "deck/img/d3-parts.png",
+          "notes": "The four parts and how data moves: the web app calls the harness API; the harness loads data into BigQuery, calls Gemini and hands a compiled recipe to dsengine, which builds the report in Data Studio. Each arrow is a written contract."
+        },
+        {
+          "title": "The harness: three memories",
+          "image": "deck/img/d4-harness-memory.png",
+          "notes": "Procedural memory is skill files, semantic memory is an OKF bundle (no vector store), episodic memory is SQLite with FTS5. After every five finished builds a cheaper model will consolidate episodes into facts (planned). Every run is traced for the eval loop."
+        },
+        {
+          "title": "ADK graph and repair loop",
+          "image": "deck/img/d5-adk-graph.png",
+          "notes": "The ADK 2.0 Workflow graph: a router sends each request to its node. LLM nodes are yellow, code nodes gray. Validate checks the spec and sends errors back to the LLM node, the repair loop, before anything is rendered or built."
+        },
+        {
+          "title": "Token economy",
+          "image": "deck/img/d6-token-economy.png",
+          "notes": "How we keep the model cheap: the spec is the single truth, comments become small JSON patches, the recipe is compiled by code not generated, each node gets only the context it needs, and the cheaper worker model takes the routine calls."
+        },
+        {
+          "title": "Recipe and engine",
+          "image": "deck/img/d7-recipe-engine.png",
+          "notes": "The Dashboard Spec compiles into recipe.jsonl, one operation per line. dsengine replays it with Playwright on the signed-in Chrome and streams one event per operation, so the build view shows progress live. Only the closed catalog of 12 component types is allowed."
+        },
+        {
+          "title": "Cloud Run deployment",
+          "image": "deck/img/d8-cloud-run.png",
+          "notes": "Planned deployment: one Cloud Run service behind a shared access code, state on a GCS volume, secrets in Secret Manager. The Data Studio build runs through dss-agent on the user's machine, because the Google session stays in the user's own signed-in Chrome."
+        }
+      ]
+    },
+    {
+      "match": "Technologies to be used",
+      "body": [
+        "Google: Gemini API (planner and worker models), BigQuery, Data Studio, Cloud Run, Cloud Storage, Secret Manager, Cloud Build.",
+        "Agent: Google ADK 2.0 Workflow graph; skills as Markdown files; OKF knowledge bundle; SQLite with FTS5.",
+        "Backend: Python 3.12, FastAPI, REST plus server-sent events, uv.",
+        "Engine: Playwright driving a signed-in Chrome.",
+        "Frontend: TypeScript web app built with Vite on Node 20."
+      ],
+      "notes": "Everything Google-native where it matters: Gemini for reasoning, BigQuery for data, Data Studio as the output, Cloud Run for hosting. ADK 2.0 is the only orchestrator; there is no vector store, the OKF bundle replaces RAG."
+    },
+    {
+      "match": "Estimated implementation cost",
+      "remove": true
+    },
+    {
+      "match": "Snapshots of the prototype",
+      "body": [
+        "TBD: screenshots of the running app (task 4.2): data intake, the interview chat, the commentable HTML prototype, the live build view and the finished Data Studio dashboard.",
+        "Each snapshot is taken from the sample e-commerce dataset (2,000 orders) so the demo is repeatable."
+      ],
+      "notes": "Final deck: one screenshot per stage of flow 1, taken from the end-to-end run."
+    },
+    {
+      "match": "Prototype Performance report",
+      "body": [
+        "TBD: numbers from the end-to-end runs (tasks 2.2, 2.3 and 3.2), each with its run date.",
+        "Planned measures: time from data to dashboard link, model tokens per build, engine steps run and failed, and repair-loop retries.",
+        "All figures will come from the benchmark files in deck/data, never estimates."
+      ],
+      "notes": "Only measured numbers go on this slide. They come from deck/data/bench-*.json written by the end-to-end runs."
+    },
+    {
+      "match": "Additional Details/Future Development",
+      "body": [
+        "Full ETL for dashboard automation, beyond dashboard creation.",
+        "Community visualizations built by an HTML coding agent (animations, moving map points).",
+        "Audit and rebuild existing Data Studio dashboards with better questions and UX.",
+        "More data sources: Cloud Bigtable and other connectors.",
+        "Deeper LLMOps, security and evals.",
+        "Self-healing patches when Data Studio changes or a user reports a bug."
+      ],
+      "notes": "Our roadmap after the cup. Each item builds on the same harness: new skills, new recipe operations, and the trace and eval loop."
+    },
+    {
+      "match": "Provide links to your",
+      "body": [
+        "GitHub public repository: TBD",
+        "Demo video (3 minutes): TBD",
+        "Final product (Cloud Run, access code on request): TBD",
+        "Run it locally: clone the repository, copy .env.example to .env, then run ./start.sh (the README has every step)."
+      ],
+      "notes": "Links are filled in task 4.2 once the repo is pushed, the video is recorded and the service is deployed."
+    }
+  ],
+  "closing_notes": "Thank you. Questions?"
+}
