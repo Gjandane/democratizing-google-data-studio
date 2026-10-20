@@ -143,7 +143,7 @@ def table_option(item, rows, theme):
 
 
 def chart_option(item, rows, theme, width):
-    base = {'animation': False, 'color': theme.palette or [theme.accent],
+    base = {'animation': False, 'color': item.colors if item.colors is not None else theme.palette or [theme.accent],
             'textStyle': {'fontFamily': theme.font_family, 'color': theme.text},
             'aria': {'enabled': True, 'decal': {'show': True}},
             'tooltip': {'trigger': 'item', 'renderMode': 'richText'}}
@@ -153,12 +153,22 @@ def chart_option(item, rows, theme, width):
         headers, values = table_option(item, rows, theme)
         cell_w = max(85, (width - 32) / max(1, len(headers)))
         graphics = []
+        header_text = theme.text
+        if item.colors is not None:
+            accent = item.colors[0]
+            # A colored header keeps even a very light requested accent legible.
+            channels = [int(accent[i:i+2], 16) / 255 for i in (1, 3, 5)]
+            linear = [v / 12.92 if v <= .04045 else ((v + .055) / 1.055) ** 2.4 for v in channels]
+            luminance = sum(v * weight for v, weight in zip(linear, (.2126, .7152, .0722)))
+            header_text = '#000000' if luminance > .179 else '#FFFFFF'
+            graphics.append({'type': 'rect', 'shape': {'x': 0, 'y': 0, 'width': cell_w * len(headers), 'height': 25},
+                             'style': {'fill': accent}})
         for y, row in enumerate([headers] + values):
             for x, value in enumerate(row):
                 graphics.append({'type': 'text', 'x': x * cell_w, 'y': y * 25 + 5,
                     'style': {'text': str(value if value is not None else '—'), 'width': cell_w - 12,
                         'overflow': 'truncate', 'fontSize': 12, 'fontFamily': theme.font_family,
-                        'fontWeight': 'bold' if y == 0 else 'normal', 'fill': theme.text}})
+                        'fontWeight': 'bold' if y == 0 else 'normal', 'fill': header_text if y == 0 else theme.text}})
         return {**base, 'graphic': graphics}
     if item.type == 'pie':
         return {**base, 'legend': {'type': 'scroll', 'bottom': 0, 'textStyle': {'color': theme.text}},
@@ -177,7 +187,7 @@ def chart_option(item, rows, theme, width):
                 pass
         visual = {'min': min((r.get('m0') or 0) for r in rows),
             'max': max((r.get('m0') or 0) for r in rows) or 1, 'left': 0, 'bottom': 0,
-            'inRange': {'color': [theme.surface, theme.accent]}}
+            'inRange': {'color': [theme.surface, item.colors[0] if item.colors is not None else theme.accent]}}
         if points:
             return {**base, 'geo': {'map': 'world', 'roam': False},
                 'visualMap': {**visual, 'dimension': 2},
@@ -271,7 +281,8 @@ def render(spec, *, layer=None, data=None, folder=None):
                         parts.append(f'<select aria-label="{label_html}"><option>{escape(label)} — All</option>' + ''.join(f'<option>{escape(str(r.get(item.field, "")))}</option>' for r in rows) + '</select>')
                     elif item.type == 'scorecard':
                         value = rows[0].get('m0')
-                        parts.append(f'<div class="value">{escape(format(value, ",.2f") if isinstance(value, (int,float,Decimal)) else str(value))}</div>')
+                        accent_style = f' style="color:{css_value(item.colors[0])}"' if item.colors is not None else ''
+                        parts.append(f'<div class="value"{accent_style}>{escape(format(value, ",.2f") if isinstance(value, (int,float,Decimal)) else str(value))}</div>')
                     elif layer != 'decoration':
                         chart_id = 'chart_' + item.id
                         parts.append(f'<div class="chart" id="{chart_id}" role="img" aria-label="{label_html}"></div>')

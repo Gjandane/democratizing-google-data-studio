@@ -42,6 +42,11 @@ tests/          offline fakes; tests/live/ explicitly marked live
 - References/feasibility: architecture.md#Reference interpretation through #Conversational
   definitions and supported styling. Images are not data; issues gate readiness, not clarification.
   Retain context and confirmed definitions with provenance; one extraction/action.
+- Task 14.2 user-approved extension (2026-10-21): optional per-chart `colors` overrides the
+  shared theme palette in prototype and recipe; scoped accent comments patch only that chart.
+  Use the existing evidenced `style.colors`; preserve geometry, bindings and other charts.
+  Also approved: COUNT/COUNT DISTINCT may use a dimension field in a metric slot;
+  other catalog role checks and SUM/AVG numeric checks still apply.
 - Plan publication: each plan attempt makes a run-specific candidate view; publish it with spec
   and artifacts; clean only uncommitted candidates; never replace a published view.
 - Synthetic data (#Synthetic data, synthetic-data.md): schema/count/seed -> deterministic stdlib

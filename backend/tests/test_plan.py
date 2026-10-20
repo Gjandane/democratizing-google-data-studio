@@ -278,6 +278,24 @@ async def plan_api(client, app, bid):
     return response.json()['run_id'], events(app, bid)[-1][1]
 
 
+@pytest.mark.parametrize('agg,allowed', [('count', True), ('count_distinct', True), ('sum', False), ('avg', False), ('none', False)])
+def test_dimension_metrics_require_count_aggregation(agg, allowed):
+    from pathlib import Path
+    from dss.spec.models import DashboardSpec
+    from dss.spec.validate import validate_spec
+    spec = DashboardSpec.model_validate_json(Path('tests/data/thin_spec.json').read_text())
+    metric = spec.pages[0].components[0].metrics[0]
+    field = next(f for f in spec.datasource.fields if f.name == metric.field)
+    field.type, field.role = 'STRING', 'dimension'
+    metric.agg = agg
+    for component in spec.pages[0].components[1:]:
+        for other in component.metrics:
+            if other.field == field.name:
+                other.agg = 'count'
+    errors = validate_spec(spec)
+    assert (not errors) is allowed, errors
+
+
 async def test_supported_intent_plan_publishes_proof_and_recipe(client, app, build_id, monkeypatch):
     from dss.memory import episodic
     from dss.spec import requirements as req

@@ -164,6 +164,140 @@ INTERVIEW_TURNS = [
     "Keep the scope to a single page canvas with series colors #1E40AF and #F59E0B. "
     "That is everything; please plan the dashboard."]
 
+INTERVIEW_RELEASE_TURNS = [
+    "The audience is sales executives. Track total revenue, order count, quantity sold and sales trends using only the uploaded columns.",
+    "Compare regions and product categories over the full available date range; revenue is SUM(revenue), order count is COUNT(DISTINCT order_id), and quantity sold is SUM(quantity).",
+    "Use one executive overview page with KPI scorecards, a revenue trend grouped by order_date at monthly grain, and revenue by region. Use a clean blue theme; proceed with these choices."]
+
+
+@pytest.mark.live
+def test_isolated_release_interview_plan_and_component_accent(tmp_path, monkeypatch):
+    """Exact release regression through real extraction, planning and scoped revision."""
+    from copy import deepcopy
+    from shutil import copy2
+    from uuid import uuid4
+    from dss.spec import requirements as req
+    app, config, project = live_app(tmp_path)
+    evidence = BACKEND_DIR / '.blueprint/qa/task-14.2/interview' / (time.strftime('%Y%m%d-%H%M%S') + '-' + uuid4().hex[:8])
+    evidence.mkdir(parents=True)
+    turns, runs = [], []
+    folder = None
+    # Observe the real validator; save failed as well as successful model output.
+    from dss.harness.nodes import validate as validator
+    original_validate = validator.validate_spec
+    attempts = []
+    def observed_validate(value, **kwargs):
+        attempts.append(value)
+        (evidence / f'candidate-{len(attempts)}.json').write_text(json.dumps(value, indent=2), encoding='utf-8')
+        errors = original_validate(value, **kwargs)
+        (evidence / f'candidate-{len(attempts)}-errors.json').write_text(json.dumps(errors, indent=2), encoding='utf-8')
+        return errors
+    monkeypatch.setattr(validator, 'validate_spec', observed_validate)
+    original_coverage = req.coverage_errors
+    def observed_coverage(*args, **kwargs):
+        try:
+            errors = original_coverage(*args, **kwargs)
+        except ValueError as error:
+            (evidence / f'candidate-{len(attempts)}-coverage-error.txt').write_text(str(error), encoding='utf-8')
+            raise
+        (evidence / f'candidate-{len(attempts)}-coverage.json').write_text(json.dumps(errors, indent=2), encoding='utf-8')
+        return errors
+    monkeypatch.setattr(req, 'coverage_errors', observed_coverage)
+
+    def capture(client, bid, label):
+        spec = client.get(f'/api/builds/{bid}/spec').json()
+        html = client.get(f'/api/builds/{bid}/prototype').text
+        (evidence / f'{label}-spec.json').write_text(json.dumps(spec, indent=2), encoding='utf-8')
+        (evidence / f'{label}-prototype.html').write_text(html, encoding='utf-8')
+        if (folder / 'requirements.json').is_file():
+            copy2(folder / 'requirements.json', evidence / f'{label}-requirements.json')
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            try:
+                page = browser.new_page(viewport={'width': spec['canvas']['width'], 'height': spec['canvas']['height']})
+                page.set_content(html, wait_until='networkidle')
+                page.screenshot(path=str(evidence / f'{label}-prototype.png'), full_page=True)
+            finally:
+                browser.close()
+        return spec
+
+    try:
+        with TestClient(app) as client:
+            bid = live_build(client, project, INTERVIEW_SAMPLE.read_bytes())
+            folder = config.data_dir / 'builds' / bid / 'v1'
+            started = client.post(f'/api/builds/{bid}/interview/start')
+            assert started.status_code == 202, started.text
+            wait(app)
+            runs.append(trace(app, started.json()['run_id']))
+            assert runs[-1]['status'] == 'ok', runs[-1]['error']
+            for text in INTERVIEW_RELEASE_TURNS:
+                response = client.post(f'/api/builds/{bid}/messages', json={'text': text})
+                assert response.status_code == 202, response.text
+                wait(app)
+                runs.append(trace(app, response.json()['run_id']))
+                assessment = client.get(f'/api/builds/{bid}/feasibility').json()
+                turns.append({'text': text, 'trace': runs[-1], 'assessment': assessment,
+                              'messages': client.get(f'/api/builds/{bid}/messages').json()})
+                assert runs[-1]['status'] == 'ok', runs[-1]['error']
+            assert assessment['state'] == 'ready', assessment
+            assert client.get(f'/api/builds/{bid}').json()['ready_for_plan']
+            ledger = req.load(folder)
+            mappings = {(m.field, m.aggregation) for r in ledger.requirements for m in r.mappings}
+            assert {('revenue', 'sum'), ('order_id', 'count_distinct'), ('quantity', 'sum')} <= mappings, mappings
+            assert any(m.date_grain == 'month' and m.field == 'revenue' and
+                       any(n.fields.get('date_field') == 'order_date' for n in r.needs)
+                       for r in ledger.requirements for m in r.mappings), ledger
+            response = client.post(f'/api/builds/{bid}/plan')
+            assert response.status_code == 202, response.text
+            wait(app, 600)
+            runs.append(trace(app, response.json()['run_id']))
+            assert runs[-1]['status'] == 'ok', runs[-1]['error']
+            assert client.get(f'/api/builds/{bid}').json()['stage'] == 'prototype'
+            before = capture(client, bid, 'before')
+            charts = [c for c in before['pages'][0]['components'] if c['type'] in ('bar', 'time_series')
+                      and {'field': 'revenue', 'agg': 'sum'} in c['metrics']]
+            assert charts, before
+            target = charts[0]
+            def blue(color):
+                red, green, channel = (int(color[i:i+2], 16) for i in (1, 3, 5))
+                return channel > red and channel > green
+            assert before['theme']['palette'] and any(blue(color) for color in before['theme']['palette']), before['theme']
+            comment = 'Use a dark blue accent for this component; preserve its position and data.'
+            response = client.post(f'/api/builds/{bid}/comments', json={'comments': [{'component_id': target['id'], 'text': comment}]})
+            assert response.status_code == 202, response.text
+            wait(app)
+            runs.append(trace(app, response.json()['run_id']))
+            assessment = client.get(f'/api/builds/{bid}/feasibility').json()
+            turns.append({'text': comment, 'trace': runs[-1], 'assessment': assessment})
+            assert runs[-1]['status'] == 'ok', runs[-1]['error']
+            assert assessment['state'] == 'ready' and assessment['pending_comments'] is None, assessment
+            after = capture(client, bid, 'after')
+            expected = deepcopy(before)
+            expected['spec_version'] = after['spec_version']
+            next(c for c in expected['pages'][0]['components'] if c['id'] == target['id'])['colors'] = ['#172554']
+            assert after == expected
+            assert after['spec_version'] > before['spec_version']
+            compiled = client.post(f'/api/builds/{bid}/recipe')
+            assert compiled.status_code == 200, compiled.text
+            recipe = validate_recipe((folder / 'recipe.jsonl').read_text(encoding='utf-8'))
+            assert any(op['op'] == 'set_style' and op['component_id'] == target['id'] and op['style']['colors'] == ['#172554'] for op in recipe[1:])
+    finally:
+        (evidence / 'turns.json').write_text(json.dumps(turns, indent=2), encoding='utf-8')
+        (evidence / 'traces.json').write_text(json.dumps(runs, indent=2), encoding='utf-8')
+        with app.state.db.connect() as conn:
+            events = [{'kind': r[0], 'payload': json.loads(r[1])} for r in conn.execute('SELECT kind,payload_json FROM events ORDER BY rowid')]
+        (evidence / 'api-events.json').write_text(json.dumps(events, indent=2), encoding='utf-8')
+        if folder is not None and folder.exists():
+            # Explicit metadata/artifact allowlist: no database, settings or credentials.
+            for name in ('requirements.json', 'spec.json', 'prototype.html', 'background_p1.png', 'recipe.jsonl'):
+                if (folder / name).is_file():
+                    copy2(folder / name, evidence / name)
+            if (folder / 'docs').is_dir():
+                (evidence / 'docs').mkdir(exist_ok=True)
+                for path in (folder / 'docs').glob('*.md'):
+                    copy2(path, evidence / 'docs' / path.name)
+
 
 @pytest.mark.live
 def test_isolated_three_turn_interview_feasibility(tmp_path):

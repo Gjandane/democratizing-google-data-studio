@@ -440,6 +440,44 @@ def merge_turns(fields, *turns):
     return snapshot, ledger
 
 
+def test_quoted_coordinated_formulas_never_authorize_middle_clauses():
+    text = '"Revenue is SUM(revenue); order count is COUNT(DISTINCT order_id); quantity sold is SUM(quantity)."'
+    m = req.Mapping(label='order count', field='order_id', aggregation='count_distinct')
+    row = req.Requirement(id='r', source=req.Source(id='s', kind='message', text=text), text=text)
+    assert req.mapping_verdict(m, row, {'order_id': 'STRING'}) is not None
+
+
+def test_absorbed_unit_definition_blocks_incompatible_reuse_and_allows_correction():
+    start = ('Show Revenue', [{'text': 'Show Revenue', 'needs': [{'capability': 'chart.scorecard'}],
+        'mappings': [{'label': 'Revenue', 'field': None}]}])
+    define = ('Revenue is SUM(revenue) in USD.', [{'text': 'Revenue is SUM(revenue) in USD.',
+        'mappings': [{'label': 'Revenue', 'field': 'revenue', 'aggregation': 'sum', 'unit': 'USD'}]}])
+    ask = ('Show Revenue in EUR', [{'text': 'Show Revenue in EUR', 'needs': [{'capability': 'chart.scorecard'}],
+        'mappings': [{'label': 'Revenue', 'field': 'revenue', 'unit': 'EUR'}]}])
+    correction = ('Correction: Revenue is SUM(revenue) in EUR.', [{'text': 'Correction: Revenue is SUM(revenue) in EUR.',
+        'mappings': [{'label': 'Revenue', 'field': 'revenue', 'aggregation': 'sum', 'unit': 'EUR'}]}])
+    checker = capabilities.Checker(capabilities.load_registry())
+    snapshot, ledger = merge_turns({'revenue': 'FLOAT'}, start, define, ask)
+    assert req.evaluate(snapshot, ledger, checker).state == 'blocked'
+    snapshot, ledger = merge_turns({'revenue': 'FLOAT'}, start, define, ask, correction)
+    assert req.evaluate(snapshot, ledger, checker).state == 'ready'
+    assert all(m.unit == 'EUR' for row in ledger.requirements for m in row.mappings)
+
+
+def test_normal_explicit_reconfirmation_rebinds_changed_source():
+    text = 'Revenue is SUM(revenue).'
+    item = {'text': text, 'needs': [{'capability': 'chart.scorecard'}],
+            'mappings': [{'label': 'Revenue', 'field': 'revenue', 'aggregation': 'sum'}]}
+    snapshot, ledger = merge_turns({'revenue': 'FLOAT'}, (text, [item]))
+    snapshot['sources'][0]['table'] = 'other'
+    ledger = req.merge(ledger, snapshot, req.Extraction(requirements=[]))
+    checker = capabilities.Checker(capabilities.load_registry())
+    assert req.evaluate(snapshot, ledger, checker).state == 'blocked'
+    snapshot['incoming'].append(req.Source(id='reconfirm', kind='message', text=text).model_dump())
+    ledger = req.merge(ledger, snapshot, req.Extraction(requirements=[{'source_id': 'reconfirm', **item}]))
+    assert req.evaluate(snapshot, ledger, checker).state == 'ready'
+
+
 @pytest.mark.parametrize('answer,rows', [
     # Each definition clause refines its earlier row, wherever it sits in the answer.
     ('Order count is COUNT(DISTINCT order_id). Quantity sold is SUM(quantity). Thanks!', 2),
@@ -770,6 +808,29 @@ def test_deterministic_bounded_recompute_speed():
     assert a.state == "ready" and time.perf_counter() - start < .1
 
 
+def test_bounded_recompute_speed_with_definitions():
+    # Definition reconciliation scans every message for every label/field pair.
+    cols = [{'name': f'c{i}', 'type': 'number', 'bq_type': 'FLOAT'} for i in range(28)]
+    cols += [{'name': 'region', 'type': 'string', 'bq_type': 'STRING'}, {'name': 'order_date', 'type': 'date', 'bq_type': 'DATE'}]
+    msgs = [req.Source(id=f'm{i}', kind='message', text=f'Metric {i} is SUM(c{i}), metric {i + 10} is SUM(c{i + 10}) and show them by region.')
+            for i in range(10)]
+    ledger = req.Ledger(requirements=[req.Requirement(id=f'r{i}', source=msgs[i % 10], text=f'Bar {i}',
+        needs=[capabilities.Need(capability='chart.bar')], mappings=[req.Mapping(label=f'metric {i % 20}', field=f'c{i % 20}', aggregation='sum'),
+        req.Mapping(label='region', field='region')]) for i in range(40)])
+    snapshot = {'sources': [{'id': 's', 'table': 'p.d.t', 'columns': cols}], 'incoming': [m.model_dump() for m in msgs],
+                'reference': None, 'definitions': {}, 'spec': {'pages': [{'components': [
+                    {'id': f'k{i}', 'type': 'bar', 'dimensions': ['region'], 'metrics': [{'field': f'c{i}', 'agg': 'sum'}]} for i in range(24)]}]}}
+    checker = capabilities.Checker(capabilities.load_registry())
+    timings = []
+    for _ in range(3):
+        start = time.perf_counter()
+        req._reconcile_definitions(ledger, snapshot)
+        req._reconcile_grains(ledger, snapshot)
+        req.evaluate(snapshot, ledger, checker)
+        timings.append(time.perf_counter() - start)
+    assert min(timings) < .1, timings
+
+
 def test_ledger_mandatory_and_no_rows(thin, monkeypatch):
     client, app, bid, folder = thin
     sid = user(app, bid, "Show bar")
@@ -779,6 +840,35 @@ def test_ledger_mandatory_and_no_rows(thin, monkeypatch):
     assert section.kind == "docs" and sid in section.body
     snapshot = req.inputs(app.state.db, bid, folder)
     assert not any(k in json.dumps(snapshot) for k in ("sample_rows", "api_key", "aggregate-cache"))
+
+
+def test_only_mapped_unregistered_inputs_are_redundant():
+    source = req.Source(id='m', kind='message', text='Compare regions')
+    def row(fields, mappings):
+        return req.Requirement(id='r', source=source, text='Compare regions', mappings=mappings,
+                               needs=[capabilities.Need(capability='chart.bar', fields=fields)])
+    mapped = req.Ledger(requirements=[row({'dimension': 'region'}, [req.Mapping(label='region', field='region')])])
+    req._redundant_inputs(mapped)
+    assert mapped.requirements[0].needs[0].fields == {}
+    unmapped = req.Ledger(requirements=[row({'dimension': 'region'}, [])])
+    req._redundant_inputs(unmapped)
+    checker = capabilities.Checker(capabilities.load_registry())
+    assert not checker.need(unmapped.requirements[0].needs[0], {'region': 'STRING'}).ok
+
+
+def test_ledger_section_cites_each_source_once(tmp_path):
+    # Retained definition provenance must not repeat whole messages per row (revise budget).
+    text = 'Revenue is SUM(revenue), order count is COUNT(DISTINCT order_id). ' * 8
+    first, answer = req.Source(id='m1', kind='message', text='Track revenue'), req.Source(id='m2', kind='message', text=text)
+    rows = [req.Requirement(id=f'r{i}', source=first, text=f'Row {i}', clarifications=[answer],
+                            mappings=[req.Mapping(label='revenue', field='revenue', aggregation='sum')],
+                            mapping_origins={'0': 'x' * 64}) for i in range(6)]
+    req.save(tmp_path, req.Ledger(requirements=rows), None)
+    body = json.loads(requirement_sections(tmp_path)[0].body)
+    assert body['sources'] == {'m1': {'kind': 'message', 'text': 'Track revenue'}, 'm2': {'kind': 'message', 'text': text}}
+    assert all(r['source_id'] == 'm1' and r['clarification_source_ids'] == ['m2'] and 'mapping_origins' not in r
+               for r in body['requirements'])
+    assert requirement_sections(tmp_path)[0].body.count('order count is') == 8
 
 
 def test_comment_and_image_item_provenance_and_reference_removal(thin):
@@ -874,7 +964,7 @@ def test_existing_choices_survive_optional_clarification_provenance(thin, monkey
     ledger = req.load(folder)
     original = ledger.requirements[0]
     # The exact meaning shape written by 11.4 before clarifications existed.
-    ledger.decisions[0]['meaning'] = req.digest(original.model_dump(exclude={'resolution', 'clarifications', 'properties', 'superseded'}))
+    ledger.decisions[0]['meaning'] = req.digest(original.model_dump(exclude={'resolution', 'clarifications', 'properties', 'superseded', 'mapping_origins', 'mapping_conflicts'}))
     snapshot = req.inputs(app.state.db, bid, folder)
     a = req.evaluate(snapshot, ledger, capabilities.Checker(capabilities.load_registry()))
     assert a.state == 'ready' and a.issues[0].resolution == 'accepted_alternative'

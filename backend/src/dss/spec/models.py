@@ -75,6 +75,7 @@ class Component(Model):
     breakdown: str | None = None
     sort: Sort | None = None
     options: dict = Field(default_factory=dict)
+    colors: list[Color] | None = Field(default=None, min_length=1, max_length=20)
     text: str | None = None
     image_path: str | None = None
     field: str | None = None

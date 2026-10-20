@@ -60,6 +60,79 @@ def test_provider_schema_retains_application_patch_limits():
             {'op':'replace','path':'/pages/0/components/0/label','value':'x'}]*41}]})
 
 
+@pytest.mark.parametrize('colors', [[], ['blue'], ['#123456'] * 21, [123456]])
+def test_chart_palette_rejects_invalid_and_mutated_values(colors):
+    from pydantic import ValidationError
+    from dss.recipe.compiler import compile_recipe
+    spec = DashboardSpec.model_validate_json(Path('tests/data/thin_spec.json').read_text())
+    raw = spec.pages[0].components[0].model_dump()
+    raw['colors'] = colors
+    with pytest.raises(ValidationError):
+        type(spec.pages[0].components[0]).model_validate(raw)
+    spec.pages[0].components[0].colors = colors
+    with pytest.raises(ValidationError):
+        compile_recipe(spec, 1)
+
+
+def test_chart_palette_uses_registry_and_preserves_legacy_fallback():
+    from dss.spec.capabilities import Checker, load_registry
+    from dss.render.prototype import chart_option
+    spec = DashboardSpec.model_validate_json(Path('tests/data/thin_spec.json').read_text())
+    component = spec.pages[0].components[0]
+    checker = Checker(load_registry())
+    assert chart_option(component, [], spec.theme, 500)['color'] == spec.theme.palette
+    spec.theme.palette = []
+    assert chart_option(component, [], spec.theme, 500)['color'] == [spec.theme.accent]
+    component.colors = ['#172554']
+    assert not checker.component(component)
+    assert chart_option(component, [], spec.theme, 500)['color'] == ['#172554']
+    component.type = 'text'
+    assert checker.component(component)
+
+
+def test_scorecard_palette_colors_the_rendered_value():
+    from dss.render.prototype import render
+    spec = DashboardSpec.model_validate_json(Path('tests/data/thin_spec.json').read_text())
+    component = spec.pages[0].components[0]
+    data = {component.id: [{'m0': 120}]}
+    assert '<div class="value">120.00</div>' in render(spec, data=data)
+    component.colors = ['#172554']
+    assert '<div class="value" style="color:#172554">120.00</div>' in render(spec, data=data)
+
+
+@pytest.mark.parametrize('chart_type', ['table', 'pivot_table'])
+@pytest.mark.parametrize('accent,text_color', [('#172554', '#FFFFFF'), ('#FFFFCC', '#000000')])
+def test_table_palette_colors_header_with_contrasting_text(chart_type, accent, text_color):
+    from dss.render.prototype import chart_option
+    spec = DashboardSpec.model_validate_json(Path('tests/data/thin_spec.json').read_text())
+    component = spec.pages[0].components[0]
+    component.type = chart_type
+    component.dimensions = ['region', 'category']
+    rows = [{'region': 'APAC', 'category': 'Hardware', 'm0': 120}]
+    legacy = chart_option(component, rows, spec.theme, 500)['graphic']
+    assert all(g['style']['fill'] == spec.theme.text for g in legacy)
+    component.colors = [accent]
+    graphics = chart_option(component, rows, spec.theme, 500)['graphic']
+    assert graphics[0]['type'] == 'rect' and graphics[0]['style']['fill'] == accent
+    assert graphics[0]['shape']['height'] == 25
+    texts = [g for g in graphics if g['type'] == 'text']
+    assert all(g['style']['fill'] == text_color for g in texts if g['style']['fontWeight'] == 'bold')
+    assert all(g['style']['fill'] == spec.theme.text for g in texts if g['style']['fontWeight'] == 'normal')
+
+
+@pytest.mark.parametrize('location', ['APAC', '{"type":"Point","coordinates":[120,14]}'])
+def test_geo_palette_colors_both_map_and_point_visual_ranges(location):
+    from dss.render.prototype import chart_option
+    spec = DashboardSpec.model_validate_json(Path('tests/data/thin_spec.json').read_text())
+    component = spec.pages[0].components[0]
+    component.type = 'geo_map'
+    component.dimensions = ['location']
+    rows = [{'location': location, 'm0': 120}]
+    assert chart_option(component, rows, spec.theme, 500)['visualMap']['inRange']['color'] == [spec.theme.surface, spec.theme.accent]
+    component.colors = ['#172554']
+    assert chart_option(component, rows, spec.theme, 500)['visualMap']['inRange']['color'] == [spec.theme.surface, '#172554']
+
+
 class FakeBigQuery:
     def __init__(self):
         self.queries = []
@@ -442,6 +515,51 @@ def test_supported_batch_one_trace_and_atomic_proof(setup, client, monkeypatch):
     assert ledger.verification[ledger.requirements[0].id][-1] == {'fulfilled_by': ['p1_revenue']}
     with app.state.db.connect() as conn:
         assert conn.execute('SELECT count(*) FROM traces').fetchone()[0] == 1
+
+
+def test_component_dark_blue_accent_changes_only_its_recipe_style(setup, client, monkeypatch):
+    from dss.recipe.compiler import compile_recipe
+    app, bid, folder, original, service, *_ = setup
+    comment = 'Use a dark blue accent for this component; preserve its position and data.'
+    fake = CommentFlow(needs_by_text={comment: [{'capability': 'style.colors', 'value': ['#172554']}]},
+        response=response([op('/pages/0/components/0/colors', ['#172554'], 'add')]))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
+    before = [json.loads(line) for line in compile_recipe(original, 1).splitlines()]
+    assessment = post_batch(client, app, bid, [{'component_id': 'p1_revenue', 'text': comment}])
+    assert assessment['state'] == 'ready' and assessment['pending_comments'] is None, assessment
+    revised = DashboardSpec.model_validate_json((folder/'spec.json').read_text())
+    expected = original.model_dump()
+    expected['spec_version'] = revised.spec_version
+    expected['pages'][0]['components'][0]['colors'] = ['#172554']
+    assert revised.model_dump() == expected
+    after = [json.loads(line) for line in compile_recipe(revised, 1).splitlines()]
+    changed = [(old, new) for old, new in zip(before, after) if old != new]
+    assert len(changed) == 1
+    assert changed[0][0]['op'] == changed[0][1]['op'] == 'set_style'
+    assert changed[0][1]['component_id'] == 'p1_revenue'
+    assert changed[0][1]['style'] == {'colors': ['#172554']}
+    assert fake.extractions == fake.revisions == 1 and not service.queries
+
+
+@pytest.mark.parametrize('count', [1, 2])
+def test_scoped_overrides_preserve_global_palette_when_every_chart_changes(setup, client, monkeypatch, count):
+    from dss.memory import episodic
+    app, bid, folder, original, *_ = setup
+    original.theme.palette = ['#1E40AF']
+    original.pages[0].components = original.pages[0].components[:count]
+    (folder / 'spec.json').write_text(original.model_dump_json(), encoding='utf-8')
+    theme = 'Use a clean blue theme'
+    episodic.save(app.state.db, bid, 'user', theme)
+    comment = 'Use a dark blue accent for this component; preserve its position and data.'
+    fake = CommentFlow(needs_by_text={theme: [{'capability': 'style.colors', 'value': ['#1E40AF']}],
+        comment: [{'capability': 'style.colors', 'value': ['#172554']}]},
+        response=response(*[[op(f'/pages/0/components/{i}/colors', ['#172554'], 'add')] for i in range(count)]))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
+    assessment = post_batch(client, app, bid, [{'component_id': c.id, 'text': comment} for c in original.pages[0].components])
+    assert assessment['state'] == 'ready' and assessment['pending_comments'] is None, assessment
+    revised = json.loads((folder / 'spec.json').read_text())
+    assert revised['theme']['palette'] == ['#1E40AF']
+    assert all(c['colors'] == ['#172554'] for c in revised['pages'][0]['components'])
 
 
 @pytest.mark.parametrize('already_satisfied', [False, True])

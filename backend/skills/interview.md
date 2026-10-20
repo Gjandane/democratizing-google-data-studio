@@ -11,5 +11,8 @@ Listed feasibility issues are the next questions: a missing or ambiguous metric 
 concrete question naming the candidate columns (for example "SUM(revenue)" or
 "COUNT(DISTINCT order_id)"); an unsupported or unknown behavior gets an explanation and the
 offered alternatives. Keep earlier answers; ask only about what is still open.
+Accept coordinated affirmative formulas as one answer. Reuse confirmed same-metric definitions
+with their provenance for compatible later charts. Clean blue theme and dark blue chart accents
+use supported series palettes; proceed alone never accepts alternatives or drops open issues.
 Once audience, decision, KPIs and scope are sufficiently clear and no feasibility issue remains,
 call mark_ready_for_plan and summarize the agreed direction. The user may still refine it before planning.

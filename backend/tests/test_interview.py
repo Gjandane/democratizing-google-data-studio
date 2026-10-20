@@ -610,3 +610,215 @@ def test_audience_recognition_is_bounded():
     assert not req.audience_requirement(row("The audience is the CFO", source="Show revenue."))
     # A mixed message without any other row for its remainder fails closed.
     assert not req.audience_requirement(row(AUDIENCE, source=MIXED), req.Ledger())
+
+
+RELEASE_TURNS = [MIXED,
+    'Compare regions and product categories over the full available date range; revenue is SUM(revenue), '
+    'order count is COUNT(DISTINCT order_id), and quantity sold is SUM(quantity).',
+    'Use one executive overview page with KPI scorecards, a revenue trend grouped by order_date at monthly grain, '
+    'and revenue by region. Use a clean blue theme; proceed with these choices.']
+RELEASE_SCRIPT = {
+    RELEASE_TURNS[0]: [*MIXED_SCRIPT[:4], {'text': 'Track sales trends', 'needs': TREND}],
+    RELEASE_TURNS[1]: [
+        # Live extraction also named the bar category as an unregistered 'dimension' input.
+        {'text': 'Compare regions', 'needs': [{'capability': 'chart.bar', 'fields': {'dimension': 'region'}}], 'mappings': [
+            {'label': 'revenue', 'field': 'revenue'}, {'label': 'region', 'field': 'region'}]},
+        {'text': 'Compare product categories', 'needs': [{'capability': 'chart.bar'}], 'mappings': [
+            {'label': 'revenue', 'field': 'revenue'}, {'label': 'product_category', 'field': 'product_category'}]},
+        *[{'text': text, 'needs': [], 'mappings': [mapping]} for text, mapping in [
+            ('revenue is SUM(revenue)', {'label': 'revenue', 'field': 'revenue', 'aggregation': 'sum'}),
+            ('order count is COUNT(DISTINCT order_id)', {'label': 'order count', 'field': 'order_id', 'aggregation': 'count_distinct'}),
+            ('quantity sold is SUM(quantity)', {'label': 'quantity sold', 'field': 'quantity', 'aggregation': 'sum'})]]],
+    RELEASE_TURNS[2]: [
+        {'text': 'Use one executive overview page', 'needs': []},
+        # Live extraction cited earlier requirement ids as component_ids (no spec exists yet).
+        {'text': 'a revenue trend grouped by order_date at monthly grain', 'needs': TREND,
+         'mappings': [{'label': 'revenue', 'field': 'revenue', 'date_grain': 'month'}],
+         'component_ids': ['req_998621afda334496e91505ce']},
+        {'text': 'revenue by region', 'needs': [{'capability': 'chart.bar'}], 'mappings': [
+            {'label': 'revenue', 'field': 'revenue'}, {'label': 'region', 'field': 'region'}],
+         'component_ids': ['req_af543e8874c4c43ed2347e72']},
+        {'text': 'Use a clean blue theme', 'needs': []}]
+}
+
+
+class ReleaseLLM(ScriptLLM):
+    spec_calls: int = 0
+
+    async def generate_content_async(self, request, stream=False):
+        title = (request.config.response_json_schema or {}).get('title')
+        if title == 'Plan':
+            from test_plan import PLAN
+            value = {**PLAN, 'fields': [{'name': 'order_month', 'sql': 'DATE_TRUNC(`t0`.`order_date`, MONTH)', 'type': 'DATE'}]}
+        elif title == 'DashboardSpec':
+            from test_spec_node import response_for
+            value = response_for(request)
+            value['canvas']['height'] = value['pages'][0]['height'] = 1400
+            charts = []
+            for i, (name, field, agg) in enumerate([('revenue', 'revenue', 'sum'), ('orders', 'order_id', 'count_distinct'), ('quantity', 'quantity', 'sum')]):
+                charts.append({'id': 'p1_' + name, 'type': 'scorecard', 'label': name,
+                    'grid': {'col': 1 + i * 4, 'row': 1, 'w': 4, 'h': 4},
+                    'metrics': [{'field': field, 'agg': agg}], 'question_ref': 'q1'})
+            charts.append({'id': 'p1_trend', 'type': 'time_series', 'label': 'Monthly revenue',
+                'grid': {'col': 1, 'row': 6, 'w': 12, 'h': 12}, 'date_dimension': 'order_month',
+                'metrics': [{'field': 'revenue', 'agg': 'sum'}], 'question_ref': 'q1'})
+            for i, dim in enumerate(['region', 'product_category']):
+                charts.append({'id': 'p1_' + dim, 'type': 'bar', 'label': dim,
+                    'grid': {'col': 1 + i * 6, 'row': 20, 'w': 6, 'h': 12}, 'dimensions': [dim],
+                    'metrics': [{'field': 'revenue', 'agg': 'sum'}], 'question_ref': 'q1'})
+            value['pages'][0]['components'] = charts
+            # Like the live planner, first answer with a broader blue palette; only the
+            # coverage repair hint names the code-normalized exact value.
+            self.spec_calls += 1
+            prompt = str(request.config.system_instruction)
+            value['theme'] = {'palette': ['#1E40AF'] if 'theme.palette must be exactly' in prompt
+                              else ['#1E40AF', '#3B82F6', '#60A5FA']}
+        else:
+            async for event in super().generate_content_async(request, stream):
+                yield event
+            return
+        yield LlmResponse(content=types.Content(role='model', parts=[types.Part(text=json.dumps(value))]))
+
+
+async def test_exact_release_answers_reuse_definitions_and_publish_supported_blue(client, app, build_id, monkeypatch):
+    from dss.spec import requirements as req
+    from test_plan import FakeBigQuery, plan_api
+    folder = sales_seed(app, build_id, **SALES, region='STRING', product_category='STRING')
+    fake = ReleaseLLM(script=RELEASE_SCRIPT)
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda node: fake)
+    service = FakeBigQuery()
+    app.state.bigquery_factory = lambda config: service
+    monkeypatch.setattr('dss.render.background.capture', lambda html, path, width, height: path.write_bytes(b'PNG'))
+    source_ids = []
+    for text in RELEASE_TURNS:
+        sid, assessment = await say(client, app, build_id, text)
+        source_ids.append(sid)
+    assert assessment['state'] == 'ready', assessment
+    assert client.get(f'/api/builds/{build_id}').json()['ready_for_plan']
+    assert fake.extraction_calls == 3
+    ledger = req.load(folder)
+    assert {('revenue', 'sum'), ('order_id', 'count_distinct'), ('quantity', 'sum')} <= {
+        (m.field, m.aggregation) for r in ledger.requirements for m in r.mappings}
+    trend = next(r for r in ledger.requirements if r.source.id == source_ids[2] and r.mappings and r.mappings[0].date_grain == 'month')
+    assert trend.mappings[0].aggregation == 'sum' and any(s.id == source_ids[1] for s in trend.clarifications)
+    _, final = await plan_api(client, app, build_id)
+    assert final['status'] == 'ok', final
+    assert len(service.views) == 1 and 'DATE_TRUNC' in service.views[0][1]
+    assert fake.extraction_calls == 3  # preflight is deterministic
+    assert fake.spec_calls == 2  # one coverage repair names the exact palette
+    assert not any(r.component_ids for r in req.load(folder).requirements if r.source.kind == 'message')
+    assert client.get(f'/api/builds/{build_id}/feasibility').json()['state'] == 'ready'
+    spec = json.loads((folder / 'spec.json').read_text())
+    assert spec['theme']['palette'] == ['#1E40AF']
+    assert client.post(f'/api/builds/{build_id}/recipe').status_code == 200
+    assert all(op['style']['colors'] == ['#1E40AF'] for op in map(json.loads,
+        (folder / 'recipe.jsonl').read_text().splitlines()[1:]) if op['op'] == 'set_style')
+
+
+@pytest.mark.parametrize('text', [
+    'Do not use these definitions: revenue is SUM(revenue), order count is COUNT(DISTINCT order_id).',
+    'If revenue is SUM(revenue), order count is COUNT(DISTINCT order_id).',
+    'For example, revenue is SUM(revenue), order count is COUNT(DISTINCT order_id).',
+    '"Revenue is SUM(revenue), order count is COUNT(DISTINCT order_id)."',
+    'Revenue is SUM(revenue) and revenue is AVG(revenue).',
+    'Hypothetically, revenue is SUM(revenue), order count is COUNT(DISTINCT order_id).',
+    'Assuming revenue is SUM(revenue), order count is COUNT(DISTINCT order_id).',
+    'Perhaps revenue is SUM(revenue), order count is COUNT(DISTINCT order_id).',
+    'e.g. revenue is SUM(revenue), order count is COUNT(DISTINCT order_id).'])
+def test_coordinated_formula_authorization_is_affirmative_and_consistent(text):
+    from dss.spec import requirements as req
+    fields = {'revenue': 'FLOAT', 'order_id': 'STRING'}
+    for label, field, agg in [('Revenue', 'revenue', 'sum'), ('order count', 'order_id', 'count_distinct')]:
+        m = req.Mapping(label=label, field=field, aggregation=agg)
+        r = req.Requirement(id='r', source=req.Source(id='s', kind='message', text=text), text=text, mappings=[m])
+        assert req.mapping_verdict(m, r, fields), (text, label)
+
+
+def test_aggregate_prefixed_label_is_a_different_metric_and_polite_requests_count():
+    from dss.spec import requirements as req
+    fields = {'revenue': 'FLOAT', 'region': 'STRING', 'order_date': 'DATE'}
+    m = req.Mapping(label='revenue', field='revenue')
+    # "Average revenue" is its own metric: it neither defines nor conflicts with revenue.
+    assert req._candidates('Average revenue is AVG(revenue).', m, fields) == []
+    assert req._candidates('Avg revenue is AVG(revenue).', m, fields) == []
+    for text in ('Could you show monthly revenue by region?', 'I would like monthly revenue by region.'):
+        grain = req.Mapping(label='revenue', field='revenue', date_grain='month')
+        r = req.Requirement(id='r', source=req.Source(id='s', kind='message', text=text), text=text, mappings=[grain])
+        assert req.mapping_verdict(grain, r, fields) is None, text
+
+
+async def test_sanitized_failed_release_ledger_recovers_without_reextraction(client, app, build_id, monkeypatch):
+    from dss.spec import capabilities, requirements as req
+    from test_audit_style import drain
+    folder = sales_seed(app, build_id, **SALES, region='STRING', product_category='STRING')
+    rows = []
+    for text in RELEASE_TURNS:
+        message = episodic.save(app.state.db, build_id, 'user', text)
+        source = req.Source(id=message['id'], kind='message', text=text)
+        for i, item in enumerate(RELEASE_SCRIPT[text]):
+            rows.append(req.Requirement(id=f'req_{source.id}_{i}', source=source, **item))
+    # Historical row shape: the failed extractor left the ordinary blue preference unknown.
+    write_legacy(app, build_id, folder, rows)
+    previous_sources = {r.source.id for r in rows}
+    fake = ScriptLLM()
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
+    assert client.post(f'/api/builds/{build_id}/feasibility/check').status_code == 202
+    await drain(app)
+    assessment = client.get(f'/api/builds/{build_id}/feasibility').json()
+    assert assessment['state'] == 'ready', assessment
+    ledger = req.load(folder)
+    assert fake.extraction_calls == 0 and not ledger.decisions
+    assert previous_sources <= {s.id for r in ledger.requirements for s in [r.source, *r.clarifications]}
+    assert req.evaluate(req.inputs(app.state.db, build_id, folder), req.load(folder),
+        capabilities.Checker(capabilities.load_registry())).state == 'ready'
+
+
+@pytest.mark.parametrize('variant', ['conflict', 'unit', 'grain', 'different_metric', 'source'])
+async def test_incompatible_definitions_stay_gated(client, app, build_id, monkeypatch, variant):
+    from dss.spec import requirements as req
+    from test_plan import FakeBigQuery
+    folder = sales_seed(app, build_id, **SALES)
+    first = 'Revenue is SUM(revenue) by month of order_date in USD.'
+    second = {
+        'conflict': 'Revenue is AVG(revenue).',
+        'unit': 'Show Revenue in EUR.',
+        'grain': 'Show Revenue by day of order_date in USD.',
+        'different_metric': 'Show profit using revenue.',
+        'source': 'Show Revenue in USD.'}[variant]
+    second_mapping = {'label': 'profit' if variant == 'different_metric' else 'Revenue', 'field': 'revenue',
+                      'unit': 'EUR' if variant == 'unit' else 'USD'}
+    if variant == 'conflict':
+        second_mapping['aggregation'] = 'avg'
+    if variant == 'grain':
+        second_mapping['date_grain'] = 'day'
+    fake = ScriptLLM(script={first: [{'text': first, 'needs': TREND,
+        'mappings': [{'label': 'Revenue', 'field': 'revenue', 'aggregation': 'sum', 'date_grain': 'month', 'unit': 'USD'}]}],
+        second: [{'text': second, 'needs': TREND, 'mappings': [second_mapping]}]})
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
+    _, a = await say(client, app, build_id, first)
+    assert a['state'] == 'ready', a
+    if variant == 'source':
+        with app.state.db.connect() as conn:
+            conn.execute("UPDATE sources SET bq_table='project.other.sales' WHERE build_id=?", (build_id,))
+    _, a = await say(client, app, build_id, second)
+    assert a['state'] == 'blocked', a
+    service = FakeBigQuery()
+    app.state.bigquery_factory = lambda _: service
+    for endpoint in ('plan', 'recipe', 'run'):
+        assert client.post(f'/api/builds/{build_id}/{endpoint}').status_code == 409
+    assert not service.views and not service.dry_runs and not app.state.engine_tasks
+    assert not (folder / 'spec.json').exists()
+
+
+@pytest.mark.parametrize('feature,need', [('animate GPS points along a route', {'capability': 'animation.temporal_playback'}),
+                                         ('add a telepathic chart', None)])
+async def test_blue_and_proceed_never_drop_mixed_features(client, app, build_id, monkeypatch, feature, need):
+    sales_seed(app, build_id, **SALES)
+    text = f'Use a clean blue theme; {feature}; proceed with these choices.'
+    script = [{'text': 'Use a clean blue theme', 'needs': []}, {'text': feature, 'needs': [need] if need else []}]
+    fake = ScriptLLM(script={text: script})
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
+    _, a = await say(client, app, build_id, text)
+    assert a['state'] == 'blocked' and len(a['issues']) == 1, a
+    for endpoint in ('plan', 'recipe', 'run'):
+        assert client.post(f'/api/builds/{build_id}/{endpoint}').status_code == 409

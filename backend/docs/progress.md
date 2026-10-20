@@ -915,3 +915,15 @@ context. Task status lives in docs/plan.md, not here.
   root lint 0 errors/0 warnings; program 0 problems; git diff --check PASS. No backend tests
   or live runs performed in this planning-only session.
 - Next: build 14.2 here, then resume release 2.2 at the root using its latest 02:11 stash.
+
+## 2026-10-21: Task 14.2 Resolve coordinated metric definitions and ordinary blue styling
+- Status: done
+- Plan check: off
+- What changed: requirements.py reconciles coordinated affirmative formulas (commas/"and"), reuses same-label definitions forward with provenance/conflict blocking, normalizes single-page scope and blue styling to style.colors, drops bogus message component_ids and redundant unregistered need inputs; per-chart `colors` (user-approved) in models/capabilities/compiler/prototype; compact requirements.json context; prompts/skills; offline + live release tests.
+- Checks: Done-when offline 5 files PASS (314); `uv run pytest -m live tests/live/test_backend_flow.py -k interview` PASS (3 passed, final code; evidence .blueprint/qa/task-14.2/interview/20261021-033337-8fb6fb92 and 030329-97fef945 with before/after spec+png: palette ['#1E40AF'], only target trend gets ['#172554'], geometry/bindings unchanged); `uv run pytest` PASS (1185 passed, 11 deselected).
+- Decisions: clean blue -> ['#1E40AF'], dark blue accent -> ['#172554'] (exact palette; coverage error names it for repair). Label identity is exact; "average/avg" prefix no longer optional. Polite "could you/would like" is affirmative; hypothetical/assuming/perhaps/e.g. are not. Ledger context lists each source once, rows cite ids, mapping_origins omitted (no budget change). Regex cache + literal prefilter: recompute ~60 ms on 40 rows/24 components (test added). AGENTS.md: two gotchas.
+- Digest: Component.colors: list[Color]|None (1-20, charts only) overrides theme.palette in prototype/recipe set_style. Requirement gains mapping_origins/mapping_conflicts. requirement_sections -> {sources:{id:...}, requirements:[{source_id, clarification_source_ids,...}], decisions}.
+- Tried and failed: live plan failed on bogus component_ids + vague palette error; revise context over 6000 budget from repeated source texts; transient 30 s worker timeout once.
+- Gotchas: none beyond AGENTS.md.
+- Left open: P2 "preserve its position and data" baseline freezes the component against later edits/replans - src/dss/spec/requirements.py; P2 derived mapping_origins/clarifications in meaning() may reopen legacy decisions on defined rows - requirements.py meaning(); P2 sentence-level "Do not use these definitions." before a separate sentence still authorizes - requirements.py _affirmative; P2 _effective_text "Actually," cuts earlier row text; P3 colors on non-chart reported as invalid JSON in repair; P3 unit regex `in [a-z]{3}` matches months; P3 failed-ledger fixture built from fake script; P3 two message-level blue preferences unsatisfiable; core live test_interview_to_prototype failed once with invalid_request (no evidence saved), passed twice after.
+- Next: resume release 2.2 at the program root using its latest stash.

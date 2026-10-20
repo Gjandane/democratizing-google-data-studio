@@ -116,7 +116,9 @@ def validate_spec(value, *, allowed=None, high_priority=(), catalog_root=None):
                     if field is None:
                         error(fp, "Unknown datasource field")
                         continue
-                    if field.role not in rule['slot_roles'][slot]:
+                    counting_dimension = (slot == 'metrics' and field.role == 'dimension'
+                                          and binding.agg in ('count', 'count_distinct'))
+                    if field.role not in rule['slot_roles'][slot] and not counting_dimension:
                         error(fp, "Field role is not allowed in this slot")
                     if slot == "date_dimension" and field.type.upper() not in ("DATE", "DATETIME", "TIMESTAMP"):
                         error(fp, "Date dimension must have a date or timestamp type")

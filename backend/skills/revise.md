@@ -16,6 +16,11 @@ Never silently substitute a different type. The code will explain the available 
 For no necessary change return an empty patch. Use add for a missing style key (e.g.
 /pages/0/decorations/0/style/font_size); replace requires that the property already exists.
 Bigger text normally means font size, not a larger grid.
+For a chart accent or series color request, patch only the target component's colors list.
+Use #172554 for a qualitative dark blue accent. Use add for colors (replace is also valid
+when the property exists). Preserve the target's geometry, data bindings and other components.
+Components with colors omitted or null inherit the theme palette. Colors are chart-only,
+with 1 to 20 six-digit hexadecimal colors; never patch the global theme for a component comment.
 Renderer defaults when decoration style omits font_size: title 28px, subtitle 18px, other
 text 16px. A request for bigger text must increase its effective size above the current
 explicit value or that default. Set numeric style.font_size in pixels; font_weight,

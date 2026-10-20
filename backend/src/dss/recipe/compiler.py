@@ -5,7 +5,7 @@ from functools import lru_cache
 from jsonschema import Draft202012Validator, ValidationError
 from dss.config import BACKEND_DIR
 from dss.spec.layout import box
-from dss.spec.models import DashboardSpec, Theme, image_paths, reference_image
+from dss.spec.models import Component, DashboardSpec, Theme, image_paths, reference_image
 
 
 @lru_cache(maxsize=1)
@@ -39,6 +39,9 @@ def compile_recipe(spec: DashboardSpec, version: int) -> str:
         op("set_background_image", path=f"background_p{page.index}.png", x=0, y=0, w=spec.canvas.width, h=page.height)
         placed = [(c, box(spec.canvas, spec.grid, c.grid, height=page.height)) for c in page.components]
         for c, bounds in sorted(placed, key=lambda item: (item[1]["y"], item[1]["x"])):
+            Component.model_validate(c.model_dump(warnings=False))
+            if c.colors is not None and c.type in ("date_range", "dropdown", "text", "image"):
+                raise ValueError("Only chart components support colors")
             args = dict(component_id=c.id, **bounds)
             if c.type in ("date_range", "dropdown"):
                 op("add_control", control_type=c.type, **args, **({"field": c.field} if c.field else {}))
@@ -53,7 +56,7 @@ def compile_recipe(spec: DashboardSpec, version: int) -> str:
                 if c.sort is not None:
                     optional["sort"] = c.sort.model_dump()
                 op("add_chart", chart_type=c.type, dimensions=c.dimensions, metrics=[m.model_dump() for m in c.metrics], title=c.label, options=c.options, **optional, **args)
-                op("set_style", component_id=c.id, style=dict(colors=spec.theme.palette))
+                op("set_style", component_id=c.id, style=dict(colors=c.colors if c.colors is not None else spec.theme.palette))
         if spec.datasource.synthetic:
             label = next(d for d in page.decorations if d.id == SYNTHETIC_LABEL_ID)
             bounds = box(spec.canvas, spec.grid, label.grid, height=page.height)

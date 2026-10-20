@@ -6,6 +6,7 @@ provenance, classification, input invalidation and the durable assessment commit
 import hashlib
 import json
 import re
+from functools import lru_cache
 from typing import Literal
 
 import yaml
@@ -85,6 +86,8 @@ class Requirement(Strict):
     clarifications: list[Source] = Field(default_factory=list)
     properties: list[Property] = Field(default_factory=list)
     superseded: dict[str, str] = Field(default_factory=dict)
+    mapping_origins: dict[str, str] = Field(default_factory=dict)
+    mapping_conflicts: dict[str, str] = Field(default_factory=dict)
 
 
 class Alternative(Strict):
@@ -320,6 +323,12 @@ def merge(ledger, snapshot, extraction):
                 for i, old in enumerate(previous.mappings):
                     if _normal(old.label) != _normal(mapping.label):
                         continue
+                    # A second incompatible confirmed definition is a conflict, not
+                    # implicit permission to rewrite the first one.
+                    if (not mapping_verdict(old, previous, schema(snapshot)) and
+                            any(getattr(old, k) is not None and getattr(mapping, k) is not None
+                                and getattr(old, k) != getattr(mapping, k) for k in ('field', 'aggregation', 'unit', 'date_grain'))):
+                        continue
                     values = old.model_dump()
                     values.update({k: v for k, v in mapping.model_dump().items() if v is not None})
                     previous.mappings[i] = Mapping.model_validate(values)
@@ -354,6 +363,11 @@ def merge(ledger, snapshot, extraction):
     if len(updated.requirements) > MAX_REQUIREMENTS:
         raise ValueError("Requirement scope exceeded")
     updated.processed_sources.update({sid: digest(s) for sid, s in sources.items()})
+    _reconcile_definitions(updated, snapshot)
+    _reconcile_grains(updated, snapshot)
+    _absorb_definitions(updated)
+    _normalize_presentation(updated, snapshot)
+    _redundant_inputs(updated)
     _supersede_comments(updated, snapshot, sources)
     updated.scope_error = None
     updated.scope_batch_id = None
@@ -451,7 +465,13 @@ _COURTESY = (r'(?:thanks|thank you|that is (?:all|everything)|that\'s (?:all|eve
 
 
 def _assignment_pattern(mapping):
-    field, label = re.escape(mapping.field), re.escape(mapping.label)
+    return _compiled_assignment(mapping.field, mapping.label)
+
+
+@lru_cache(maxsize=4096)
+def _compiled_assignment(field, label):
+    # Recomputation scans every message for every label/field pair: compile once.
+    field, label = re.escape(field), re.escape(label)
     # A bounded audience prefix does not change a following positive definition.
     # Do not accept arbitrary comma clauses (negation, conditionals or quotations).
     # One optional qualifier word before the role ("regional", "global").
@@ -464,22 +484,44 @@ def _assignment_pattern(mapping):
         return (r'(?P<' + name + r'>(?:(?:daily|weekly|monthly|quarterly|yearly)\s+)?(?:'
                 + r'count\s*\(\s*(?:distinct\s+)?' + field + r'\s*\)|' + _AGGREGATION + r'\s*\(\s*' + field + r'\s*\)'
                 + r'|(?:the\s+)?(?:(?:distinct|unique)\s+count\s+of|count\s+of\s+(?:distinct|unique)|' + _AGGREGATION + r'\s+of)\s+' + field
-                + r'|' + field + r')(?:\s+(?:by|per)\s+' + _GRAIN + r'(?:\s+(?:of|on)\s+[a-z_][a-z0-9_]*)?)?)')
-    named = r'(?:(?:the|total|average|avg)\s+)?' + label + r'(?:e?s)?'
-    return re.compile(r"(?:^|[.;\n])\s*" + audience + r"(?:please\s+)?(?:use\s+" + value('used') + r"\s+(?:for|as)\s+" + named
-        + r"|" + named + r"\s*(?:means|is|uses|=|:)\s*" + value('value') + r")(?=\s*(?:$|[,.;\n]))", re.I)
+                + r'|' + field + r')(?:\s+(?:by|per)\s+' + _GRAIN + r'(?:\s+(?:of|on)\s+[a-z_][a-z0-9_]*)?)?(?:\s+in\s+[a-z]{3})?)')
+    # An aggregate word names a different metric ("average revenue" is not "revenue"),
+    # so it is part of the label, never an optional prefix.
+    named = r'(?:(?:the|total)\s+)?' + label + r'(?:e?s)?'
+    return re.compile(r"(?:^|[,.;\n]|\band\s+)\s*(?:and\s+)?" + audience + r"(?:please\s+)?(?:use\s+" + value('used') + r"\s+(?:for|as)\s+" + named
+        + r"|" + named + r"\s*(?:means|is|uses|=|:)\s*" + value('value') + r")(?=\s*(?:$|[,.;\n]|\band\b))", re.I)
+
+
+def _affirmative(text):
+    """Coordinated clauses share polarity. Quoted/conditional examples authorize nothing."""
+    # Polite requests ("could you", "I would like") are affirmative, not hypothetical.
+    unsafe = (r"\b(?:not|never|if|unless|maybe|perhaps|might|could(?!\s+you)|would(?!\s+(?:you|like|love|prefer))"
+              r"|suppos\w*|assum\w*|hypothetical\w*|example|instance)\b|\b(?:don't|doesn't|isn't)\b|[\"“”]|(?<!\w)'[^']+'")
+    text = re.sub(r'\be\.g\.', 'for example', text, flags=re.I)
+    text = re.sub(r'"[^"]*"|“[^”]*”|(?<!\w)\x27[^\x27]+\x27', '', text)
+    text = re.split(r'["“]', text, maxsplit=1)[0]  # Unclosed quotations also authorize nothing.
+    return '\n'.join(re.sub(r'^(?:correction:\s*|actually,\s*)', '', c, flags=re.I)
+                     for c in _clauses(text) if not re.search(unsafe, c, re.I))
+
+
+def _effective_text(text):
+    # A deliberately marked correction can resolve conflicting earlier definitions.
+    matches = list(re.finditer(r'(?:^|\n)\s*(?:correction:|actually,)', text, re.I))
+    return text[matches[-1].start():] if matches else text
 
 
 def _assignment(text, mapping):
-    return _assignment_pattern(mapping).search(text) if mapping.field else None
+    return _assignment_pattern(mapping).search(_affirmative(text)) if mapping.field else None
 
 
 def _definition(text, mapping):
     """What the source's last explicit definition of this mapping states: aggregation, grain, date field."""
-    matches = list(_assignment_pattern(mapping).finditer(text)) if mapping.field else []
+    matches = list(_assignment_pattern(mapping).finditer(_affirmative(_effective_text(text)))) if mapping.field else []
     if not matches:
         return None
     value = ' '.join((matches[-1]['value'] or matches[-1]['used']).lower().split())
+    unit = re.search(r'\s+in\s+([a-z]{3})$', value)
+    value = re.sub(r'\s+in\s+[a-z]{3}$', '', value)
     prefix = re.match(r'(daily|weekly|monthly|quarterly|yearly)\s+', value)
     suffix = re.search(r'\s(?:by|per)\s+(' + _GRAIN + r')(?:\s+(?:of|on)\s+([a-z_][a-z0-9_]*))?$', value)
     grain = {'daily': 'day'}.get(prefix[1], prefix[1].removesuffix('ly')) if prefix else suffix[1] if suffix else None
@@ -489,7 +531,8 @@ def _definition(text, mapping):
     else:
         word = re.match(_AGGREGATION + r'(?=\s*\(|\s+of\b)', value)
         aggregation = _AGGREGATIONS[word[0]] if word else None
-    return {'aggregation': aggregation, 'date_grain': grain, 'date_field': suffix[2] if suffix else None}
+    return {'aggregation': aggregation, 'date_grain': grain, 'date_field': suffix[2] if suffix else None,
+            'unit': unit[1].upper() if unit else None}
 
 
 def _defined_aggregation(text, mapping):
@@ -498,14 +541,216 @@ def _defined_aggregation(text, mapping):
 
 
 def _definition_clause(clause, mapping):
+    clause = _affirmative(clause)
     match = _assignment(clause, mapping)
     return bool(match and not clause[match.end():].strip(' .,;'))
 
 
 def _definitions_only(text, mappings):
     """Every clause of a row's own text is a positive definition of one of its mappings."""
-    clauses = _clauses(text)
+    clauses = [c.strip() for part in _clauses(text) for c in re.split(r',\s*(?:and\s+)?|\s+and\s+', part) if c.strip()]
     return bool(clauses) and all(any(_definition_clause(c, m) for m in mappings) for c in clauses)
+
+
+def _candidates(text, mapping, fields):
+    """All affirmative definitions for this label, including incompatible fields/aggregates."""
+    text = _affirmative(_effective_text(text))
+    lowered = text.lower()
+    found = []
+    if mapping.label.lower() not in lowered:
+        return found  # Every pattern requires the label and the field literally.
+    for field in fields:
+        if field.lower() not in lowered:
+            continue
+        probe = mapping.model_copy(update={'field': field})
+        for match in _assignment_pattern(probe).finditer(text):
+            # Parse each match separately so two contradictory formulas cannot
+            # collapse into a last-wins authorization.
+            definition = _definition(match[0].lstrip(' ,;\n'), probe)
+            if definition is not None:
+                found.append((field, definition))
+    return found
+
+
+def _conflicting(candidates):
+    return (len({f for f, _ in candidates}) > 1 or any(len({d[k] for _, d in candidates if d.get(k)}) > 1
+            for k in ('aggregation', 'date_grain', 'date_field', 'unit')))
+
+
+def _reconcile_definitions(ledger, snapshot):
+    """Rebuild definitions from original evidence on new turns and deterministic reloads.
+
+    Exact metric labels are the identity. A shared field never equates two metrics.
+    Provenance is retained on each row and tied to the connected source prerequisites.
+    """
+    fields = schema(snapshot)
+    sources = {}
+    for r in ledger.requirements:
+        for s in (r.source, *r.clarifications):
+            if s.kind == 'message':
+                sources[s.id] = s
+    # Preserve conversational order, including definition-only answers absorbed earlier.
+    for raw in snapshot['incoming']:
+        if raw['kind'] == 'message':
+            sources[raw['id']] = Source.model_validate(raw)
+    order = {s['id']: i for i, s in enumerate(snapshot['incoming'])}
+    ordered = sorted(sources.values(), key=lambda s: order.get(s.id, -1))
+    for r in ledger.requirements:
+        r.mapping_conflicts = {}
+        for i, m in enumerate(r.mappings):
+            matches = [(s, _candidates(s.text, m, fields)) for s in ordered]
+            matches = [(s, ds) for s, ds in matches if ds]
+            corrections = [j for j, (s, _) in enumerate(matches) if re.match(r'\s*(?:correction:|actually,)', s.text, re.I)]
+            if corrections:
+                matches = matches[corrections[-1]:]
+            candidates = [d for _, ds in matches for d in ds]
+            if not candidates:
+                continue
+            units = {d['unit'] for _, d in candidates if d.get('unit')} | {p.unit for s, _ in matches for row in ledger.requirements if row.source.id == s.id
+                     for p in row.mappings if _normal(p.label) == _normal(m.label) and p.unit
+                     and re.search(r'\b' + re.escape(p.unit) + r'\b', s.text, re.I)}
+            if len(units) > 1 or (not corrections and m.unit and units and m.unit not in units):
+                r.mapping_conflicts[str(i)] = f'Clarify incompatible units for {m.label}'
+                continue
+            # Attach all conflicting evidence; the mapping verdict blocks until a
+            # deliberate correction arrives. Never silently discard a source.
+            for s, _ in matches:
+                if s != r.source and s not in r.clarifications:
+                    r.clarifications.append(s)
+            if _conflicting(candidates):
+                continue
+            field = candidates[0][0]
+            definitions = {k: next((d[k] for _, d in candidates if d.get(k)), None)
+                           for k in ('aggregation', 'date_grain', 'date_field')}
+            dates = {n.fields.get('date_field') for n in r.needs if n.fields.get('date_field')}
+            if definitions['date_field'] and dates and definitions['date_field'] not in dates:
+                r.mapping_conflicts[str(i)] = f'Clarify incompatible date fields for {m.label}'
+                continue
+            # A definition with a grain cannot be transplanted into an incompatible
+            # grain/meaning. Keep that request unresolved rather than changing it.
+            if not corrections and (m.field not in (None, field) or
+                    any(getattr(m, k) and definitions[k] and getattr(m, k) != definitions[k]
+                        for k in ('aggregation', 'date_grain'))):
+                r.mapping_conflicts[str(i)] = f'Clarify incompatible definition or grain for {m.label}'
+                continue
+            values = {k: definitions[k] or getattr(m, k) for k in ('aggregation', 'date_grain')}
+            unit = next(iter(units), m.unit) if corrections else m.unit or next(iter(units), None)
+            proposed = m.model_copy(update={'field': field, 'unit': unit, **values})
+            origin = _prerequisites(snapshot, [], [proposed])
+            # A new affirmative formula is an explicit reconfirmation under the
+            # current schema; a mere later chart request is not.
+            witness = matches[-1][0].id
+            if r.mapping_origins.get(f'definition:{i}') != witness:
+                r.mapping_origins[str(i)] = origin
+                r.mapping_origins[f'definition:{i}'] = witness
+            previous = r.mapping_origins.setdefault(str(i), origin)
+            if previous == origin:
+                r.mappings[i] = proposed
+
+
+def _absorb_definitions(ledger):
+    """Recover old failed definition rows by retaining their sources on executable rows."""
+    absorbed = []
+    for row in ledger.requirements:
+        if row.needs or not row.mappings or not _definitions_only(row.text, row.mappings):
+            continue
+        targets = [other for other in ledger.requirements if other.id != row.id and other.needs]
+        if all(any(m in other.mappings and row.source in (other.source, *other.clarifications)
+                   and (_definition(row.source.text, m) or {}).get('date_field') in
+                       {n.fields.get('date_field') for n in other.needs} | {None} for other in targets)
+               for m in row.mappings):
+            absorbed.append(row.id)
+    ledger.requirements = [r for r in ledger.requirements if r.id not in absorbed]
+
+
+def _reconcile_grains(ledger, snapshot):
+    """An explicit same-metric/date trend refines an earlier unspecified trend."""
+    fields = schema(snapshot)
+    for r in ledger.requirements:
+        dates = {n.fields.get('date_field') for n in r.needs if n.capability == 'chart.time_series'}
+        if not dates:
+            continue
+        for i, m in enumerate(r.mappings):
+            if m.date_grain:
+                continue
+            candidates = [(other, proposed) for other in ledger.requirements for proposed in other.mappings
+                if proposed.date_grain and _normal(proposed.label) == _normal(m.label) and proposed.field == m.field
+                and (not m.unit or not proposed.unit or m.unit == proposed.unit)
+                and (not m.aggregation or not proposed.aggregation or m.aggregation == proposed.aggregation)
+                and {n.fields.get('date_field') for n in other.needs if n.capability == 'chart.time_series'} == dates
+                and not mapping_verdict(proposed, other, fields)]
+            if len({p.date_grain for _, p in candidates}) == 1:
+                other, proposed = candidates[-1]
+                r.mappings[i] = m.model_copy(update={'date_grain': proposed.date_grain})
+                if other.source != r.source and other.source not in r.clarifications:
+                    r.clarifications.append(other.source)
+
+
+def _normalize_presentation(ledger, snapshot):
+    """Normalize bounded single-page scope and blue series styling to evidenced features."""
+    known = {c['id'] for p in (snapshot['spec'] or {}).get('pages', [])
+             for c in (*p.get('components', []), *p.get('decorations', []))}
+    for r in ledger.requirements:
+        if r.source.kind == 'message':
+            # Only a real spec item is a binding; a cited requirement id is not one
+            # and would make the request unfulfillable by any candidate.
+            r.component_ids = [cid for cid in r.component_ids if cid in known]
+        target = next((c for p in (snapshot['spec'] or {}).get('pages', []) for c in p.get('components', [])
+                       if c['id'] == r.source.component_id), None)
+        if target and re.search(r'preserve\s+its\s+position\s+and\s+data', r.source.text, re.I):
+            r.mapping_origins.setdefault('preserve', digest({k: v for k, v in target.items() if k != 'colors'}))
+        text = r.text.strip(' .;')
+        if (re.fullmatch(r'(?:use\s+|keep\s+(?:it\s+)?(?:to\s+)?)?(?:one|a\s+single|single)\s+'
+                         r'(?:(?:executive|overview)\s+){0,2}(?:dashboard\s+)?page', text, re.I)
+                and text.lower() in _affirmative(r.source.text).lower()
+                and all(n.capability in {'unknown.unclassified', 'layout.canvas'} for n in r.needs)):
+            r.needs = [capabilities.Need(capability='layout.canvas')]
+            continue
+        if (target and re.fullmatch(r'preserve\s+its\s+position\s+and\s+data', text, re.I)
+                and text.lower() in r.source.text.lower() and all(n == _SENTINEL for n in r.needs)):
+            r.needs = [capabilities.Need(capability='chart.' + target['type'])]
+            r.component_ids = [target['id']]
+            continue
+        match = re.fullmatch(r'(?:use\s+)?(?:a\s+)?(?:clean\s+)?(?P<dark>dark\s+)?blue\s+'
+                             r'(?:theme|(?:accent|series colors?)(?:\s+for\s+this\s+component)?)'
+                             r'(?:;\s*preserve\s+its\s+position\s+and\s+data)?'
+                             r'(?:;\s*proceed\s+with\s+these\s+choices)?', text, re.I)
+        asserted = _affirmative(text).lower()
+        if not match or not asserted or asserted not in _affirmative(r.source.text).lower():
+            continue
+        # A mixed unsupported/unknown row cannot be laundered by a color word.
+        if any(n.capability not in {'unknown.unclassified', 'style.colors'} for n in r.needs):
+            continue
+        color = '#172554' if match['dark'] else '#1E40AF'
+        r.needs = [capabilities.Need(capability='style.colors', value=[color])]
+        if r.source.component_id:
+            r.component_ids = [r.source.component_id]
+        # The preserve clause is a constraint enforced at fulfillment below.
+
+
+def _redundant_inputs(ledger):
+    """A field the row already binds as a mapping is not an extra registry data input.
+
+    Unknown input names that carry no such binding still block as before.
+    """
+    checker = capabilities.Checker(capabilities.load_registry())
+    for r in ledger.requirements:
+        bound = {m.field for m in r.mappings if m.field}
+        for i, need in enumerate(r.needs):
+            if checker.registry.get(need.capability) is None:
+                continue
+            names = {p.name for p in checker._prerequisites(need.capability)}
+            extra = {k for k, v in need.fields.items() if k not in names and v in bound}
+            if extra:
+                r.needs[i] = need.model_copy(update={'fields': {k: v for k, v in need.fields.items() if k not in extra}})
+
+
+def _preserves_comment(component, requirement, snapshot):
+    if not re.search(r'preserve\s+its\s+position\s+and\s+data', requirement.source.text, re.I):
+        return True
+    # A durable baseline is captured at extraction, before any patch is applied.
+    baseline = requirement.mapping_origins.get('preserve')
+    return baseline is not None and baseline == digest({k: v for k, v in component.items() if k != 'colors'})
 
 
 def mapping_verdict(mapping, requirement, fields):
@@ -516,7 +761,12 @@ def mapping_verdict(mapping, requirement, fields):
         return capabilities.Verdict("needs_data", f"Field {field} is not in the connected data")
     # Merely listing available fields is not a definition. Accept a direct positive
     # assignment clause, never an incidental mention (or a negated instruction).
-    text = "\n".join(s.text for s in [requirement.source, *requirement.clarifications])
+    text = _effective_text("\n".join(s.text for s in [requirement.source, *requirement.clarifications]))
+    if _conflicting(_candidates(text, mapping, fields)):
+        return capabilities.Verdict('needs_clarification', f'Conflicting definitions for {mapping.label}; provide an explicit correction')
+    defined_units = {d['unit'] for _, d in _candidates(text, mapping, fields) if d.get('unit')}
+    if mapping.unit and defined_units and mapping.unit not in defined_units:
+        return capabilities.Verdict('needs_clarification', f'Clarify incompatible units for {mapping.label}')
     explicit = _assignment(text, mapping)
     if label != _normal(field) and not explicit:
         return capabilities.Verdict("needs_clarification", f"Confirm which field defines {mapping.label}; proposed {field} is not an explicit definition")
@@ -534,7 +784,7 @@ def mapping_verdict(mapping, requirement, fields):
         if value is None or (name == "aggregation" and value == defined):
             continue
         candidates = terms.get(value, (value, value + "ly")) if name != "unit" else (value,)
-        if not any(re.search(r"(?<![a-z0-9_])" + re.escape(v) + r"(?![a-z0-9_])", text, re.I) for v in candidates):
+        if not any(re.search(r"(?<![a-z0-9_])" + re.escape(v) + r"(?![a-z0-9_])", _affirmative(text), re.I) for v in candidates):
             return capabilities.Verdict("needs_clarification", f"Confirm {name.replace('_', ' ')} {value} for {mapping.label}; it is not defined by the source")
     return None
 
@@ -542,7 +792,7 @@ def mapping_verdict(mapping, requirement, fields):
 def meaning(requirement):
     """Authorization follows requested meaning, not a generated assessment or registry version."""
     # Empty optional provenance must not revoke pre-11.6 durable choices.
-    excluded = {'resolution', 'superseded'} | ({'clarifications'} if not requirement.clarifications else set()) | ({'properties'} if not requirement.properties else set())
+    excluded = {'resolution', 'superseded'} | ({'clarifications'} if not requirement.clarifications else set()) | ({'properties'} if not requirement.properties else set()) | ({'mapping_origins'} if not requirement.mapping_origins else set()) | ({'mapping_conflicts'} if not requirement.mapping_conflicts else set())
     return digest(requirement.model_dump(exclude=excluded))
 
 
@@ -672,6 +922,12 @@ def _requirement_issues(snapshot, ledger, checker):
         if not r.needs and not context:
             verdicts.append(("unknown", capabilities.Verdict("unknown", "No registered capability covers this requirement")))
         verdicts += [(f"mapping:{i}", v) for i, m in enumerate(r.mappings) if (v := mapping_verdict(m, r, fields))]
+        verdicts += [(f'mapping:{i}', capabilities.Verdict('needs_clarification', reason))
+                     for i, reason in r.mapping_conflicts.items()]
+        verdicts += [(f'mapping:{i}', capabilities.Verdict('needs_clarification',
+                      f'Reconfirm {m.label}; its connected source or schema changed'))
+                     for i, m in enumerate(r.mappings) if str(i) in r.mapping_origins
+                     and r.mapping_origins[str(i)] != _prerequisites(snapshot, [], [m])]
         for slot, v in verdicts:
             if v.ok:
                 continue
@@ -827,8 +1083,23 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None):
             continue
         active = r.model_copy(update={'properties': properties})
         candidates = [c for c in components if not r.component_ids or c["id"] in r.component_ids]
+        def compiled_need(need, component):
+            if need.capability == 'style.colors' and not r.component_ids and component.get('colors') is not None:
+                # The retained global palette remains the fallback. An explicitly
+                # authorized scoped override may replace its emitted value on this chart.
+                for row in ledger.requirements:
+                    if component['id'] not in row.component_ids:
+                        continue
+                    for i, override in enumerate(row.needs):
+                        if (f'need:{i}' not in row.superseded and override.capability == 'style.colors'
+                                and override.value == component['colors'] and checker.need(override, schema(snapshot)).ok
+                                and not _choice(row, f'need:{i}', snapshot, ledger, checker)
+                                and not _choice(row, 'unknown', snapshot, ledger, checker)):
+                            return override
+            return need
         matches = [c for c in candidates if _component_fulfills(c, active, needs, checker, snapshot) and
-                   all(_recipe_fulfills(n, checker, [op for op in ops if op.get('component_id') in (None, c['id'])]) for n in needs)]
+                   all(_recipe_fulfills(compiled_need(n, c), checker,
+                       [op for op in ops if op.get('component_id') in (None, c['id'])]) for n in needs)]
         decorations = {c['id']: c for p in (snapshot['spec'] or {}).get('pages', []) for c in p.get('decorations', [])}
         decoration_proven = (r.component_ids and set(r.component_ids) <= decorations.keys() and properties
                              and all(_properties_match(decorations[cid], properties) for cid in r.component_ids))
@@ -836,7 +1107,11 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None):
                 n.capability.startswith('layout.') and _recipe_fulfills(n, checker, ops) for n in needs):
             continue
         if not matches or (r.component_ids and {c["id"] for c in matches} != set(r.component_ids)):
-            errors.append({"path": "requirements." + r.id, "message": "Candidate spec does not fulfill requirement: " + r.text})
+            # Code-normalized style values are not in the user's words; name them for repair.
+            colors = [n.value for n in needs if n.capability == 'style.colors' and n.value is not None]
+            target = 'colors' if r.component_ids else 'theme.palette'
+            hint = ''.join(f' ({target} must be exactly {json.dumps(v)})' for v in colors)
+            errors.append({"path": "requirements." + r.id, "message": "Candidate spec does not fulfill requirement: " + r.text + hint})
         elif bindings is not None:
             bindings[r.id] = [c['id'] for c in matches]
     return errors
@@ -877,7 +1152,8 @@ def _recipe_fulfills(need, checker, ops):
 
 def _component_fulfills(component, requirement, needs, checker, snapshot):
     """Check type, typed options, real bindings and metric semantics on the same component."""
-    if (not needs and not requirement.properties) or checker.component(component) or not _properties_match(component, requirement.properties):
+    if ((not needs and not requirement.properties) or checker.component(component)
+            or not _properties_match(component, requirement.properties) or not _preserves_comment(component, requirement, snapshot)):
         return False
     for need in needs:
         cap = checker.registry.get(need.capability)
@@ -891,10 +1167,19 @@ def _component_fulfills(component, requirement, needs, checker, snapshot):
             bound = component.get("date_dimension") if key == "date_field" else (component.get("dimensions") or [None])[0]
             bucketed = key == 'date_field' and any(m.date_grain and _date_bucket(snapshot, bound, m.date_grain, field)
                                                  for m in requirement.mappings)
+            # A generic trend has no requested grain or metric semantics to borrow.
+            # A real date bucket of its own date field still fulfills that loose request.
+            if key == 'date_field' and not requirement.mappings:
+                bucketed |= any(_date_bucket(snapshot, bound, grain, field) for grain in ('day', 'week', 'month', 'quarter', 'year'))
             if field != bound and not bucketed:
                 return False
         for locator in cap.recipe:
-            if locator.startswith("add_chart.options."):
+            if locator == 'set_style.style.colors':
+                colors = (component.get('colors') if requirement.component_ids else None)
+                colors = colors if colors is not None else (snapshot['spec'] or {}).get('theme', {}).get('palette')
+                if need.value is not None and colors != need.value:
+                    return False
+            elif locator.startswith("add_chart.options."):
                 _, _, kind, key = locator.split(".")
                 if component["type"] != kind or key not in component.get("options", {}):
                     return False
@@ -972,7 +1257,8 @@ def verification(snapshot, ledger, checker):
             verdict = mapping_verdict(mapping, r, fields)
             rows.append({"mapping": mapping.model_dump(), "status": verdict.status if verdict else "supported",
                          "reason": verdict.reason if verdict else "Original source defines this binding",
-                         "source_id": r.source.id, "schema_type": fields.get(mapping.field), "component_ids": r.component_ids})
+                         "source_id": r.source.id, "definition_sources": [s.id for s in (r.source, *r.clarifications) if _assignment(s.text, mapping)],
+                         "schema_type": fields.get(mapping.field), "component_ids": r.component_ids})
         if r.properties or r.superseded:
             rows.append({'properties': [p.model_dump() for p in r.properties], 'superseded': r.superseded})
         for issue, slot in resolved.get(r.id, []):

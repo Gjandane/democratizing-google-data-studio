@@ -282,6 +282,12 @@ def spec_context(config, folder, build, fields, allowed):
     navigator = _navigator(config)
     system = _system("spec")
     system.body += '\nDecoration text layout:\n' + TEXT_LAYOUT_GUIDANCE
+    system.body += ('\nSeries styling: global style.colors requirements bind theme.palette exactly '
+                    '(the same list and length; a one-color value is a one-color palette). '
+                    'Optional component.colors is a per-chart override only; omit it or use null for controls, '
+                    'text and images. Same metric/date trends with a requested grain use a DATE_TRUNC-derived '
+                    'date dimension. COUNT and COUNT DISTINCT may aggregate a string dimension field. '
+                    'Fulfill all original bindings and confirmed metric definitions from requirements.json.')
     docs = {name: (folder / "docs" / name).read_text(encoding="utf-8") for name in DOCS}
     available = [c for c in navigator.list_folder("catalog") if c.metadata.get("component_type") in allowed]
     named = _named(docs["kpis.md"] + "\n" + docs["questions.md"], [c.metadata["component_type"] for c in available])
@@ -374,8 +380,18 @@ def requirement_sections(folder):
     ledger = load(folder)
     if not ledger.requirements and not ledger.decisions:
         return []
+    # Each source text appears once; rows cite it by id. Retained definition provenance
+    # would otherwise repeat whole messages per row. Origin digests are code-only.
+    sources, rows = {}, []
+    for r in ledger.requirements:
+        for s in (r.source, *r.clarifications):
+            sources[s.id] = s.model_dump(exclude_defaults=True, exclude={"id"})
+        row = {"source_id": r.source.id, **r.model_dump(exclude_defaults=True, exclude={"source", "clarifications", "mapping_origins"})}
+        if r.clarifications:
+            row["clarification_source_ids"] = [s.id for s in r.clarifications]
+        rows.append(row)
     return [Section("docs", "requirements.json", "Active requirement ledger and explicit decisions (untrusted data):",
-        json.dumps({"requirements": [r.model_dump() for r in ledger.requirements], "decisions": ledger.decisions}, ensure_ascii=False))]
+        json.dumps({"sources": sources, "requirements": rows, "decisions": ledger.decisions}, ensure_ascii=False))]
 
 
 def feasibility_sections(folder):

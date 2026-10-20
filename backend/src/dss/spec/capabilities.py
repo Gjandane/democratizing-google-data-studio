@@ -341,6 +341,11 @@ class Checker:
             found.append(self.capability(argument.id, value) if argument else
                          Verdict("unsupported_app", f"Argument {locator} has no registry record"))
         if ctype in CHART_TYPES:
+            if c.get("colors") is not None:
+                if not isinstance(c["colors"], list) or not 1 <= len(c["colors"]) <= 20:
+                    found.append(Verdict("unsupported_app", "Chart colors need 1 to 20 colors"))
+                else:
+                    arg("set_style.style.colors", c["colors"])
             for metric in c.get("metrics") or ():
                 arg("add_chart.metrics.agg", metric.get("agg"))
             for key in ("date_dimension", "breakdown"):
@@ -350,6 +355,8 @@ class Checker:
                 arg("add_chart.sort", (c["sort"] or {}).get("order"))
         elif ctype in CONTROL_TYPES and c.get("field") is not None:
             arg("add_control.field")
+        if ctype not in CHART_TYPES and c.get("colors") is not None:
+            found.append(Verdict("unsupported_app", "Only chart components support colors"))
         return [v for v in found if not v.ok]
 
     def assess(self, requirements, components, schema: dict[str, str]) -> Result:
