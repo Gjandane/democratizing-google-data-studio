@@ -122,3 +122,14 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
   errors identify the key but not its full nesting path (audit 2026-10-20).
 - Windows 8.3 aliases of local reference assets are not explicitly denied; case-collision
   packaging on a case-sensitive filesystem remains untested here (audit 2026-10-20).
+- Prototype preview ignores some supported chart options (bar orientation/stacking, pie donut,
+  compact scorecards, table rows_per_page, pivot row/column assignments); the compiled report
+  honors them (P2, was task 13.4; change 2026-10-20).
+- Token budgets trust the folded count; live evidence 8,245 folded vs 8,695 billed input tokens,
+  so a request near a node budget can exceed it (P2, was task 13.8; change 2026-10-20).
+- A copy, capture or commit failure during POST /versions strands the next version folder and
+  every retry returns 422; the normal path works (P2, was task 13.5; change 2026-10-20).
+- An explicit feasibility check can report ready again after execution refused a supported but
+  unfulfilled requirement; execution still refuses (P2, was task 13.7; change 2026-10-20).
+- Huge integers (e.g. 10**400) in synthetic numeric bounds or choices raise OverflowError: the
+  API returns 500 instead of 422 (P2, was task 13.6; change 2026-10-20).

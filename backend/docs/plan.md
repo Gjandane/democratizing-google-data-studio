@@ -1,5 +1,5 @@
 # Plan: backend
-Target: POC · Audit: done 2026-10-20 (final re-audit: DEFECTS, 8 repair tasks in Phase 13; details in docs/audit-final-2026-10-20.md)
+Target: POC · Audit: done 2026-10-20 (final re-audit: DEFECTS, 8 repair tasks in Phase 13; details in docs/audit-final-2026-10-20.md; change 2026-10-20: 13.4-13.8 deferred to PRD Later)
 
 Markers: [ ] to do, [~] in progress, [x] done, [!] blocked. Only blueprint.py changes them.
 Sizes: S small, M a normal session, L needs a whole fresh session (never run unattended).
@@ -369,43 +369,3 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_render.py tests/test_spec_validate.py tests/test_synthetic_label.py` passes with the audit's 2-row default title, explicit font overrides, multiline/long headings and subtitle cases. Use Chromium to assert content bounds and save/inspect prototype and decoration PNGs at 1200px canvas width; text is fully visible or validator rejects into existing repair, boxes stay in bounds and the synthetic footer remains protected. `uv run pytest -m live tests/live/test_backend_flow.py` reaches a prototype whose heading is visually checked. `uv run pytest` passes.
   - Review focus: same geometry/style defaults in validator, prototype and background; preserve existing spec repair budget and contract boxes.
-- [ ] 13.4 Render accepted chart options consistently
-  - Goal: supported chart options have the same semantics in the preview and compiled report.
-  - Spec: docs/architecture.md#Prototype renderer; docs/architecture.md#Capability verification
-  - Files: src/dss/render/prototype.py, tests/test_render.py, tests/test_recipe_contract.py, tests/test_capabilities.py
-  - Depends on: 11.8
-  - Size: M
-  - Done when: `uv run pytest tests/test_render.py tests/test_recipe_contract.py tests/test_capabilities.py` passes independent oracles for horizontal/vertical bars, stacked groups, pie/donut, compact/noncompact scorecards, table rows_per_page (visible row count within the existing 20-row query cap) and pivot row/column assignments (including reversed axes and multiple metrics). SQL grouping and displayed data match the accepted bindings; compiler golden bytes remain stable. Save and inspect Chromium screenshots of option pairs at the spec canvas, and preserve the 12-component render budget. `uv run pytest` passes.
-  - Review focus: no registry downgrade to hide missing renderer behavior; no contract change or engine editing.
-- [ ] 13.5 Recover failed new-version publication
-  - Goal: failed copying, rendering or DB commit cannot strand the next version directory or prevent retry.
-  - Spec: docs/architecture.md#Build consistency
-  - Files: src/dss/api/builds.py, src/dss/spec/publication.py, src/dss/main.py, tests/test_execute.py, tests/test_synthetic_label.py, tests/test_publication.py
-  - Depends on: 12.5
-  - Size: M
-  - Done when: `uv run pytest tests/test_execute.py tests/test_synthetic_label.py tests/test_publication.py` passes injected failures during copy, synthetic capture, before DB commit and immediately after destination publication; previous version bytes and DB pointer remain consistent and retry creates exactly one complete next version. Restart handles an abandoned owned destination idempotently without deleting any committed version or candidate view; copied references/provenance persist and assessment remains unchecked. `uv run pytest` passes.
-  - Review focus: only attempt-owned artifacts can be removed; use existing publication primitives where suitable, no new persistence service.
-- [ ] 13.6 Reject unbounded numeric generator inputs cleanly
-  - Goal: out-of-range integers cannot escape the synthetic validation boundary through float conversion.
-  - Spec: docs/architecture.md#Synthetic data
-  - Files: src/dss/data/synthetic.py, tests/test_synthetic.py, tests/test_synthetic_api.py
-  - Depends on: 12.4
-  - Size: S
-  - Done when: `uv run pytest tests/test_synthetic.py tests/test_synthetic_api.py` passes huge positive/negative integers (including 10**400) in decimal bounds and numeric choice/lookup values and dependent products: parse_spec raises field-specific SyntheticError, HTTP returns 422 with no job/source, CLI exits nonzero without traceback or final/partial CSV; valid numeric boundaries and deterministic golden bytes are unchanged. `uv run pytest` passes.
-  - Review focus: validate magnitude before lossy/overflowing conversion; no broad exception masking or weakening strict schema checks.
-- [ ] 13.7 Preserve fulfillment failures through feasibility recovery
-  - Goal: an unchanged check cannot advertise a runnable prototype after execution refused its missing required behavior.
-  - Spec: docs/architecture.md#Capability verification
-  - Files: src/dss/spec/requirements.py, src/dss/harness/nodes/capability_check.py, tests/test_feasibility.py, tests/test_api_contract.py
-  - Depends on: 11.8
-  - Size: S
-  - Done when: `uv run pytest tests/test_feasibility.py tests/test_api_contract.py` passes an actually supported but unfulfilled requirement: recipe/run returns 409 before side effects, GET and explicit check/reload retain blocked or prototype_stale until a successful repair/replan/reapply proves coverage. No new fields/codes; resolved pending-comment decisions still permit explicit reapply, and an untouched legacy build can recover normally. `uv run pytest` passes.
-  - Review focus: exercise the real coverage_errors branch without mocking it; distinguish intent support from artifact fulfillment, no execution bypass or false-ready loop.
-- [ ] 13.8 Enforce complete-request token budgets conservatively
-  - Goal: a folded token count below the limit cannot authorize a request whose actual input exceeds the node budget.
-  - Spec: docs/architecture.md#Working memory assembly
-  - Files: src/dss/harness/llm.py, src/dss/harness/context.py, tests/test_context.py, tests/test_llm_retry.py, tests/live/test_backend_flow.py, tests/live/test_references.py
-  - Depends on: 9.6; 11.9
-  - Size: M
-  - Done when: `uv run pytest tests/test_context.py tests/test_llm_retry.py` passes injectable whole-request vs folded-count boundary oracles including schema/tools/images/repair overhead; enforcement uses a documented conservative bound, preserves drop/recount order and mandatory sections, refuses when no valid bound fits, and records folded/enforced/billed values distinctly without inventing provider usage. `uv run pytest -m live tests/live/test_backend_flow.py tests/live/test_references.py` passes and checks billed prompt usage against each node budget on representative structured/vision requests; add a bounded near-limit live probe proving refit/refusal before an over-budget generation. FakeLLM remains offline; generation/repair caps and golden artifacts are unchanged. `uv run pytest` passes.
-  - Review focus: no budget relaxation; document and test the allowance's calibration and limits rather than relabeling the folded count as authoritative.

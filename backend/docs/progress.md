@@ -802,3 +802,9 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: logs, five timing XML files and reviewed diff in `.blueprint/task-13.2-*`.
 - Left open: none.
 - Next: Task 13.3 Fit heading text in prototype and background (deep; gpt-6.1-sol at high).
+
+## 2026-10-20: Change triage phase 13 to the severity bar
+- What changed: Phase 13's open tasks graded against the architect's new severity bar (POC: only P0/P1 stay as tasks; fix budget 2, already spent by 13.1 and 13.2). Kept 13.3 (P1, borderline: `.item` 16px padding with overflow hidden clips every default 2-row title, and the clip is baked into the real report's background; the audit's POC checklist walk marked the visual heading FAIL). Removed unstarted 13.4, 13.5, 13.6, 13.7 and 13.8 (all P2: preview-only option drift, failure-only version recovery, a 500 on absurd synthetic input, false readiness with execution still refusing, near-limit token overshoot); each is one line in PRD `## Later` (source `change 2026-10-20`). Plan header notes the deferral.
+- Why: retro 2026-10-20 found audits kept adding fix tasks; user picked 13.3 only (over the 2-task budget by one) and all P2s to Later.
+- Tasks affected: 13.3 stays (already in progress); 13.4-13.8 removed; no [x] task touched.
+- Change requests: none outstanding.
