@@ -616,3 +616,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: recorded in AGENTS.md.
 - Left open: none.
 - Next: Task 11.8 Gate recipe, run and new versions; live flow. Reuse committed proof and preserve pending/reference staleness at every run gate.
+
+## 2026-10-20: Task 11.8 Gate recipe, run and new versions; live flow
+- Status: partial
+- Plan check: off
+- What changed: attempted execution gates, unchecked version copies, screenshot compiler guard, streaming-extraction fix and explicit fixture assessments. Set aside recoverably with `restore 11.8` after repeated live failure.
+- Checks: before restore, `uv run pytest tests/test_feasibility.py tests/test_api_contract.py -q --tb=short` PASS (96); `uv run pytest --tb=short -q` PASS (682, 7 live deselected; newest case also covered by focused check). Live flow FAIL twice: initially 3 failed; finally 1 passed, 2 failed. GPS refusal passed. `git diff --check -- .` PASS. Review not reached.
+- Decisions: recover implementation using `git stash apply 045be7caaaf2bd6df09059f84ae27021a5916c80`. No dependencies. AGENTS.md records streaming and assignment traps.
+- Tried and failed: original live interview fails during extraction after counting, with zero generation tokens and generic `llm_unavailable`; ignoring partial responses fixed GPS but not that failure. Image clarification remains blocked: sentence-start assignment grammar rejects the audience-prefixed definition.
+- Gotchas: sanitized traces/ledgers and live logs remain in `.blueprint/qa/task-11.8/failures/` and `.blueprint/task-11.8-live*.log`.
+- Left open: both live failures; task unreviewed.
+- Next: resume 11.8 by recovering the stash; isolate the original interview's provider/streaming failure with a minimal diagnostic, repair clarification recognition, rerun required checks, then review.
