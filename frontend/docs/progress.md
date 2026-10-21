@@ -443,3 +443,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: Fira Code ligatures draw `>=` as a single glyph in the Rule select; harmless.
 - Left open: P3 Confirm clicked right after typing is dropped (blur starts the save first) - ArtifactStage.tsx; P3 raw `min-[1440px]` breakpoint and `mt-px` (same as WorkspaceShell's) - context/; P3 Remove KPI/row has no undo - ContextEditor.tsx
 - Next: Task 14.3 Outline picker. Start by reading ArtifactStage OutlineSummary and the context/ editor pattern.
+
+## 2026-10-21: Task 14.3 Outline picker
+- Status: done
+- Plan check: off
+- What changed: New src/features/workspace/outline/OutlinePicker.tsx replaces the read-only outline summary in ArtifactStage: collapsible section groups, checkbox rows (label + describedby: Recommended, origin chip, KPI names, rationale), Suggest more and an Other box per section, "Add a section" box; mock explains GPS Other text in an assistant message.
+- Checks: `npm test -- outline` PASS (12/12, run 3x); `npm run typecheck` PASS; Test (all) `npm test` PASS (19 files, 396 tests); screenshots/14.3-outline-1280.png and -1440.png checked (no overflow, tokens only, footer count + Confirm in view, GPS explanation in the activity column).
+- Decisions: each tick PUTs only the changed ids, serialized; unsaved ticks show as overrides and count in the footer (onCountChange); a save in flight or failed blocks Confirm/Re-propose via onSavingChange, failed save offers Save again. After a Suggest/Other 202 every control stays off until that run_id shows in stream.activity (fallback AWAIT_RUN_MS 30 s). Other text clears only when a newer outline revision lands, so a failed run keeps it. KPI chips read names from GET context, ids until it loads. Mock: /\bgps\b/i Other text streams the explanation and keeps the question. Necessary extra: ArtifactStage.tsx (hosts the picker, optional stream.activity). AGENTS.md: heredoc backspace gotcha.
+- Digest: ArtifactStage renders `<OutlinePicker build outline disabled onSaved onSavingChange onCountChange startedRuns>` (outline/OutlinePicker.tsx; exports selectedCount(outline, overrides?), MAX_OTHER=1000, AWAIT_RUN_MS); ArtifactStage stream prop takes optional `activity`.
+- Tried and failed: clearing the run wait when `disabled` turned on: a run that starts and finishes before React renders never shows the lock, so controls stayed off.
+- Gotchas: jsdom dispatches clicks on controls in a disabled fieldset; assert `:disabled`, not that a click did nothing.
+- Left open: P3 Suggest more/Add question look enabled but do nothing while a selection PUT is in flight - OutlinePicker.tsx; P3 KPI chips swap ids for names after GET context (chip width shift) - OutlinePicker.tsx; P3 scroll assertion uses a stubbed scrollTop (real guard is same-node + no loading) - tests/outline.test.tsx; P3 mock rationale "Added by you." repeats the origin chip - src/mocks/api.ts.
+- Next: Task 14.4 Design picker. Start by reading ArtifactStage DesignSummary and the outline/ picker pattern.

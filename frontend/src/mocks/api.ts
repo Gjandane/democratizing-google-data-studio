@@ -573,6 +573,11 @@ function proposedOutline(): Outline {
   return outline;
 }
 
+/** Other text asking for what the app can't draw: the assistant explains it (mock oracle: GPS animation). */
+const UNSUPPORTED_OTHER = /\bgps\b/i;
+const GPS_EXPLANATION =
+  'This app cannot animate GPS points. I kept your question as a requirement: the blueprint marks it blocked and offers supported alternatives, such as totals by country on a map or a trend over time, when your data has the fields for them.';
+
 const nextQuestionId = (outline: Outline) =>
   `q${Math.max(0, ...outline.sections.flatMap((s) => s.questions.map((q) => Number(q.id.slice(1)) || 0))) + 1}`;
 
@@ -1098,6 +1103,8 @@ export function createMockApi(): ApiClient {
         requireModel();
         markEdited(build, 'outline');
         return stagedRun(build, 'outline_other', () => [
+          // Unsupported behavior is explained at once and kept as a requirement (dashboard-intent.md 1.2).
+          ...(UNSUPPORTED_OTHER.test(trimmed) ? streamAssistant(id, GPS_EXPLANATION, 'outline_other') : []),
           () => {
             const next = clone(artifactsOf(id).outline!);
             const question: OutlineQuestion = {

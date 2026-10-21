@@ -48,6 +48,7 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Headless Chrome driven by separate CDP scripts: `Emulation.setDeviceMetricsOverride` resets when the client disconnects; size the window with `Browser.setWindowBounds` instead (headless adds 26x100 px: 1306x900 gives a 1280x800 viewport).
 - Bash heredocs with non-ASCII (`·`, `…`) fail with "unexpected EOF while looking for matching `''": write Python patch scripts with the Write tool (scratchpad) and run them.
 - Controls inside a disabled `<fieldset>` keep `.disabled === false` in jsdom (and `activeElement` stays on a disabled input): assert `el.matches(':disabled')`.
+- A Python patch passed through a Bash heredoc can turn a regex's `\b` into a backspace byte (0x08): write regex edits with the Edit tool, then check the file for `\x08`.
 
 ## Skills
 Use each skill only at its step, on that task's files. If one isn't installed in your tool, skip it and say so under Gotchas. The essentials' UI design section wins over a skill's generic advice.

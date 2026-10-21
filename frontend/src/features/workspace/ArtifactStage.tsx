@@ -1,7 +1,8 @@
 // The four artifact stages (context, outline, design, blueprint) in one frame: load, refetch on
 // `artifact.updated`, a read-only summary, and the stage's confirm and secondary actions.
-// The context has its editor (14.2); tasks 14.3-14.5 replace the other summaries the same way.
-import { Check, Circle, FileQuestion } from 'lucide-react';
+// The context has its editor (14.2) and the outline its picker (14.3); tasks 14.4-14.5 replace the
+// other summaries the same way.
+import { FileQuestion } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../../api/client';
 import {
@@ -24,6 +25,7 @@ import { LoadingState } from '../../components/Spinner';
 import { presetFor } from '../activity/presets';
 import type { BuildStream, RunErrorNode } from '../activity/useBuildStream';
 import { ContextEditor } from './context/ContextEditor';
+import { OutlinePicker, selectedCount } from './outline/OutlinePicker';
 import { StageFrame } from './StageFrame';
 import { STAGE_LABELS, staleCause } from './Stepper';
 
@@ -44,8 +46,6 @@ const FETCH: { [K in ArtifactName]: (buildId: string) => Promise<Values[K] | nul
 
 /** Most selected questions a confirm accepts (api.md 2.0, outline/confirm). */
 export const MAX_SELECTED = 24;
-
-const selectedCount = (outline: Outline) => outline.sections.reduce((n, s) => n + s.questions.filter((q) => q.selected).length, 0);
 
 interface StageCopy {
   lead: string;
@@ -116,35 +116,6 @@ function Issues({ issues }: { issues: ValidationIssue[] }) {
   );
 }
 
-function OutlineSummary({ outline }: { outline: Outline }) {
-  return (
-    <>
-      {outline.sections.map((section) => (
-        <section key={section.id} aria-labelledby={`outline-${section.id}`}>
-          <h3 id={`outline-${section.id}`} className={sectionTitle}>
-            {section.title}{' '}
-            <span className="text-label font-normal text-text-muted">
-              {section.questions.filter((q) => q.selected).length} of {section.questions.length} selected
-            </span>
-          </h3>
-          <ul className="space-y-1">
-            {section.questions.map((q) => (
-              <li key={q.id} className="flex items-start gap-2 text-body text-text">
-                {q.selected ? <Check aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-primary" /> : <Circle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-text-muted" />}
-                <span className="min-w-0">
-                  {q.text}
-                  <span className="sr-only">{q.selected ? ' (selected)' : ' (not selected)'}</span>
-                  {q.recommended && <span className="ml-2 text-caption font-medium text-primary">Recommended</span>}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
-    </>
-  );
-}
-
 /** A user-chosen color: shown only as a data swatch (inline style), always with its hex as text. */
 function Swatch({ color, name }: { color: string; name?: string }) {
   return (
@@ -206,7 +177,6 @@ function BlueprintSummary({ blueprint }: { blueprint: Blueprint }) {
 }
 
 function Summary({ name, value }: { name: ArtifactName; value: Values[ArtifactName] }) {
-  if (name === 'outline') return <OutlineSummary outline={value as Outline} />;
   if (name === 'design') return <DesignSummary design={value as Design} />;
   return <BlueprintSummary blueprint={value as Blueprint} />;
 }
@@ -223,7 +193,7 @@ export function ArtifactStage({
 }: {
   build: Build;
   name: ArtifactName;
-  stream: Pick<BuildStream, 'artifactSeq' | 'running' | 'runErrors'>;
+  stream: Pick<BuildStream, 'artifactSeq' | 'running' | 'runErrors'> & Partial<Pick<BuildStream, 'activity'>>;
   /** The Feasibility panel, under the header. */
   feasibility?: ReactNode;
   /** Blueprint only: feasibility resolved and references ready, so Accept may run. */
@@ -241,6 +211,8 @@ export function ArtifactStage({
   // An editor's PUT is on its way: confirming now would confirm the version before it.
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
+  // The picker's count, unsaved ticks included.
+  const [outlineCount, setOutlineCount] = useState<number | null>(null);
   const mounted = useRef(true);
   const seq = build.id + name + stream.artifactSeq[name];
 
@@ -281,7 +253,7 @@ export function ArtifactStage({
     valid = open === 0;
     status = open === 0 ? 'No open issues' : open === 1 ? '1 open issue' : `${open} open issues`;
   } else if (value && name === 'outline') {
-    const n = selectedCount(value as Outline);
+    const n = outlineCount ?? selectedCount(value as Outline);
     valid = n >= 1 && n <= MAX_SELECTED;
     status = n > MAX_SELECTED ? `${n} of ${MAX_SELECTED} selected: ${MAX_SELECTED} at most` : `${n} of ${MAX_SELECTED} selected`;
   } else if (value && name === 'design') {
@@ -350,6 +322,7 @@ export function ArtifactStage({
     }
   };
 
+  const startedRuns = (stream.activity ?? []).map((run) => run.runId);
   const runError = copy.runs.map((node) => ({ node, text: stream.runErrors[node] })).find((e) => e.text);
   const retryNode = runError?.node;
   const why = state === 'stale' ? staleCause(build, name) : null;
@@ -361,6 +334,8 @@ export function ArtifactStage({
   else if (value === null) body = <EmptyState framed className="mt-4" icon={<FileQuestion />} title={`No ${name} yet`} description={copy.empty} headingLevel={3} />;
   else if (name === 'context')
     body = <ContextEditor build={build} context={value as Context} disabled={locked} onSaved={(saved) => void onSaved(saved)} onSavingChange={onSavingChange} />;
+  else if (name === 'outline')
+    body = <OutlinePicker build={build} outline={value as Outline} disabled={locked} onSaved={(saved) => void onSaved(saved)} onSavingChange={onSavingChange} onCountChange={setOutlineCount} startedRuns={startedRuns} />;
   else body = <Summary name={name} value={value} />;
 
   return (

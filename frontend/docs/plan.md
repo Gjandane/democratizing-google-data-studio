@@ -216,7 +216,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `npm test -- context` and `npm run typecheck` pass: notes over 4000 chars are blocked with a count; each KPI card switches between measure (field + agg selects filtered by type) and ratio (two KPI pickers); an issue path from the fixture lands on its card and field; Confirm is disabled with issues and a 409 artifact_invalid shows the issues; a PUT keeps focus in the edited field; screenshots/14.2-context-{1280,1440}.png checked against docs/staged-ui.md and the UI design section (density, states, contrast).
   - Review focus: ../contracts/api.md 2.0 context endpoints; keyboard path through every card; loading/empty/error states.
-- [ ] 14.3 Outline picker
+- [x] 14.3 Outline picker
   - Goal: sections of question checkboxes with Recommended badges, rationale and KPI chips; Suggest more per section; Other text per section or as a new section; selection count; confirm.
   - Spec: docs/staged-ui.md
   - Files: src/features/workspace/outline/*, src/mocks/*.ts, tests/outline.test.tsx
