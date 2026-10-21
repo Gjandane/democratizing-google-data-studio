@@ -72,7 +72,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: a row fails inside a part -> block this task naming the part, the source, the step and the API error body (the fix is a task in that part through the change flow); after the fix rerun only the failed rows (change 2026-10-22: rows 2 research and 3 BigQuery, same inputs, after engine 10.1 and backend 17.1; rows 1 and 4 stand).
   - If: `GCS_BUCKET` is empty in .env or the user can't write to it -> ask the user for a bucket on a card; never create one here.
   - If: the public BigQuery table can't be read or isn't in `BQ_LOCATION` -> ask the user for a table of theirs on a card.
-- [ ] 2.5 Reference, refusal and synthetic end-to-end, local
+- [!] 2.5 Reference, refusal and synthetic end-to-end, local
   - Goal: prove the required image modes, the feasibility gates and the screenshot-only synthetic flow on the local API, with a real supported recreation and an impossible-for-this-app request refused before side effects.
   - Spec: contracts/dashboard-intent.md#Required oracle cases; contracts/dashboard-intent.md#Scope; contracts/synthetic-data.md#Acceptance oracle
   - Files: integration/e2e_references.py, integration/check_contracts.py, samples/gross_net_sales.csv, samples/reference-dashboard.html, samples/reference-dashboard.png, samples/reference-expectations.json, deck/data/bench-references-local.json
