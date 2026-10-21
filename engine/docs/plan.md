@@ -114,3 +114,15 @@ tasks and require a separately specified scope/contract revision. Task statuses 
   - Size: M
   - Done when: `uv run python spikes/spike_one_chart.py`, `uv run pytest -m live tests/live/test_report_ops.py tests/live/test_charts_a.py tests/live/test_golden.py tests/live/test_charts_b.py tests/live/test_misc_ops.py`, and `uv run pytest` pass. Inspect fresh saved-report screenshots; keep the permitted incompatible-geo failure only. Record golden elapsed/median op time and 20-op elapsed under 300 s. A fresh live run with --screencast emits schema-valid frames between op events. Record every command, evidence path, and external prerequisite in docs/progress.md; never weaken render assertions to accept data errors.
   - If: the underlying source cannot be queried with the existing account/configuration -> stop with safe error evidence and the exact prerequisite the user must repair; never automate sign-in, expose secrets or provision a replacement source silently.
+
+## Phase 6: Live UI drift
+- [ ] 6.1 Accept data-access review dialogs without the risk checkbox
+  - Goal: open_report and save_report get past Data Studio's "Review data access" dialogs whether or not they show the "I understand and accept the risk." checkbox, so a live run reaches a saved report link again. Release 2.3 is blocked on this.
+  - Spec: docs/architecture.md#Live editor conventions
+  - Files: src/dsengine/ops/report.py, knowledge/datastudio-ui/linking.md, knowledge/datastudio-ui/editor.md, tests/test_executor.py, spikes/spike_one_chart.py
+  - Depends on: 5.4
+  - Size: S
+  - Done when: `uv run pytest tests/test_executor.py` passes with new fake-page regressions: the create dialog with and without the checkbox (Acknowledge clicked once, checkbox ticked only when present, Close never clicked, editor readiness reached), and the save dialog with and without the checkbox (saved URL returned). Live: `uv run pytest -m live tests/live/test_golden.py -k budget` passes on the signed-in profile and its saved-report screenshot shows rendered charts; record elapsed and the dialog variant seen. `uv run pytest` passes.
+  - If: the dialog selector `role=dialog[name="Review data access"]` also matches "Review data access before saving" (Playwright name match is a case-insensitive substring) -> make it exact (`name="Review data access"s`) or scope by the open op; record the choice under Decisions.
+  - If: the live run shows a different save dialog (name or button text) -> update editor.md from the screencast's last frame (`uv run dsengine run --screencast`), not by guessing, and record it.
+  - Review focus: old-variant behaviour kept (checkbox present -> ticked); Acknowledge located inside the dialog, so "Acknowledge and save" and other buttons can't match; no clicks on Close.

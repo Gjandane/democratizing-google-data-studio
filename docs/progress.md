@@ -242,3 +242,9 @@ context. Task status lives in docs/plan.md, not here.
   `{"event": "run_finished", "status": "failed", "report_url": null, "ok": 0, "failed": 1, "skipped": 16, "error_code": "open_report_failed"}`
   Last screencast frame: dialog "Review data access", "This report was designed by another user...", buttons Close and Acknowledge only. Engine waits for `review_accept: 'role=checkbox[name="I understand and accept the risk."]'` (knowledge/datastudio-ui/linking.md:8; ops/report.py:46-48 returns False when it is not visible), so the editor never becomes ready.
 - Next: after the engine fix, `git stash apply` the 07:52 stash (by subject), start services, rerun the `--live` check, then the UI walkthrough.
+
+## 2026-10-21: Change data-access review dialog without checkbox (program)
+- What changed: task 2.3 reopened and gated `Needs: engine 3.1; engine 6.1; frontend 3.2`. Engine got task 6.1 (S): open/save accept the "Review data access" dialog with or without the risk checkbox; engine architecture conventions, decision log and essentials updated. No contract changed.
+- Why: 2.3's block (a): engine `_dismiss_access_review` waits for a checkbox Data Studio no longer shows, so `open_report` times out.
+- Ruling: user picked option A (engine task) over B (pin a template/URL avoiding the dialog).
+- Tasks affected: 2.3 waits on engine 6.1; its 07:52 stash (`blueprint: task 2.3 failed attempt 2026-10-21 07:52`) still holds the `--live` work: `git stash apply` it by subject when 2.3 resumes. Later tasks unchanged.

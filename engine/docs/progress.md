@@ -314,3 +314,9 @@ context. Task status lives in docs/plan.md, not here.
 - Known limitations: retain PRD Later items (compatible-source geo proof, report-building expansion and program-root timeout-lifecycle wording clarification). Earlier transient source/template access failures and earlier Phase 5 failures remain recorded; fresh strict acceptance passed. No owned product UI requiring a separate viewport/accessibility audit.
 - Decisions: preserve all acceptance assertions, failed diagnostic evidence and live reports. No additional audit-fix phase. Final blueprint lint and git diff checks passed before the docs-only final-audit commit.
 - Left open: none for engine POC acceptance. Optional retrospective, local release tag or separately planned new version. Program integration audit belongs at the program root after every part's latest final audit is ACCEPTED.
+
+## 2026-10-21: Change data-access review dialog without checkbox (from release 2.3)
+- What changed: plan.md Phase 6 adds task 6.1 (S): open_report and save_report accept Data Studio's "Review data access" dialogs with or without the "I understand and accept the risk." checkbox. architecture.md Live editor conventions gains the dialog rule plus a decision-log row; essentials updated and stamped.
+- Why: release 2.3 blocked. Live run b_ae7f4bdaab30 v1 failed `open_report` (timeout, `open_report_failed`); last screencast frame shows the dialog with Close and Acknowledge only, while `_dismiss_access_review` (ops/report.py:45-54) returns False when `review_accept` is not visible, so the editor never becomes ready. The save path (ops/report.py:321) requires the checkbox too.
+- Ruling: user chose the engine fix over pinning a template/URL that avoids the dialog (no known one; linking.md says the dialog appears on every create).
+- Tasks affected: engine 6.1 new; release 2.3 now `Needs: engine 6.1`. Engine final audit (2026-10-20) stays ACCEPTED for 1.1-5.4; 6.1 gets the builder's own review.
