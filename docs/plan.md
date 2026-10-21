@@ -61,7 +61,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: frontend 6.1 and backend 10.1 are done -> the UI walkthrough also checks that the activity strip shows a phrase, the elapsed time and a growing token count during the blueprint run, and its checklist ends all ticked; otherwise skip this (it is first in the cut order).
   - If: the live engine run fails again with `report_url: null` -> diagnose it with the screencast gotcha (AGENTS.md) and block naming the part (engine or backend), the op and the last frame; never retry past one rerun.
   - Review focus: contracts/api.md 2.0 staged endpoints; the driver never edits a part's files.
-- [ ] 2.4 Manual acceptance: CSV, research, BigQuery and GCS
+- [!] 2.4 Manual acceptance: CSV, research, BigQuery and GCS
   - Goal: before anything is published, the user builds one real dashboard per data source through the local UI; the builder prepares the inputs, starts the app and records each result.
   - Files: docs/acceptance.md, docs/img/*.png
   - Depends on: 2.3

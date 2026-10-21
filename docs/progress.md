@@ -336,3 +336,17 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: in AGENTS.md Known gotchas.
 - Left open: P2 `accept_alternative` branch never exercised and assumes `ready` after the decision POST - integration/e2e_flow1.py:237; P3 `partial` still exits 0 (API has no failed count; manual events check) - :168; P3 only `run()` retries 409 `wrong_stage` - :197/:240/:150; P3 `next()`/null context escape the FAIL handler - :161/:185; P3 accepts lookerstudio host - :23; P3 model runs poll /api/traces - :113. Outside: first report page named "Untitled Page", page-1 scorecard values tiny, UI decoration comment gave dark text on the blue band (engine/backend). User: drop stashes 07:52, 08:57, 21:46 by subject.
 - Next: Task 2.4 Manual acceptance: CSV, research, BigQuery and GCS.
+
+## 2026-10-22: Task 2.4 Manual acceptance: CSV, research, BigQuery and GCS
+- Status: blocked
+- Plan check: off
+- What changed: docs/acceptance.md (4 rows, verdicts from the user's card), docs/img/acceptance-2.4-{csv,research,bigquery,gcs}.png (page 1, cropped); copied samples/ecommerce_sales.csv to `gs://$GCS_BUCKET/samples/`; AGENTS.md: 2 gotchas.
+- Checks: rows 1 CSV PASS, 4 GCS PASS; rows 2 research FAIL, 3 BigQuery FAIL (user verdicts); `check_contracts.py` PASS (9/9).
+- Decisions: builder drove the UI, user watched (card). Research prompt "Nominal GDP of the ASEAN member countries, latest year, in US dollars". BQ row: prototype comment set its table to 10 rows (avoid rows_per_page 15).
+- Tried and failed: research prototype comment "exclude the ASEAN total row" -> feasibility "No registered capability covers this requirement"; dropped it.
+- Gotchas: in AGENTS.md. GCS "Add source" returns 201 but the Connect list stays empty until reload.
+- Left open: P2 every report: page 1 "Untitled Page", scorecard values tiny (engine/backend); P2 GCS add-source UI refresh (frontend).
+- Blocked because: (b) the fixes are tasks in other parts (backend, engine) through the change flow.
+- Question: Which part tasks fix row 2 (backend emits table `rows_per_page: 15`, engine: "Data Studio option 15 is unavailable"; scorecard titles quoted as `Total Population (M)','Total Nominal GDP (...`) and row 3 (engine: "field user_id not in data source" though the view has user_id; "control box did not match the requested position and size")?
+- Options: A plan backend (rows_per_page limited to Data Studio's list; title quoting) and engine (field lookup, control placement) fixes, then rerun rows 2-3 only / B accept rows 2-3 as known limits and change 2.4's Done when / Recommend: A, both block a clean demo.
+- Next: after the part fixes, rerun rows 2 and 3 only (same inputs), then a user verdict card.
