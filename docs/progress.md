@@ -248,3 +248,17 @@ context. Task status lives in docs/plan.md, not here.
 - Why: 2.3's block (a): engine `_dismiss_access_review` waits for a checkbox Data Studio no longer shows, so `open_report` times out.
 - Ruling: user picked option A (engine task) over B (pin a template/URL avoiding the dialog).
 - Tasks affected: 2.3 waits on engine 6.1; its 07:52 stash (`blueprint: task 2.3 failed attempt 2026-10-21 07:52`) still holds the `--live` work: `git stash apply` it by subject when 2.3 resumes. Later tasks unchanged.
+
+## 2026-10-21: Task 2.3 End-to-end live build and UI walkthrough
+- Status: blocked
+- Plan check: off
+- What changed: Recovered `--live` integration changes reviewed; preserved in stash `blueprint: task 2.3 failed attempt 2026-10-21 08:57`. No part edits or environment changes; pre-existing services left running.
+- Checks: `uv run --project integration python integration/e2e_flow1.py --live` FAIL (exit 1, b_efb99ef68177): intake, all interview answers, plan, comment and recipe passed; engine version failed with `report_url: null`, no bench JSON. Execute trace status ok, latency 312368 ms, despite failed version. Test (all) `uv run --project integration python integration/check_contracts.py` PASS, all 9. `dsengine check`: Chrome running and signed in. UI b_c2efd21dc241 CSV intake passed; second answer failed twice with `interview` / `llm_unavailable` (40949/35583 ms). Link, charts and plan activity checks not reached. Reviewer: no findings.
+- Decisions: User selected recording the blocker for backend follow-up. Restore preserved release changes; existing services belong to prior sessions.
+- Tried and failed: UI answer retried once; same model failure.
+- Gotchas: none new.
+- Left open: live dashboard, benchmark and UI acceptance.
+- Blocked because: (a) fixes require other parts, which release cannot edit.
+- Question: Can backend diagnose the repeated interview `llm_unavailable` and failed engine version?
+- Options: A backend follow-up using these build IDs, then rerun release 2.3 / B defer live acceptance / Recommend: A.
+- Next: Backend follow-up first; then apply the 08:57 stash and rerun task 2.3.
