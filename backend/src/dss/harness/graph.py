@@ -106,7 +106,7 @@ class AgentHarness:
 
             async def reject(node_input):
                 nonlocal code_error
-                trace.span("guardrail")
+                trace.span("reject")
                 code_error = RunError("wrong_stage", "Unknown action", 409)
                 return 'Action unavailable'
 

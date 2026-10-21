@@ -17,7 +17,8 @@ from dss.harness.nodes import synthetic_schema
 from dss.spec import references
 
 router = APIRouter(prefix="/api/builds")
-STAGES = ("connect", "context")
+# synthetic-data.md 1.2: sample data is written only at connect, before any source.
+STAGES = ("connect",)
 JOB_LIMIT = 20
 # A request without a proposal is a manual schema; the assumption keeps every row labeled invented.
 MANUAL_ASSUMPTIONS = ["Manual schema entered by the user; every row is invented sample data."]
@@ -41,7 +42,7 @@ def write_stage(state, build_id):
         build = connection.execute('SELECT stage FROM builds WHERE id=?', (build_id,)).fetchone()
         has_sources = connection.execute('SELECT 1 FROM sources WHERE build_id=?', (build_id,)).fetchone()
     if build['stage'] not in STAGES or build_id in state.harness.active_builds:
-        raise RunError('wrong_stage', 'Sample data actions require connect or context with no running action',
+        raise RunError('wrong_stage', 'Sample data actions require connect with no running action',
                        409, {'stage': build['stage']})
     if has_sources:
         raise RunError('synthetic_requires_empty_build', 'Sample data is only for a build without data sources; '

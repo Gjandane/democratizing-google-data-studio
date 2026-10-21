@@ -110,7 +110,20 @@ def test_flow(thin):
     with app.state.db.connect() as conn:
         assert conn.execute("SELECT count(*) FROM traces WHERE run_id=?", (run_id,)).fetchone()[0] == 1
         assert conn.execute("SELECT count(*) FROM traces WHERE build_id=?", (bid,)).fetchone()[0] == 4
+        spans = [(r[0], [s["node"] for s in json.loads(r[1])]) for r in conn.execute(
+            "SELECT node, spans_json FROM traces WHERE build_id=? ORDER BY rowid", (bid,))]
+    assert spans == [(node, ["router", node, "guardrail"]) for node in ("create_build", "load_spec", "recipe", "execute")]
     assert (folder / "events.jsonl").is_file()
+    # A legacy build (all four artifacts missing) versions its spec without artifacts.
+    from test_execute import settle
+    settle(client, app)
+    copied = client.post(f"/api/builds/{bid}/versions")
+    assert copied.status_code == 201, copied.text
+    assert set(copied.json()["artifacts"].values()) == {"missing"} and copied.json()["stage"] == "prototype"
+    after = folder.parent / "v2"
+    assert (after / "spec.json").read_bytes() == (folder / "spec.json").read_bytes()
+    assert not any((after / name).exists() for name in ("recipe.jsonl", "events.jsonl", "screens"))
+    assert not any((after / f"docs/{name}.md").exists() for name in ("context", "outline", "design", "blueprint"))
 
 
 def test_layout_and_determinism():
@@ -240,3 +253,14 @@ def test_cancel_terminates_engine_tree(thin, monkeypatch):
     client.portal.call(cancel)
     assert not app.state.engine_busy
     assert client.get(f"/api/builds/{bid}").json()["stage"] == "prototype"
+
+
+def test_engine_login_branch_trace(thin):
+    client, app, bid, folder = thin
+    from test_execute import settle
+    assert client.post("/api/engine/login").status_code == 202
+    settle(client, app)
+    with app.state.db.connect() as conn:
+        rows = conn.execute("SELECT status, spans_json FROM traces WHERE node='engine_login'").fetchall()
+    assert [(r[0], [s["node"] for s in json.loads(r[1])]) for r in rows] == [
+        ("ok", ["router", "engine_login", "guardrail"])]

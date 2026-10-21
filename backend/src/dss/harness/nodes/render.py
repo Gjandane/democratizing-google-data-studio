@@ -43,6 +43,7 @@ async def perform(harness, build_id, run_id, payload, trace):
         raise RunError('invalid_source', 'Prototype rendering failed; check data access and image assets', 422) from None
     if candidate:
         from dss.spec.publication import build_lock
+        trace.span('publish')
         try:
             async with build_lock(harness.db, build_id):
                 from dss.spec import requirements as req

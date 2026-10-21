@@ -406,6 +406,11 @@ def test_rejections(setup):
         "code": "wrong_stage", "message": wrong.json()["error"]["message"], "detail": {"stage": "prototype"}}
     with app.state.db.connect() as conn:
         conn.execute("UPDATE builds SET stage='context' WHERE id=?", (bid,))
+    # synthetic-data.md 1.2: writes only at connect; context already has data.
+    assert post(client, bid).json()["error"] == {
+        "code": "wrong_stage", "message": wrong.json()["error"]["message"], "detail": {"stage": "context"}}
+    with app.state.db.connect() as conn:
+        conn.execute("UPDATE builds SET stage='connect' WHERE id=?", (bid,))
         conn.execute("INSERT INTO sources VALUES('s_real',?,'upload','sales.csv','p.d.t',3,'[]')", (bid,))
     real = post(client, bid)
     assert real.status_code == 409 and real.json()["error"]["code"] == "synthetic_requires_empty_build"
@@ -587,3 +592,51 @@ def test_download_scope(setup):
     path = app.state.settings.get().data_dir / "generated" / bid / "sample_001" / "sample.csv"
     path.write_bytes(path.read_bytes().replace(b"East", b"Easy", 1))
     assert client.get(f"/api/builds/{bid}/synthetic-data/{source_id}/csv").status_code == 404
+
+
+def test_screenshot_only_flow_reaches_context_outline_and_design(setup, monkeypatch):
+    """synthetic-data.md 1.2: recreate reference -> proposal -> sample source -> context ->
+    outline (prefilled from the reference) -> design (reference style)."""
+    from test_context_node import ContextLLM
+    from test_outline import proposal
+    from test_references import STYLE
+    client, app, fake = setup
+    app.state.settings.update({"google_api_key": "test-key"})
+    bid = create(client)
+    rid = recreate_reference(client, app, bid, monkeypatch)
+    proposal_model(monkeypatch, app)
+    _, proposed = propose(client, app, bid, rid)
+    response = post(client, bid, spec=proposed["spec"], proposal_id=proposed["id"])
+    assert response.status_code == 202, response.text
+    wait(app)
+    [source] = client.get(f"/api/builds/{bid}").json()["sources"]
+    assert source["kind"] == "synthetic"
+    context = {"title": "Sample sales", "goal": "Show revenue by region.", "audience": None,
+               "datasets": [{"source_id": source["id"], "summary": "Invented sample rows."}], "derived_fields": [],
+               "kpis": [{"id": "net_revenue", "name": "Revenue", "description": "Sum of revenue.", "unit": None,
+                         "measure": {"field": "revenue", "agg": "sum"}, "ratio": None}],
+               "thresholds": [], "glossary": [], "revision": 1, "issues": []}
+    llm = ContextLLM(replies=[json.dumps(context), json.dumps(proposal())], seen=[])
+    monkeypatch.setattr(app.state.models, "llm_for", lambda _: llm)
+    assert client.post(f"/api/builds/{bid}/context").status_code == 202
+    wait(app)
+    assert client.get(f"/api/builds/{bid}/context").json()["issues"] == []
+    drafted = str(llm.seen[0].config.system_instruction)
+    assert f"source_id={source['id']}" in drafted and "unit_price" in drafted and "Observed labels" in drafted
+    assert client.post(f"/api/builds/{bid}/context/confirm").status_code == 202
+    wait(app)
+    assert "Recreate observations" in str(llm.seen[1].config.system_instruction)
+    confirmed = client.post(f"/api/builds/{bid}/outline/confirm")
+    assert confirmed.status_code == 200, confirmed.text
+    design = client.get(f"/api/builds/{bid}/design").json()
+    assert design["source"] == "reference" and design["accent"] == STYLE["accent"].upper()
+    with app.state.db.connect() as conn:
+        rows = conn.execute("SELECT node,status,spans_json FROM traces WHERE build_id=? ORDER BY rowid", (bid,)).fetchall()
+    # One trace per action, each listing its branch's nodes in order.
+    assert [(r["node"], r["status"], [s["node"] for s in json.loads(r["spans_json"])]) for r in rows] == [
+        ("create_build", "ok", ["router", "create_build", "guardrail"]),
+        ("reference_extract", "ok", ["router", "reference_extract", "write_reference", "guardrail"]),
+        ("synthetic_schema", "ok", ["router", "synthetic_schema", "write_synthetic_proposal", "guardrail"]),
+        ("synthetic_generate", "ok", ["router", "synthetic_generate", "guardrail"]),
+        ("context", "ok", ["router", "context", "validate_context", "guardrail"]),
+        ("outline_propose", "ok", ["router", "outline_propose", "validate_outline", "guardrail"])]

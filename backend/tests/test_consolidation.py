@@ -224,6 +224,44 @@ async def test_build_done_during_a_run_stays_counted(every_one, monkeypatch):
     assert counter(app)["chats_since"] == 0 and len(log_entries(app)) == 2
 
 
+async def staged_docs(app, bid, n):
+    """A staged build: the three confirmed artifacts and no legacy brief."""
+    from dss.artifacts.models import Context, Design, Outline
+    from dss.artifacts.okf import write_artifact
+    from test_api_contract import FIXTURES
+    folder = app.state.settings.get().data_dir / "builds" / bid / "v1/docs"
+    (folder / "brief.md").unlink()
+    (folder / "design.md").unlink()
+    value = lambda name: json.loads((FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
+    outline = value("outline")
+    outline["sections"][0]["title"] = f"Outline {n}"
+    async def quiet(*args):
+        pass
+    for path, artifact in (("context.md", Context.model_validate({**value("context"), "title": f"Context {n}"})),
+                           ("outline.md", Outline.model_validate(outline)),
+                           ("design.md", Design.model_validate({**value("design"), "title": f"Preference {n}"}))):
+        await write_artifact(folder / path, artifact, emit=quiet)
+
+
+async def test_staged_builds_consolidate_context_outline_and_design(client, app, monkeypatch):
+    """DSS_CONSOLIDATE_EVERY=5: four staged builds write nothing; the fifth reads every artifact."""
+    fake = FactsLLM(responses=[facts(("compact", "User Preference", "Compact", "Prefers compact pages."))], requests=[])
+    use(app, monkeypatch, fake)
+    for n in range(1, 6):
+        bid = new_build(app, n)
+        await staged_docs(app, bid, n)
+        await publish(app.state, bid, f"r_{n:012x}", 1, OK)
+        await settle(app)
+        assert fake.calls == (n == 5) and user_dir(app).exists() == (n == 5)
+    prompt = fake.requests[0]
+    for n in range(1, 6):
+        assert all(f"{kind} {n}" in prompt for kind in ("Context", "Outline", "Preference", "Decision"))
+    assert "Brief" not in prompt and prompt.index("Context 5") < prompt.index("Context 1")
+    assert counter(app)["chats_since"] == 0
+    for path in user_dir(app).glob("*.md"):
+        assert parse_concept(f"user/{path.name}", path.read_text(encoding="utf-8")).metadata["type"].strip()
+
+
 def test_budget_drops_the_oldest_builds_first(app, client):
     config = app.state.settings.get()
     builds = []

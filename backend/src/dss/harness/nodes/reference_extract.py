@@ -101,7 +101,11 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         trace.spans[-1].update(items=len(interpretation.items))
         from dss.api.builds import build_response
         await harness.emit(build_id, run_id, 'docs.updated', {'docs': build_response(harness.db, config, build_id)['docs']})
-        return f'Reference saved. {record["summary"]} It guides the next plan; replan to update an existing prototype.'
+        # Staged workflow: recreate observations feed the next outline proposal; both modes feed
+        # a fresh design prefill. Existing artifacts and the prototype change only explicitly.
+        guide = 'the next outline proposal and design prefill' if mode == 'recreate' else 'the next design prefill'
+        return (f'Reference saved. {record["summary"]} It guides {guide}; re-propose the outline, '
+                'prefill the design or accept the blueprint again to update existing work.')
 
     agent = LlmAgent(name='reference_extract', model=model, mode='single_turn', instruction=instruction_provider,
         before_model_callback=before_model, after_model_callback=after_model, on_model_error_callback=model_error)

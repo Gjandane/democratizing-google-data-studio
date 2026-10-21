@@ -254,6 +254,7 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                 return Event(actions=EventActions(route='repair'))
             state['failure'] = RunError('invalid_request', 'Revision patch was rejected after one repair', 422)
             return Event(actions=EventActions(route='complete'))
+        trace.span('render')
         try:
             from dss.spec.publication import build_lock
             async with build_lock(harness.db, build_id):

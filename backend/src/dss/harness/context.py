@@ -33,8 +33,10 @@ SEPARATOR = "\n\n"
 IMAGE_TOKENS = 1500
 # Provider counting calls per model request (the first count plus recounts after drops).
 MAX_COUNTS = 4
-# A legacy build's saved summary (brief, design direction) and its revision decisions.
-CONSOLIDATE_DOCS = {"brief": "brief.md", "design": "design.md", "decisions": "decisions.md"}
+# A staged build's context, outline and design artifacts (a legacy build's brief and design
+# direction instead) and its revision decisions; missing documents are skipped.
+CONSOLIDATE_DOCS = {"context": "context.md", "outline": "outline.md", "brief": "brief.md",
+                    "design": "design.md", "decisions": "decisions.md"}
 DOC_CHARS = 3000
 
 
@@ -452,8 +454,8 @@ def judge_context(config, folder, document):
 
 
 def consolidate_context(config, builds):
-    """Consolidate recipe: the current user facts index, then each done build's saved summary
-    and decisions (newest first, so the budget drops the oldest builds first).
+    """Consolidate recipe: the current user facts index, then each done build's context, outline
+    and design summaries and decisions (newest first, so the budget drops the oldest builds first).
 
     `builds` are dicts with build_id, title, archetype, version and date; builds without any of
     these documents add no entry.

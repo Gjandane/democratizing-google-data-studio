@@ -1056,3 +1056,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: Bash heredoc append with quotes failed silently (nothing written); use Edit.
 - Left open: P3 stale background_p<n>.png from an earlier, longer plan stay in the version folder - spec/publication.py; P3 removal recognised only for the narrow phrasing (live check in 15.11) - spec/requirements.py; P3 a removal row would block a re-plan that recreates the same id - spec/requirements.py; P3 a row bound to removed and kept ids still fails coverage - spec/requirements.py.
 - Next: Task 15.10. Start by routing references/synthetic/research/versions through the staged flow (graph.py).
+
+## 2026-10-21: Task 15.10 Wire references, synthetic data, research, versions and consolidation into the staged flow
+- Status: done
+- Plan check: off
+- What changed: Synthetic writes only at `connect` (synthetic-data.md 1.2); consolidation reads context/outline/design/decisions (legacy brief kept); unknown-action reject span is `reject`; prototype trace adds `publish`, revise adds `render`; reference reply names outline proposal/design prefill. New tests/test_graph.py asserts every branch's span order.
+- Checks: `uv run pytest` PASS (1362, 10 live deselected); `uv run pytest tests/test_api_contract.py` PASS (47); review: no P0/P1, P2 tolerant capability_check span order fixed (exact, 3/3 stable), P3 engine_login trace added.
+- Decisions: Trace = one span per node in order, e.g. prototype router,prototype,view,layout,render,publish,guardrail; revise router,capability_check,assess_capabilities,revise,validate_revision,render,guardrail. CONSOLIDATE_DOCS = context, outline, brief, design, decisions (raw file, 3000 chars each). Outside Files: harness/context.py, nodes/render.py, nodes/revise.py (one span each).
+- Digest: Trace spans per branch fixed in tests/test_graph.py (reject span `reject`; prototype adds `publish`, revise `render`). context.CONSOLIDATE_DOCS adds context/outline. Synthetic writes: STAGES=("connect",).
+- Tried and failed: none.
+- Gotchas: outline Proposal needs 3-5 sections of 3-6 questions; a 1-section FakeLLM reply fails as "invalid draft".
+- Left open: P3 five full-size staged builds (4 docs x 3000 chars) can exceed the consolidate budget and drop the oldest build - harness/context.py
+- Next: Task 15.11. Start by running the live staged flow on the sample and the GPS-style fixture.

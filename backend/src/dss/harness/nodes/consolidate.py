@@ -2,7 +2,8 @@
 
 The only semantic-memory write path. publish counts every build that reaches done; once the
 count reaches `consolidate_every`, one background agent run (one Workflow invocation, one trace)
-reads those builds' interview summaries and decisions plus user/index.md. The model returns
+reads those builds' context, outline and design summaries (old builds: brief and design)
+and decisions plus user/index.md. The model returns
 structured facts; code writes the OKF concepts, index.md and log.md under data/knowledge/user/.
 """
 import asyncio
@@ -225,7 +226,7 @@ async def consolidate(state, llm=None):
             if not any(section.kind == "past" for section in context.sections):
                 if context.dropped["past"]:
                     raise RunError("llm_unavailable", "The consolidate context exceeds its input budget", 503)
-                # No build has an interview summary or decisions: nothing to distill.
+                # No build has an artifact, a legacy summary or decisions: nothing to distill.
                 trace.span("consolidate")
                 context.record(trace.spans[-1])
                 trace.spans[-1]["skipped"] = "no build documents"
