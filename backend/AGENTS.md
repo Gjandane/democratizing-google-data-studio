@@ -47,17 +47,11 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Developer API count_tokens rejects system_instruction/tools/generation_config; llm.count_tokens folds them into contents, which counts ~5% under the billed prompt_token_count (live: 8245 vs 8695).
 - google-genai sends the client `HttpOptions(timeout)` to Google as the server deadline (504 when exceeded); a per-request timeout does not override it, so set it per node on the client.
 - Gemini max_output_tokens includes thinking; ADK may expose MAX_TOKENS as an error before scope handling. Bounded extraction needs a low thinking level and truncation-first handling.
-- csv.writer writes a null row of a single-column synthetic CSV as `""` (not a blank line): the typed BigQuery loader must load it as NULL and still count the row. With an explicit `null_marker=""` BigQuery does both (live-checked 12.2).
-- The live extractor turns default-keeping or context sentences ("default theme", "all orders", "X reviews revenue weekly" split out) into empty-needs rows, i.e. unknown issues that block readiness; word live answers with registry-backed behavior and keep cadence context attached to metrics.
-- The live extractor may cite requirement ids as component_ids or invent need field names (bar `dimension`); requirements.merge normalizes only provably redundant ones. Live worker calls sometimes hit the 30 s deadline (llm_unavailable): rerun once before diagnosing.
-- The requirements.json context section is mandatory in revise (6000 budget): never repeat source texts per row; requirement regexes run per label x field x message, so keep them cached (100 ms recompute target).
+- Live worker calls sometimes hit the 30 s deadline (llm_unavailable): rerun once before diagnosing; extraction shapes also vary between runs.
 - SQLite's connection context manager does not close the handle: use `contextlib.closing` when inspecting backup snapshots, or Windows can block temporary-file cleanup.
 - Windows system Python defaults text I/O to cp1252: pass `encoding="utf-8"` when reading and writing source/tests, or Unicode fixtures become mojibake.
-- A successful BigQuery dry run proves SQL resolves, not that declared derived types are correct: compare its returned schema before accepting numeric KPI or threshold uses.
 - The 100 ms feasibility timing oracle hit 104.9 ms in a full run, then passed unchanged in isolation and a serial full rerun; avoid overlapping check runs before diagnosing a timing failure.
 - Bold Georgia's W measures about 1.126em in Chromium; a 1em-per-character header estimate can clip an allowed 80-character title.
 - The periodic-backup test once saw `backups=[]` in a full run, then passed unchanged in isolation and a serial rerun; retry before diagnosing this timing assertion.
 - The shape-only `api/design.json` contract fixture uses a font outside the current theme presets; use a preset font when exercising Design confirmation.
-- `render(spec)` stacks every page in one `#dss-canvas`: never capture it as a background; use `background.write_pages(spec, folder)` (per-page `render(page=n)`), or page 1's PNG holds all pages.
-- Decoration text that soft-wraps can fail the text-fit check at any box height: Chromium's hanging pre-wrap space at the wrap point pokes past the box edge (Verdana 1161 > 1160). Insert explicit breaks (auto_layout._wrap) instead of relying on soft wrap.
 - The live outline_other/comment extractor varies its record shape per run (breakdown as field key or value, dimension mapping agg "none", needs-less record, decoration hex as need or property): normalize in code and confirm a staged live flow with 2+ consecutive passing runs.

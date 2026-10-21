@@ -126,6 +126,29 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 - none
 
 ## Later
+- Outline Other text may lose behavior: empty extraction adds no blocking record, and tagged
+  records skip needs_clarification and fulfillment coverage in favor of structured questions.
+  This user-approved 15.11 tradeoff conflicts with dashboard-intent.md's full preservation
+  guarantee; reconcile at the program root before claiming conformance (P2, audit 2026-10-21).
+- Image Blueprint rows cannot carry image_path and fail layout despite an ok row verdict;
+  refine the catalog/planner surface before offering those rows (P2, task 15.8; audit 2026-10-21).
+- Stale extra background_p<n>.png files remain after replanning to fewer pages; removal prose
+  is narrow, recreated IDs can collide with old removal intent, and a requirement bound to
+  both a removed and retained item can still fail coverage (P3, task 15.9; audit 2026-10-21).
+- Layout title-width estimates duplicate kit widths, wrap conservatively, and omit control-row
+  question refs from the coverage oracle (P3, task 15.8; audit 2026-10-21).
+- Five large staged builds can exceed consolidation's input budget and drop the oldest build;
+  per-run live checks do not independently assert output budgets or absence of row literals
+  (P3, tasks 15.10-15.11; audit 2026-10-21).
+- Count scorecards show decimal places and ratio alternatives can duplicate existing KPI tiles
+  (P3, task 15.11; audit 2026-10-21).
+- After a crash and database-backup loss, candidate metadata reconciliation restores stage/spec
+  metadata without fully reconstructing artifact flags; the recovered build can need restaging
+  within the documented crash write-loss allowance (P2, audit 2026-10-21).
+- Definition-recompute timing and screenshot capture can fail intermittently: one 105.47 ms
+  result against 100 ms and one 20 s document-load timeout during the audit both passed an
+  unchanged isolated rerun and other serial suites. Causes/reliability rates are unconfirmed;
+  retain the existing limits (P3/P2 respectively, audit 2026-10-21).
 - One view per page for unjoinable sources (spec, recipe and engine change) (change staged
   workflow 2026-10-21).
 - Document upload as context input (change staged workflow 2026-10-21).

@@ -221,6 +221,11 @@ Final-audit corrections (2026-10-19):
   (Plan publication). Stored stages interview/plan read as context; a legacy build (all four
   artifacts missing, a saved spec) skips the four-confirmed rule for recipe, run and versions.
   Every action takes the existing per-build lock.
+- Staged artifact writes require a build/run-bound async emit callback and maintain OKF
+  index/log files. Blueprint confirmation commits with candidate publication; rollback restores
+  artifacts_json as well as the previous published spec/view/prototype. Raw Context expressions
+  retain source scope; Blueprint extras use the normalized projection. BigQuery dry-run schemas,
+  not only successful SQL resolution, establish declared derived-field types before numeric use.
 - Oracle: tests/test_artifacts.py: every artifact round-trips model -> file -> model unchanged,
   frontmatter parses with its `type`; state transitions match the Stage rules table for every
   edit/confirm in every stage; fixture shapes equal ../contracts/fixtures/api/*.json.
@@ -238,6 +243,9 @@ Final-audit corrections (2026-10-19):
   stable across calls so it caches; budget 6k tokens for 30 columns: drop samples first, then
   shorten value lists to the top 5; columns past the first 40 of a source go as name and type
   only; a column is never dropped.
+- Implementation (15.2): one aggregate query per source; prompt_text uses a conservative
+  6,000 UTF-8 byte target, samples-first trimming, then top-five lists. This is separate from
+  the model request's enforced token bound; schema names/types remain intact.
 - Edge cases: all-null column (type kept, "all null"); a BigQuery source profiled in place.
 - Oracle: tests/test_profile.py with FakeBigQuery: low-cardinality columns list all values,
   high-cardinality ones the top 5; the prompt text is byte-identical for the same profile;
@@ -281,6 +289,16 @@ Final-audit corrections (2026-10-19):
   limits, dashboard-intent.md 1.2); unsupported behavior gets an assistant message at once and
   stays in the ledger. Budget 6k / 2k.
 - Selection is code only; confirm needs 1-24 selected questions.
+- Accepted POC limitation (user-approved task 15.11; audit 2026-10-21): outline_other records
+  carry `mapping_origins.origin=outline_other`. Empty extraction adds no unknown requirement;
+  these records' needs_clarification verdicts and publication coverage checks are skipped in
+  favor of the selected question's Context KPI refs and Blueprint rows. Emitted unsupported,
+  unknown and missing-data verdicts still block. Omitted behavior is therefore not guaranteed
+  to survive extraction. This is a documented gap against dashboard-intent.md's preservation
+  rule, not full conformance; only the program-root architect may reconcile that contract.
+- Context KPI restatements retain `kpi:<label>=<id>:<field>:<agg>:<unit>` provenance; redundant
+  field/value argument restatements are removed only for outline_other. Other extraction paths
+  keep their ordinary evidence rules. Build-level question ID counters never recycle IDs.
 - Oracle: tests/test_outline.py with FakeLLM: 3-5 sections; ids stable across suggest/other/
   re-propose; other questions and selections survive re-confirm and re-propose; a ratio-only
   question is not recommended; duplicates dropped; "animate the GPS points" as other text keeps
@@ -347,6 +365,20 @@ Final-audit corrections (2026-10-19):
   question -> repair, then an issue; a redraft sends only changed questions; 13 rows on a page ->
   issue; zero ok rows -> `409 artifact_invalid`.
 
+### Multi-page feasibility scope
+- The Outline limit is 24 selected questions, not 24 rendered components. A question may have
+  1-3 Blueprint rows; each page may have at most 12 rows, over 1-5 pages. A valid staged
+  dashboard can therefore contain up to 60 components. Preserve the existing row, page,
+  question, capability, field and KPI checks; do not invent a lower total-component ceiling.
+- Preflight, candidate publication, explicit reassessment, revision, recipe and run must agree
+  on this scope. A valid three-page 9+9+9-row dashboard must remain ready after layout and
+  reach prototype, recipe and a fake-engine done result; five pages of 12 rows must also be
+  assessed without the obsolete scope refusal. Invalid Blueprint page counts/capacity and
+  unsupported requirements still reject before dependent side effects.
+- Keep the existing 100 ms recomputation oracle for 40 requirements/24 components; that test
+  workload is not an application limit. This requirement is currently broken at the legacy
+  total-component check (final re-audit 2026-10-21); task 16.1 repairs it without budget changes.
+
 ### Spec layout
 - Problem: blueprint + design -> a valid spec with no model call (replaces the spec node).
 - Rules: pages from the page plan (names = section titles; single -> the design title); theme
@@ -358,6 +390,11 @@ Final-audit corrections (2026-10-19):
   page whose rows were all dropped is omitted (later pages renumber, names kept).
   Deterministic: the same inputs give byte-identical spec.json. The result passes the existing
   validator (Dashboard Spec) unchanged except for the page count.
+- Controls come first, then scorecards (at most four per row), then charts; density chooses
+  footprints. Page 1 owns the synthetic footer; later pages keep their own height.
+  Use background.write_pages(spec, folder), which calls render(page=n), never a stacked canvas
+  screenshot. Insert explicit heading breaks with auto_layout._wrap before text-fit validation:
+  Chromium's hanging pre-wrap spaces can protrude after a soft wrap at any height.
 - Oracle: tests/test_layout_auto.py: golden blueprint + design -> golden spec; property test
   (fixed seed): any valid blueprint (<= 12 rows per page, 1-5 pages) gives a validator-valid spec.
 
@@ -609,7 +646,8 @@ Final-audit corrections (2026-10-19):
 - Oracle: unit tests on the generated SQL strings (golden strings); live manual check.
 
 ### Dashboard Spec
-- Problem: the single source of truth the LLM writes and code renders and compiles.
+- Problem: the single source of truth code lays out, renders and compiles. auto_layout writes
+  it from confirmed artifacts; only revision patches come from the model (change 2026-10-21).
 - Inputs and outputs: pydantic model, saved as `spec.json`:
   `{spec_version, build_id, title, archetype, canvas{width:1200,height}, grid{columns:12,
   row_height:20, gutter:16, margin:24}, theme{background, surface, text, muted, accent,
@@ -634,6 +672,9 @@ Final-audit corrections (2026-10-19):
 - Sort is a validated `{field, order: asc|desc}` object, matching the recipe contract. Renderer
   SQL and compiler consume that same shape; unknown keys or orders fail before publication.
   An explicitly ascending bar/table must render ascending as it will in Data Studio.
+- Per-chart colors override the theme in both prototype and recipe. COUNT/COUNT DISTINCT may
+  take a dimension field. Blueprint dropdown rows have exactly one dimension, mapped to the
+  control field by layout.
 - Oracle: property tests on random valid/invalid specs (fixed seed) + golden invalid cases.
 
 ### Layout
@@ -685,6 +726,11 @@ Final-audit corrections (2026-10-19):
   assistant message saying what Data Studio offers instead; conflicting comments on one id apply
   in order (last wins) and the message says so; an empty patch keeps `spec_version` and says
   "no change needed".
+- Decoration accent changes use kits.accent_key(kind); one hex in a decoration comment's
+  text/need/property normalizes to that style property. Supported removal comments record
+  mapping_origins['remove'] plus removed_item and retire requirements bound only to the removed
+  item. Keep the narrow parser and partial-binding recovery limitations in PRD Later; do not
+  claim arbitrary deletion prose is understood.
 - Oracle: tests with FakeLLM patches: a patch touching an uncommented, non-neighbour id is
   rejected; each edge case above has a test.
 
@@ -787,6 +833,11 @@ runtime dependency), pytest + pytest-asyncio (tests).
   them automatically. Prototype/background retain identical wrapping/fonts and footer protection.
 - Context recipes have tested section order and shapes. Append node guidance inside existing
   system sections instead of adding sections that change working-memory tracing contracts.
+- The requirements.json section is mandatory in revise's 6k budget; do not repeat source text
+  per row. Cache requirement regexes to preserve the 100 ms recompute oracle. Extraction
+  normalization accepts only provably redundant bindings, not fabricated capability evidence.
+- Typed synthetic CSV loads use an empty null_marker so a single-column all-null csv.writer
+  record (`""`) remains NULL and still counts as a row (live-checked task 12.2).
 
 ## Testing
 pytest, offline by default: FakeLLM (scripted responses by node), FakeBigQuery (in-memory rows
@@ -831,3 +882,5 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-21 | Recognize coordinated explicit formulas, reuse confirmed metric definitions with provenance, and normalize ordinary blue styling to evidenced capabilities | rewrite the integration fixture into isolated sentences and hex-only style requests; automatically drop unresolved rows | release 2.2 still fails after 14.1; persisted evidence shows parser boundaries, missing forward definition reuse and unclassified styling | change conversational definitions and styling (program root) |
 | 2026-10-21 | Staged workflow: context, outline, design and blueprint artifacts replace the interview, plan and spec nodes; code profiles, validates, lays out and writes files; models see compact profiles and upstream artifacts only | keep the interview and patch extraction; keep both paths | per-message extraction was the repeated failure; structured picks need none; checkpoints rerun alone; smaller cacheable prompts | change staged workflow (program decision log) |
 | 2026-10-21 | Spec laid out by code from blueprint + design, 1-5 pages; ratio KPIs and unjoinable sources become feasibility issues with code-built alternatives | spec model node; Data Studio calculated fields | determinism and no extra model call; calculated fields stay a non-goal | change staged workflow |
+| 2026-10-21 | Fold staged artifact, aggregate-profile, raw-expression, dry-run-schema, layout, background and revision decisions into conventions | leave them only in task logs | preserve tasks 15.1-15.11 decisions for future sessions | final re-audit |
+| 2026-10-21 | Record the user-approved outline_other fail-open behavior as a POC limitation and contract gap | claim complete original-behavior preservation | task 15.11 explicitly approved empty extraction and skipped clarification/coverage; contracts remain root-owned | task 15.11; final re-audit |

@@ -1,5 +1,5 @@
 # Plan: backend
-Target: POC · Audit: done 2026-10-21 (delta, staged workflow: 16 findings, 16 applied; final re-audit 2026-10-20 ACCEPTED, details in docs/audit-reaudit-2026-10-20.md)
+Target: POC · Audit: done 2026-10-21 (final re-audit: DEFECTS, one P1; task 16.1; details in docs/audit-reaudit-2026-10-21.md)
 
 Markers: [ ] to do, [~] in progress, [x] done, [!] blocked. Only blueprint.py changes them.
 Sizes: S small, M a normal session, L needs a whole fresh session (never run unattended).
@@ -480,3 +480,13 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest -m live tests/live/test_staged_flow.py` passes with real Gemini and BigQuery and `DSS_ENGINE_DRY_RUN=1`: the sample CSV goes context -> PUT a context that adds the ratio KPI average order value (net revenue / orders) -> confirm -> outline (recommended picks, the ratio question ticked, one other text) -> design (per_section) -> blueprint (the ratio row blocked; accept the numerator/denominator alternative) -> accept -> a 2+ page prototype -> one component comment and one decoration comment -> recipe -> run `done`; the GPS-style fixture reaches a blueprint with a union view; prints per-node input/output tokens (each within its budget) and stage timings; prototype PNGs of every page are saved and visually checked; rerun once on a model failure and record both runs.
   - Review focus: no data rows or chat history in any prompt (trace sections); failure evidence kept.
+
+## Phase 16: Audit fixes
+- [ ] 16.1 Align feasibility with the staged multi-page component scope
+  - Goal: a valid multi-page Blueprint remains feasible after layout and reaches prototype, recipe and execution without the obsolete 24-component refusal.
+  - Spec: docs/architecture.md#Multi-page feasibility scope
+  - Files: src/dss/spec/requirements.py, tests/test_feasibility.py, tests/test_render.py, tests/test_compiler.py
+  - Depends on: 15.11
+  - Size: M
+  - Done when: `uv run pytest tests/test_feasibility.py tests/test_render.py tests/test_compiler.py tests/test_api_contract.py` passes. Add a regression that fails on the current global >24-component check: nine selected questions with three rows each on three pages (9+9+9) are ready before and after layout; Blueprint accept publishes their prototype; recipe compiles all 27 components and a fake-engine run reaches done. A valid five-page 12-row/page case also remains feasible. Retain negative cases for 13 Blueprint rows on one page, six pages, missing field/KPI prerequisites and unsupported behavior; rejected acceptance performs no view writes and failed publication preserves previous artifacts. Preserve the existing 40-requirement/24-component 100 ms recomputation check and all model budgets/repair limits. `uv run pytest` passes.
+  - Review focus: remove the obsolete total-component ceiling at the shared feasibility source; no bypass of candidate publication, freshness, coverage, legacy-version or execution gates; 24 remains the Outline question limit.

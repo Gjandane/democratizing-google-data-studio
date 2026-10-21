@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:5e20e961ec29 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:22f215fcf06d (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 Read every build session. docs/architecture.md wins if they disagree.
 
@@ -18,45 +18,35 @@ tests/          offline fakes; tests/live/ explicitly marked live
 ```
 
 ## Conventions
-- Harness vocabulary: ../harness-architecture.md. One API action = one agent run = one ADK
-  Workflow invocation = exactly one `traces` row.
-- Context via `harness/context.py`; whole-request budgets (chars/4 offline only);
-  architecture.md#Working memory assembly.
-- Staged workflow (architecture.md#Staged workflow, api.md 2.0): connect -> context -> outline ->
-  design -> blueprint -> prototype. Code computes (profile script), validates, lays out the spec
-  and writes every file; the LLM returns only pydantic-validated JSON (artifact drafts, a spec
-  patch, bounded observations). Models get compact profiles + upstream artifact frontmatter,
-  never rows or chat history. Each LLM node: one generation + at most one repair.
-- Only consolidate writes runtime semantic memory (`data/knowledge/`); git knowledge is the seed.
-- Every OKF file: YAML frontmatter with non-empty `type`; folders have `index.md` and `log.md`.
-- Config: `../.env` via python-dotenv, settings table overrides; names in ../contracts/conventions.md.
-- Errors: `{"error": {code, message, detail}}`; codes from ../contracts/api.md.
-- Engine Popen argument list/cwd, read in a worker thread; reap the whole tree. Playwright sync in
-  a worker thread (Windows). Provider schemas: response_json_schema; guard raw output before ADK
-  validation, sanitize model errors, callable context instructions. Gemini timeout: planner
-  120 s, worker 30 s; one retry on 429/500/503, never 504.
-- 1-5 pages per spec, laid out by code; types limited to `DSS_ALLOWED_TYPES`. Sort `{field, order}`.
-- Cloud: SPA/$PORT, code cookie/header, fail-closed startup; DB backup API every 30 s when dirty;
-  agent token, model-only settings, 60 s whole-attempt retry deadline. Preview needs no engine;
-  run recompiles the current spec; flat job image names (architecture.md#Build consistency).
-- Staging, recipe schema shipping, text fitting, Windows cleanup and provenance:
-  architecture.md#Implementation conventions. `/api/dev/*` requires `DSS_DEV=1`.
-- Tests: fixture keys/types, offline fakes unless marked live (architecture.md#Testing).
-- Research: <=20 scraper fetches, no retries.
-- References/feasibility: architecture.md#Reference interpretation, #Capability verification,
-  #Blueprint (dashboard-intent.md 1.2). Blueprint rows are structured requirements; extraction
-  only for outline other text, comments and references, one per action. Images are not data.
-- Per-chart `colors` override the theme palette (prototype and recipe); accent comments patch
-  only their target. COUNT/COUNT DISTINCT may take a dimension field (14.2).
-- Plan publication: each blueprint accept makes a run-specific candidate view, published with
-  spec and artifacts; clean only uncommitted candidates; never replace a published view.
-- Synthetic data (#Synthetic data, synthetic-data.md): schema/count/seed -> deterministic stdlib
-  CSV -> typed BQ intake; opt-in; unremovable sample-data label.
+- Vocabulary: ../harness-architecture.md. One API action = one ADK Workflow = one trace.
+- api.md 2.0: connect -> context -> outline -> design -> blueprint -> prototype. Code profiles,
+  validates, lays out 1-5 pages and writes files. Models return validated JSON, using compact
+  profiles/upstream frontmatter, never rows/history; node-specific repair limits and budgets:
+  architecture.md#Working memory assembly (chars/4 offline only).
+- Artifact edits stale downstream work; confirmation preserves edits. Atomic OKF writes emit
+  artifact/docs updates; question IDs never recycle. Schema-returning dry runs establish types.
+- Only consolidate writes runtime semantic memory; git knowledge is the seed. OKF requires
+  nonempty `type`, folder index/log. Config: ../.env + settings; contract env names/error codes.
+- Engine argument list/cwd, worker-thread reads, whole-tree cleanup; Playwright sync in a worker
+  thread. Provider: response_json_schema, guarded raw output, sanitized errors, callable context.
+  Gemini: planner 120 s, worker 30 s; one retry on 429/500/503, never 504.
+- Types: `DSS_ALLOWED_TYPES`; sort `{field, order}`. COUNT variants allow dimensions; dropdown
+  uses one dimension. Chart colors override theme; accent comments affect only their target.
+- Cloud: SPA/$PORT, code cookie/header, fail-closed startup; backup API every 30 s when dirty;
+  agent token, model-only settings, 60 s retry deadline. Preview needs no engine; run recompiles
+  current spec; flat job assets. Dev routes require DSS_DEV=1.
+- Blueprint accept publishes its owned candidate view/spec/artifacts atomically; never clean a
+  published view. Backgrounds: background.write_pages, render(page=n), never the stacked canvas.
+  Explicit heading wraps; shared Chromium text fitting (architecture.md#Implementation conventions).
+- Feasibility: structured Blueprint rows; extraction only for Other, comments, references.
+  Images are not data. User-approved Other fail-open limitation and contract gap: PRD Later;
+  emitted unsupported requirements still block (architecture.md#Outline).
+- Synthetic: opt-in schema/count/seed -> stdlib CSV -> typed BQ intake; protected page-1 footer.
+- Tests offline unless marked live; fixture keys/types exact. Research <=20 fetches, no retries.
 
 ## Never do
 - No LangGraph, no vector store, no embeddings, no pandas.
-- Never send the API key, the access code or the agent token to the frontend or a log; never put
-  them in a prompt. Never put data rows or the chat history in a prompt.
+- Never expose credentials to frontend/logs/prompts, or put rows/history in prompts.
 - Never copy a live SQLite file byte by byte or open it on the GCS volume; use the backup API.
 - Never write semantic memory outside the consolidate node.
 - Never let an LLM produce HTML, a whole spec, an artifact file, SQL DDL text that bypasses the
