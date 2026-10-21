@@ -130,6 +130,12 @@ These conventions consolidate the verified build decisions and selector traps fr
 - Use the 1920 x 1200 editor viewport and 100% zoom. Place components with mouse geometry;
   cross CDK's drag threshold with a short initial move before the target move. Read boxes back
   within ±4 px. Images need Preserve Aspect Ratio disabled for arbitrary recipe boxes.
+- Canvases can be taller than the viewport (the backend's per_section pages, e.g. 1200 x 1492;
+  change 2026-10-21). Every placement op (background image, chart, control, text) reaches its
+  recipe box anywhere on the canvas at 100% zoom: bring the target region into view before any
+  mouse geometry, and compare read-back boxes in canvas coordinates, not viewport ones. An
+  uploaded background ends at its recipe box (by default 0,0 at the full canvas size), behind
+  every component, with no menu open and nothing selected, so the next op starts clean.
 - Retain creations and their actual owning page before retry/navigation, so retry does not
   duplicate components. Append pages from the last page: Add page inserts after the current one.
 - Background uploads retain pending intent before submitting the file, then retain and scope
@@ -192,3 +198,4 @@ These conventions consolidate the verified build decisions and selector traps fr
 | 2026-10-20 | Capture source fields at editor readiness; poll exact title-font readback and saved image loading | defer field lookup until after image selection; immediate readback | live acceptance exposed cleared field panels and asynchronous editor/view state | task 5.4, final re-audit |
 | 2026-10-21 | Detect data-access review dialogs by dialog, with the risk checkbox optional | pin a template or URL that avoids the dialog | Data Studio's dialog now has Close/Acknowledge only and blocked release 2.3; user chose the engine fix | change 2026-10-21, task 6.1 |
 | 2026-10-21 | Poll review controls every 250 ms within the existing deadline, rechecking the optional checkbox until acknowledgement is enabled | check checkbox once at dialog visibility; rely on retry | audit probe proved the checkbox renders after the dialog while the button stays disabled, consuming the shared attempt budget | final re-audit, task 7.1 |
+| 2026-10-21 | Placement ops reach boxes below the viewport fold at 100% zoom, read back in canvas coordinates | backend caps page height at the viewport; zoom out the editor | tall per_section pages are the staged design; 100% zoom keeps the ±4 px readback | change tall canvas (user choice), task 9.1 |

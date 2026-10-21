@@ -400,3 +400,9 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: set_style `colors` logs "unsupported style key colors" for scorecard/time series/bar/pie/table on the release recipe (outside Files). charts_a saved-table render can exceed 20 s once.
 - Left open: P3 picker regression asserts the selector string only - tests/test_executor.py; P3 zoom detected not corrected, and open_report retries the deterministic failure - src/dsengine/ops/report.py; P3 canvas size selectors still page-wide (page named exactly "Custom"/"Auto") - knowledge/datastudio-ui/editor.md.
 - Next: release 2.3 live run from the program root; engine has no task left.
+
+## 2026-10-21: Change tall canvas placement (program)
+- What changed: task 9.1 (M) added in Phase 9; architecture.md Live editor conventions gained the tall-canvas rule and a decision-log row; essentials line added; stamp rerun.
+- Why: release 2.3 live run b_b2ac19ea6696 ended `partial` (ok 36, failed 3), all on page 3 (canvas 1200 x 1492): s025 set_background_image timed out (image at natural size mid-canvas, Arrange menu left open), s034 table at y884 drawn ~400 px wide, s036 bar at y1204 timed out. Isolated replay ../data/builds/b_b2ac19ea6696/v1/replay_p3.jsonl reproduces all three.
+- Ruling: user chose the engine fix over capping page height in the backend or accepting partial. No contract change: recipe 1.0 stays the interface.
+- Tasks affected: 9.1 only; release 2.3 waits on it.

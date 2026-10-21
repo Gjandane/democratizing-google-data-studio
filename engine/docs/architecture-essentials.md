@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:8217308a3527 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:cd84890f9501 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: engine
 One page, read at the start of every build session. A summary of docs/architecture.md, which
 wins if the two disagree.
@@ -30,6 +30,8 @@ tests/                   offline tests (fake driver); tests/live/ marked `live`
   Retain pending background uploads and refresh owning-page indices after reordering. Registry
   walks filter dictionary entries because state also holds the source-field list.
   Append pages from the last page; exclude images from chart enumeration.
+- Canvases can be taller than the viewport: bring each target region into view before mouse
+  geometry and read boxes back in canvas coordinates; a background ends behind all, deselected.
 - Start the owned browser before checking sign-in; `check` stays read-only. Retry keyboard/mouse
   cleanup has no timeout keyword: check its budget first and bound canvas lookup by time left.
 - Cache source fields at editor readiness, before image/control selection clears the Data panel.
