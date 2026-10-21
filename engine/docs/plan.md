@@ -128,7 +128,7 @@ tasks and require a separately specified scope/contract revision. Task statuses 
   - Review focus: old-variant behaviour kept (checkbox present -> ticked); Acknowledge located inside the dialog, so "Acknowledge and save" and other buttons can't match; no clicks on Close.
 
 ## Phase 7: Audit fixes
-- [ ] 7.1 Wait for asynchronously rendered data-access review controls
+- [x] 7.1 Wait for asynchronously rendered data-access review controls
   - Goal: report creation and saving handle a risk checkbox that appears after the dialog, as well as checkbox-free dialogs, without exhausting the budget on a disabled acknowledgement button. Restore task 6.1's live gate.
   - Spec: docs/architecture.md#Live editor conventions
   - Files: src/dsengine/ops/report.py, spikes/spike_one_chart.py, tests/test_executor.py, knowledge/datastudio-ui/linking.md, knowledge/datastudio-ui/editor.md, knowledge/datastudio-ui/log.md

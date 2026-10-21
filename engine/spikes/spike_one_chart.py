@@ -103,12 +103,33 @@ def main():
         locate = lambda key: page.locator(selectors[key])
 
         def accept_review(dialog, button_key):
-            # The risk checkbox is optional since 2026-10-21; never click Close.
+            # Poll both controls within one deadline: a checkbox may render late.
+            deadline = time.monotonic() + 20
+
+            def timeout_ms():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("data-access review controls did not become ready")
+                return max(1, int(remaining * 1000))
+
             accept = dialog.locator(selectors["review_accept"])
-            if accept.count() and accept.is_visible() and not accept.is_checked():
-                accept.check()
-            dialog.locator(selectors[button_key]).click()
-            dialog.wait_for(state="hidden")
+            button = dialog.locator(selectors[button_key])
+            polls = 0
+            observation = {"checkbox_seen": False, "checkbox_first_poll": None}
+            evidence.setdefault("access_reviews", {})[button_key] = observation
+            while True:
+                timeout_ms()
+                if accept.count() and accept.is_visible():
+                    if not observation["checkbox_seen"]:
+                        observation.update(checkbox_seen=True, checkbox_first_poll=polls)
+                    if not accept.is_checked():
+                        accept.check(timeout=timeout_ms())
+                if button.count() and button.is_visible() and button.is_enabled():
+                    button.click(timeout=timeout_ms())
+                    break
+                page.wait_for_timeout(min(250, timeout_ms()))
+                polls += 1
+            dialog.wait_for(state="hidden", timeout=timeout_ms())
         try:
             with step("open_report"):
                 evidence["signed_in_at_start"] = _has_google_session(context)

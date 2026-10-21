@@ -31,3 +31,8 @@ the dialog by its exact name (the save dialog's name starts with the same
 words), tick the checkbox only when present, and click the dialog's own exact
 Acknowledge button; never Close. `review_accept` and `review_acknowledge` are
 looked up inside the dialog.
+
+Controls can render after the dialog becomes visible. Poll the scoped checkbox
+and button within the existing deadline; check a visible unchecked checkbox,
+and click only once Acknowledge is enabled. A checkbox-free dialog may also
+enable its button later. Never use a disabled-button click as the readiness wait.

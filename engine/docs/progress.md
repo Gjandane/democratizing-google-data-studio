@@ -350,3 +350,15 @@ context. Task status lives in docs/plan.md, not here.
 - Release checklist: documented install/demo commands remain; current core live flow and fresh saved-report/budget proof fail, so acceptance withheld. Retain earlier PRD Later limitations. No new STOP/unverified dependency. Historical folder-mode tasks without individual git commits were already accepted; this session commits its docs only.
 - Left open: task 7.1, then final re-audit. The earlier release 2.3 resumption note is superseded by this failed engine acceptance. Program-root sessions own cross-part gate updates; integration must await engine acceptance.
 - Next: fresh engine builder session for 7.1, gpt-6.1-sol at high, then re-audit. Stamp, blueprint lint and git diff checks pass before the docs-only final-audit commit.
+
+## 2026-10-21: Task 7.1 Wait for asynchronously rendered data-access review controls
+- Status: done
+- Plan check: off
+- What changed: report.py and spike poll scoped checkbox/button readiness before acknowledging once; knowledge notes corrected; eight fake-clock regressions cover create/save delayed checkbox, checkbox-free delayed enabling, and operation/run exhaustion. Initially present/absent variants retained.
+- Checks: `uv run pytest tests/test_executor.py` PASS (59); `uv run python spikes/spike_one_chart.py` PASS; `uv run pytest -m live tests/live/test_report_ops.py tests/live/test_charts_a.py tests/live/test_golden.py tests/live/test_charts_b.py tests/live/test_misc_ops.py` PASS (11, 583.40s; evidence flag --basetemp=.blueprint/task-7.1-live); `uv run pytest` PASS (132, 11 deselected). Golden elapsed/median 62.390/5.461s; screencast 84.641/7.516s, 135 schema-valid JPEG frames; expected timeout recovery 35.83s; 20 ops 48.312s. Inspected rendered spike, charts-A and both complete golden saved screenshots. Evidence: .blueprint/task-7.1-evidence/{evidence.json,saved_view.png}; .blueprint/task-7.1-live/**/{budget.json,saved_report.png}. Spike saw delayed checkboxes at create/save polls 1/3; checkbox-free variants verified offline. Review: no findings.
+- Decisions: 250ms readiness polling; deadlines/selectors unchanged. Local evidence retained outside Files; no dependency/AGENTS.md changes.
+- Digest: report._accept_access_review(page, dialog, ctx, button_key) polls scoped controls within existing op/run deadlines; spike matches bounded readiness. No executor-budget or contract changes.
+- Tried and failed: eight new cases failed pre-fix; corrected fake locator to resolve delayed presence dynamically.
+- Gotchas: none.
+- Left open: none.
+- Next: final architect re-audit in a fresh engine chat.

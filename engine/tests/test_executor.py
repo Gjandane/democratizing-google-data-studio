@@ -817,7 +817,12 @@ def test_title_font_verification_waits_for_option_list_to_disappear(tmp_path, mo
 
 class ReviewControl:
     def __init__(self, dialog, key, present=True):
-        self.dialog, self.key, self.present = dialog, key, present
+        self.dialog, self.key, self._present = dialog, key, present
+
+    @property
+    def present(self):
+        return self._present and (self.key != "review_accept"
+                                 or self.dialog.ticks >= self.dialog.checkbox_after)
 
     def count(self):
         return int(self.present)
@@ -831,6 +836,10 @@ class ReviewControl:
     def is_checked(self):
         return self.dialog.checked
 
+    def is_enabled(self):
+        return (self.dialog.ticks >= self.dialog.enabled_after
+                and (self.dialog.checked or not self.dialog.checkbox))
+
     def check(self, *, timeout):
         assert self.present and self.dialog.open
         self.dialog.calls.append(("check", self.dialog.name))
@@ -838,6 +847,7 @@ class ReviewControl:
 
     def click(self, *, timeout):
         assert self.dialog.open
+        assert self.is_enabled(), "clicked disabled acknowledgement instead of rechecking controls"
         self.dialog.calls.append(("click", self.key))
         # The old variant keeps its button disabled until the risk is accepted.
         assert self.dialog.checked or not self.dialog.checkbox, "risk checkbox left unticked"
@@ -845,9 +855,10 @@ class ReviewControl:
 
 
 class ReviewDialog:
-    def __init__(self, calls, name, button, *, checkbox):
+    def __init__(self, calls, name, button, *, checkbox, checkbox_after=0, enabled_after=0):
         self.calls, self.name, self.button, self.checkbox = calls, name, button, checkbox
         self.open, self.checked = True, False
+        self.ticks, self.checkbox_after, self.enabled_after = 0, checkbox_after, enabled_after
 
     def count(self):
         return 1
@@ -947,3 +958,63 @@ def test_review_dialog_selectors_match_exact_names():
     assert selectors["review_dialog"] == 'role=dialog[name="Review data access"s]'
     assert selectors["review_save_dialog"] == 'role=dialog[name="Review data access before saving"s]'
     assert selectors["review_acknowledge"] == 'role=button[name="Acknowledge"s]'
+
+
+@pytest.mark.parametrize("stage", ["create", "save"])
+@pytest.mark.parametrize("variant", ["late-checkbox", "late-button", "op-exhausted", "run-exhausted"])
+def test_review_controls_become_ready_within_shared_budget(tmp_path, monkeypatch, stage, variant):
+    from types import SimpleNamespace
+    from dsengine.ops import OperationError, report
+
+    calls = []
+    button = "review_acknowledge" if stage == "create" else "acknowledge_save"
+    exhausted = variant.endswith("exhausted")
+    checkbox = variant != "late-button"
+    dialog = ReviewDialog(calls, stage, button, checkbox=checkbox,
+                          checkbox_after=100 if exhausted else 2,
+                          enabled_after=2)
+    controls = {"review_dialog": dialog, "review_save_dialog": dialog,
+                "add_chart": ReadyWhenClosed(dialog), "first_field": ReadyWhenClosed(dialog),
+                "linking_error": ReadyWhenClosed(None),
+                "save_share": SimpleNamespace(click=lambda **kw: calls.append(("click", "save_share")))}
+    now = [100.0]
+
+    def wait(ms):
+        assert 0 < ms <= 250
+        now[0] += ms / 1000
+        dialog.ticks += 1
+        assert dialog.ticks < 10, "readiness polling exceeded its budget"
+
+    def saved_url(pattern, **kwargs):
+        assert not dialog.open
+        page.url = "https://datastudio.google.com/reporting/abc123/page/p_1/edit"
+        assert pattern.fullmatch(page.url)
+
+    page = SimpleNamespace(locator=lambda selector: controls[selector],
+                           wait_for_timeout=wait, wait_for_url=saved_url)
+    ctx = review_context(tmp_path, monkeypatch, *controls, button)
+    monkeypatch.setattr(report.time, "monotonic", lambda: now[0])
+    ctx.op_deadline = 100.6 if variant == "op-exhausted" else 105
+    ctx.run_deadline = 100.6 if variant == "run-exhausted" else 110
+    deadlines = (ctx.op_deadline, ctx.run_deadline)
+
+    def run():
+        if stage == "create":
+            report._wait_for_editor(page, ctx)
+        else:
+            report.run(page, Operation(id="s002", op="save_report"), ctx)
+
+    if exhausted:
+        with pytest.raises(OperationError, match="data-access review controls did not become ready"):
+            run()
+        assert dialog.open and not dialog.checked
+        assert not any(call == ("click", button) for call in calls)
+        assert now[0] <= 100.601
+    else:
+        run()
+        assert dialog.ticks == 2
+        assert not dialog.open
+        actions = [call for call in calls if call[0] in {"click", "check"}]
+        assert actions == ([("click", "save_share")] if stage == "save" else []) + (
+            [("check", stage)] if checkbox else []) + [("click", button)]
+    assert (ctx.op_deadline, ctx.run_deadline) == deadlines

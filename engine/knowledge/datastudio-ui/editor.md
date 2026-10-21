@@ -171,12 +171,15 @@ alone does not establish persistence: check the saved view too.
 ## Saving
 
 The initial editor requires Save and share, then the data-access review dialog:
-tick its risk checkbox only when present (dropped by 2026-10-21), then click
+tick its risk checkbox when visible (it may render late or be absent), then click
 the dialog's own Acknowledge and save. Wait for a concrete `/reporting/<id>/page/<id>/edit`
 URL and the View button. Remove `/edit` for the view URL. The View selector
 chooses the first matching button: the editor's View menu has the same name.
 View stays in the same owned tab; check both component boxes after it loads.
 Do not use the create URL as a saved-report link.
+Poll the scoped checkbox and acknowledgement until the button is enabled, within
+the existing operation deadline. Do not wait on a disabled click: it prevents
+accepting a checkbox that appears later and exhausts the shared retry budget.
 
 The chart renders in `chart_frame`, a sandboxed iframe. Its body must contain
 the metric label before capturing the screenshot; component count/geometry

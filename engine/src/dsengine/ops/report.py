@@ -42,13 +42,23 @@ def _poll(page: Any, ctx: OpContext, predicate, failure: str) -> None:
         page.wait_for_timeout(min(250, max(1, int(remaining * 1000))))
 
 
-def _accept_access_review(dialog: Any, ctx: OpContext, button_key: str) -> None:
-    # Data Studio dropped the risk checkbox by 2026-10-21; older dialogs still
-    # require it. Controls are scoped to the dialog so no other button matches.
+def _accept_access_review(page: Any, dialog: Any, ctx: OpContext, button_key: str) -> None:
+    # The dialog can precede its controls. Never let a disabled-button click
+    # consume the shared deadline while a required checkbox renders later.
     accept = _locator(dialog, ctx, "review_accept")
-    if _visible(accept) and not accept.is_checked():
-        accept.check(timeout=ctx.timeout_ms())
-    _locator(dialog, ctx, button_key).click(timeout=ctx.timeout_ms())
+    button = _locator(dialog, ctx, button_key)
+    while True:
+        if ctx.remaining_s() <= 0:
+            raise OperationError("data-access review controls did not become ready")
+        if _visible(accept) and not accept.is_checked():
+            accept.check(timeout=ctx.timeout_ms())
+        if _visible(button) and button.is_enabled():
+            button.click(timeout=ctx.timeout_ms())
+            break
+        remaining = ctx.remaining_s()
+        if remaining <= 0:
+            raise OperationError("data-access review controls did not become ready")
+        page.wait_for_timeout(min(250, max(1, int(remaining * 1000))))
     dialog.wait_for(state="hidden", timeout=ctx.timeout_ms())
 
 
@@ -56,7 +66,7 @@ def _dismiss_access_review(page: Any, ctx: OpContext) -> bool:
     dialog = _locator(page, ctx, "review_dialog")
     if not _visible(dialog):
         return False
-    _accept_access_review(dialog, ctx, "review_acknowledge")
+    _accept_access_review(page, dialog, ctx, "review_acknowledge")
     return True
 
 
@@ -324,7 +334,7 @@ def _run_save_report(page: Any, op: Any, ctx: OpContext) -> OpResult:
     _locator(page, ctx, "save_share").click(timeout=ctx.timeout_ms())
     review = _locator(page, ctx, "review_save_dialog")
     _wait_visible(review, ctx)
-    _accept_access_review(review, ctx, "acknowledge_save")
+    _accept_access_review(page, review, ctx, "acknowledge_save")
     page.wait_for_url(_SAVED_REPORT, timeout=ctx.timeout_ms())
 
     current = page.url

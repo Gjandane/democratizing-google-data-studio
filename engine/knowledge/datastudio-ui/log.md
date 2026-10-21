@@ -6,6 +6,10 @@ timestamp: 2026-10-18
 selectors: {}
 ---
 
+- 2026-10-21 task 7.1: dialog visibility precedes risk-checkbox rendering on
+  create and save (spike observed first visibility after 1 and 3 readiness polls).
+  Keep exact scoped selectors; poll checkbox readiness and button enabling inside
+  the deadline, then acknowledge once. Checkbox-free variants remain supported.
 - 2026-10-21 task 6.1: review-data-access dialogs may omit the risk checkbox.
   Added exact `review_dialog`; made `review_acknowledge` and `review_save_dialog`
   exact (the create name is a prefix of the save name); checkbox and buttons are
