@@ -49,7 +49,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Done when: with the parts started by `./start.sh` and `DSS_ENGINE_DRY_RUN=1` in .env, `uv run --project integration python integration/e2e_flow1.py --version2` exits 0, prints each stage reached for v1 and v2, a table of seconds per stage and input/output token totals, and writes the bench JSON with the same numbers, the server URL, the mode and the run date; it never prints the access code.
   - If: a step fails inside a part -> block this task with the part, the step and the API error body; never patch the part from here.
   - If: resuming after backend 14.2 -> find the stash by subject `blueprint: task 2.2 failed attempt 2026-10-21 02:11` with `git stash list`, then `git stash apply` its current reference (not the older 01:01 attempt; retain the stash until verified). Keep its exact three answers and dark-blue accent comment, now also the backend 14.2 regression. Never suppress a real feasibility issue, change the wording to evade it or weaken the pass criteria.
-- [ ] 2.3 End-to-end live build and UI walkthrough
+- [!] 2.3 End-to-end live build and UI walkthrough
   - Goal: move `integration/e2e_flow1.py` to the staged workflow (change 2026-10-21: scripted artifact picks instead of interview answers), rerun the dry-run check of 2.2 on it, then the same flow with the real engine and the signed-in profile, plus the demo clicked through the UI.
   - Files: integration/e2e_flow1.py, deck/data/*.json
   - Depends on: 2.2

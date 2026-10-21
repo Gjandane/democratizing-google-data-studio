@@ -69,3 +69,5 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Free localhost ports don't refuse here, they time out (curl rc 28, Invoke-WebRequest stalls ~2 s): test a port with netstat/`Get-NetTCPConnection -State Listen`, not an HTTP probe. The 2.1 netstat grep also lists TIME_WAIT lines for ~2 min after any probe.
 <!-- blueprint-solution:end -->
 - An engine op fails with `screenshot: null`: from engine/, `uv run dsengine run --screencast <recipe.jsonl> > cast.jsonl`, then base64-decode the last `frame` event's `data` (JPEG) to see the page it stuck on.
+- Backend reads os.environ over the root `.env`: start it with `DSS_ENGINE_DRY_RUN=1 uv run uvicorn ...` (and run the driver with the same var) instead of editing `.env`.
+- `e2e_flow1.py --live` exit 0 is not a full build: an engine `partial` still publishes with a report_url; read `run_finished` in data/builds/<id>/v<n>/events.jsonl (`failed` count) before the manual link check.

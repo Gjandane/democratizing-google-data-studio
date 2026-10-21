@@ -275,3 +275,18 @@ context. Task status lives in docs/plan.md, not here.
 - Reviewer (blueprint-reviewer, opus, high): 1 P1, 10 P2, 5 P3; the user accepted all 16, applied in the docs.
 - Applied: (A, P1) backend 15.1 now switches to the 2.0 build shape and removes the interview/plan path first so `uv run pytest` stays green; phase 15 renumbered 15.1-15.11 (old 15.9 split by moving removal to 15.1); gates now backend 15.11. (B) outline 3-5 sections, design prefills per_section only for 1-5 sections, >12 rows/page and question-without-row become issues. (C) re-confirm revalidates downstream artifacts; api.md adds `outline/propose`, `design/prefill`; blueprint redraft keeps unchanged rows. (D) no artifact edits in build/done; interview/plan stages read as context; legacy builds exempt from the four-confirmed rule. (E) ratio-only questions not recommended. (F) columns past 40 sent as name+type. (G) stdlib colorblind check. (H) live test PUTs a ratio KPI; 15.6 fake omits a question. (I) Prototype HTML page sections, new prototype.multipage.html, prototype.sample.html wrapped. (J) staged-ui.md layout per stage and states. (K) blueprint.blocked.json split from blueprint.json, events.sse order, stale wording, data model columns, preset fonts, activity path and presets, Review focus naming api.md 2.0, empty pages omitted, release bench and 2.5 CSV, removal comments.
 - Rejected: none.
+
+## 2026-10-21: Task 2.3 End-to-end live build and UI walkthrough
+- Status: blocked
+- Plan check: off
+- What changed: `integration/e2e_flow1.py` ported to the 2.0 staged API (notes -> context draft, confirm unedited, recommended + one Other, archetype preset per_section, feasibility decisions, prototype, component + decoration comment each changing the spec, recipe, run; `--live` from the 08:57 stash). Set aside with both bench JSONs in stash `blueprint: task 2.3 failed attempt 2026-10-21 21:46`. `.env` unchanged; services stopped (Vite on 5173, PID 35892, predates this session).
+- Checks: `DSS_ENGINE_DRY_RUN=1 ... e2e_flow1.py --version2` PASS (b_f5b7f65b5894, all stages with tokens, 47455/4363). `--live` exit 0 with link (b_31ee6bedd325) but engine `partial`: ok 19, failed 25. Manual chart check FAIL; UI walkthrough not run. Test (all) PASS, 9/9.
+- Decisions: blocked row with no offered alternative is dropped (decision `drop`, recorded in bench `decisions`); bench rows carry `run_ids`; read backend tests/live/test_staged_flow.py for the flow (read-only). Typing delegated to a Sonnet worker.
+- Tried and failed: narrowing `DSS_ALLOWED_TYPES` not applicable: every type fails, incl. scorecard 1/3, dropdown 3/3.
+- Gotchas: AGENTS.md: env override, `--live` partial.
+- Left open: live charts, UI walkthrough at :5173.
+- Blocked because: (a) the fix is in engine/ (release never edits parts).
+- Question: Who fixes engine add_chart/add_control field selection in Data Studio's current field picker?
+- Options: A architect plans an engine task (pick metric/dimension in the picker; live test on this recipe) / B defer live charts, demo dry-run only / Recommend: A, every chart op fails.
+- Evidence: `{"op_id": "s005", "op": "add_chart", "status": "failed", "message": "operation timed out", "duration_ms": 20155}` (scorecard, metric sum revenue); screencast of recipe s001-s005: Scorecard properties > Setup > Metric picker open, search empty, field list shown, `revenue` never chosen. Screens: data/builds/b_31ee6bedd325/v1/screens/s006_failed.png, s020_failed.png (chart inserted with default Record Count).
+- Next: after the engine fix, `git stash apply` the 21:46 stash (by subject), drop 07:52/08:57 stashes, start backend, rerun `--live`, check events `failed: 0`, then the UI walkthrough.
