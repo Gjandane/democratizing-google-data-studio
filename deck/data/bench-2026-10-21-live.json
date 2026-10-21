@@ -1,0 +1,104 @@
+{
+  "run_date": "2026-10-21T16:49:51.918338Z",
+  "server_url": "http://localhost:8000",
+  "mode": "live",
+  "build_id": "b_7fe221d7b5b1",
+  "version2": false,
+  "stages": [
+    {
+      "version": 1,
+      "stage": "context",
+      "seconds": 8.547,
+      "run_ids": [
+        "r_0945a29e8d58"
+      ],
+      "input_tokens": 1719,
+      "output_tokens": 704
+    },
+    {
+      "version": 1,
+      "stage": "outline",
+      "seconds": 17.157,
+      "run_ids": [
+        "r_de7471e7c9e6",
+        "r_c4730e24fde8"
+      ],
+      "input_tokens": 4013,
+      "output_tokens": 1170
+    },
+    {
+      "version": 1,
+      "stage": "design",
+      "seconds": 0.343,
+      "run_ids": [],
+      "input_tokens": 0,
+      "output_tokens": 0
+    },
+    {
+      "version": 1,
+      "stage": "blueprint",
+      "seconds": 31.875,
+      "run_ids": [
+        "r_c91157e74114"
+      ],
+      "input_tokens": 7684,
+      "output_tokens": 1762
+    },
+    {
+      "version": 1,
+      "stage": "prototype",
+      "seconds": 19.235,
+      "run_ids": [
+        "r_53459168c7a5"
+      ],
+      "input_tokens": 0,
+      "output_tokens": 0
+    },
+    {
+      "version": 1,
+      "stage": "comments",
+      "seconds": 36.39,
+      "run_ids": [
+        "r_1c64a0d36379",
+        "r_7a96d9e4d0d7"
+      ],
+      "changed": true,
+      "input_tokens": 20435,
+      "output_tokens": 460
+    },
+    {
+      "version": 1,
+      "stage": "recipe",
+      "seconds": 0.938,
+      "run_ids": [],
+      "input_tokens": 0,
+      "output_tokens": 0
+    },
+    {
+      "version": 1,
+      "stage": "run",
+      "seconds": 85.719,
+      "run_ids": [
+        "r_7c307c2a6371"
+      ],
+      "input_tokens": 0,
+      "output_tokens": 0
+    }
+  ],
+  "totals": {
+    "input_tokens": 33851,
+    "output_tokens": 4096
+  },
+  "decisions": [
+    {
+      "issue_id": "bp_cc253c476a291f7d137fb5a1",
+      "requirement": "q7",
+      "action": "drop",
+      "alternative": null,
+      "reason": "Use each named KPI with exactly its confirmed field and aggregation"
+    }
+  ],
+  "report_urls": {
+    "1": "https://datastudio.google.com/reporting/ec29aff8-18ab-48f7-bb9b-b45ebc637844/page/p_tfl9tqdk8d"
+  }
+}

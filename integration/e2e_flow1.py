@@ -1,14 +1,16 @@
-"""Exercise CSV -> interview -> prototype -> recipe -> engine, optionally twice.
+"""Exercise CSV -> staged artifacts (context, outline, design, blueprint) -> prototype -> comments -> recipe -> engine, optionally twice.
 
 The engine mode is configured on the server. --mode labels the benchmark; it
-does not turn a live server into a dry-run server.
+does not turn a live server into a dry-run server. --live labels it live, refuses a
+.env with DSS_ENGINE_DRY_RUN=1 and requires each published version's Data Studio link.
 """
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 from datetime import datetime, timezone
-from html.parser import HTMLParser
 import json
+from urllib.parse import urlsplit
 import os
 from pathlib import Path
 import re
@@ -18,6 +20,14 @@ import time
 import httpx
 
 ROOT = Path(__file__).resolve().parents[1]
+REPORT_HOSTS = {"datastudio.google.com", "lookerstudio.google.com"}
+NOTES = ("The sales director reviews net revenue weekly by region and category. Revenue is the revenue "
+         "column; sum revenue and quantity; count distinct order_id for orders.")
+OTHER = "Which product categories sell the most units?"
+CHART_TYPES = ("bar", "time_series", "pie", "scatter")
+COMPONENT_TEXT = "Use #B91C1C as the color of this chart."
+DECORATION_TEXT = "Use a dark blue accent (#1E3A8A) for this component."
+V2_TEXT = "Use #0F766E as the color of this chart."
 
 
 def env_value(name: str, default: str = "") -> str:
@@ -36,35 +46,34 @@ def env_value(name: str, default: str = "") -> str:
     return default
 
 
-class Components(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__()
-        self.items: list[tuple[str, str, str]] = []
+def dumps(value) -> str:
+    return json.dumps(value)
 
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        values = dict(attrs)
-        if values.get("data-cid"):
-            self.items.append((values["data-cid"], values.get("data-kind") or "", values.get("data-label") or ""))
 
-    def target(self, version: int) -> str:
-        # The accent comment needs a data component ("preserve its data"). v1 takes the revenue
-        # trend the interview asked for, as in backend 14.2's live regression; v2 takes the last
-        # other component, so the repeated comment is a real change.
-        components = [item for item in self.items if item[1] == "component"]
-        trends = [item for item in components if re.search(r"trend", item[2], re.I)]
-        ordered = trends + [item for item in reversed(components) if item not in trends]
-        if not ordered:
-            raise RuntimeError("backend: prototype contains no commentable data component")
-        return ordered[(version - 1) % len(ordered)][0]
+def items_of(spec: dict) -> dict[str, dict]:
+    return {item["id"]: item for page in spec["pages"]
+            for item in page.get("components", []) + page.get("decorations", [])}
+
+
+def components_of(spec: dict) -> list[dict]:
+    return [c for page in spec["pages"] for c in page.get("components", [])]
+
+
+def chart_candidates(spec: dict) -> list[dict]:
+    comps = components_of(spec)
+    return [c for c in comps if c.get("type") in CHART_TYPES] or comps
 
 
 class Flow:
-    def __init__(self, client: httpx.Client, secrets: list[str]) -> None:
+    def __init__(self, client: httpx.Client, secrets: list[str], live: bool = False) -> None:
         self.client = client
+        self.live = live
+        self.reports: dict[int, str] = {}
         self.secrets = [s for s in secrets if s]
         self.build_id = ""
         self.rows: list[dict] = []
-        self.run_ids: set[str] = set()
+        self.decisions: list[dict] = []
+        self._run_ids: list[str] = []
 
     def redact(self, value: str) -> str:
         for secret in self.secrets:
@@ -79,69 +88,204 @@ class Flow:
             ))
         return response
 
+    def api(self, method: str, suffix: str = "", **kwargs):
+        return self.request(method, f"/api/builds/{self.build_id}{suffix}", **kwargs).json()
+
     def traces(self) -> list[dict]:
         return self.request("GET", "/api/traces", params={"build_id": self.build_id}).json()
 
-    def action(self, version: int, label: str, method: str, suffix: str,
-               *, until=None, **kwargs):
+    def run(self, path: str, json=None) -> str:
+        """POST a model run, wait for its single trace, return the run id."""
+        url = f"/api/builds/{self.build_id}{path}"
+        for attempt in range(4):
+            response = self.client.request("POST", url, json=json)
+            if response.status_code == 409 and "wrong_stage" in response.text and attempt < 3:
+                time.sleep(1)  # the per-build lock is released a moment after the trace
+                continue
+            break
+        if response.status_code != 202:
+            raise RuntimeError(self.redact(
+                f"backend: POST {url}: HTTP {response.status_code}: {response.text}"))
+        run_id = response.json().get("run_id")
+        if not run_id:
+            raise RuntimeError(f"backend: POST {url}: no run_id in 202 response")
+        self._run_ids.append(run_id)
+        deadline = time.monotonic() + 600
+        while True:
+            trace = next((t for t in self.traces() if t["run_id"] == run_id), None)
+            if trace:
+                if trace["status"] == "error":
+                    raise RuntimeError(self.redact(f"backend: {path}: " + dumps(trace)))
+                return run_id
+            if time.monotonic() >= deadline:
+                stage = self.api("GET")["stage"]
+                raise RuntimeError(f"backend: {path} timed out after 600 s; stage={stage}")
+            time.sleep(2)
+
+    @contextmanager
+    def stage(self, version: int, label: str):
         started = time.monotonic()
-        path = f"/api/builds/{self.build_id}{suffix}"
-        result = self.request(method, path, **kwargs).json()
-        run_id = result.get("run_id")
-        if run_id:
-            self.run_ids.add(run_id)
-        if until:
+        row = {"version": version, "stage": label, "seconds": 0.0, "run_ids": []}
+        self.rows.append(row)
+        self._run_ids = row["run_ids"]
+        yield row
+        row["seconds"] = round(time.monotonic() - started, 3)
+        print(f"v{version}: {label} reached ({row['seconds']:.3f} s)", flush=True)
+
+    def comment(self, text: str, target: str) -> bool:
+        """One comment run; True when spec_version went up and the target item changed."""
+        before_v = self.api("GET")["spec_version"]
+        before = items_of(self.api("GET", "/spec")).get(target)
+        self.run("/comments", {"comments": [{"component_id": target, "text": text}]})
+        after_v = self.api("GET")["spec_version"]
+        after = items_of(self.api("GET", "/spec")).get(target)
+        return (after_v or 0) > (before_v or 0) and after != before
+
+    def comment_checked(self, text: str, target: str) -> None:
+        if not self.comment(text, target):
+            raise RuntimeError(f"backend: comment on {target} did not change the spec")
+
+    def recipe_and_run(self, version: int) -> None:
+        with self.stage(version, "recipe"):
+            recipe = self.request("POST", f"/api/builds/{self.build_id}/recipe").json()
+            if not recipe.get("op_count") or len(recipe.get("ops", [])) != recipe["op_count"]:
+                raise RuntimeError("backend: recipe is empty or op_count does not match ops")
+        with self.stage(version, "run") as row:
+            result = self.request("POST", f"/api/builds/{self.build_id}/run").json()
+            run_id = result.get("run_id")
+            if run_id:
+                row["run_ids"].append(run_id)
             deadline = time.monotonic() + 600
             while True:
-                build = self.request("GET", f"/api/builds/{self.build_id}").json()
-                traces = self.traces()
-                errors = [t for t in traces if t["run_id"] == run_id and t["status"] == "error"]
+                build = self.api("GET")
+                current = next(v for v in build["versions"] if v["n"] == version)
+                if current["status"] == "failed":
+                    raise RuntimeError(self.redact(f"backend: v{version} engine failed: {dumps(current)}"))
+                errors = [t for t in self.traces()
+                          if run_id and t["run_id"] == run_id and t["status"] == "error"]
                 if errors:
-                    raise RuntimeError(self.redact(f"backend: v{version} {label}: " + json.dumps(errors)))
-                if until(build, traces, run_id):
+                    raise RuntimeError(self.redact(f"backend: v{version} run: " + dumps(errors)))
+                if build["stage"] == "done" and current["status"] == "published":
                     break
                 if time.monotonic() >= deadline:
-                    raise RuntimeError(f"backend: v{version} {label} timed out after 600 s; stage={build['stage']}")
+                    raise RuntimeError(f"backend: v{version} run timed out after 600 s; stage={build['stage']}")
                 time.sleep(2)
-        seconds = round(time.monotonic() - started, 3)
-        self.rows.append({"version": version, "stage": label, "seconds": seconds, "run_id": run_id})
-        print(f"v{version}: {label} reached ({seconds:.3f} s)", flush=True)
-        return result
+        report_url = current.get("report_url") or ""
+        parts = urlsplit(report_url)
+        if parts.scheme == "https" and parts.hostname in REPORT_HOSTS:
+            self.reports[version] = report_url
+            print(f"v{version}: report {report_url}", flush=True)
+        elif self.live:
+            raise RuntimeError(f"backend: v{version} published without a Data Studio report_url: {report_url!r}")
 
-    def interview_done(self, previous: set[str]):
-        def done(build, traces, run_id):
-            messages = self.request("GET", f"/api/builds/{self.build_id}/messages").json()
-            return any(m["role"] == "assistant" and m["id"] not in previous for m in messages)
-        return done
+    def stage_context(self) -> None:
+        with self.stage(1, "context"):
+            self.run("/context", {"notes": NOTES})
+            context = self.api("GET", "/context")
+            if context.get("issues"):
+                raise RuntimeError(f"backend: drafted context has issues: {dumps(context['issues'])}")
 
-    def interview(self, label: str, suffix: str, **kwargs) -> None:
-        messages = self.request("GET", f"/api/builds/{self.build_id}/messages").json()
-        self.action(1, label, "POST", suffix,
-                    until=self.interview_done({m["id"] for m in messages}), **kwargs)
+    def stage_outline(self) -> None:
+        with self.stage(1, "outline"):
+            self.run("/context/confirm")  # confirmed unedited; proposes the outline
+            sections = self.api("GET", "/outline")["sections"]
+            if not sections:
+                raise RuntimeError("backend: outline has no sections")
+            self.run("/outline/other", {"section_id": sections[-1]["id"], "text": OTHER})
+            outline = self.api("GET", "/outline")
+            questions = [q for s in outline["sections"] for q in s["questions"]]
+            outline = self.api("PUT", "/outline/selection", json={"questions": [
+                {"id": q["id"], "selected": bool(q.get("recommended")) or q.get("origin") == "other"}
+                for q in questions]})
+            questions = [q for s in outline["sections"] for q in s["questions"]]
+            if not any(q["selected"] and q.get("origin") == "other" for q in questions):
+                raise RuntimeError("backend: no selected question with origin other")
+            if not all(q["selected"] for q in questions if q.get("recommended")):
+                raise RuntimeError("backend: a recommended question is not selected")
 
-    def revise_and_run(self, version: int) -> None:
-        previous = self.request("GET", f"/api/builds/{self.build_id}").json()["spec_version"]
-        parser = Components()
-        parser.feed(self.request("GET", f"/api/builds/{self.build_id}/prototype").text)
-        # Wait for the revise run itself: a comment the spec already satisfies keeps spec_version.
-        self.action(version, "comment", "POST", "/comments", json={"comments": [{
-            "component_id": parser.target(version),
-            "text": "Use a dark blue accent for this component; preserve its position and data.",
-        }]}, until=lambda b, t, r: b["stage"] == "prototype" and any(
-            x["run_id"] == r and x["node"] == "revise" and x["status"] == "ok" for x in t))
-        current = self.request("GET", f"/api/builds/{self.build_id}").json()["spec_version"]
-        self.rows[-1]["changed"] = current > previous
-        recipe = self.action(version, "recipe", "POST", "/recipe")
-        if not recipe.get("op_count") or len(recipe.get("ops", [])) != recipe["op_count"]:
-            raise RuntimeError("backend: recipe is empty or op_count does not match ops")
+    def stage_design(self, archetype: str) -> None:
+        with self.stage(1, "design"):
+            self.api("POST", "/outline/confirm")
+            preset = next((p for p in self.api("GET", "/design/presets")
+                           if archetype in p["archetypes"]), None)
+            if preset is None:
+                raise RuntimeError(f"backend: no design preset for archetype {archetype}")
+            design = self.api("GET", "/design")
+            if design.get("preset_id") != preset["id"] or design.get("page_structure") != "per_section":
+                body = {k: v for k, v in design.items() if k not in ("revision", "issues")}
+                for key in ("background", "surface", "text", "accent", "palette", "font_family"):
+                    body[key] = preset[key]
+                body.update(preset_id=preset["id"], source="preset", page_structure="per_section")
+                self.api("PUT", "/design", json=body)
+                design = self.api("GET", "/design")
+            if design.get("issues") or design.get("page_structure") != "per_section":
+                raise RuntimeError(f"backend: design not ready: {dumps(design.get('issues'))}")
 
-        def finished(build, traces, run_id):
-            current = next(v for v in build["versions"] if v["n"] == version)
-            if current["status"] == "failed":
-                raise RuntimeError(f"backend: v{version} engine failed: {json.dumps(current)}")
-            return build["stage"] == "done" and current["status"] == "published"
+    def stage_blueprint(self) -> None:
+        with self.stage(1, "blueprint"):
+            self.run("/design/confirm")
+            assessment = self.api("GET", "/feasibility")
+            if assessment["state"] in ("unchecked", "stale"):
+                self.run("/feasibility/check")
+                assessment = self.api("GET", "/feasibility")
+            while assessment["state"] == "blocked":
+                if len(self.decisions) >= 20:
+                    raise RuntimeError("backend: feasibility still blocked after 20 decisions")
+                issue = next((i for i in assessment["issues"] if i.get("resolution") == "unresolved"), None)
+                if issue is None:
+                    raise RuntimeError("backend: feasibility blocked without an unresolved issue")
+                # Take the offered alternative; a row the code offers none for (e.g. a question
+                # whose KPIs the drafted row covers only in part) is dropped, the user's other choice.
+                alt = (issue.get("alternatives") or [None])[0]
+                assessment = self.api("POST", "/feasibility/decisions", json={
+                    "assessment_id": assessment["id"],
+                    "decisions": [{"issue_id": issue["id"],
+                                   "action": "accept_alternative" if alt else "drop",
+                                   "alternative_id": alt["id"] if alt else None}]})
+                self.decisions.append({"issue_id": issue["id"], "requirement": issue.get("requirement"),
+                                       "action": "accept_alternative" if alt else "drop",
+                                       "alternative": alt.get("label") if alt else None,
+                                       "reason": issue.get("reason")})
+            if assessment["state"] != "ready":
+                raise RuntimeError(f"backend: feasibility state is {assessment['state']}, expected ready")
 
-        self.action(version, "run", "POST", "/run", until=finished)
+    def stage_prototype(self) -> None:
+        with self.stage(1, "prototype"):
+            self.run("/blueprint/accept")
+            build = self.api("GET")
+            if build["stage"] != "prototype":
+                raise RuntimeError(f"backend: stage is {build['stage']} after blueprint accept")
+            artifacts = build.get("artifacts") or {}
+            if len(artifacts) != 4 or any(s != "confirmed" for s in artifacts.values()):
+                raise RuntimeError(f"backend: artifacts not all confirmed: {dumps(artifacts)}")
+            if not self.api("GET", "/spec")["pages"]:
+                raise RuntimeError("backend: spec has no pages")
+
+    def stage_comments(self) -> None:
+        with self.stage(1, "comments") as row:
+            spec = self.api("GET", "/spec")
+            charts = chart_candidates(spec)
+            if not charts:
+                raise RuntimeError("backend: spec has no component to comment on")
+            decorations = [d for p in spec["pages"] for d in p.get("decorations", [])]
+            deco = next((d for kind in ("band", "panel", "title")
+                         for d in decorations if d.get("kind") == kind), None)
+            if deco is None:
+                raise RuntimeError("backend: spec has no band, panel or title decoration")
+            self.comment_checked(COMPONENT_TEXT, next(
+                (c for c in components_of(spec) if c.get("type") in CHART_TYPES), charts[0])["id"])
+            self.comment_checked(DECORATION_TEXT, deco["id"])
+            row["changed"] = True
+
+    def stage_v2(self) -> None:
+        build = self.request("POST", f"/api/builds/{self.build_id}/versions").json()
+        if build["current_version"] != 2 or build["stage"] != "prototype":
+            raise RuntimeError("backend: new version did not enter v2 prototype")
+        with self.stage(2, "comment") as row:
+            charts = chart_candidates(self.api("GET", "/spec"))
+            if not charts:
+                raise RuntimeError("backend: v2 spec has no component to comment on")
+            row["changed"] = self.comment(V2_TEXT, charts[-1]["id"])
 
 
 def main() -> int:
@@ -150,7 +294,13 @@ def main() -> int:
     parser.add_argument("--version2", action="store_true")
     parser.add_argument("--mode", choices=["dry-run", "live"],
                         default="dry-run" if env_value("DSS_ENGINE_DRY_RUN", "0") == "1" else "live")
+    parser.add_argument("--live", action="store_true",
+                        help="real engine: same as --mode live, plus a Data Studio link per version")
     args = parser.parse_args()
+    if args.live:
+        if env_value("DSS_ENGINE_DRY_RUN", "0") == "1":
+            parser.error("--live needs DSS_ENGINE_DRY_RUN=0 in .env (restart the backend after changing it)")
+        args.mode = "live"
     server = args.server.rstrip("/")
     url = httpx.URL(server)
     if url.scheme not in {"http", "https"} or not url.host or url.userinfo or url.query or url.fragment or url.path not in {"", "/"}:
@@ -160,7 +310,7 @@ def main() -> int:
     started = datetime.now(timezone.utc)
     with httpx.Client(base_url=server, timeout=120, trust_env=False,
                       headers={"X-DSS-Access-Code": access_code} if access_code else {}) as client:
-        flow = Flow(client, secrets)
+        flow = Flow(client, secrets, live=args.live)
         try:
             flow.request("GET", "/api/health")
             build = flow.request("POST", "/api/builds", json={
@@ -169,35 +319,30 @@ def main() -> int:
             flow.build_id = build["id"]
             print(f"v1: connect reached ({flow.build_id})", flush=True)
             with (ROOT / "samples/ecommerce_sales.csv").open("rb") as sample:
-                flow.action(1, "upload", "POST", "/sources/upload",
-                            files={"files": ("ecommerce_sales.csv", sample, "text/csv")})
-            flow.interview("interview start", "/interview/start")
-            for n, answer in enumerate([
-                "The audience is sales executives. Track total revenue, order count, quantity sold and sales trends using only the uploaded columns.",
-                "Compare regions and product categories over the full available date range; revenue is SUM(revenue), order count is COUNT(DISTINCT order_id), and quantity sold is SUM(quantity).",
-                "Use one executive overview page with KPI scorecards, a revenue trend grouped by order_date at monthly grain, and revenue by region. Use a clean blue theme; proceed with these choices.",
-            ], 1):
-                flow.interview(f"interview answer {n}", "/messages", json={"text": answer})
-            flow.action(1, "plan/prototype", "POST", "/plan",
-                        until=lambda b, t, r: b["stage"] == "prototype" and b["spec_version"] is not None)
-            flow.revise_and_run(1)
+                flow.request("POST", f"/api/builds/{flow.build_id}/sources/upload",
+                             files={"files": ("ecommerce_sales.csv", sample, "text/csv")})
+            flow.stage_context()
+            flow.stage_outline()
+            flow.stage_design("executive")
+            flow.stage_blueprint()
+            flow.stage_prototype()
+            flow.stage_comments()
+            flow.recipe_and_run(1)
             if args.version2:
-                version = flow.action(2, "new version", "POST", "/versions")
-                if version["current_version"] != 2 or version["stage"] != "prototype":
-                    raise RuntimeError("backend: new version did not enter v2 prototype")
-                flow.revise_and_run(2)
-            if not any(row.get("changed") for row in flow.rows):
-                raise RuntimeError("backend: no comment changed the spec (every revise answered no change)")
+                flow.stage_v2()
+                flow.recipe_and_run(2)
             traces = flow.traces()
-            # Keep only this invocation's action runs (including their child node traces).
-            traces = [t for t in traces if t["run_id"] in flow.run_ids]
-            totals = {key: sum(t[key] for t in traces) for key in ("input_tokens", "output_tokens")}
+            totals = {"input_tokens": 0, "output_tokens": 0}
             for row in flow.rows:
+                ids = set(row["run_ids"])
                 for key in totals:
-                    row[key] = sum(t[key] for t in traces if t["run_id"] == row["run_id"])
+                    row[key] = sum(t[key] for t in traces if t["run_id"] in ids)
+                    totals[key] += row[key]
             bench = {"run_date": started.isoformat().replace("+00:00", "Z"),
                      "server_url": server, "mode": args.mode, "build_id": flow.build_id,
-                     "version2": args.version2, "stages": flow.rows, "totals": totals}
+                     "version2": args.version2, "stages": flow.rows, "totals": totals,
+                     "decisions": flow.decisions,
+                     "report_urls": {str(n): u for n, u in flow.reports.items()}}
             target = ROOT / "deck/data" / f"bench-{started:%Y-%m-%d}-{args.mode}.json"
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(json.dumps(bench, indent=2) + "\n", encoding="utf-8")

@@ -324,3 +324,15 @@ context. Task status lives in docs/plan.md, not here.
 - Why: 2.3's block (a): live run b_b2ac19ea6696 partial, ok 36, failed 3, all page 3 (1200 x 1492): s025 set_background_image, s034 table at y884, s036 bar at y1204; isolated replay reproduces all three.
 - Ruling: user picked the engine task over a backend page-height cap or accepting partial. Scope gate: fixes a blocker on the must-survive path (live build -> link); ~26 h to the deadline with release 2.3-4.4 left (M, L, L, M, M, S, M, S, M, S).
 - Tasks affected: engine 9.1 first, then release 2.3. Change requests: none open.
+
+## 2026-10-22: Task 2.3 End-to-end live build and UI walkthrough
+- Status: done
+- Plan check: off
+- What changed: applied stash `blueprint: task 2.3 failed attempt 2026-10-21 23:11` (staged driver `integration/e2e_flow1.py` with `--version2`/`--live`; no code change this session); regenerated `deck/data/bench-2026-10-21-{dry-run,live}.json` (UTC date). `.env` unchanged; backend stopped after (Vite 5173, PID 35892, predates).
+- Checks: `DSS_ENGINE_DRY_RUN=1 ... e2e_flow1.py --version2` run 1 FAIL (known blueprint-view 0-rows 409, b_ecb15bd55c0c), rerun PASS (b_942e60dcab38, all v1/v2 stages with tokens, 41676/3650). `--live` PASS exit 0, link printed (b_7fe221d7b5b1), events `run_finished` ok 38 failed 0. Manual link: yes, 4 pages with charts/controls over the background (viewed via engine Chrome CDP). UI walkthrough :5173 yes (b_96b8a37f4db8): strip phrase + elapsed + tokens (none -> 9k), checklist all ticked, comments spec_version 1 -> 2, run ok 36 failed 0, "Open in Data Studio" link. Test (all) PASS 9/9. Reviewer: no P0/P1.
+- Decisions: blocked row without an offered alternative is dropped (as in the 21:46 entry; live bench q7). UI used the default executive preset `studio_light`. AGENTS.md: 3 gotchas (CSV upload in built-in browser, report view via CDP, stash drop denied).
+- Digest: integration/e2e_flow1.py staged: `--version2`, `--live` (needs DSS_ENGINE_DRY_RUN=0); bench deck/data/bench-<UTC date>-{dry-run,live}.json: run_date, mode, build_id, stages[{version,stage,seconds,run_ids,input_tokens,output_tokens,changed?}], totals, decisions, report_urls.
+- Tried and failed: none (one rerun per the flaky-live gotcha).
+- Gotchas: in AGENTS.md Known gotchas.
+- Left open: P2 `accept_alternative` branch never exercised and assumes `ready` after the decision POST - integration/e2e_flow1.py:237; P3 `partial` still exits 0 (API has no failed count; manual events check) - :168; P3 only `run()` retries 409 `wrong_stage` - :197/:240/:150; P3 `next()`/null context escape the FAIL handler - :161/:185; P3 accepts lookerstudio host - :23; P3 model runs poll /api/traces - :113. Outside: first report page named "Untitled Page", page-1 scorecard values tiny, UI decoration comment gave dark text on the blue band (engine/backend). User: drop stashes 07:52, 08:57, 21:46 by subject.
+- Next: Task 2.4 Manual acceptance: CSV, research, BigQuery and GCS.

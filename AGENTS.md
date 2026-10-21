@@ -71,3 +71,6 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - An engine op fails with `screenshot: null`: from engine/, `uv run dsengine run --screencast <recipe.jsonl> > cast.jsonl`, then base64-decode the last `frame` event's `data` (JPEG) to see the page it stuck on.
 - Backend reads os.environ over the root `.env`: start it with `DSS_ENGINE_DRY_RUN=1 uv run uvicorn ...` (and run the driver with the same var) instead of editing `.env`.
 - `e2e_flow1.py --live` exit 0 is not a full build: an engine `partial` still publishes with a report_url; read `run_finished` in data/builds/<id>/v<n>/events.jsonl (`failed` count) before the manual link check.
+- Built-in browser can't drive the CSV file chooser: in the page, fetch `/@fs/<abs repo path>/samples/ecommerce_sales.csv` from Vite (:5173), wrap it in a File, set it on `input[aria-label="CSV files"]` via DataTransfer and dispatch `change`.
+- Built-in browser isn't signed in to Google (never sign in there): view a report through the engine's Chrome with a scratch Playwright script (`connect_over_cdp("http://127.0.0.1:9222")`, new tab, screenshot, close), run from engine/ with `uv run python <script>`.
+- `git stash drop` is denied by the auto-mode classifier: leave the drops the plan asks for to the user and list them under Left open.

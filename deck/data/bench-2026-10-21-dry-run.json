@@ -1,0 +1,123 @@
+{
+  "run_date": "2026-10-21T16:47:11.706309Z",
+  "server_url": "http://localhost:8000",
+  "mode": "dry-run",
+  "build_id": "b_942e60dcab38",
+  "version2": true,
+  "stages": [
+    {
+      "version": 1,
+      "stage": "context",
+      "seconds": 8.468,
+      "run_ids": [
+        "r_46f38b1533f4"
+      ],
+      "input_tokens": 1715,
+      "output_tokens": 779
+    },
+    {
+      "version": 1,
+      "stage": "outline",
+      "seconds": 15.157,
+      "run_ids": [
+        "r_fa1024614dd1",
+        "r_47c0218ebba4"
+      ],
+      "input_tokens": 4061,
+      "output_tokens": 748
+    },
+    {
+      "version": 1,
+      "stage": "design",
+      "seconds": 0.343,
+      "run_ids": [],
+      "input_tokens": 0,
+      "output_tokens": 0
+    },
+    {
+      "version": 1,
+      "stage": "blueprint",
+      "seconds": 23.391,
+      "run_ids": [
+        "r_2d77c9f0ac87"
+      ],
+      "input_tokens": 4259,
+      "output_tokens": 1422
+    },
+    {
+      "version": 1,
+      "stage": "prototype",
+      "seconds": 19.562,
+      "run_ids": [
+        "r_6ff8174f821d"
+      ],
+      "input_tokens": 0,
+      "output_tokens": 0
+    },
+    {
+      "version": 1,
+      "stage": "comments",
+      "seconds": 34.782,
+      "run_ids": [
+        "r_f66f1fa9d844",
+        "r_f3f6fe9fc5d3"
+      ],
+      "changed": true,
+      "input_tokens": 20422,
+      "output_tokens": 469
+    },
+    {
+      "version": 1,
+      "stage": "recipe",
+      "seconds": 1.109,
+      "run_ids": [],
+      "input_tokens": 0,
+      "output_tokens": 0
+    },
+    {
+      "version": 1,
+      "stage": "run",
+      "seconds": 2.688,
+      "run_ids": [
+        "r_627e186ac058"
+      ],
+      "input_tokens": 0,
+      "output_tokens": 0
+    },
+    {
+      "version": 2,
+      "stage": "comment",
+      "seconds": 19.328,
+      "run_ids": [
+        "r_529b1eb59ed1"
+      ],
+      "changed": true,
+      "input_tokens": 11219,
+      "output_tokens": 232
+    },
+    {
+      "version": 2,
+      "stage": "recipe",
+      "seconds": 1.063,
+      "run_ids": [],
+      "input_tokens": 0,
+      "output_tokens": 0
+    },
+    {
+      "version": 2,
+      "stage": "run",
+      "seconds": 2.687,
+      "run_ids": [
+        "r_c0f20265034e"
+      ],
+      "input_tokens": 0,
+      "output_tokens": 0
+    }
+  ],
+  "totals": {
+    "input_tokens": 41676,
+    "output_tokens": 3650
+  },
+  "decisions": [],
+  "report_urls": {}
+}
