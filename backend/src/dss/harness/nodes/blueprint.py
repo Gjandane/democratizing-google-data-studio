@@ -19,7 +19,7 @@ from dss.harness.nodes.style_extract import provider_schema
 from dss.spec import requirements as req
 from dss.spec import feasibility
 from dss.spec.capabilities import Checker, load_registry
-from dss.spec.validate import allowed_types, catalog
+from dss.spec.validate import allowed_types, catalog, label_text
 
 MAX_OUTPUT_TOKENS = 6000
 
@@ -110,9 +110,21 @@ def normalize_rows(rows, selected, pages):
         section = selected[row.question_id]['section_id'] if row.question_id in selected else row.section_id
         if section not in pages or (row.question_id is not None and row.question_id not in selected):
             continue  # model cannot resurrect a deselected or invent a selected question
-        result.append(row.model_copy(update={'section_id': section, 'page': pages[section],
+        # Leaked list/quote syntax keeps the first clean fragment; none left -> the row repair.
+        label = label_text(row.component.label)
+        component = row.component if label is None else row.component.model_copy(update={'label': label})
+        result.append(row.model_copy(update={'section_id': section, 'page': pages[section], 'component': component,
                                             'status': 'ok', 'issue_ids': []}, deep=True))
     return result
+
+
+def fallback_label(component):
+    """Code-built label for a row whose label stayed unusable after the one row repair."""
+    metrics = ' and '.join(m.field.replace('_', ' ') for m in component.metrics[:2])
+    dimension = next((d.replace('_', ' ') for d in [*component.dimensions, component.date_dimension] if d), '')
+    text = ' by '.join(part for part in (metrics, dimension) if part) or component.type.replace('_', ' ')
+    text = label_text(text) or component.type.replace('_', ' ')
+    return text[:1].upper() + text[1:]
 
 
 def inputs_path(folder):
@@ -265,11 +277,22 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                                if state['rows'][i].question_id is None}
                     state['rows'] = [r for i, r in enumerate(state['rows']) if r.question_id not in ids and i not in indices] + normalize_rows(
                         [r for r in repaired.rows if r.question_id in ids or (indices and r.question_id is None)], selected, pages)
+                dirty = [i for i, r in enumerate(state['rows']) if label_text(r.component.label) is None]
+                if state['row_repaired']:
+                    for i in dirty:
+                        row = state['rows'][i]
+                        state['rows'][i] = row.model_copy(update={'component': row.component.model_copy(
+                            update={'label': fallback_label(row.component)})})
+                    dirty = []
                 snapshot = req.inputs(harness.db, build_id, folder)
                 snapshot.update(blueprint=Blueprint(revision=1, **state['view'].model_dump(), rows=state['rows'],
                     view_table=None, assessment_id=None).model_dump(), context=context.model_dump(),
                     outline=outline.model_dump(), design=design.model_dump(), blueprint_errors=[])
                 state['errors'] = feasibility.diagnostics(snapshot, req.load(folder), Checker(load_registry()))
+                if dirty:
+                    state['errors'].append(dict(code='label', indices=dirty, qids=[], status='needs_clarification',
+                        message='Component label must be one short line without list or quote syntax',
+                        repairable=True, offers=[], evidence=[]))
             except (ValueError, ValidationError):
                 state['failure'] = RunError('llm_unavailable', 'The model returned an invalid Blueprint structure; draft again', 503)
         if any(e['repairable'] for e in state['errors']) and not state['row_repaired'] and not state['failure']:

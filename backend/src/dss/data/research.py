@@ -4,7 +4,7 @@ Only code handles rows. The research agent receives Table.metadata(), never the 
 """
 import argparse
 import csv
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from html.parser import HTMLParser
 import http.client
 import io
@@ -103,12 +103,75 @@ def clean(value):
     return ' '.join(value.replace('\x00', '').split()).strip()
 
 
+# A number with thousands separators, then footnote ([5]), estimate ((2025 est.), 2025e)) or
+# symbol markers. Placeholder dashes in an otherwise numeric column load as empty (NULL).
+MARK = r'\[[^\[\]]{1,12}\]|\((?:\d{4}\s?)?(?:est|e|f|p)\.?\)|\(\d{4}\)|\(?\d{4}[a-z]\)?|[*†‡]'
+NUMBER = re.compile(rf'([-−]?(?:\d{{1,3}}(?:,\d{{3}})+|\d+)(?:\.\d+)?)(?:\s*(?:{MARK}))*')
+PLACEHOLDERS = {'—', '–', '-', 'n/a', 'na', '…', '...'}
+# Bare names only ("Total Recall" is a title); not average/mean, which also name real category rows.
+TOTAL_NAME = re.compile(r'(?:(?:grand |sub-?)?totals?|world|all|overall|sum)(?:\s*\([^()]*\))?', re.I)
+
+
+def plain_number(cell):
+    match = NUMBER.fullmatch(cell)
+    return match[1].replace(',', '').replace('−', '-') if match else None
+
+
+def normalize_numbers(rows):
+    """Rewrite columns whose filled cells are all marked numbers; return their indexes."""
+    numeric = set()
+    for col in range(len(rows[0])):
+        cells = [row[col] for row in rows if row[col] and row[col].casefold() not in PLACEHOLDERS]
+        if cells and all(plain_number(cell) for cell in cells):
+            numeric.add(col)
+            for row in rows:
+                row[col] = plain_number(row[col]) or ''
+    return numeric
+
+
+def aggregate_signals(rows, headers, numeric, title):
+    """Deterministic per-row aggregate evidence: {row index: [reasons]}; 'total name' is decisive."""
+    rank = next((col for col in sorted(numeric) if col < 2 and
+                 sorted(int(row[col]) for row in rows if row[col].isdigit()) ==
+                 list(range(1, sum(bool(row[col]) for row in rows) + 1)) and
+                 sum(bool(row[col]) for row in rows) >= 3), None)
+    label = next((col for col in range(len(headers)) if col not in numeric), None)
+    reference = {i for i, row in enumerate(rows) if rank is None or row[rank]}
+    sums = {}
+    for col in numeric - {rank}:
+        if len(reference) >= 3 and all(rows[i][col] for i in reference):
+            sums[col] = sum(float(rows[i][col]) for i in reference)
+    subject = title.casefold()
+    signals = {}
+    for i, row in enumerate(rows):
+        reasons = []
+        name = re.sub(r'\[[^\[\]]{1,12}\]', '', row[label]).strip() if label is not None else ''
+        if name and TOTAL_NAME.fullmatch(name):
+            reasons.append('total name')
+        if rank is not None and not row[rank]:
+            reasons.append('unranked row in a ranked table')
+        if len(name) >= 2 and re.search(rf'(?<!\w){re.escape(name.casefold())}(?!\w)', subject):
+            reasons.append('label names the table subject')
+        for col, total in sums.items():
+            if row[col]:
+                others = total - (float(row[col]) if i in reference else 0)
+                if others and abs(float(row[col]) - others) <= 0.01 * abs(others):
+                    reasons.append(f'equals the sum of the other rows in {headers[col]}')
+                    break
+        if reasons:
+            signals[i] = reasons
+    return signals, label, rank
+
+
 @dataclass
 class Table:
     url: str
     title: str
     headers: list[str]
     rows: list[list[str]]
+    # [{'label', 'reason'}]: aggregate rows left out of the CSV, and kept rows that may be one.
+    excluded: list[dict] = field(default_factory=list)
+    possible: list[dict] = field(default_factory=list)
 
     def metadata(self, number):
         return {'table_id': number, 'url': self.url, 'title': self.title[:200],
@@ -142,7 +205,24 @@ def make_table(url, title, headers, rows):
             result.append(row)
     if not result:
         return None
-    return Table(url, clean(title), headers, result)
+    numeric = normalize_numbers(result)
+    signals, label, rank = aggregate_signals(result, headers, numeric, clean(title))
+    kept, excluded, possible = [], [], []
+    for i, row in enumerate(result):
+        reasons = signals.get(i, [])
+        entry = {'label': row[label] if label is not None else f'row {i + 1}', 'reason': '; '.join(reasons)}
+        # A ranked row is data. An unranked row in a ranked table plus a second signal, or a bare
+        # total name, identifies an aggregate; anything less is a guess, kept and marked.
+        unranked = 'unranked row in a ranked table' in reasons
+        if 'total name' in reasons and (unranked or rank is None) or unranked and len(reasons) >= 2:
+            excluded.append(entry)
+            continue
+        if reasons:
+            possible.append(entry)
+        kept.append(row)
+    if not kept:
+        return None
+    return Table(url, clean(title), headers, kept, excluded, possible)
 
 
 class TableParser(HTMLParser):

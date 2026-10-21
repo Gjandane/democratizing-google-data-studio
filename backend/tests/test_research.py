@@ -1,6 +1,8 @@
 import csv
 import io
 import json
+from pathlib import Path
+import re
 import time
 
 import pytest
@@ -287,3 +289,76 @@ def test_research_counts_each_phase_without_extra_search_or_scraping(setup):
     for node in ('research_discover', 'research_select'):
         assert_counted(next(s for s in spans if s['node'] == node), model)
     assert model.calls == 2 and search.calls == 1 and len(requests) == 1 and len(model.counts) == 2
+
+
+ASEAN = (Path(__file__).parent / 'data/research_asean_gdp.html').read_bytes()
+ASEAN_URL = 'https://en.wikipedia.org/wiki/List_of_ASEAN_countries_by_GDP'
+
+
+def test_aggregate_row_is_left_out_and_marked_numbers_load_as_numbers():
+    table, = scraper.parse_tables(ASEAN_URL, 'text/html; charset=utf-8', ASEAN)
+    assert len(table.rows) == 11 and [row[1] for row in table.rows][:2] == ['Indonesia', 'Singapore']
+    assert sum(float(row[3]) for row in table.rows) == 4171400
+    assert table.rows[0][:4] == ['1', 'Indonesia', '285.721', '1440000'] and table.rows[0][4] == '5082'
+    assert [item['label'] for item in table.excluded] == ['ASEAN'] and not table.possible
+    reason = table.excluded[0]['reason']
+    assert 'unranked row in a ranked table' in reason and 'equals the sum of the other rows' in reason
+    assert table.metadata(0)['row_count'] == 11
+    assert b'ASEAN,' not in table.csv_bytes()
+
+
+def test_table_without_aggregate_keeps_every_row_and_one_signal_is_only_marked():
+    members = re.sub(rb'<tr><td>\xe2\x80\x94</td>.*?</tr>', b'', ASEAN, flags=re.S)
+    table, = scraper.parse_tables(ASEAN_URL, 'text/html', members)
+    assert len(table.rows) == 11 and not table.excluded and not table.possible
+    # An unranked row that neither names the subject nor sums the others is kept, only marked.
+    other = members.replace(b'<tr><td>11</td><td>Timor-Leste', b'<tr><td>\xe2\x80\x94</td><td>Timor-Leste')
+    table, = scraper.parse_tables(ASEAN_URL, 'text/html', other)
+    assert len(table.rows) == 11 and not table.excluded
+    assert table.possible == [{'label': 'Timor-Leste', 'reason': 'unranked row in a ranked table'}]
+
+
+def test_total_name_row_is_left_out_without_rank_column():
+    tables = scraper.parse_tables('https://example.com/a.csv', 'text/csv',
+                                  b'Region,Sales\nNorth,"1,200[a]"\nSouth,800\nTotal,"2,100"\n')
+    assert tables[0].rows == [['North', '1200'], ['South', '800']]
+    assert tables[0].excluded == [{'label': 'Total', 'reason': 'total name'}]
+    # Mixed text keeps a column as text; ambiguous separators are not numbers.
+    tables = scraper.parse_tables('https://example.com/b.csv', 'text/csv', b'Code,Value\nA,"1,5"\nB,007\n')
+    assert tables[0].rows == [['A', '1,5'], ['B', '007']]
+
+
+def test_workflow_lists_excluded_aggregate_in_sources_without_rows_in_prompts(setup):
+    _, app, build_id, model, _, bq = setup
+    model.discovery = json.dumps({'urls': [ASEAN_URL]})
+    run_direct(setup, getter=lambda url, timeout: (200, {'content-type': 'text/html'}, ASEAN))
+    folder = app.state.settings.get().data_dir / 'builds' / build_id / 'v1'
+    rows = list(csv.reader(io.StringIO(next(folder.glob('research-*.csv')).read_text(encoding='utf-8'))))
+    assert len(rows) == 12 and 'ASEAN' not in {row[1] for row in rows}
+    sources = (folder / 'docs/sources.md').read_text(encoding='utf-8')
+    assert '(11 rows)' in sources and 'Aggregate rows left out of the CSV:\n- ASEAN: unranked row' in sources
+    assert ASEAN_URL in sources and len(bq.loads) == 1
+    assert not any(name in request for request in model.requests for name in ('Indonesia', '1,440,000', '4167690'))
+
+
+def test_ranked_rows_named_like_totals_are_kept():
+    rows = [['1', 'Home Alone', '285'], ['2', 'Ghost', '217'], ['3', 'Total Recall', '119'], ['4', 'All', '50']]
+    table = scraper.make_table('https://example.com/', '1990 in film', ['Rank', 'Title', 'Gross'], rows)
+    assert len(table.rows) == 4 and not table.excluded
+    assert table.possible == [{'label': 'All', 'reason': 'total name'}]
+    # Two signals without a rank column or a total name stay a guess: kept and marked.
+    rows = [['ASEAN', '30'], ['Indonesia', '10'], ['Thailand', '12'], ['Laos', '8']]
+    table = scraper.make_table('https://example.com/', 'ASEAN GDP', ['Country', 'GDP'], rows)
+    assert len(table.rows) == 4 and not table.excluded and table.possible[0]['label'] == 'ASEAN'
+
+
+def test_sources_list_excluded_and_possible_aggregate_rows(tmp_path):
+    table = scraper.make_table('https://example.com/t', 'ASEAN GDP', ['Country', 'GDP'],
+                               [['ASEAN', '30'], ['Indonesia', '10'], ['Thailand', '12'], ['Laos', '8'], ['Total', '61']])
+    collector = scraper.Collector(lambda *_: None)
+    collector.attempts = [{'url': 'https://example.com/t', 'status': '200'}]
+    research.write_sources(tmp_path, 'r_1', [], collector, table)
+    sources = (tmp_path / 'docs/sources.md').read_text(encoding='utf-8')
+    assert 'Aggregate rows left out of the CSV:\n- Total: total name' in sources
+    assert '- ASEAN: possible aggregate (label names the table subject' in sources
+    assert '200: https://example.com/t' in sources and '(4 rows)' in sources

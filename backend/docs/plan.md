@@ -492,7 +492,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: remove the obsolete total-component ceiling at the shared feasibility source; no bypass of candidate publication, freshness, coverage, legacy-version or execution gates; 24 remains the Outline question limit.
 
 ## Phase 17: Manual acceptance fixes (change 2026-10-22)
-- [ ] 17.1 Clean component labels and research aggregate rows
+- [x] 17.1 Clean component labels and research aggregate rows
   - Goal: the research row of release 2.4 builds a dashboard whose scorecards read the member rows only and whose titles are clean. Release 2.4 is blocked on this: research build b_568901c19819 (prompt "Nominal GDP of the ASEAN member countries, latest year, in US dollars") loaded Wikipedia's "ASEAN" aggregate row as a 12th country (Nominal GDP 8.3M = members 4,171,400 + the ASEAN row; member count 12 vs 11), and its blueprint labels reached the recipe as `Total Population (M)','Total Nominal GDP (USD M) - Population` (see ../data/builds/b_568901c19819/v1/docs/blueprint.md line 77 and recipe.jsonl s006, s008).
   - Spec: docs/architecture.md#Blueprint
   - Files: src/dss/data/research.py, src/dss/harness/nodes/research.py, src/dss/harness/nodes/blueprint.py, src/dss/spec/validate.py, tests/test_research.py, tests/test_blueprint.py, tests/test_spec_validate.py, tests/data/research_asean_gdp.html

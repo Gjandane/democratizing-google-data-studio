@@ -35,6 +35,35 @@ def allowed_types():
     return set(catalog()) if configured is None else {s.strip() for s in configured.split(",") if s.strip()}
 
 
+QUOTES = "'\""
+# Python/JSON list or quote fragments a model leaked into a label: `','`, `['`, `"]`.
+FRAGMENT_SYNTAX = re.compile(r"""['"]\s*,\s*['"]|\[\s*['"]|['"]\s*\]""")
+
+
+def _unquote(text):
+    while True:
+        text = text.strip()
+        if len(text) >= 2 and text[0] == text[-1] and text[0] in QUOTES and text.count(text[0]) == 2:
+            text = text[1:-1]
+        elif text[:1] in QUOTES and text and text.count(text[0]) % 2:
+            text = text[1:]
+        elif text[-1:] in QUOTES and text and text.count(text[-1]) % 2:
+            text = text[:-1]
+        else:
+            return text
+
+
+def label_text(label):
+    """The one-line label: its first clean fragment, or None when no clean fragment is left.
+    Balanced inner quotes (`Sales 'Q1'`) are text, not syntax."""
+    text = " ".join(label.split())
+    for fragment in FRAGMENT_SYNTAX.split(text) if FRAGMENT_SYNTAX.search(text) else [text]:
+        fragment = _unquote(re.sub(r"""^\[\s*(?=['"])|(?<=['"])\s*\]$""", "", fragment.strip()))
+        if fragment:
+            return fragment
+    return None if text else ""
+
+
 def high_questions(text):
     blocks = re.finditer(r"(?ms)^-\s+(q\d+):\s*(.*?)(?=^-\s+q\d+:|\Z)", text)
     return [m[1] for m in blocks if re.search(r"\(priority:\s*high\)\s*$", m[2])]
@@ -107,6 +136,8 @@ def _validate_page(spec, p, page, rules, allowed, fields, ids, refs, error):
                 continue
             if item.question_ref:
                 refs[item.question_ref] += 1
+            if "\n" in item.label or "\r" in item.label or label_text(item.label) != " ".join(item.label.split()):
+                error(path + ".label", "Label must be one line without list or quote syntax")
             rule = rules.get(item.type)
             if rule is None or item.type not in allowed:
                 error(path + ".type", "Component type is not allowed by the catalog and DSS_ALLOWED_TYPES")

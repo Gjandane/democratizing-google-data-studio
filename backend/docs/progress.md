@@ -1115,3 +1115,15 @@ context. Task status lives in docs/plan.md, not here.
 - Affected: 17.1 remains first; 18.1 -> 18.2 follow. Release 2.5 is reopened with Needs on both fixes; hosted 4.3 keeps its existing dependency/acceptance. Existing deferred hardening and other limitations are not promoted into this change.
 - Checks: backend stamp and lint, release lint/program and root contract check recorded in the matching root Change entry. Product tests are the builders' Done-when checks, not claimed as run here.
 - Next: backend builder 17.1, then 18.1 and 18.2 in fresh sessions; release reruns 2.5 after both fixes land.
+
+## 2026-10-22: Task 17.1 Clean component labels and research aggregate rows
+- Status: done
+- Plan check: off
+- What changed: research.make_table normalizes marked numbers (`1,440,000 2025e)[5]` -> 1440000) and drops aggregate rows (Table.excluded/possible -> sources.md). validate.label_text repairs leaked list/quote label syntax; blueprint applies it, sends unrepairable labels through the one row repair, then a code fallback; validate_spec rejects dirty labels.
+- Checks: `uv run pytest tests/test_research.py tests/test_blueprint.py tests/test_spec_validate.py tests/test_recipe_contract.py` PASS 298; Test (all) `uv run pytest` PASS 1411 (12 deselected). New tests fail on old code (23 checked).
+- Decisions: aggregate signals: bare total name, unranked row in a ranked (1..n) column, label in table title, equals sum of other rows (1%). Drop only on a bare total name in an unranked table/row, or unranked + another signal; ranked rows are never dropped; one signal or no-rank pairs -> "possible aggregate" (kept, per If). Placeholder dashes in numeric columns load empty. Label error is diagnostics-shaped, never persisted; fallback "<metrics> by <dimension>". Old persisted dirty blueprints now fail layout until redrafted.
+- Digest: research.Table.excluded/possible [{label, reason}] (sources.md lists both); research.normalize_numbers(rows)->numeric cols. validate.label_text(label)->str|None; validate_spec errors `<path>.label` on list/quote syntax or newlines; blueprint.fallback_label(component).
+- Tried and failed: none
+- Gotchas: none
+- Left open: P3 a legit quoted list label (`Orders 'open', 'closed'`) is cut to its first fragment and trailing possessives fail validation - src/dss/spec/validate.py
+- Next: Task 18.1. Start with `status`.

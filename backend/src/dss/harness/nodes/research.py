@@ -50,6 +50,12 @@ def write_sources(folder, run_id, citations, collector, selected=None):
     body += f'\nRequests: {len(collector.attempts)}. Stop: {collector.stop_reason or "candidates_exhausted"}.\n'
     if selected is not None:
         body += f'\nSelected for intake: {selected.url}\n\nCSV: research-{run_id}.csv ({len(selected.rows)} rows).\n'
+        if selected.excluded:
+            body += '\nAggregate rows left out of the CSV:\n'
+            body += ''.join(f'- {item["label"]}: {item["reason"]}\n' for item in selected.excluded)
+        if selected.possible:
+            body += '\nKept rows that are possible aggregates (one signal only):\n'
+            body += ''.join(f'- {item["label"]}: possible aggregate ({item["reason"]})\n' for item in selected.possible)
     else:
         body += '\nNo table selected for intake.\n'
     write_doc(path, {'type': 'Research Sources', 'title': 'Research sources'}, body)

@@ -563,3 +563,37 @@ def test_gps_fixtures_small_distinct_schemas_and_union():
             {'name': f.name, 'bq_type': f.field_type} for f in schema]})
     sql = blueprint_sql(connected, ViewSources(base='activity_summary', joins=[], union=['route_speeding_events']), [])
     assert 'CAST(NULL AS FLOAT64) AS `speed_kph`' in sql and 'dataset_name' in sql and 'UNION ALL' in sql
+
+
+def test_leaked_label_syntax_is_repaired_to_its_first_fragment_without_a_model_call(blueprint_api):
+    client, app, bid, sid, folder, bq, llm, value = blueprint_api
+    index = next(i for i, r in enumerate(value['rows']) if r['question_id'])
+    value['rows'][index]['component']['label'] = "Total Population (M)','Total Nominal GDP (USD M) - Population"
+    llm.replies = [json.dumps(value)]
+    confirm(client, app, bid)
+    draft = client.get(f'/api/builds/{bid}/blueprint').json()
+    assert llm.calls == 1
+    assert draft['rows'][index]['component']['label'] == 'Total Population (M)'
+    assert "','" not in (folder / 'docs/blueprint.md').read_text(encoding='utf-8')
+
+
+@pytest.mark.parametrize('repair_succeeds', [False, True])
+def test_label_without_a_clean_fragment_goes_through_the_one_row_repair(blueprint_api, repair_succeeds):
+    client, app, bid, sid, folder, bq, llm, value = blueprint_api
+    index = next(i for i, r in enumerate(value['rows']) if r['question_id'])
+    qid = value['rows'][index]['question_id']
+    value['rows'][index]['component']['label'] = "['', '']"
+    repaired = deepcopy([r for r in value['rows'] if r['question_id'] == qid])
+    repaired[0]['component']['label'] = 'Net revenue' if repair_succeeds else '"'
+    llm.replies = [json.dumps(value), json.dumps({'rows': repaired})]
+    confirm(client, app, bid)
+    draft = client.get(f'/api/builds/{bid}/blueprint').json()
+    assert llm.calls == 2
+    assert 'without list or quote syntax' in str(llm.seen[1].config.system_instruction)
+    labels = [r['component']['label'] for r in draft['rows'] if r['question_id'] == qid]
+    metric = repaired[0]['component']['metrics'][0]['field'].replace('_', ' ')
+    assert labels[0] == 'Net revenue' if repair_succeeds else labels[0].lower().startswith(metric)
+    assert all(label and node.label_text(label) == label for label in labels)
+    # Label syntax is code-repaired, never a persisted feasibility issue.
+    assessment = client.get(f'/api/builds/{bid}/feasibility').json()
+    assert not any('quote syntax' in i['reason'] for i in assessment['issues'])

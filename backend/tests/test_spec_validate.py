@@ -277,3 +277,32 @@ def test_question_ref_coverage_applies_to_layout_output_not_revise_patches():
         assert validate_spec(spec, allowed=catalog()) == []
         assert validate_spec(spec, allowed=catalog(), question_refs=refs) == [
             {'path': 'pages', 'message': f'Blueprint question {ref} needs {count} component(s) with question_ref {ref}'}]
+
+
+@pytest.mark.parametrize('label, expected', [
+    ("Total Population (M)','Total Nominal GDP (USD M) - Population", 'Total Population (M)'),
+    ("['Total Sales', 'Orders']", 'Total Sales'),
+    ('["Revenue"]', 'Revenue'),
+    ("'Revenue'", 'Revenue'),
+    ('Revenue"', 'Revenue'),
+    ('"Revenue', 'Revenue'),
+    ("', 'Orders", 'Orders'),
+    ('Revenue\nby region', 'Revenue by region'),
+    ("Sales 'Q1' by region", "Sales 'Q1' by region"),
+    ('Revenue [USD]', 'Revenue [USD]'),
+    ("['', '']", None),
+    ('"', None),
+])
+def test_label_text_keeps_the_first_clean_fragment(label, expected):
+    from dss.spec.validate import label_text
+    assert label_text(label) == expected
+
+
+@pytest.mark.parametrize('label', ["Total Population (M)','Total Nominal GDP", '["Revenue"]', "Revenue'", 'Two\nlines'])
+def test_labels_with_list_quote_syntax_or_lines_fail_validation(label):
+    spec = sample()
+    spec['pages'][0]['components'][0]['label'] = label
+    assert validate_spec(spec) == [{'path': 'pages.0.components.0.label',
+                                    'message': 'Label must be one line without list or quote syntax'}]
+    spec['pages'][0]['components'][0]['label'] = "Sales 'Q1'"
+    assert not validate_spec(spec)
