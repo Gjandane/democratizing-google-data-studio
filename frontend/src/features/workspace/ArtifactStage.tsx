@@ -1,7 +1,7 @@
 // The four artifact stages (context, outline, design, blueprint) in one frame: load, refetch on
 // `artifact.updated`, a read-only summary, and the stage's confirm and secondary actions.
-// The context has its editor (14.2) and the outline its picker (14.3); tasks 14.4-14.5 replace the
-// other summaries the same way.
+// The context has its editor (14.2), the outline its picker (14.3) and the design its picker (14.4);
+// task 14.5 replaces the blueprint summary the same way.
 import { FileQuestion } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../../api/client';
@@ -25,6 +25,7 @@ import { LoadingState } from '../../components/Spinner';
 import { presetFor } from '../activity/presets';
 import type { BuildStream, RunErrorNode } from '../activity/useBuildStream';
 import { ContextEditor } from './context/ContextEditor';
+import { DesignPicker } from './design/DesignPicker';
 import { OutlinePicker, selectedCount } from './outline/OutlinePicker';
 import { StageFrame } from './StageFrame';
 import { STAGE_LABELS, staleCause } from './Stepper';
@@ -116,43 +117,6 @@ function Issues({ issues }: { issues: ValidationIssue[] }) {
   );
 }
 
-/** A user-chosen color: shown only as a data swatch (inline style), always with its hex as text. */
-function Swatch({ color, name }: { color: string; name?: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span aria-hidden="true" className="size-4 shrink-0 rounded-control border border-border" style={{ backgroundColor: color }} />
-      <code className={mono}>{name ? `${name} ${color}` : color}</code>
-    </span>
-  );
-}
-
-function DesignSummary({ design }: { design: Design }) {
-  return (
-    <>
-      <dl className="mt-4 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-body">
-        <dt className="text-text-muted">Preset</dt>
-        <dd><code className={mono}>{design.preset_id}</code>{design.source === 'reference' && <span className="ml-2 text-label text-text-muted">From your reference</span>}</dd>
-        <dt className="text-text-muted">Colors</dt>
-        <dd className="flex flex-wrap gap-3">
-          <Swatch name="background" color={design.background} />
-          <Swatch name="surface" color={design.surface} />
-          <Swatch name="text" color={design.text} />
-          <Swatch name="accent" color={design.accent} />
-        </dd>
-        <dt className="text-text-muted">Palette</dt>
-        <dd className="flex flex-wrap gap-3">{design.palette.map((c, i) => <Swatch key={i} color={c} />)}</dd>
-        <dt className="text-text-muted">Font</dt>
-        <dd className="text-text">{design.font_family}</dd>
-        <dt className="text-text-muted">Pages</dt>
-        <dd className="text-text">{design.page_structure === 'per_section' ? 'One page per section' : 'A single page'}, {design.density}</dd>
-        <dt className="text-text-muted">Title</dt>
-        <dd className="text-text">{design.title}{design.subtitle && <span className="text-text-muted"> · {design.subtitle}</span>}</dd>
-      </dl>
-      <Issues issues={design.issues} />
-    </>
-  );
-}
-
 function BlueprintSummary({ blueprint }: { blueprint: Blueprint }) {
   const pages = [...new Set(blueprint.rows.map((r) => r.page))].sort((a, b) => a - b);
   return (
@@ -174,11 +138,6 @@ function BlueprintSummary({ blueprint }: { blueprint: Blueprint }) {
       ))}
     </>
   );
-}
-
-function Summary({ name, value }: { name: ArtifactName; value: Values[ArtifactName] }) {
-  if (name === 'design') return <DesignSummary design={value as Design} />;
-  return <BlueprintSummary blueprint={value as Blueprint} />;
 }
 
 /** Mount with `key={name}`: its loaded value belongs to one artifact. */
@@ -336,7 +295,9 @@ export function ArtifactStage({
     body = <ContextEditor build={build} context={value as Context} disabled={locked} onSaved={(saved) => void onSaved(saved)} onSavingChange={onSavingChange} />;
   else if (name === 'outline')
     body = <OutlinePicker build={build} outline={value as Outline} disabled={locked} onSaved={(saved) => void onSaved(saved)} onSavingChange={onSavingChange} onCountChange={setOutlineCount} startedRuns={startedRuns} />;
-  else body = <Summary name={name} value={value} />;
+  else if (name === 'design')
+    body = <DesignPicker build={build} design={value as Design} disabled={locked} onSaved={(saved) => void onSaved(saved)} onSavingChange={onSavingChange} />;
+  else body = <BlueprintSummary blueprint={value as Blueprint} />;
 
   return (
     <StageFrame

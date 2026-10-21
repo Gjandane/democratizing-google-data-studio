@@ -620,25 +620,33 @@ function designIssues(design: Omit<Design, 'revision' | 'issues'>): ValidationIs
   return issues;
 }
 
-/** A fresh Design: the archetype's preset; one page per section when 1-5 sections have a selected question. */
+/** The mock's stand-in for colors read from a style reference: a teal accent leading the palette. */
+const REFERENCE_ACCENT = '#0F766E';
+
+/**
+ * A fresh Design: the archetype's preset, then the style reference's colors (source `reference`)
+ * when the current version has a style reference; one page per section when 1-5 sections have a
+ * selected question.
+ */
 function prefilledDesign(build: Build): Design {
   const preset = fixtures.designPresets.find((p) => p.archetypes.includes(build.archetype)) ?? fixtures.designPresets[0]!;
   const { context, outline } = artifactsOf(build.id);
   const sections = outline?.sections.filter((s) => s.questions.some((q) => q.selected)).length ?? 0;
+  const styled = state.references.get(`${build.id}:${build.current_version}`)?.mode === 'style';
   return {
     revision: 0,
     preset_id: preset.id,
     background: preset.background,
     surface: preset.surface,
     text: preset.text,
-    accent: preset.accent,
-    palette: clone(preset.palette),
+    accent: styled ? REFERENCE_ACCENT : preset.accent,
+    palette: styled ? [REFERENCE_ACCENT, ...preset.palette.slice(1)] : clone(preset.palette),
     font_family: preset.font_family,
     page_structure: sections >= 1 && sections <= 5 ? 'per_section' : 'single',
     density: 'comfortable',
     title: context?.title ?? build.title,
     subtitle: null,
-    source: 'preset',
+    source: styled ? 'reference' : 'preset',
     issues: [],
   };
 }

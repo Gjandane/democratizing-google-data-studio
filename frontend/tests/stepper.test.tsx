@@ -121,7 +121,7 @@ describe('Workspace with the staged stepper', () => {
 
     fireEvent.click(confirmOutline);
     await waitFor(() => expect(stageHeading()).toBe('Design'));
-    await within(screen.getByRole('main')).findByText('accent #1D4ED8');
+    expect((await within(screen.getByRole('main')).findByLabelText('Accent') as HTMLInputElement).value).toBe('#1D4ED8');
     const confirmDesign = await within(screen.getByRole('main')).findByRole('button', { name: 'Confirm design' });
     await waitFor(() => expect((confirmDesign as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(confirmDesign);

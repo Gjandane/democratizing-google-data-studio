@@ -455,3 +455,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: jsdom dispatches clicks on controls in a disabled fieldset; assert `:disabled`, not that a click did nothing.
 - Left open: P3 Suggest more/Add question look enabled but do nothing while a selection PUT is in flight - OutlinePicker.tsx; P3 KPI chips swap ids for names after GET context (chip width shift) - OutlinePicker.tsx; P3 scroll assertion uses a stubbed scrollTop (real guard is same-node + no loading) - tests/outline.test.tsx; P3 mock rationale "Added by you." repeats the origin chip - src/mocks/api.ts.
 - Next: Task 14.4 Design picker. Start by reading ArtifactStage DesignSummary and the outline/ picker pattern.
+
+## 2026-10-21: Task 14.4 Design picker
+- Status: done
+- Plan check: off
+- What changed: New src/features/workspace/design/DesignPicker.tsx (preset cards, base-color and palette hex fields, font select, pages and density radios, title/subtitle, source chip) and DesignPreview.tsx (Swatch, mini preview); ArtifactStage mounts the picker instead of DesignSummary; mock prefill takes a style reference as source `reference`.
+- Checks: `npm test -- design` PASS (12/12); `npm run typecheck` PASS; Test (all) `npm test` PASS (408/408, 20 files); screenshots/14.4-design-1280.png and -1440.png checked: yes (no overlap, swatches carry hex text, preview beside fields).
+- Decisions: save model copied from ContextEditor (preset pick, palette add/remove, selects and radios PUT at once; hex and text fields on blur; edit counters). Preset cards are aria-pressed buttons so re-pressing re-applies the preset. Color/palette/font edits set source `user`; title, subtitle, pages and density keep the source. Hex fields keep invalid text only while focused and never send it (like NumberField). Per-section hint counts outline sections with a selected question; over 5 it says so (no client block). Mock: a style ReferenceSet for the current version makes prefill accent/palette[0] #0F766E and source `reference`. Necessary extras: ArtifactStage.tsx (mount), tests/stepper.test.tsx (one assertion read the removed summary text, now reads the Accent input). ReferencePanel.tsx unchanged (already shown on Design).
+- Digest: DesignPicker({build, design, disabled, onSaved, onSavingChange}) in src/features/workspace/design/; exports HEX, PALETTE_MIN/MAX, MAX_PAGES; DesignPreview.tsx exports Swatch({color, name?, small?}) and DesignPreview({design: DesignUpdate}).
+- Tried and failed: none
+- Gotchas: none
+- Left open: P3 outline load failure silently drops the page-count hint - DesignPicker.tsx; P3 presets Try again sits inside the disabled fieldset during a run - DesignPicker.tsx; P3 no tests for a failed save, failed/empty preset load or another tab's artifact.updated adoption - tests/design.test.tsx.
+- Next: Task 14.5 Blueprint review, prototype page tabs and the live staged walkthrough (needs backend 15.11 for its live leg). Start by reading ArtifactStage BlueprintSummary and FeasibilityPanel.

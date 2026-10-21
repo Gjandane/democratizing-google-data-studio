@@ -224,7 +224,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `npm test -- outline` and `npm run typecheck` pass: ticking sends PUT outline/selection and keeps the scroll position; Recommended questions start ticked from the fixture; Re-propose keeps Other questions; Suggest more and Other show a run in the activity column and the new questions appear after artifact.updated; 25 selected disables Confirm with "24 at most"; an Other text asking for GPS animation shows the assistant's explanation in the activity column; screenshots/14.3-outline-{1280,1440}.png checked against docs/staged-ui.md and the UI design section.
   - Review focus: ../contracts/api.md 2.0 outline endpoints; checkbox semantics and labels for screen readers; no layout shift when questions arrive.
-- [ ] 14.4 Design picker
+- [x] 14.4 Design picker
   - Goal: preset cards, palette editor, font, page structure, density, title/subtitle and a mini preview; reference-prefilled values marked; confirm.
   - Spec: docs/staged-ui.md
   - Files: src/features/workspace/design/*, src/features/workspace/ReferencePanel.tsx, src/mocks/*.ts, tests/design.test.tsx
