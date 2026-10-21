@@ -1008,3 +1008,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: see AGENTS.md.
 - Left open: none.
 - Next: Task 15.6 Blueprint node, view sources and union view; wire Design confirmation to the Blueprint run.
+
+## 2026-10-21: Task 15.6 Blueprint node, view sources and union view
+- Status: done
+- Plan check: off
+- What changed: Blueprint generation/redrafts, coverage repair, join/union SQL validation, endpoints, bounded catalog prompts and GPS fixtures.
+- Checks: `uv run pytest tests/test_blueprint.py tests/test_view_sql.py` PASS (49); `uv run pytest` PASS (1298, 10 live deselected, 340.88s); read-only review: no remaining findings; `git diff --check -- .` PASS.
+- Decisions: Context expressions retain raw scope; extras use normalized projection. Budgets: 14k/6k, one generation/coverage repair/SQL repair. Full feasibility remains 15.7; coverage alone leaves Assessment unchecked. Outside Files: profile.py preserves array mode. Added AGENTS.md font gotcha. No dependencies.
+- Digest: nodes/blueprint.py load/make_branch; view.blueprint_sql(..., context_fields=()) and blueprint_fields(...); design/confirm and blueprint/regenerate dispatch one run. blueprint-inputs.json stores question hashes, Context field names and diagnostics; 15.7 adds full feasibility.
+- Tried and failed: Fixed fixture-font setup and reviewed raw-expression/nested/array gaps. Interrupted one redundant full run before final checks.
+- Gotchas: see AGENTS.md.
+- Left open: none.
+- Next: Task 15.7; extend row_errors and Assessment with full feasibility, alternatives and decisions.

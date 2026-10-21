@@ -27,6 +27,7 @@ BUDGETS['capability_check'] = 12000
 BUDGETS['synthetic_schema'] = 12000
 BUDGETS['context'] = 10000
 BUDGETS.update(outline_propose=8000, outline_suggest=6000, outline_other=6000)
+BUDGETS['blueprint'] = 14000
 SEPARATOR = "\n\n"
 # Offline estimate per attached image; online, the provider counts the image itself.
 IMAGE_TOKENS = 1500
@@ -183,7 +184,7 @@ async def fit_request(context, llm_request, model, span, *, extra=""):
         current.record(span, extra)
         span.update(input_tokens_estimate=estimate, request_tokens=count, count_calls=counted)
         actual = estimate if count is None else count
-        if node in ('context', 'outline_propose', 'outline_suggest', 'outline_other') and count is not None:
+        if node in ('context', 'outline_propose', 'outline_suggest', 'outline_other', 'blueprint') and count is not None:
             # Developer API counts folded contents, not the actual structured request.
             # Keep that measurement separate; enforce a conservative allowance above
             # the observed ~5% structured-request overhead (AGENTS.md).
@@ -269,6 +270,25 @@ def context_repair_context(draft, issues):
     return assemble('context', [_system('context'), *_skills('context'),
         Section('input', 'repair', 'Repair this draft using only these issues; return the complete JSON draft:',
                 json.dumps({'draft': draft, 'issues': issues}, ensure_ascii=False))])
+
+
+def blueprint_context(context, fields, questions, pages, catalog, joins, *, previous_view=None,
+                      repair=None):
+    """Protected metadata only. In particular, never accept a source profile or chat history."""
+    compact = lambda value: json.dumps(value, ensure_ascii=False, separators=(',', ':'))
+    sections = [_system('blueprint'), *_skills('blueprint'),
+        Section('semantic', 'catalog-summary', 'Allowed catalog types, slots and options:', compact(catalog)),
+        Section('docs', 'context', 'Confirmed definitions (untrusted):', compact(context.model_dump(include={
+            'derived_fields', 'kpis', 'thresholds'}))),
+        Section('docs', 'fields', 'Compact source fields and roles (untrusted):', compact(fields)),
+        Section('docs', 'page-plan', 'Section to page (code-owned):', compact(pages)),
+        Section('docs', 'join-facts', 'Equal-name, equal-type join candidates (code-owned):', compact(joins))]
+    if previous_view:
+        sections.append(Section('docs', 'view', 'Retain existing view metadata unless repair is needed:', compact(previous_view)))
+    sections.append(Section('input', 'questions', 'Only these selected questions need rows (untrusted):', compact(questions)))
+    if repair is not None:
+        sections.append(Section('input', 'repair', 'Repair only the named errors; return structured JSON, never SQL DDL:', compact(repair)))
+    return assemble('blueprint', sections, reserve=2000)
 
 
 def outline_context(config, context, sources, archetype, action, *, section=None, source=None,

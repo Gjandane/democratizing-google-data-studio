@@ -57,3 +57,4 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - The 100 ms feasibility timing oracle hit 104.9 ms in a full run, then passed unchanged in isolation and a serial full rerun; avoid overlapping check runs before diagnosing a timing failure.
 - Bold Georgia's W measures about 1.126em in Chromium; a 1em-per-character header estimate can clip an allowed 80-character title.
 - The periodic-backup test once saw `backups=[]` in a full run, then passed unchanged in isolation and a serial rerun; retry before diagnosing this timing assertion.
+- The shape-only `api/design.json` contract fixture uses a font outside the current theme presets; use a preset font when exercising Design confirmation.

@@ -67,7 +67,7 @@ def profile_table(service, table):
         shown = values if complete else values[:5]
         samples = values[:3] if complete else values[5:8]
         date_like = bool(string_date and stats['null_count'] < count and stats['invalid_dates'] == 0)
-        columns.append({'name': field.name, 'type': api_type, 'bq_type': field.field_type,
+        columns.append({'name': field.name, 'type': api_type, 'bq_type': field.field_type, 'mode': field.mode,
                         'null_pct': 100 * stats['null_count'] / count,
                         'distinct_count': stats['distinct_count'], 'date_like': date_like,
                         'min': str(stats['min_value']) if stats['min_value'] is not None and (not string_date or date_like) else None,

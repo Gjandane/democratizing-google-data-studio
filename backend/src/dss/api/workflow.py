@@ -13,6 +13,7 @@ from dss.db import new_id, now
 from dss.harness.guardrails import RunError
 from dss.harness.nodes import context as node
 from dss.harness.nodes import outline as outline_node
+from dss.harness.nodes import blueprint as blueprint_node
 
 router = APIRouter(prefix='/api/builds')
 
@@ -270,5 +271,41 @@ async def put_design(build_id: str, request: Request):
         return await design_node.persist(state.harness, build, folder, design_node.validate(draft, outline))
 
 
-# Design confirmation dispatches the Blueprint node in task 15.6, alongside
-# that node's harness branch; no placeholder run may claim a successful draft.
+@router.post('/{build_id}/design/confirm', status_code=202)
+async def confirm_design(build_id: str, request: Request):
+    state = request.app.state
+    with stages.action(state, build_id, ('design',)) as build:
+        folder, outline = design_inputs(state, build)
+        draft = design_node.load(folder)
+        issues = ([i.model_dump() for i in design_node.validate(draft, outline).issues] if draft else
+                  [{'path': '', 'message': 'Draft Design first'}])
+        transition = stages.confirmed(build, 'design', issues)
+        stages.save(state.db, build_id, transition)
+        build = {**build, **transition}
+        await state.harness.emit(build_id, None, 'stage.changed', {'stage': 'blueprint'})
+        accepted = enqueue(state, build_id, 'blueprint', {'build': build, 'folder': folder,
+            'config': state.settings.get(), 'factory': state.bigquery_factory})
+    state.harness.active_builds.add(build_id)
+    return accepted
+
+
+@router.get('/{build_id}/blueprint')
+async def get_blueprint(build_id: str, request: Request):
+    _, folder = current(request.app.state, build_id)
+    return blueprint_node.load(folder)
+
+
+@router.post('/{build_id}/blueprint/regenerate', status_code=202)
+async def regenerate_blueprint(build_id: str, request: Request):
+    state = request.app.state
+    with stages.action(state, build_id, ('blueprint', 'prototype')) as build:
+        folder, _ = design_inputs(state, build)
+        if stages.states(build)['design'] != 'confirmed':
+            raise stages.wrong_stage(build)
+        transition = stages.edited({**build, 'stage': 'blueprint'}, 'blueprint')
+        stages.save(state.db, build_id, transition)
+        build = {**build, **transition}
+        accepted = enqueue(state, build_id, 'blueprint', {'build': build, 'folder': folder,
+            'config': state.settings.get(), 'factory': state.bigquery_factory, 'regenerate': True})
+    state.harness.active_builds.add(build_id)
+    return accepted

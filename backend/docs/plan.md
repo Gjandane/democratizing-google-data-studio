@@ -432,7 +432,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - STOP: show the user the preset sheet (`uv run python scripts/render_presets.py` writes one PNG per preset: header kit, palette swatches, a sample scorecard and bar in the theme) and get approval or changes before marking done.
   - Done when: `uv run pytest tests/test_design.py tests/test_api_contract.py` passes per the Design oracle (every preset valid, contrast >= 4.5:1, the stdlib color-blindness check passes, fonts in fonts.md, prefill per archetype and from a reference, per_section prefilled only for 1-5 sections, low-contrast edit and per_section with 6 sections give issues, shapes = design.json and design_presets.json); `uv run pytest` passes; the preset sheet PNGs are opened and visually checked, then approved by the user.
   - Review focus: ../contracts/api.md 2.0 design endpoints; built with the frontend-design and ui-ux-pro-max skills; decorations deterministic; no new dependency.
-- [ ] 15.6 Blueprint node, view sources and union view
+- [x] 15.6 Blueprint node, view sources and union view
   - Goal: selected questions -> blueprint rows, view sources and derived fields; the view built and dry-run from them; unchanged questions keep their rows on a redraft.
   - Spec: docs/architecture.md#Blueprint; docs/architecture.md#BigQuery view
   - Files: src/dss/harness/nodes/blueprint.py, src/dss/harness/nodes/view.py, src/dss/data/bigquery.py, src/dss/harness/graph.py, src/dss/harness/context.py, src/dss/api/workflow.py, prompts/v1/blueprint.md, skills/blueprint.md, tests/test_blueprint.py, tests/test_view_sql.py, tests/data/gps_activity_summary.csv, tests/data/gps_route_speeding_events.csv

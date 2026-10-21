@@ -1,0 +1,7 @@
+vehicle,activity_date,distance_km,driving_minutes,idle_minutes,trip_count
+Van A,2026-10-01,128.4,185,22,6
+Van B,2026-10-01,86.2,142,35,4
+Van A,2026-10-02,142.1,204,18,7
+Van B,2026-10-02,91.7,155,29,5
+Truck C,2026-10-02,254.3,310,42,3
+Truck C,2026-10-03,198.8,276,31,4
