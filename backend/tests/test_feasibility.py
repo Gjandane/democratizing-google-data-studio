@@ -1217,3 +1217,75 @@ def test_decision_recompute_budget():
     a = req.evaluate(snapshot, ledger, checker)
     elapsed = time.perf_counter() - started
     assert a.state == "ready" and elapsed < .1
+
+
+def staged_snapshot(pages, questions):
+    """A connected sales source, the shape fixtures and a staged Blueprint, before layout (16.1)."""
+    from test_blueprint import fixture
+    from test_render import staged_rows
+    from dss.data.bigquery import prepare_csv
+    _, columns, _ = prepare_csv(Path('tests/data/interview_sales.csv').read_bytes())
+    context = fixture('context')
+    context.update(datasets=[{'source_id': 'sales', 'summary': 'Sales'}], derived_fields=[])
+    outline, rows = staged_rows(pages, questions)
+    blueprint = fixture('blueprint')
+    blueprint.update(view_sources={'base': 'sales', 'joins': [], 'union': []}, derived_fields=[], rows=rows)
+    return {'sources': [{'id': 'sales', 'table': 'p.d.sales', 'columns': [
+        {'name': c.name, 'type': c.field_type, 'bq_type': c.field_type} for c in columns]}],
+        'context': context, 'outline': outline, 'design': fixture('design'), 'blueprint': blueprint,
+        'incoming': [], 'reference': None, 'definitions': {}, 'spec': None}
+
+
+def laid_out(snapshot):
+    from dss.artifacts.models import Blueprint, Design, Outline
+    from dss.harness.nodes import view
+    from dss.spec.auto_layout import layout
+    blueprint = Blueprint.model_validate(snapshot['blueprint'])
+    fields = view.blueprint_fields(snapshot['sources'], blueprint.view_sources, [])
+    return layout(blueprint, Design.model_validate(snapshot['design']), Outline.model_validate(snapshot['outline']),
+                  fields, build_id='b_123456789abc', archetype='executive').model_dump(mode='json')
+
+
+@pytest.mark.parametrize('pages,questions', [(3, 3), (5, 4)])
+def test_staged_scope_is_ready_before_and_after_layout(pages, questions):
+    """No total-component ceiling: 27 and 60 laid-out components stay ready (final re-audit 16.1)."""
+    checker = capabilities.Checker(capabilities.load_registry())
+    snapshot = staged_snapshot(pages, questions)
+    before = req.evaluate(snapshot, req.Ledger(), checker)
+    assert before.state == 'ready', before.issues
+    snapshot['spec'] = laid_out(snapshot)
+    assert [len(p['components']) for p in snapshot['spec']['pages']] == [3 * questions] * pages
+    after = req.evaluate(snapshot, req.Ledger(), checker)
+    assert after.state == 'ready' and after.issues == [], after.issues
+    assert req.coverage_errors(snapshot, req.Ledger(), checker) == []
+
+
+def thirteen_on_one_page(bp):
+    bp['rows'][9:13] = [{**r, 'page': 1, 'section_id': 's1'} for r in bp['rows'][9:13]]
+
+
+def unknown_field(bp):
+    bp['rows'][4]['component']['dimensions'] = ['missing_field']
+
+
+def wrong_kpi(bp):
+    bp['rows'][0]['component']['metrics'] = [{'field': 'revenue', 'agg': 'avg'}]
+
+
+def unsupported_option(bp):
+    bp['rows'][1]['component']['options'] = {'animate': True}
+
+
+@pytest.mark.parametrize('change,reason', [
+    (thirteen_on_one_page, 'Too many components'),
+    (lambda bp: bp['rows'][-1].update(page=6), 'Blueprint needs 1-5 pages'),
+    (unknown_field, 'missing_field'),
+    (wrong_kpi, 'confirmed field and aggregation'),
+    (unsupported_option, 'Option animate')])
+def test_staged_scope_keeps_row_page_field_kpi_and_capability_checks(change, reason):
+    checker = capabilities.Checker(capabilities.load_registry())
+    snapshot = staged_snapshot(3, 3)
+    change(snapshot['blueprint'])
+    assessment = req.evaluate(snapshot, req.Ledger(), checker)
+    assert assessment.state == 'blocked'
+    assert any(reason in i.reason and i.resolution == 'unresolved' for i in assessment.issues), assessment.issues

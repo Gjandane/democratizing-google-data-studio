@@ -7,7 +7,9 @@ from jsonschema import Draft202012Validator
 from dss.recipe.compiler import compile_recipe
 from dss.spec.layout import box, with_synthetic_label
 from dss.spec.models import SYNTHETIC_LABEL_ID
-from test_render import three_pages
+from test_render import three_pages, staged_flow  # noqa: F401  (fixture)
+from test_blueprint import blueprint_api  # noqa: F401  (fixture)
+from test_context_node import context_api  # noqa: F401  (fixture)
 
 SCHEMA = json.loads(Path('../contracts/recipe.schema.json').read_text(encoding='utf-8'))
 EVIDENCE = Path('.blueprint/qa/task-15.9')
@@ -74,6 +76,29 @@ def test_synthetic_compile_rebuilds_one_background_per_page(tmp_path, monkeypatc
     node.perform(spec, 1, tmp_path)
     assert captured == [([str(p.index)], 1200, p.height) for p in spec.pages]
     assert sorted(p.name for p in tmp_path.glob('background_p*.png')) == ['background_p1.png', 'background_p2.png', 'background_p3.png']
+
+
+async def test_staged_27_components_compile_and_fake_engine_run_done(staged_flow, monkeypatch):
+    """16.1: a published 9+9+9 dashboard compiles every component and its run reaches done."""
+    import sys
+    from dss.spec.models import DashboardSpec
+    from test_execute import engine_inputs
+    from test_thin_slice import ROOT, wait_done
+    client, app, bid, folder, bq, run_id = staged_flow
+    spec = DashboardSpec.model_validate_json((folder / 'spec.json').read_text(encoding='utf-8'))
+    recipe = client.post(f'/api/builds/{bid}/recipe')
+    assert recipe.status_code == 200, recipe.text
+    ops = lines((folder / 'recipe.jsonl').read_text(encoding='utf-8'))[1:]
+    charts = [o['component_id'] for o in ops if o['op'] == 'add_chart']
+    assert sorted(charts) == sorted(c.id for p in spec.pages for c in p.components) and len(charts) == 27
+    assert [o['op'] for o in ops].count('add_page') == 2
+    monkeypatch.setenv('DSS_ENGINE_CMD', f'"{sys.executable}" "{ROOT / "tests/fake_engine.py"}"')
+    monkeypatch.setenv('DSS_ENGINE_DRY_RUN', '1')
+    seen = engine_inputs(monkeypatch)
+    started = client.post(f'/api/builds/{bid}/run')
+    assert started.status_code == 202, started.text
+    assert wait_done(client, bid)['stage'] == 'done'
+    assert seen == [compile_recipe(spec, 1)]
 
 
 def test_synthetic_label_is_emitted_once_on_page_one():

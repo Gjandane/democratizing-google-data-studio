@@ -482,7 +482,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: no data rows or chat history in any prompt (trace sections); failure evidence kept.
 
 ## Phase 16: Audit fixes
-- [ ] 16.1 Align feasibility with the staged multi-page component scope
+- [x] 16.1 Align feasibility with the staged multi-page component scope
   - Goal: a valid multi-page Blueprint remains feasible after layout and reaches prototype, recipe and execution without the obsolete 24-component refusal.
   - Spec: docs/architecture.md#Multi-page feasibility scope
   - Files: src/dss/spec/requirements.py, tests/test_feasibility.py, tests/test_render.py, tests/test_compiler.py

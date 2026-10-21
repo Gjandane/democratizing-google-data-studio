@@ -1090,3 +1090,15 @@ context. Task status lives in docs/plan.md, not here.
 - Left open: P1 obsolete component ceiling — task 16.1. The previous final ACCEPTED verdict does not cover this staged change set. Current state: 57/58 tasks done, one ready; backend acceptance and the root integration gate await repair/re-audit.
 - Mechanical checks: architecture/essentials stamp PASS; blueprint lint 0 errors/4 historical warnings; scoped git diff --check PASS. Essentials and AGENTS.md fit their size limits. Product/test/dependency paths remain at backend build commit 64d4da9.
 - Next: build 16.1 here in a fresh builder session, then re-audit the backend; after ACCEPTED, resume release integration from the program root.
+
+## 2026-10-21: Task 16.1 Align feasibility with the staged multi-page component scope
+- Status: done
+- Plan check: off
+- What changed: requirements.evaluate no longer adds the global ">24 components" scope issue; MAX_COMPONENTS = 60 and Extracted.component_ids max 60. Tests: test_render staged_rows/staged_flow (3x9 and 5x12 accept -> prototype -> recheck ready), test_compiler 27-component recipe + fake-engine done, test_feasibility staged ready before/after layout + 5 negative cases.
+- Checks: `uv run pytest tests/test_feasibility.py tests/test_render.py tests/test_compiler.py tests/test_api_contract.py` PASS (228 passed, 2 deselected); Test (all) `uv run pytest` PASS (1386 passed, 12 deselected). New staged tests fail on HEAD's requirements.py (4 failed: feasibility_blocked after layout).
+- Decisions: no per-page spec component check added to evaluate (the 100 ms oracle evaluates 24 components on one page as ready; page count/12-row capacity stay Blueprint checks in spec/feasibility.py); revise patches cannot add components (patch.py). component_ids raised to the 60 scope so revision extraction can target any component.
+- Digest: requirements.MAX_COMPONENTS=60 (1-5 pages x 12 rows); evaluate has no total-component ceiling. Tests: test_render.staged_rows(pages, questions)->(outline, rows), staged_flow fixture (param (pages, questions)); test_feasibility.staged_snapshot/laid_out.
+- Tried and failed: none
+- Gotchas: none
+- Left open: P3 Extracted.component_ids >24 untested and not live-checked against Gemini schema - src/dss/spec/requirements.py; P3 staged 13-row/6-page negatives stop at evaluate, no staged accept-rejection view-write test - tests/test_feasibility.py
+- Next: backend re-audit (architect), then release integration from the program root.

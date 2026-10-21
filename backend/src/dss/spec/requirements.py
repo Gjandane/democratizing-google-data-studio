@@ -19,6 +19,8 @@ from dss.spec import capabilities, references
 
 MAX_REQUIREMENTS = 40
 MAX_ISSUES = 20
+# 1-5 pages x 12 rows (architecture.md#Multi-page feasibility scope); 24 is the Outline question limit.
+MAX_COMPONENTS = 60
 
 
 class Strict(BaseModel):
@@ -55,7 +57,7 @@ class Extracted(Strict):
     text: str = Field(min_length=1, max_length=2000)
     needs: list[capabilities.Need] = Field(default_factory=list, max_length=20)
     mappings: list[Mapping] = Field(default_factory=list, max_length=20)
-    component_ids: list[str] = Field(default_factory=list, max_length=24)
+    component_ids: list[str] = Field(default_factory=list, max_length=MAX_COMPONENTS)
     properties: list[Property] = Field(default_factory=list, max_length=20,
         description='Exact requested item properties, including title text, layout and decoration styling. Preserve explicit values; vague changes stay unknown.')
 
@@ -1115,8 +1117,7 @@ def evaluate(snapshot, ledger, checker, *, check_components=True):
             for field in sorted(set(bound) - fields.keys()):
                 add(component["id"], component.get("label", component["id"]),
                     capabilities.Verdict("needs_data", f"Field {field} is not in the connected data"))
-    if sum(len(p.get("components", [])) for p in (snapshot["spec"] or {}).get("pages", [])) > 24:
-        add("scope", "Assessment scope", capabilities.Verdict("needs_clarification", "More than 24 components; reduce the request scope"))
+    # Page count and per-page capacity are Blueprint/spec checks; there is no lower total-component ceiling.
     if ledger.scope_error:
         add("scope", "Assessment scope", capabilities.Verdict("needs_clarification", ledger.scope_error))
     if len(found) > MAX_ISSUES or sum(len(i.alternatives) for i in found) > MAX_ISSUES:

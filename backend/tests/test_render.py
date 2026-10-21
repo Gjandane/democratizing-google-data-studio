@@ -309,6 +309,73 @@ def blueprint_flow(request, blueprint_api, monkeypatch):
     return client, app, bid, folder, bq, accepted.json()['run_id']
 
 
+def staged_rows(pages, questions):
+    """`pages` sections x `questions` selected questions x 3 rows, one page per section (16.1)."""
+    from test_blueprint import fixture
+    outline, rows = fixture('outline'), []
+    question = outline['sections'][0]['questions'][0]
+    outline['sections'] = [{'id': f's{p}', 'title': f'Section {p}', 'purpose': f'Net revenue view {p}.', 'questions': [
+        {**question, 'id': f'q{p}_{j}', 'text': f'How does net revenue split in view {p}.{j}?', 'kpi_refs': ['net_revenue']}
+        for j in range(1, questions + 1)]} for p in range(1, pages + 1)]
+    for p in range(1, pages + 1):
+        for j in range(1, questions + 1):
+            for kind, dimensions in (('scorecard', []), ('bar', ['region']), ('bar', ['product_category'])):
+                rows.append({'question_id': f'q{p}_{j}', 'section_id': f's{p}', 'page': p, 'note': '', 'status': 'ok',
+                    'issue_ids': [], 'component': {'type': kind, 'label': f'Net revenue {p}.{j} {"by " + dimensions[0] if dimensions else "total"}',
+                    'dimensions': dimensions, 'metrics': [{'field': 'revenue', 'agg': 'sum'}], 'date_dimension': None,
+                    'breakdown': None, 'sort': {'field': 'revenue', 'order': 'desc'} if dimensions else None, 'options': {}}})
+    return outline, rows
+
+
+@pytest.fixture
+def staged_flow(request, blueprint_api, monkeypatch):
+    """Design confirm -> ready blueprint of N pages x 3Q rows -> accept, with fake views and capture."""
+    from test_blueprint import artifact, confirm
+    from test_context_node import wait
+    from dss.artifacts.models import Outline
+    client, app, bid, sid, folder, bq, llm, value = blueprint_api
+    pages, questions = getattr(request, 'param', (3, 3))
+    outline, value['rows'] = staged_rows(pages, questions)
+    artifact(folder, Outline.model_validate(outline))
+    llm.replies = [json.dumps(value)]
+    bq.created, bq.deleted = [], []
+    bq.create_view = lambda table, sql: bq.created.append(table)
+    bq.delete_view = lambda table: bq.deleted.append(table) or True
+    bq.aggregate = lambda sql: [{'region': 'West', 'product_category': 'A', 'm0': 10}]
+    monkeypatch.setattr(background, 'capture', lambda html, path, width, height: path.write_bytes(b'PNG'))
+    confirm(client, app, bid)
+    before = client.get(f'/api/builds/{bid}/feasibility').json()
+    assert before['state'] == 'ready', before['issues']
+    accepted = client.post(f'/api/builds/{bid}/blueprint/accept')
+    assert accepted.status_code == 202, accepted.text
+    wait(app)
+    return client, app, bid, folder, bq, accepted.json()['run_id']
+
+
+@pytest.mark.parametrize('staged_flow', [(3, 3), (5, 4)], indirect=True)
+async def test_staged_multipage_scope_publishes_past_24_components(staged_flow):
+    """Final re-audit 16.1: 9+9+9 (and 5 x 12) rows were blocked after layout by a global 24-component check."""
+    client, app, bid, folder, bq, run_id = staged_flow
+    from test_context_node import wait
+    with app.state.db.connect() as conn:
+        trace = conn.execute('SELECT * FROM traces WHERE run_id=?', (run_id,)).fetchone()
+    assert (trace['status'], client.get(f'/api/builds/{bid}').json()['stage']) == ('ok', 'prototype'), trace['error']
+    spec = DashboardSpec.model_validate_json((folder / 'spec.json').read_text(encoding='utf-8'))
+    blueprint = client.get(f'/api/builds/{bid}/blueprint').json()
+    per_page = [sum(r['page'] == p for r in blueprint['rows']) for p in range(1, len(spec.pages) + 1)]
+    assert [len(p.components) for p in spec.pages] == per_page and sum(per_page) == 3 * sum(
+        len(s['questions']) for s in client.get(f'/api/builds/{bid}/outline').json()['sections'])
+    assert per_page in ([9, 9, 9], [12] * 5) and bq.created == [spec.datasource.table] and not bq.deleted
+    items = PageParser(client.get(f'/api/builds/{bid}/prototype').text).items
+    assert {c.id for p in spec.pages for c in p.components} <= set(items)
+    after = client.get(f'/api/builds/{bid}/feasibility').json()
+    assert after['state'] == 'ready' and not after['prototype_stale'], after['issues']
+    # Explicit reassessment of the published prototype agrees with publication.
+    assert client.post(f'/api/builds/{bid}/feasibility/check').status_code == 202
+    wait(app)
+    assert client.get(f'/api/builds/{bid}/feasibility').json()['state'] == 'ready'
+
+
 def test_html_contract_geometry_layers(dashboard):
     for layer in ('all', 'decoration'):
         parsed = ContractParser(render(dashboard, layer=layer))
