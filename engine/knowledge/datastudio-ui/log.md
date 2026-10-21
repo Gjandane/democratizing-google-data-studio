@@ -6,6 +6,13 @@ timestamp: 2026-10-18
 selectors: {}
 ---
 
+- 2026-10-22 task 10.1: added `field_picker_search` (the picker's only input,
+  type search, aria-label "Text box to search Data Studio") and
+  `field_picker_empty` (`text="No results"`): the picker renders 16 field
+  buttons at most, so a later field is found only by searching. Added
+  `date_calendar` (`.cdk-overlay-pane:has(button.date-range-options)`, the
+  "Auto date range" button of the calendar pane; none visible before the
+  control's move drag, visible after it). Recorded the Rows per page values.
 - 2026-10-21 task 9.1: added `open_menu` (`role=menu`; none visible at editor
   readiness, the Arrange > Order menu while open). Background placement now
   requires neither `open_menu` nor `selected_component` (misc.md) visible.

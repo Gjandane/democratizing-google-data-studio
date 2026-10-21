@@ -75,6 +75,9 @@ def _replay(name, tmp_path, capsys, monkeypatch):
             "metrics": _labels(page, ctx, "metric_group_any"),
             "sort": _labels(page, ctx, "sort_group") if state["sort"] else [],
         }
+        if "rows_per_page" in (getattr(op, "options", None) or {}):
+            readback[op.id]["rows_per_page"] = (
+                ctx.locator(page, "rows_per_page_control").inner_text().strip())
 
     def read_control(page, op, ctx):
         control_verify(page, op, ctx)
@@ -177,3 +180,20 @@ def test_tall_canvas_places_every_component_below_the_fold(tmp_path, capsys, mon
     assert background["selected"] is False, background
     below = {op["op"] for op in ops if op.get("y", 0) >= 1200}
     assert below == {"add_chart", "add_control", "add_text"}
+
+
+def test_manual_acceptance_fields_date_control_and_rows_per_page(tmp_path, capsys, monkeypatch):
+    # Release 2.4 b_b17ad783d730 page 1 (1200 x 532): the date_range calendar
+    # covered the resize corner, and user_id was below the picker's rendered
+    # rows. b_568901c19819: Rows per page offers no 15. order_items has fewer
+    # columns than the release view, so the scorecard's picker renders user_id;
+    # s007's sixth metric is where its own metrics push user_id out of the rows.
+    _write_png(tmp_path / "background_short.png", 1200, 532)
+    ops, readback = _replay("acceptance_fixes.jsonl", tmp_path, capsys, monkeypatch)
+    _assert_readback(ops, readback)
+    assert readback["s008"]["rows_per_page"] == "10", readback["s008"]
+    events = [json.loads(line) for line in
+              (tmp_path / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    warnings = [event["message"] for event in events
+                if event["event"] == "log" and event["level"] == "warn"]
+    assert "s008: rows_per_page 15 is not offered; applied 10" in warnings, warnings

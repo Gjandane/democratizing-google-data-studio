@@ -166,6 +166,14 @@ def _field_picker(page: Any, ctx: OpContext) -> Any:
 def _choose_picker_field(page: Any, ctx: OpContext, field: str) -> None:
     picker = _field_picker(page, ctx)
     choices = picker.get_by_role("button", name=field, exact=True)
+    empty = picker.locator(ctx.selectors["field_picker_empty"])
+    search = picker.locator(ctx.selectors["field_picker_search"])
+    if not _visible(choices) and not _visible(empty) and _visible(search):
+        # The picker renders only the rows near its scroll position (16 field
+        # buttons, live 2026-10-22): a later field exists only once searched.
+        search.fill(field, timeout=ctx.timeout_ms())
+        _poll(page, ctx, lambda: _visible(choices) or _visible(empty),
+              f"field {field} not in data source")
     if not _visible(choices):
         raise OperationError(f"field {field} not in data source")
     choices.last.click(timeout=ctx.timeout_ms())
@@ -282,8 +290,21 @@ def _set_switch(page: Any, ctx: OpContext, key: str, enabled: bool, option: str)
         raise OperationError(f"Data Studio option {option} did not apply")
 
 
+def _nearest_option(requested: str, offered: list[str]) -> str | None:
+    """The offered number closest to the requested one; the smaller on a tie."""
+    values = [int(text) for text in offered if text.isdigit()]
+    if not requested.isdigit() or not values:
+        return None
+    target = int(requested)
+    return str(min(values, key=lambda value: (abs(value - target), value)))
+
+
 def _set_dropdown(page: Any, ctx: OpContext, control_key: str, value: str,
-                  option: str) -> None:
+                  option: str, *, nearest: bool = False) -> str:
+    """Choose value in a menu control and return the value chosen.
+
+    nearest: when the menu doesn't offer value, choose its nearest number instead.
+    """
     control = _locator(page, ctx, control_key)
     _wait_visible(control, ctx, f"Data Studio option {option} is unavailable")
     control.click(timeout=ctx.timeout_ms())
@@ -292,13 +313,19 @@ def _set_dropdown(page: Any, ctx: OpContext, control_key: str, value: str,
     pane = _locator(page, ctx, "last_overlay")
     _poll(page, ctx, lambda: _visible(pane.locator(ctx.selectors["dropdown_option"]).first),
           f"Data Studio option {option} menu did not open")
+    if nearest:
+        value = _nearest_option(value, pane.locator(ctx.selectors["dropdown_option"]).evaluate_all(
+            "es => es.map(e => e.innerText.trim())")) or value
     choices = pane.get_by_text(value, exact=True)
     if not _visible(choices):
+        page.keyboard.press("Escape")
         raise OperationError(f"Data Studio option {value} is unavailable")
     choices.last.click(timeout=ctx.timeout_ms())
+    return value
 
 
-def _set_title_and_options(page: Any, ctx: OpContext, op: Any) -> None:
+def _set_title_and_options(page: Any, ctx: OpContext, op: Any) -> str | None:
+    """Apply the title and chart options; return the table rows per page applied."""
     title_text = getattr(op, "title", None)
     if title_text:
         _locator(page, ctx, "style_tab").click(timeout=ctx.timeout_ms())
@@ -312,7 +339,7 @@ def _set_title_and_options(page: Any, ctx: OpContext, op: Any) -> None:
 
     options = getattr(op, "options", None) or {}
     if not options:
-        return
+        return None
     if op.chart_type == "scorecard" and "compact_numbers" in options:
         _locator(page, ctx, "style_tab").click(timeout=ctx.timeout_ms())
         _set_switch(page, ctx, "compact_numbers_switch",
@@ -330,8 +357,14 @@ def _set_title_and_options(page: Any, ctx: OpContext, op: Any) -> None:
                 _set_switch(page, ctx, "stacked_switch", bool(options["stacked"]), "stacked bars")
     elif op.chart_type == "table" and "rows_per_page" in options:
         _locator(page, ctx, "setup_tab").click(timeout=ctx.timeout_ms())
+        # Rows per page is a fixed menu (1, 5, 10, 20, 25, 50, 100, 250, ...).
         rows = str(options["rows_per_page"])
-        _set_dropdown(page, ctx, "rows_per_page_control", rows, "rows per page")
+        applied = _set_dropdown(page, ctx, "rows_per_page_control", rows, "rows per page",
+                                nearest=True)
+        if applied != rows:
+            ctx.warn(f"{op.id}: rows_per_page {rows} is not offered; applied {applied}")
+        return applied
+    return None
 
 
 def _drag(page: Any, start: tuple[float, float], end: tuple[float, float]) -> None:
@@ -400,11 +433,24 @@ def _click_workspace(page: Any, ctx: OpContext, canvas: Any) -> None:
     page.mouse.click(max(1, origin["x"] - 12), origin["y"] + 40)
 
 
+def _close_calendar(page: Any, ctx: OpContext) -> None:
+    """Escape the calendar a date control opens on click, a drag's mouse-up included.
+
+    It opens flush with the control's bottom edge, over the resize corner.
+    """
+    calendar = _locator(page, ctx, "date_calendar")
+    if _visible(calendar):
+        page.keyboard.press("Escape")
+        _poll(page, ctx, lambda: not _visible(calendar), "date control calendar did not close")
+
+
 def _drag_to(page: Any, ctx: OpContext, canvas: Any, component: Any,
-             target: tuple[int, int, int, int], *, handle: str) -> None:
+             target: tuple[int, int, int, int], *, handle: str,
+             dismiss_popup: bool = False) -> None:
     """Drag a component until its box reaches target, in steps whose ends are in view.
 
     handle: "move" (10 px inside the top-left), "center", or "resize" (bottom-right).
+    dismiss_popup: close a date control's calendar before each step.
     """
     def where() -> tuple[tuple[float, float], tuple[int, int]]:
         x, y, width, height = _geometry(component)
@@ -426,6 +472,8 @@ def _drag_to(page: Any, ctx: OpContext, canvas: Any, component: Any,
         if not (dx or dy):
             return
         dx, dy = (max(-reach[0], min(reach[0], dx)), max(-reach[1], min(reach[1], dy)))
+        if dismiss_popup:
+            _close_calendar(page, ctx)
         origin = _reveal(canvas, ctx, min(x, x + dx), min(y, y + dy),
                          max(x, x + dx) + _THRESHOLD, max(y, y + dy) + _THRESHOLD)
         start = (origin["x"] + x, origin["y"] + y)
@@ -440,8 +488,8 @@ def _place_chart(page: Any, ctx: OpContext, component: Any, canvas: Any,
     _click_canvas(page, ctx, canvas, x + 10, y + 10)
     if dismiss_popup:
         page.keyboard.press("Escape")
-    _drag_to(page, ctx, canvas, component, target, handle="move")
-    _drag_to(page, ctx, canvas, component, target, handle="resize")
+    _drag_to(page, ctx, canvas, component, target, handle="move", dismiss_popup=dismiss_popup)
+    _drag_to(page, ctx, canvas, component, target, handle="resize", dismiss_popup=dismiss_popup)
 
 
 def _run_add_chart(page: Any, op: Any, ctx: OpContext) -> OpResult:
@@ -555,7 +603,7 @@ def _run_add_chart(page: Any, op: Any, ctx: OpContext) -> OpResult:
 
     sort = None if inherent_sort else getattr(op, "sort", None)
     _set_sort(page, ctx, sort)
-    _set_title_and_options(page, ctx, op)
+    rows_per_page = _set_title_and_options(page, ctx, op)
     ctx.state[op.id] = {
         "target": target,
         "chart_index": before,
@@ -568,6 +616,7 @@ def _run_add_chart(page: Any, op: Any, ctx: OpContext) -> OpResult:
         "sort": (_value(sort, "field"), _value(sort, "order")) if sort else None,
         "title": getattr(op, "title", None),
         "breakdown": breakdown,
+        "rows_per_page": rows_per_page,
     }
     return OpResult()
 
@@ -640,8 +689,9 @@ def _verify_add_chart(page: Any, op: Any, ctx: OpContext) -> None:
             raise OperationError("chart sort order did not match the recipe")
 
     options = getattr(op, "options", {}) or {}
-    if op.chart_type == "table" and "rows_per_page" in options:
-        if _locator(page, ctx, "rows_per_page_control").inner_text().strip() != str(options["rows_per_page"]):
+    if state.get("rows_per_page"):
+        # The applied value: the recipe's, or the nearest the menu offers.
+        if _locator(page, ctx, "rows_per_page_control").inner_text().strip() != state["rows_per_page"]:
             raise OperationError("table rows per page did not match the recipe")
     if state["title"] or (options and op.chart_type != "table"):
         _locator(page, ctx, "style_tab").click(timeout=ctx.timeout_ms())

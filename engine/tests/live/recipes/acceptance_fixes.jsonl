@@ -1,0 +1,11 @@
+{"recipe_version":"1.0","build_id":"b_000000000003","version":1,"report_name":"Engine acceptance fixes","canvas":{"width":1200,"height":532},"datasource":{"connector":"bigQuery","project_id":"bigquery-public-data","dataset_id":"thelook_ecommerce","table_id":"order_items"}}
+{"id":"s001","op":"open_report"}
+{"id":"s002","op":"set_canvas","width":1200,"height":532}
+{"id":"s003","op":"set_background_image","path":"background_short.png","x":0,"y":0,"w":1200,"h":532}
+{"id":"s004","op":"add_control","component_id":"p1_order_created_date_range","control_type":"date_range","x":24,"y":264,"w":276,"h":44}
+{"id":"s005","op":"add_control","component_id":"p1_order_status_filter","control_type":"dropdown","field":"status","x":316,"y":264,"w":276,"h":44}
+{"id":"s006","op":"add_chart","component_id":"p1_active_customers","chart_type":"scorecard","x":608,"y":424,"w":568,"h":84,"dimensions":[],"metrics":[{"field":"user_id","agg":"count_distinct"}],"title":"Active Customers","options":{"compact_numbers":true}}
+{"id":"s007","op":"add_chart","component_id":"p1_status_counts","chart_type":"table","x":608,"y":324,"w":568,"h":84,"dimensions":["status"],"metrics":[{"field":"sale_price","agg":"sum"},{"field":"order_id","agg":"count_distinct"},{"field":"id","agg":"count"},{"field":"inventory_item_id","agg":"count_distinct"},{"field":"product_id","agg":"count_distinct"},{"field":"user_id","agg":"count_distinct"}],"title":"Status Counts"}
+{"id":"s008","op":"add_chart","component_id":"p1_status_detail","chart_type":"table","x":24,"y":324,"w":568,"h":184,"dimensions":["status"],"metrics":[{"field":"sale_price","agg":"sum"}],"title":"Sales by Status","options":{"rows_per_page":15}}
+{"id":"s009","op":"save_report"}
+{"id":"s010","op":"get_link"}

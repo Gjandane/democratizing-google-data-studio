@@ -38,6 +38,9 @@ selectors:
   field_buttons: '.all-chips-panel [role="button"]'
   field_chips: '[role="button"][aria-label]'
   field_picker: '.cdk-overlay-pane:has(ng2-selector-dialog), .cdk-overlay-pane:has-text("No results")'
+  field_picker_search: 'role=searchbox[name="Text box to search Data Studio"]'
+  field_picker_empty: 'text="No results"'
+  date_calendar: '.cdk-overlay-pane:has(button.date-range-options)'
   chart_gallery: '.cdk-overlay-pane:has-text("Scorecard"):has-text("Table")'
   overlay_pane: '.cdk-overlay-pane'
   open_menu: 'role=menu'
@@ -134,6 +137,20 @@ Field pickers are `ng2-selector-dialog` overlays. "Chart fields" is only a group
 of fields that charts on the page already use, listed above "Default group";
 the first charts on a fresh page show "Default group" alone. Never detect the
 picker by that heading.
+
+The picker renders only the rows near its scroll position: 16 field buttons at
+most (2026-10-22). Later fields have no DOM node at all, so a lookup by name
+fails although the Data panel lists the field. Observed: the release view's
+17th button `user_id`, and on order_items a table's sixth metric, because the
+chart's own metrics are listed again under "Chart fields". `field_picker_search`
+filters the list (`user_id` -> exactly one button, within 250 ms); a query with
+no match shows `field_picker_empty` ("No results"), as does a geo picker with no
+compatible field before any search.
+
+Rows per page (`rows_per_page_control`) is a fixed `mat-select` menu, not a
+number input: 1, 5, 10, 20, 25, 50, 100, 250, 500, 1000, 2500, 5000, 7500,
+10000, 25000, 50000 (2026-10-22). A failed choice leaves the listbox open, and
+it blocks later ops until they time out (save included): Escape it.
 
 Time series Setup has no Sort section (cell keys observed 2026-10-21:
 datasource, actionConceptList, metrics, filters, dateRangeDimension,
@@ -272,6 +289,12 @@ no source and clear the Data panel field list; preserve source-field names befor
 selecting one. Dropdown controlField holds its single filter field. Date controls
 filter charts with an Auto date range and a compatible date range dimension.
 Selecting a date control opens its calendar: Escape before geometry and Setup.
+A move drag's mouse-up is also a click and reopens it (`date_calendar`), flush
+with the control's bottom edge (pane 0,500-460,854 for a control ending at
+viewport y 500), so the resize corner hits the calendar header and nothing
+resizes. Close it before each drag step. The default control is 300 x 50; it
+resizes to 276 x 44 (no larger minimum observed). A background's center guide
+snaps a move: on a 532 px canvas y 264 lands at 266, inside ±4.
 Last 7 days first opens a preset-family submenu; select the exact Last 7 days
 entry there before Apply. After filtering, require changed numeric chart content
 together, then wait for progress bars to disappear before capturing evidence.

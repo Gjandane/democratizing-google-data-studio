@@ -165,7 +165,7 @@ tasks and require a separately specified scope/contract revision. Task statuses 
   - Review focus: contracts/recipe.md 1.0 (no new op or argument); selectors only from knowledge/datastudio-ui; no fixed sleeps over 1 s; existing budgets unchanged; 8.1's replay still passes; the replay asserts on read-back boxes and fields, not on op status alone.
 
 ## Phase 10: Manual acceptance fixes (change 2026-10-22)
-- [ ] 10.1 Off-screen picker fields, date control size and table rows per page
+- [x] 10.1 Off-screen picker fields, date control size and table rows per page
   - Goal: the recipes from release 2.4's failed rows run live with every op `ok`. Release 2.4 is blocked on this: research build b_568901c19819 ended `partial` (ok 35, failed 6: three tables `add_chart` "Data Studio option 15 is unavailable" for `options.rows_per_page: 15`, plus their `set_style`), BigQuery build b_b17ad783d730 ended `partial` (ok 42, failed 3: `add_chart` scorecard `count_distinct` of `user_id` "field user_id not in data source", and `add_control` date_range "control box did not match the requested position and size").
   - Spec: docs/architecture.md#Live editor conventions
   - Files: src/dsengine/ops/charts.py, src/dsengine/ops/controls.py, knowledge/datastudio-ui/editor.md, knowledge/datastudio-ui/log.md, tests/test_executor.py, tests/live/test_recipe_replay.py, tests/live/recipes/*.jsonl

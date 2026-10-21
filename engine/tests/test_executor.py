@@ -1363,3 +1363,253 @@ def test_rows_per_page_waits_for_the_option_list_not_any_overlay(tmp_path):
     page = Page()
     charts._set_dropdown(page, ctx, "rows_per_page_control", "10", "rows per page")
     assert page.clicks == [["Rows per page"], ["10"]]
+
+
+# Live Rows per page menu (2026-10-22): a fixed list, no free number input.
+_ROWS_OFFERED = ["1", "5", "10", "20", "25", "50", "100", "250", "500", "1000",
+                 "2500", "5000", "7500", "10000", "25000", "50000"]
+
+
+@pytest.mark.parametrize("requested, applied", [
+    ("15", "10"), ("3", "1"), ("75", "50"), ("22", "20"), ("30", "25"),
+    ("20", "20"), ("60000", "50000"), ("0", "1"),
+])
+def test_rows_per_page_nearest_offered_value_prefers_the_smaller_on_ties(requested, applied):
+    from dsengine.ops import charts
+
+    assert charts._nearest_option(requested, _ROWS_OFFERED) == applied
+    assert charts._nearest_option("abc", _ROWS_OFFERED) is None
+    assert charts._nearest_option("15", ["Autogenerate"]) is None
+
+
+class Nodes:
+    """A locator over a list of texts, or a function that lists them when used.
+
+    Clicks are recorded on its page.
+    """
+
+    def __init__(self, page, texts):
+        self.page, self.texts = page, texts
+
+    @property
+    def texts(self):
+        return list(self.source() if callable(self.source) else self.source)
+
+    @texts.setter
+    def texts(self, texts):
+        self.source = texts
+
+    def count(self):
+        return len(self.texts)
+
+    def nth(self, index):
+        return Nodes(self.page, [self.texts[index]])
+
+    @property
+    def first(self):
+        return self.nth(0) if self.texts else Nodes(self.page, [])
+
+    @property
+    def last(self):
+        return self.nth(-1)
+
+    def is_visible(self):
+        return bool(self.texts)
+
+    def wait_for(self, *, state, timeout):
+        assert state == "visible" and self.texts
+
+    def click(self, *, timeout):
+        self.page.clicks.append(self.texts[0])
+
+    def evaluate_all(self, expression):
+        return list(self.texts)
+
+
+def test_table_rows_per_page_not_offered_applies_the_nearest_and_warns(tmp_path):
+    # Release b_568901c19819 s012/s021/s038: rows_per_page 15 failed
+    # "Data Studio option 15 is unavailable" and the table was never verified.
+    from types import SimpleNamespace
+    from dsengine.ops import charts
+
+    class Pane(Nodes):
+        def locator(self, selector):
+            assert selector == "dropdown_option"
+            opened = self.page.clicks[-1:] == ["rows_per_page_control"]
+            return Nodes(self.page, _ROWS_OFFERED if opened else [])
+
+        def get_by_text(self, value, *, exact):
+            return Nodes(self.page, [text for text in _ROWS_OFFERED if text == value])
+
+    class Page:
+        def __init__(self):
+            self.clicks = []
+            self.keyboard = FakeKeyboard(self.clicks)
+
+        def locator(self, selector):
+            if selector == "last_overlay":
+                return Pane(self, ["pane"])
+            assert selector in {"setup_tab", "rows_per_page_control"}
+            return Nodes(self, [selector])
+
+        def wait_for_timeout(self, timeout):
+            pass
+
+    stream = io.StringIO()
+    ctx = cleanup_context(tmp_path)
+    ctx.events = EventWriter(stream)
+    ctx.selectors = {key: key for key in (
+        "setup_tab", "rows_per_page_control", "last_overlay", "dropdown_option")}
+    ctx.op_deadline = executor.time.monotonic() + 5
+    ctx.run_deadline = ctx.op_deadline
+    page = Page()
+    op = SimpleNamespace(id="s012", chart_type="table", title=None, options={"rows_per_page": 15})
+    assert charts._set_title_and_options(page, ctx, op) == "10"
+    assert page.clicks == ["setup_tab", "rows_per_page_control", "10"]
+    warning = read_events(stream)[-1]
+    assert (warning["event"], warning["level"]) == ("log", "warn")
+    assert warning["message"] == "s012: rows_per_page 15 is not offered; applied 10"
+
+    page, stream = Page(), io.StringIO()
+    ctx.events = EventWriter(stream)
+    op.options = {"rows_per_page": 25}
+    assert charts._set_title_and_options(page, ctx, op) == "25"
+    assert page.clicks[-1] == "25" and stream.getvalue() == ""
+
+
+# Live order_items picker (2026-10-22): it renders 16 field buttons at most, and a
+# table's own metrics are listed again above "Default group", so a sixth metric's
+# field (user_id) has no button until the picker's search box filters the list.
+_PICKER = ["id", "inventory_item_id", "order_id", "product_id", "sale_price",
+           "created_at (Date)", "Record Count", "created_at", "delivered_at", "id",
+           "inventory_item_id", "order_id", "product_id", "returned_at", "sale_price",
+           "shipped_at", "status", "user_id"]
+
+
+class PickerNode(Nodes):
+    def locator(self, selector):
+        picker = self.page
+        if selector == "field_picker_search":
+            return Nodes(picker, ["search"] if picker.search else [])
+        assert selector == "field_picker_empty"
+        return Nodes(picker, lambda: [] if picker.rendered() else ["No results"])
+
+    def get_by_role(self, role, *, name, exact):
+        assert role == "button" and exact
+        return Nodes(self.page, lambda: [f for f in self.page.rendered() if f == name])
+
+
+class Picker:
+    """A page whose field picker renders 16 rows unless its search box filters it."""
+
+    def __init__(self, fields, *, search=True):
+        self.fields, self.search, self.query, self.open = fields, search, None, True
+        self.clicks, self.fills, self.waits = [], [], 0
+
+    def rendered(self):
+        if self.query is None:
+            return self.fields[:16]
+        return [field for field in dict.fromkeys(self.fields) if self.query in field]
+
+    def locator(self, selector):
+        assert selector == "field_picker"
+        return PickerNode(self, lambda: ["picker"] if self.open else [])
+
+    def wait_for_timeout(self, timeout):
+        self.waits += 1
+
+
+@pytest.fixture
+def picker_context(tmp_path, monkeypatch):
+    def fill(node, text, *, timeout):
+        node.page.fills.append(text)
+        node.page.query = text
+
+    def click(node, *, timeout):
+        node.page.clicks.append(node.texts[0])
+        if isinstance(node.page, Picker):
+            node.page.open = False  # choosing a field closes the picker
+
+    monkeypatch.setattr(Nodes, "fill", fill, raising=False)
+    monkeypatch.setattr(Nodes, "click", click)
+    ctx = cleanup_context(tmp_path)
+    ctx.selectors = {key: key for key in (
+        "field_picker", "field_picker_search", "field_picker_empty")}
+    ctx.op_deadline = executor.time.monotonic() + 5
+    ctx.run_deadline = ctx.op_deadline
+    return ctx
+
+
+@pytest.mark.parametrize("field, fills", [("user_id", ["user_id"]), ("status", ["status"]),
+                                           ("shipped_at", []), ("sale_price", [])])
+def test_field_below_the_picker_rows_is_found_through_its_search(picker_context, field, fills):
+    # Release b_b17ad783d730 s014: count_distinct of user_id failed "field user_id
+    # not in data source" while user_id was in the Data panel, below the picker's rows.
+    # Dimensions, metrics, date dimension, breakdown, sort and dropdown fields all
+    # pick through _set_fields -> _choose_picker_field.
+    from dsengine.ops import charts
+
+    page = Picker(_PICKER)
+    charts._choose_picker_field(page, picker_context, field)
+    assert (page.fills, page.clicks, page.open) == (fills, [field], False)
+
+
+@pytest.mark.parametrize("fields, search, fills", [
+    (_PICKER, True, ["product_id_str"]),  # searched: "No results", fail at once
+    ([], True, []),  # geo picker with no compatible field: "No results" from the start
+    (_PICKER, False, []),  # no search box: the rendered rows are all there is
+])
+def test_field_missing_from_the_picker_fails_without_spending_the_budget(
+        picker_context, fields, search, fills):
+    from dsengine.ops import OperationError, charts
+
+    page = Picker(fields, search=search)
+    with pytest.raises(OperationError, match="^field product_id_str not in data source$"):
+        charts._choose_picker_field(page, picker_context, "product_id_str")
+    assert (page.fills, page.clicks, page.waits) == (fills, [], 0)
+
+
+def test_date_control_calendar_is_closed_before_its_resize(tmp_path, monkeypatch):
+    # Release b_b17ad783d730 s004 (canvas 1200 x 532): the move's mouse-up opened
+    # the control's calendar flush with its bottom edge, the resize corner hit the
+    # calendar header, and the control stayed 300 x 50. Retries pressed Escape and
+    # moved again (the background's center guide snapped it 2 px), reopening it.
+    from types import SimpleNamespace
+    from dsengine.ops import charts
+
+    canvas = ScrollingCanvas(532)
+    control = Placed(canvas, (24, 24, 300, 50))
+    calendar = Nodes(None, [])
+    _, events = _scrolling_editor(monkeypatch, canvas, control)
+    drag_control = charts._drag
+
+    def drag(page, start, end):
+        x, y, w, h = control.box
+        if calendar.texts and start[1] - canvas.origin()[1] >= y + h:
+            events.append(("hit calendar", start))  # nothing under the corner moves
+            return
+        drag_control(page, start, end)
+        calendar.texts = ["calendar"]  # the mouse-up on the control is a click
+
+    def press(key):
+        events.append(("press", key))
+        if key == "Escape":
+            calendar.texts = []
+
+    def click(x, y):
+        events.append(("click", x, y))
+        calendar.texts = ["calendar"]
+
+    def locator(selector):
+        assert selector == "date_calendar"
+        return calendar
+
+    monkeypatch.setattr(charts, "_drag", drag)
+    page = SimpleNamespace(mouse=SimpleNamespace(click=click), locator=locator,
+                           keyboard=SimpleNamespace(press=press),
+                           wait_for_timeout=lambda timeout: None)
+    ctx = cleanup_context(tmp_path)
+    ctx.selectors = {**ctx.selectors, "date_calendar": "date_calendar"}
+    charts._place_chart(page, ctx, control, canvas, (24, 264, 276, 44), dismiss_popup=True)
+    assert control.box == (24, 264, 276, 44)
+    assert not [event for event in events if event[0] == "hit calendar"], events

@@ -423,3 +423,15 @@ context. Task status lives in docs/plan.md, not here.
 - What changed: plan.md Phase 10, task 10.1 (off-screen picker fields, date_range control box, table rows_per_page nearest offered value).
 - Why: release 2.4 blocked: research build b_568901c19819 (3 tables "Data Studio option 15 is unavailable") and BigQuery build b_b17ad783d730 ("field user_id not in data source", date control box mismatch). User chose engine + backend fixes, rerun rows 2-3 only.
 - Affected: engine 10.1 (new); release 2.4 `Needs: engine 10.1`. No contract change (recipe 1.0).
+
+## 2026-10-22: Task 10.1 Off-screen picker fields, date control size and table rows per page
+- Status: done
+- Plan check: off
+- What changed: charts.py `_choose_picker_field` searches the picker when the field has no button; `_drag_to(dismiss_popup=)` closes a date control's calendar before each drag step; table `rows_per_page` applies the nearest offered value and warns. Live case `test_manual_acceptance_fields_date_control_and_rows_per_page` + recipes/acceptance_fixes.jsonl, 5 offline regressions (19 cases), selectors `field_picker_search`, `field_picker_empty`, `date_calendar`.
+- Checks: diagnosis (.blueprint/10.1/diag): picker renders 16 field buttons, `user_id` (17th) has no DOM node (out/probe.log, out2/picker_search_user_id.png: search leaves only it); date control frames out/drag03.png, drag04.png: the move's mouse-up opens the calendar at y 500 = control bottom, the resize corner hits its header; 532 canvas guide snaps y 266 so retries move again (900 canvas retry passes, out5); Rows per page menu 1,5,10,20,25,50,100,250...50000 (out2/rows_menu.png). New live case pre-fix FAIL (s004 box, s007 user_id, s008 option 15), after PASS. Done-when live command PASS, 11 passed, 499 s. Release replays: b_b17ad783d730 ok 45 failed 0; b_568901c19819 ok 41 failed 0. `uv run pytest` PASS, 163 passed, 14 deselected.
+- Decisions: substitution reported as `log` warn "sNNN: rows_per_page 15 is not offered; applied 10" (user's choice: contract 1.0 keeps ok messages empty). Search only when no button exists; stop at "No results". Calendar Escaped only when visible. Failed menu choice Escapes its listbox. order_items renders user_id for a scorecard, so the live case adds a six-metric table.
+- Digest: charts.py `_choose_picker_field` searches `field_picker_search` if no button (fails on `field_picker_empty`); `_drag_to(.., dismiss_popup)` closes `date_calendar` per step; `_set_dropdown(.., nearest=True)->str`; rows_per_page nearest value, warn log.
+- Tried and failed: none
+- Gotchas: Data panel renders all 32 natality fields (no gap there); a failed op leaving a picker/menu open makes later ops time out.
+- Left open: none
+- Next: no engine task left. Release 2.4 (root `..`) can rerun its live builds.
