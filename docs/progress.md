@@ -297,3 +297,24 @@ context. Task status lives in docs/plan.md, not here.
 - Ruling: user picked the engine task. For the screenshot, the user wants to test the current version's capability (the globe is an SVG illustration, so background decoration), not extend contracts/recipe.md: gaps go into the matrix and change requests, no new part tasks.
 - Alignment check: `integration/check_contracts.py` 9/9 PASS; backend emits only recipe 1.0 ops and types; the HTML decoration layer -> `background_p<n>.png` -> `set_background_image` -> charts path already exists (backend 15.9).
 - Tasks affected: engine 8.1 first, then release 2.3, then 2.6 (`/blueprint-solution-builder 2.6`; first ready by order would be 2.4). The screenshot was moved from the repo root to data/references/electricity-access.jpg (gitignored) and is never committed.
+
+## 2026-10-21: Task 2.3 End-to-end live build and UI walkthrough
+- Status: blocked
+- Plan check: off
+- What changed: applied stash `blueprint: task 2.3 failed attempt 2026-10-21 21:46` (staged driver, no code change this session); attempt plus regenerated bench JSONs set aside again in stash `blueprint: task 2.3 failed attempt 2026-10-21 23:11`. `.env` unchanged; backend stopped (Vite 5173, PID 35892, predates this session).
+- Checks: `DSS_ENGINE_DRY_RUN=1 ... e2e_flow1.py --version2` PASS (b_547ee66c85a8, every v1/v2 stage with tokens, 48378/4449). `--live`: run 1 FAIL revise `llm_unavailable` (b_60b0e5f13928); run 2 FAIL blueprint accept `409 artifact_invalid` (view failed SQL validation, 0 rows; b_b409c57aaa16); run 3 exit 0 with link https://datastudio.google.com/reporting/5d7469b1-11bc-4586-a622-60e95d52f909 (b_b2ac19ea6696) but `run_finished` partial, ok 36, failed 3. Engine 8.1's chart field fix holds (pages 1-2 all ok). Test (all) PASS, 9/9. `dsengine check` signed in. UI walkthrough not run (user chose block).
+- Decisions: user chose to block on a card (over a UI walkthrough first). Stash drops of 07:52/08:57 were denied by the auto-mode classifier; both stashes still exist.
+- Tried and failed: none at the engine step (rerunning is not a fix: the isolated replay reproduces all 3).
+- Gotchas: AGENTS.md flaky-live line gained the blueprint 0-rows failure.
+- Left open: live `failed: 0`, manual link check, UI walkthrough at :5173; drop stashes 07:52 and 08:57 by hand.
+- Blocked because: (a) the fix is in engine/ (release never edits parts).
+- Question: Who fixes engine set_background_image and add_chart on a page taller than the viewport (canvas 1200x1492)?
+- Options: A architect plans an engine task: on a tall canvas, position/size and send-back the uploaded image, and scroll to place charts below the fold; live replay test on replay_p3.jsonl / B architect caps page height at 712 in the backend layout (backend task) / Recommend: A, tall per_section pages are the staged design.
+- Evidence (b_b2ac19ea6696 v1, page 3 = s023 add_page, s024 set_canvas 1200x1492):
+  `{"op_id": "s025", "op": "set_background_image", "status": "failed", "message": "operation timed out", "duration_ms": 20078}`
+  `{"op_id": "s034", "op": "add_chart", "status": "failed", "message": "chart box did not match the requested position and size", "screenshot": "s034_failed.png"}` (table x24 y884 w1152 h304; drawn ~400 px wide)
+  `{"op_id": "s036", "op": "add_chart", "status": "failed", "message": "operation timed out"}` (bar x24 y1204 w568 h264)
+  `{"event": "run_finished", "status": "partial", "ok": 36, "failed": 3, "skipped": 0}`
+  Isolated replay (data/builds/b_b2ac19ea6696/v1/replay_p3.jsonl: s001, s002, s023-s025, s034, s036): s025, s034, s036 all `operation timed out`. Frames (screens/replay_s025_stuck.jpg, replay_last.jpg): background_p3.png inserted at its natural size mid-canvas (top-left ~x420 y356), not at 0,0; Image properties open, Arrange menu open on Order; next add_chart leaves the image selected and opens a "Choose a field" filter chip instead of the chart's field picker.
+- Next: after the engine fix, `git stash apply` the 23:11 stash (by subject), drop 07:52/08:57/21:46, start backend live, rerun `--live` until `failed: 0`, manual link check, then the UI walkthrough.
+- Digest: e2e_flow1.py staged driver (stash 23:11): `--version2`, `--live`; bench deck/data/bench-<date>-{dry-run,live}.json with stages, tokens, decisions, run_ids, report_urls. Blocked on engine tall-canvas ops.

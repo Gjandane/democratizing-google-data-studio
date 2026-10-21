@@ -64,7 +64,7 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - `blueprint.py start` (folder mode) dies with PermissionError on `.chrome-profile/lockfile` while the engine's Chrome (CDP 9222) runs: close that Chrome first, then rerun start.
 - Diagram "planned" tags are hardcoded in deck/diagrams/*.html and go stale as parts finish tasks: recheck them against `blueprint.py program` and re-render before using the PNGs.
 - `PowerPoint.Application` here is WPS Office (wpp.exe), not MS PowerPoint: `Slide.Duplicate()` is a no-op, `FindBySlideID` returns null, `Close()` on a modified deck hangs (set `Saved=-1`); a killed build leaves `wpp.exe /Automation` blocking COM (RPC_E_CALL_REJECTED): stop that process only.
-- Live model nodes fail e2e runs nondeterministically (2.2: 4 of 7 runs; plan/revise `llm_unavailable`, `invalid_source`, `invalid_request`): rerun the e2e once per new failure before blocking, and block only on a repeat at the same step.
+- Live model nodes fail e2e runs nondeterministically (2.2: 4 of 7 runs; plan/revise `llm_unavailable`, `invalid_source`, `invalid_request`; staged: blueprint view fails SQL validation -> 0 rows -> accept `409 artifact_invalid`): rerun the e2e once per new failure before blocking, and block only on a repeat at the same step.
 - Stopping `./start.sh` with the Bash tool's TaskStop leaves uvicorn and vite listening: `taskkill /PID <pid> /T /F` the 8000/5173 owners (netstat) after.
 - Free localhost ports don't refuse here, they time out (curl rc 28, Invoke-WebRequest stalls ~2 s): test a port with netstat/`Get-NetTCPConnection -State Listen`, not an HTTP probe. The 2.1 netstat grep also lists TIME_WAIT lines for ~2 min after any probe.
 <!-- blueprint-solution:end -->
