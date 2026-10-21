@@ -472,7 +472,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest` passes: each branch's trace spans list its nodes in order; a recreate reference pre-fills the outline proposal input and the design, a style reference pre-fills the design; synthetic and research sources reach context; `POST versions` copies the four artifacts (and a legacy build's spec with artifacts missing); consolidation reads context/outline/design; `uv run pytest tests/test_api_contract.py` matches every 2.0 fixture.
   - Review focus: ../contracts/api.md 2.0 and ../contracts/synthetic-data.md 1.2; one Workflow and one trace per action; budgets per Working memory assembly.
-- [ ] 15.11 Live staged flow on the sample and the GPS-style fixture
+- [x] 15.11 Live staged flow on the sample and the GPS-style fixture
   - Goal: prove the staged workflow live, end to end through the dry-run engine, before release takes it.
   - Spec: docs/architecture.md#Staged workflow
   - Files: tests/live/test_staged_flow.py, tests/live/test_backend_flow.py

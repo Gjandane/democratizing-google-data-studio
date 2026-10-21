@@ -66,8 +66,14 @@ def catalog_summary():
         for cap in checker.registry.capabilities:
             if any(loc.startswith(f'add_chart.options.{kind}.') for loc in cap.recipe) and checker.capability(cap.id).ok:
                 options.append({'key': cap.recipe[0].rsplit('.', 1)[-1], 'values': cap.values, 'value_type': cap.value_type})
-        result.append({**{k: v for k, v in rule.items() if k.startswith(('min_', 'max_')) or
-                        k in ('requires_date_dimension', 'slot_roles')}, 'type': kind, 'options': options})
+        entry = {**{k: v for k, v in rule.items() if k.startswith(('min_', 'max_')) or
+                    k in ('requires_date_dimension', 'slot_roles')}, 'type': kind, 'options': options}
+        if kind == 'dropdown':
+            # Blueprint rows have no field slot: the filter field is the row's single
+            # dimension (feasibility requires exactly one; layout maps it to field).
+            roles = {k: v for k, v in entry['slot_roles'].items() if k != 'field'}
+            entry.update(min_dimensions=1, max_dimensions=1, slot_roles={**roles, 'dimensions': entry['slot_roles']['field']})
+        result.append(entry)
     return result
 
 

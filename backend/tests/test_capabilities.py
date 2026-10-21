@@ -337,3 +337,20 @@ def test_forty_requirements_and_twenty_four_components_within_100ms(registry):
         best = min(best, time.perf_counter() - start)
     assert not result.ready and len(result.issues) >= 40
     assert best <= 0.100, best
+
+
+def test_capability_context_compacts_staged_artifacts():
+    """Live 15.11: one comment's capability check overran 12k with every staged artifact in it."""
+    from dss.harness.context import capability_context
+    from dss.spec.requirements import Ledger
+    context = {'title': 'T', 'goal': 'G', 'datasets': [{'source_id': 's', 'summary': 'x' * 400}], 'derived_fields': [],
+               'kpis': [{'id': 'net_revenue'}], 'thresholds': [], 'glossary': [], 'issues': []}
+    snapshot = {'sources': [], 'reference': None, 'definitions': {}, 'spec': {'pages': []}, 'incoming': [],
+                'context': context, 'outline': {'sections': 'OUTLINE'}, 'design': {'d': 'DESIGN'},
+                'blueprint': {'rows': 'BLUEPRINT'}, 'blueprint_errors': ['ERRORS']}
+    memory = capability_context(snapshot, Ledger(), Checker(load_registry()), [])
+    [section] = [s for s in memory.sections if s.name == 'metadata']
+    metadata = json.loads(section.body)
+    assert sorted(metadata) == ['context', 'definitions', 'reference', 'sources', 'spec']
+    assert metadata['context'] == {'derived_fields': [], 'kpis': [{'id': 'net_revenue'}], 'thresholds': [], 'glossary': []}
+    assert not re.search('OUTLINE|DESIGN|BLUEPRINT|ERRORS', str(memory))

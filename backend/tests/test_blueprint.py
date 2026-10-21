@@ -534,6 +534,21 @@ def test_compact_inputs_exclude_profile_payloads_and_join_facts():
     assert all(s.kind != 'history' for s in memory.sections)
 
 
+def test_catalog_summary_dropdown_slots_match_feasibility():
+    """Live 15.11: the summary said 0 dropdown dimensions, feasibility required one."""
+    from dss.artifacts.models import BlueprintComponent
+    from dss.spec.capabilities import Checker, load_registry
+    from dss.spec.feasibility import component_errors
+    [entry] = [e for e in node.catalog_summary() if e['type'] == 'dropdown']
+    assert (entry['min_dimensions'], entry['max_dimensions']) == (1, 1)
+    assert 'field' not in entry['slot_roles'] and entry['slot_roles']['dimensions'] == ['dimension']
+    fields = {'region': {'role': 'dimension', 'type': 'STRING'}}
+    def errors(dimensions):
+        return component_errors(BlueprintComponent(type='dropdown', label='Region', dimensions=dimensions, metrics=[],
+            date_dimension=None, breakdown=None, sort=None, options={}), fields, Checker(load_registry()))
+    assert errors(['region']) == [] and errors([])
+
+
 def test_gps_fixtures_small_distinct_schemas_and_union():
     from dss.data.bigquery import prepare_csv
     from dss.artifacts.models import ViewSources

@@ -184,7 +184,20 @@ def outline_other(db, build_id, folder, source, extraction, checker):
     incoming = [s for s in snapshot['incoming'] if s['id'] == source['id']]
     if incoming != [source]:
         raise ValueError('Outline source must be a saved user message')
-    candidate = merge(ledger, {**snapshot, 'incoming': incoming}, extraction)
+    # Outline stages follow a confirmed Context: its KPIs are the user's definitions.
+    from dss.artifacts.okf import read_artifact
+    from dss.artifacts.models import Context
+    path = folder / 'docs/context.md'
+    kpis = [k.model_dump() for k in read_artifact(path, Context).kpis] if path.is_file() else []
+    candidate = merge(ledger, {**snapshot, 'incoming': incoming, 'context_kpis': kpis}, extraction)
+    if not extraction.requirements:
+        # An ordinary question asks for no behavior: its blueprint rows are its requirement,
+        # so code adds no blocking unclassified row (the source still counts as processed).
+        candidate.requirements = [r for r in candidate.requirements if r.source.id != source['id']]
+    for r in candidate.requirements:
+        if r.source.id == source['id']:
+            r.mapping_origins['origin'] = 'outline_other'
+            _restated_arguments(r, schema(snapshot), checker)
     candidate = revalidate_decisions(snapshot, candidate, checker)
     candidate.verification = verification(snapshot, candidate, checker)
     return candidate, evaluate(snapshot, candidate, checker, check_components=False)
@@ -334,6 +347,13 @@ def merge(ledger, snapshot, extraction):
             existing.component_ids = list(dict.fromkeys(existing.component_ids + item.component_ids))
             continue
         updated.requirements.append(Requirement(id=rid, source=source, **item.model_dump(exclude={"source_id"})))
+    # Only outline_other passes Context KPIs: comment and reference mappings keep their clause rule.
+    kpis = snapshot.get('context_kpis') or []
+    for r in updated.requirements:
+        if r.source.id in sources:
+            for m in r.mappings:
+                if kpi := _restated_kpi(m, kpis):
+                    r.mapping_origins['kpi:' + _normal(m.label)] = kpi['id'] + ':' + _kpi_key(m)
     covered = {r.source_id for r in extraction.requirements}
     # A later explicit field definition can clarify an earlier ambiguity, but
     # cannot remove its capabilities or provenance. Model suggestions alone do not.
@@ -429,6 +449,28 @@ def _supersede_comments(ledger, snapshot, sources):
 
 def _normal(text):
     return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
+def _kpi_key(mapping):
+    return f'{mapping.field}:{mapping.aggregation}:{mapping.unit or ""}'
+
+
+def _restated_kpi(mapping, kpis):
+    """The confirmed Context KPI a mapping restates, else None.
+
+    Same field and aggregation, a compatible unit, no date grain, and a KPI name or id
+    that contains the label or is contained in it ("Net Revenue" -> "Total Net Revenue").
+    """
+    label = _normal(mapping.label)
+    for kpi in kpis:
+        measure = kpi.get('measure')
+        if not measure or not label or mapping.date_grain or (mapping.field, mapping.aggregation) != (measure['field'], measure['agg']):
+            continue
+        if mapping.unit and kpi.get('unit') and _normal(mapping.unit) != _normal(kpi['unit']):
+            continue
+        if any(name and (label in name or name in label) for name in (_normal(kpi['name']), _normal(kpi['id']))):
+            return kpi
+    return None
 
 
 _ROLE_NOUN = r'(?:directors?|managers?|teams?|leaders?|analysts?|executives?|heads?|vps?|officers?|stakeholders?|leadership)'
@@ -744,6 +786,21 @@ def _normalize_presentation(ledger, snapshot):
             continue
         if target and re.search(r'preserve\s+its\s+position\s+and\s+data', r.source.text, re.I):
             r.mapping_origins.setdefault('preserve', digest({k: v for k, v in target.items() if k != 'colors'}))
+        hexes = re.findall(r'#[0-9a-fA-F]{6}\b', r.source.text)
+        colors = [v for n in r.needs if n.capability == 'style.colors' and isinstance(n.value, list) for v in n.value]
+        colors += [p.value for p in r.properties]
+        if (decoration and r.source.kind == 'comment' and not r.mappings and len(hexes) == 1 and colors
+                and all(n.capability in ('style.colors', 'unknown.unclassified') for n in r.needs)
+                and all(p.path in ('style.color', 'style.background_color') for p in r.properties)
+                and {str(c).lower() for c in colors} == {hexes[0].lower()}):
+            # An explicit hex accent on a decoration (in the comment's own words), extracted as
+            # a color need or a color property, is that decoration's kit style key, flattened
+            # into the page background (as below).
+            from dss.render.kits import accent_key
+            r.needs = [capabilities.Need(capability='layout.background_image')]
+            r.properties = [Property(path='style.' + accent_key(decoration['kind']), value=hexes[0])]
+            r.component_ids = [decoration['id']]
+            continue
         text = r.text.strip(' .;')
         if (re.fullmatch(r'(?:use\s+|keep\s+(?:it\s+)?(?:to\s+)?)?(?:one|a\s+single|single)\s+'
                          r'(?:(?:executive|overview)\s+){0,2}(?:dashboard\s+)?page', text, re.I)
@@ -798,6 +855,25 @@ def _redundant_inputs(ledger):
                 r.needs[i] = need.model_copy(update={'fields': {k: v for k, v in need.fields.items() if k not in extra}})
 
 
+def _restated_arguments(requirement, fields, checker):
+    """An outline Other record only: on an argument capability that declares no data input
+    and takes no value, a connected field naming the argument restates it, keyed by the
+    argument's own name (`argument.breakdown` with {"breakdown": "region"}) or given as its
+    value ("region"). Its question's blueprint rows bind the field; comments keep the binding.
+    """
+    for i, need in enumerate(requirement.needs):
+        cap = checker.registry.get(need.capability)
+        if cap is None or checker._prerequisites(need.capability) or cap.kind != 'argument'                 or cap.values is not None or cap.value_type is not None:
+            continue
+        update = {}
+        if need.fields.keys() == {need.capability.removeprefix('argument.')} and set(need.fields.values()) <= fields.keys():
+            update['fields'] = {}
+        if isinstance(need.value, str) and need.value in fields:
+            update['value'] = None
+        if update:
+            requirement.needs[i] = need.model_copy(update=update)
+
+
 def removal(requirement):
     """The component id a code-normalized removal comment deletes, else None."""
     return requirement.mapping_origins.get('remove')
@@ -825,6 +901,11 @@ def mapping_verdict(mapping, requirement, fields):
     defined_units = {d['unit'] for _, d in _candidates(text, mapping, fields) if d.get('unit')}
     if mapping.unit and defined_units and mapping.unit not in defined_units:
         return capabilities.Verdict('needs_clarification', f'Clarify incompatible units for {mapping.label}')
+    # A confirmed Context KPI recorded at extraction is the user's explicit field,
+    # aggregation and unit; the source text only restates it.
+    kpi = requirement.mapping_origins.get('kpi:' + label, '')
+    if kpi.partition(':')[2] == _kpi_key(mapping):
+        return None
     explicit = _assignment(text, mapping)
     if label != _normal(field) and not explicit:
         return capabilities.Verdict("needs_clarification", f"Confirm which field defines {mapping.label}; proposed {field} is not an explicit definition")
@@ -986,6 +1067,10 @@ def _requirement_issues(snapshot, ledger, checker):
                       f'Reconfirm {m.label}; its connected source or schema changed'))
                      for i, m in enumerate(r.mappings) if str(i) in r.mapping_origins
                      and r.mapping_origins[str(i)] != _prerequisites(snapshot, [], [m])]
+        if r.mapping_origins.get('origin') == 'outline_other':
+            # The question's Context KPI refs and blueprint rows define an Other text;
+            # only unsupported behavior or missing data in its record blocks.
+            verdicts = [(slot, v) for slot, v in verdicts if v.status != 'needs_clarification']
         for slot, v in verdicts:
             if v.ok:
                 continue
@@ -1113,6 +1198,10 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None):
     removed = {cid for r in ledger.requirements if (cid := removal(r))}
     for r in ledger.requirements:
         if audience_requirement(r, ledger):
+            continue
+        if r.mapping_origins.get('origin') == 'outline_other':
+            # Its question's blueprint rows fulfil an outline Other text; the model never
+            # sees this record, so only its unsupported verdicts block (issues above).
             continue
         if removal(r):
             if removal(r) in present:

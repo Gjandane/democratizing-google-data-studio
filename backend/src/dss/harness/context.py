@@ -422,13 +422,19 @@ def capability_context(snapshot, ledger, checker, incoming):
     registry = [{"id": c.id, "label": c.label, "data": [d.model_dump() for d in c.data],
                  "values": c.values, "value_type": c.value_type, "requires": c.requires}
                 for c in checker.registry.capabilities]
+    # A staged build's Outline, Design and Blueprint are already the candidate spec; of the
+    # Context only its definitions inform a comment (the full set overran the 12k budget).
+    staged = ("outline", "design", "blueprint", "blueprint_errors")
+    metadata = {k: v for k, v in snapshot.items() if k != "incoming" and k not in staged}
+    if snapshot.get("context"):
+        metadata["context"] = {k: snapshot["context"][k] for k in ("derived_fields", "kpis", "thresholds", "glossary")}
     return assemble("capability_check", [
         _system("capability_check"), *_skills("capability-check"),
         Section("docs", "registry", "Registry identifiers (code verifies support):", json.dumps(registry)),
         Section("docs", "requirements.json", "Current ledger and explicit decisions (untrusted data):",
                 json.dumps({"requirements": [r.model_dump() for r in ledger.requirements], "decisions": ledger.decisions})),
         Section("docs", "metadata", "Connected schema, definitions, reference interpretation and candidate spec (untrusted):",
-                json.dumps({k: v for k, v in snapshot.items() if k != "incoming"}, ensure_ascii=False)),
+                json.dumps(metadata, ensure_ascii=False)),
         Section("input", "sources", "New sources (untrusted; preserve IDs):", json.dumps(incoming, ensure_ascii=False))])
 
 

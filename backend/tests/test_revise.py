@@ -747,16 +747,21 @@ def multipage(setup):
 
 
 @pytest.mark.parametrize('index,key', [(0, 'background_color'), (1, 'color')])
-def test_decoration_dark_blue_accent_patches_only_that_decoration(setup, client, monkeypatch, index, key):
+# Live 15.11: an explicit hex in the comment's own words is fulfilled the same way.
+@pytest.mark.parametrize('comment,color,as_property', [('Use a dark blue accent for this component', '#172554', False),
+                                           ('Use a dark blue accent (#1E3A8A) for this component.', '#1E3A8A', False),
+                                           ('Use a dark blue accent (#1E3A8A) for this component.', '#1E3A8A', True)])
+def test_decoration_dark_blue_accent_patches_only_that_decoration(setup, client, monkeypatch, index, key, comment, color, as_property):
     """Release 2.2 P1: a color comment on a header decoration is fulfilled, never invalid_request."""
     from dss.spec import requirements as req
     app, bid, folder, _, service, captured = setup
     original = multipage(setup)
     target = original.pages[1].decorations[index]
     assert (target.id, target.kind) == (('p2_header_band', 'band'), ('p2_report_title', 'title'))[index]
-    comment = 'Use a dark blue accent for this component'
-    fake = CommentFlow(needs_by_text={comment: [{'capability': 'style.colors', 'value': ['#172554']}]},
-        response=response([op(f'/pages/1/decorations/{index}/style/{key}', '#172554')]))
+    # The extractor may return the color as a need or as a bare color property (live 15.11).
+    fake = CommentFlow(needs_by_text={comment: [] if as_property else [{'capability': 'style.colors', 'value': [color]}]},
+        properties_by_text={comment: [{'path': 'style.background_color', 'value': color}]} if as_property else {},
+        response=response([op(f'/pages/1/decorations/{index}/style/{key}', color)]))
     monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
     assessment = post_batch(client, app, bid, [{'component_id': target.id, 'text': comment}])
     assert assessment['state'] == 'ready' and assessment['pending_comments'] is None, assessment
@@ -764,14 +769,14 @@ def test_decoration_dark_blue_accent_patches_only_that_decoration(setup, client,
     revised = DashboardSpec.model_validate_json((folder / 'spec.json').read_text())
     expected = original.model_dump()
     expected['spec_version'] = original.spec_version + 1
-    expected['pages'][1]['decorations'][index]['style'][key] = '#172554'
+    expected['pages'][1]['decorations'][index]['style'][key] = color
     assert revised.model_dump() == expected
     row = req.load(folder).requirements[0]
     assert row.component_ids == [target.id] and [p.model_dump() for p in row.properties] == [
-        {'path': f'style.{key}', 'value': '#172554'}]
+        {'path': f'style.{key}', 'value': color}]
     # The decoration is flattened into page 2's re-rendered background only.
     page_two = next(html for html in captured if 'data-page="2"' in html)
-    assert '#172554' in page_two and all('#172554' not in html for html in captured if html is not page_two)
+    assert color in page_two and all(color not in html for html in captured if html is not page_two)
     assert (folder / 'background_p2.png').read_bytes() == b'new background'
     assert comment in (folder / 'docs/decisions.md').read_text(encoding='utf-8')
     assert not service.queries

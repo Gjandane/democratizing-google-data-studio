@@ -245,6 +245,32 @@ async def test_failed_accept_keeps_blueprint_stage_and_cleans_candidate(blueprin
     assert trace['status'] == 'error' and finished['status'] == 'error' and finished['error']
 
 
+def other_record(app, bid, folder, tagged):
+    """A supported outline Other record the blueprint does not mirror (a bar *breakdown*)."""
+    from dss.spec import requirements as req
+    from dss.spec.capabilities import Need
+    text = 'Which product categories sell the most units?'
+    with app.state.db.connect() as conn:
+        conn.execute('INSERT INTO messages VALUES(?,?,?,?,?,?)', ('m_other', bid, 'user', text, 'outline_other', '2026-10-21T00:00:00Z'))
+    source = req.Source(id='m_other', kind='message', text=text)
+    row = req.Requirement(id='req_other', source=source, text=text,
+                          needs=[Need(capability='chart.bar'), Need(capability='argument.breakdown')],
+                          mapping_origins={'origin': 'outline_other'} if tagged else {})
+    req.save(folder, req.Ledger(requirements=[row], processed_sources={source.id: req.digest(source.model_dump())}))
+
+
+@pytest.mark.parametrize('blueprint_flow,published', [({'other': True}, True), ({'other': False}, False)],
+                         indirect=['blueprint_flow'])
+async def test_outline_other_record_is_fulfilled_by_blueprint_rows(blueprint_flow, published):
+    """Live 15.11: publish coverage rejected a blueprint bar *by* category for an Other text the
+    extractor read as a bar *breakdown*; only comment/reference records are matched against the spec."""
+    client, app, bid, folder, bq, run_id = blueprint_flow
+    with app.state.db.connect() as conn:
+        trace = conn.execute('SELECT * FROM traces WHERE run_id=?', (run_id,)).fetchone()
+    assert (trace['status'], client.get(f'/api/builds/{bid}').json()['stage']) == (
+        ('ok', 'prototype') if published else ('error', 'blueprint')), trace['error']
+
+
 @pytest.fixture
 def blueprint_flow(request, blueprint_api, monkeypatch):
     """Design confirm -> blueprint (ratio choice) -> accept, with fake BigQuery views and capture."""
@@ -271,6 +297,8 @@ def blueprint_flow(request, blueprint_api, monkeypatch):
         # After the confirmation is saved, before the durable commit: both roll back.
         from dss.spec.publication import Candidate
         monkeypatch.setattr(Candidate, 'commit', lambda *a: (_ for _ in ()).throw(OSError('commit')))
+    if 'other' in getattr(request, 'param', {}):
+        other_record(app, bid, folder, request.param['other'])
     confirm(client, app, bid)
     assessment = client.get(f'/api/builds/{bid}/feasibility').json()
     ratio = next(i for i in assessment['issues'] if i['requirement'] == 'q2')

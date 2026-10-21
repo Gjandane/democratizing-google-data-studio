@@ -60,3 +60,4 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - The shape-only `api/design.json` contract fixture uses a font outside the current theme presets; use a preset font when exercising Design confirmation.
 - `render(spec)` stacks every page in one `#dss-canvas`: never capture it as a background; use `background.write_pages(spec, folder)` (per-page `render(page=n)`), or page 1's PNG holds all pages.
 - Decoration text that soft-wraps can fail the text-fit check at any box height: Chromium's hanging pre-wrap space at the wrap point pokes past the box edge (Verdana 1161 > 1160). Insert explicit breaks (auto_layout._wrap) instead of relying on soft wrap.
+- The live outline_other/comment extractor varies its record shape per run (breakdown as field key or value, dimension mapping agg "none", needs-less record, decoration hex as need or property): normalize in code and confirm a staged live flow with 2+ consecutive passing runs.

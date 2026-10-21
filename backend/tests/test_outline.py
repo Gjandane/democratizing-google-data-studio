@@ -265,7 +265,8 @@ def test_other_new_section_and_invalid_extraction_do_not_publish(outline_api):
     wait(app)
     assert llm.calls == 2 and (folder / 'docs/outline.md').read_bytes() == before
     assert not (folder / 'requirements.json').is_file()
-    # A valid empty extraction still preserves the unclassified request as a blocked row.
+    # A valid empty extraction is an ordinary question: its blueprint rows are its requirement,
+    # so no blocking unclassified row is added (live 15.11, approved rule change).
     response_next(llm, {'questions': [question('New user question')], 'requirements': []})
     assert client.post(f'/api/builds/{bid}/outline/other', json={'section_id': None, 'text': 'New user question'}).status_code == 202
     wait(app)
@@ -273,7 +274,8 @@ def test_other_new_section_and_invalid_extraction_do_not_publish(outline_api):
     assert len(latest['sections']) == 4
     assert latest['sections'][-1]['questions'][0]['origin'] == 'other'
     assert latest['sections'][-1]['questions'][0]['selected']
-    assert req.load(folder).assessment.state == 'blocked'
+    ledger = req.load(folder)
+    assert ledger.assessment.state == 'ready' and ledger.requirements == [] and len(ledger.processed_sources) == 1
 
 
 def test_other_duplicate_promotes_existing_stable_question(outline_api):
@@ -364,3 +366,50 @@ def test_repropose_duplicate_section_titles_keep_unique_ids(tmp_path):
     draft['sections'][1]['title'] = draft['sections'][0]['title']
     second = node.compose(folder, first, context, node.Proposal.model_validate(draft), 'outline_propose')
     assert len({s.id for s in second.sections}) == len(second.sections)
+
+
+ORDERS = {'label': 'Orders', 'field': 'order_id', 'unit': 'orders', 'aggregation': 'count_distinct'}
+
+
+NET = {'label': 'Net Revenue', 'field': 'revenue', 'unit': 'USD', 'aggregation': 'sum'}
+
+
+@pytest.mark.parametrize('revenue,breakdown,kpi,normalized,blocked', [
+    (NET, {'fields': {'breakdown': 'region'}}, True, True, False),
+    (NET, {'value': 'region'}, True, True, False),
+    # Not the confirmed KPI's aggregation, or no confirmed KPI of that name: the record still
+    # needs a clause, but an Other text's clarifications never block (blueprint rows define it).
+    ({**NET, 'aggregation': 'avg'}, {'fields': {'breakdown': 'region'}}, False, True, False),
+    ({**NET, 'label': 'Gross margin'}, {'fields': {'breakdown': 'region'}}, False, True, False),
+    # A breakdown keyed by its own argument name, or given as its value, must name a connected
+    # field; an unsupported value still blocks.
+    (NET, {'fields': {'breakdown': 'territory'}}, True, False, False),
+    (NET, {'value': 'territory'}, True, False, True)])
+def test_other_record_kpis_breakdown_and_blocking(outline_api, revenue, breakdown, kpi, normalized, blocked):
+    """Live 15.11: Other text naming confirmed Context KPIs and a breakdown blocked the blueprint."""
+    from unittest.mock import patch
+    client, app, bid, sid, folder, llm = outline_api
+    text = 'What is the average order value (net revenue / orders) by region?'
+    original = llm.generate_content_async
+    async def extract(request, stream=False):
+        with app.state.db.connect() as conn:
+            mid = conn.execute("SELECT id FROM messages WHERE node='outline_other' AND role='user' ORDER BY rowid DESC").fetchone()[0]
+        llm.replies[llm.calls] = json.dumps({'questions': [question(text, ['avg_order_value'], False)],
+            'requirements': [{'source_id': mid, 'text': text, 'mappings': [revenue, ORDERS],
+                              'needs': [{'capability': 'argument.breakdown', **breakdown}]}]})
+        async for r in original(request, stream):
+            yield r
+    response_next(llm, {})
+    with patch.object(ContextLLM, 'generate_content_async', lambda self, request, stream=False: extract(request, stream)):
+        assert client.post(f'/api/builds/{bid}/outline/other', json={'section_id': None, 'text': text}).status_code == 202
+        wait(app)
+    ledger = req.load(folder)
+    [row] = ledger.requirements
+    assert ledger.assessment.state == ('blocked' if blocked else 'ready'), ledger.assessment.issues
+    assert row.mapping_origins['origin'] == 'outline_other'
+    assert row.mapping_origins.get('kpi:orders') == 'orders:order_id:count_distinct:orders'
+    fields = {'revenue': 'NUMERIC', 'order_id': 'STRING', 'region': 'STRING'}
+    assert req.mapping_verdict(row.mappings[1], row, fields) is None
+    assert (req.mapping_verdict(row.mappings[0], row, fields) is None) == kpi
+    assert ('kpi:netrevenue' in row.mapping_origins) == kpi
+    assert (row.needs[0].fields == {} and row.needs[0].value is None) == normalized
