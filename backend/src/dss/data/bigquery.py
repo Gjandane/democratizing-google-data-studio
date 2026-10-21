@@ -155,8 +155,10 @@ class BigQuery:
         self.client.create_dataset(dataset, exists_ok=True, timeout=30)
 
     def dry_run(self, sql):
-        self.client.query(sql, job_config=bigquery.QueryJobConfig(dry_run=True, use_query_cache=False),
-                          location=self.config.bq_location).result(timeout=30)
+        job = self.client.query(sql, job_config=bigquery.QueryJobConfig(dry_run=True, use_query_cache=False),
+                                location=self.config.bq_location)
+        job.result(timeout=30)
+        return job.schema
 
     def create_view(self, table, sql):
         self.ensure_dataset()

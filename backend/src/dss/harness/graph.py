@@ -60,13 +60,13 @@ class AgentHarness:
 
             async def router(node_input):
                 trace.span("router")
-                return Event(actions=EventActions(route=action if action in ("hello", "revise", "ux_audit", "reference_extract", "synthetic_schema", "capability_check", "research", "intake", "create_build", "load_spec", "recipe", "execute", "versions", "reference_delete", "engine_login", "synthetic_generate") else "unknown"))
+                return Event(actions=EventActions(route=action if action in ("context", "outline_propose", "hello", "revise", "ux_audit", "reference_extract", "synthetic_schema", "capability_check", "research", "intake", "create_build", "load_spec", "recipe", "execute", "versions", "reference_delete", "engine_login", "synthetic_generate") else "unknown"))
 
             async def code_node(node_input):
                 nonlocal code_error
                 trace.span(action)
                 try:
-                    if action in ("load_spec", "recipe", "execute", "versions", "reference_delete", "engine_login", "synthetic_generate"):
+                    if action in ("outline_propose", "load_spec", "recipe", "execute", "versions", "reference_delete", "engine_login", "synthetic_generate"):
                         return await payload(run_id)
                     if action == "create_build":
                         return "Build created"
@@ -145,6 +145,16 @@ class AgentHarness:
                 workflow = Workflow(name="dss_run", edges=[
                     ("START", router), (router, {"hello": hello_function, "unknown": reject}),
                     (hello_function, agent, guardrail)])
+            elif action == 'context':
+                from dss.harness.nodes.context import make_branch
+                model = llm if llm is not None else self.models.llm_for(action)
+                trace.model = model.model
+                drafter, repair, validate_context, complete, extra_state = make_branch(
+                    self, build_id, run_id, payload, model, trace, model_error)
+                workflow = Workflow(name='dss_run', edges=[
+                    ('START', router), (router, {'context': drafter}), (drafter, validate_context),
+                    (validate_context, {'repair': repair, 'complete': complete}), (repair, validate_context),
+                    (complete, guardrail)])
             elif action == "revise":
                 from dss.harness.nodes.revise import make_branch as revise_branch
                 model = llm if llm is not None else self.models.llm_for('revise')
@@ -178,7 +188,7 @@ class AgentHarness:
                 extra_agent, extra_finish, extra_state = extra_branch(self, build_id, run_id, payload, model, trace, model_error)
                 workflow = Workflow(name="dss_run", edges=[
                     ("START", router), (router, {action: extra_agent}), (extra_agent, extra_finish), (extra_finish, guardrail)])
-            elif action in ("intake", "create_build", "load_spec", "recipe", "execute", "versions", "reference_delete", "engine_login", "synthetic_generate"):
+            elif action in ("outline_propose", "intake", "create_build", "load_spec", "recipe", "execute", "versions", "reference_delete", "engine_login", "synthetic_generate"):
                 workflow = Workflow(name="dss_run", edges=[
                     ("START", router), (router, {action: code_node}), (code_node, guardrail)])
             else:
@@ -188,7 +198,7 @@ class AgentHarness:
             runner = Runner(app_name="dss", node=workflow, session_service=sessions)
             async for event in runner.run_async(user_id="local", session_id=run_id,
                     new_message=types.Content(role="user", parts=[types.Part(text=action)]),
-                    run_config=RunConfig(max_llm_calls=3 if action == "revise" else 2 if action == "research" else 1 if action in ("reference_extract", "capability_check", "synthetic_schema") else 4)):
+                    run_config=RunConfig(max_llm_calls=3 if action == "revise" else 2 if action in ('context', "research") else 1 if action in ("reference_extract", "capability_check", "synthetic_schema") else 4)):
                 if event.error_code:
                     raise RunError("llm_unavailable", "The model call failed; check Settings", 503)
                 # Streamed chunks repeat usage; only the final response of a model call counts.
@@ -216,7 +226,7 @@ class AgentHarness:
                 raise extra_state['failure']
             if reference_before is not None and reference_before != requirements.digest(references.load(reference_folder)):
                 requirements.reference_changed(reference_folder)
-            if action in ('revise', 'ux_audit', 'reference_extract', 'capability_check', 'research', 'synthetic_schema'):
+            if action in ('context', 'outline_propose', 'revise', 'ux_audit', 'reference_extract', 'capability_check', 'research', 'synthetic_schema'):
                 from dss.memory import episodic
                 message = episodic.save(self.db, build_id, 'assistant', reply, action)
                 await self.emit(build_id, run_id, 'message.done', {'message':message})
@@ -232,7 +242,7 @@ class AgentHarness:
                 from dss.memory import episodic
                 message = episodic.save(self.db, build_id, 'assistant', exc.message, action)
                 await self.emit(build_id, run_id, 'message.done', {'message': message})
-            if action in ("revise", "ux_audit", "reference_extract", "capability_check", "research", "synthetic_schema"):
+            if action in ('context', 'outline_propose', "revise", "ux_audit", "reference_extract", "capability_check", "research", "synthetic_schema"):
                 error_message = exc.message
             raise
         except asyncio.CancelledError:

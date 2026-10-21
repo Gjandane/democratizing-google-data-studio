@@ -960,3 +960,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none.
 - Left open: none.
 - Next: Task 15.3 Context node and endpoints; consume these models, OKF helpers and compact profiles.
+
+## 2026-10-21: Task 15.3 Context node and endpoints
+- Status: done
+- Plan check: off
+- What changed: Bounded Context drafting/repair, deterministic validation, OKF persistence, endpoints, events and state invalidation.
+- Checks: `uv run pytest tests/test_context_node.py tests/test_api_contract.py` PASS 77; Test (all) `uv run pytest` PASS 1214 (9 deselected); `uv run pytest -m live tests/live/test_staged_flow.py -k context -s` PASS 3. Sample: zero issues, one generation. Boundary billed 6300/6301 < bounds 9486/9487. Review P1 fixed; re-review clear.
+- Decisions: Combined dry run rejects aggregates and checks types. Outside Files: schema-returning BigQuery helper and named live tests. Added AGENTS.md gotcha. Structural errors: 422; semantic issues: editable. Confirm proposal/revalidation belongs to 15.4. Bound=max(chars/4,folded*1.20+512).
+- Digest: nodes/context.py: validate(draft, connected, service) -> Context; context.md OKF. api/workflow.py: GET/POST/PUT/context + confirm. BigQuery.dry_run returns schema. Confirm traces outline_propose; 15.4 adds proposal/revalidation.
+- Tried and failed: Fixed incomplete fixture and review's declared-type trust finding.
+- Gotchas: none beyond AGENTS.md.
+- Left open: none.
+- Next: Task 15.4 Outline nodes/endpoints; replace confirm's callback with the Outline branch.

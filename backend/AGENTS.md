@@ -53,3 +53,4 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - The requirements.json context section is mandatory in revise (6000 budget): never repeat source texts per row; requirement regexes run per label x field x message, so keep them cached (100 ms recompute target).
 - SQLite's connection context manager does not close the handle: use `contextlib.closing` when inspecting backup snapshots, or Windows can block temporary-file cleanup.
 - Windows system Python defaults text I/O to cp1252: pass `encoding="utf-8"` when reading and writing source/tests, or Unicode fixtures become mojibake.
+- A successful BigQuery dry run proves SQL resolves, not that declared derived types are correct: compare its returned schema before accepting numeric KPI or threshold uses.

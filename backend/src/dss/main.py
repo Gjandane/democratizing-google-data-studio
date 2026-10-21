@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from starlette.staticfiles import StaticFiles
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
-from dss.api import builds, settings, prototype, run, dev, chat, engine, session, agent, feasibility, synthetic_data
+from dss.api import builds, settings, prototype, run, dev, chat, engine, session, agent, feasibility, synthetic_data, workflow
 from dss.agent.jobs import AgentJobs
 from dss.harness.nodes.execute import environment
 from dss.bus import EventBus
@@ -102,6 +102,7 @@ def create_app(config=None, *, model_lister=None, bigquery_factory=None):
     app.include_router(session.router)
     app.include_router(settings.router)
     app.include_router(builds.router)
+    app.include_router(workflow.router)
     app.include_router(feasibility.router)
     app.include_router(synthetic_data.router)
     app.include_router(chat.router)

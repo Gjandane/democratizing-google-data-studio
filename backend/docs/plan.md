@@ -407,7 +407,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_artifacts.py tests/test_profile.py tests/test_intake.py` passes: every model round-trips model -> OKF file -> model unchanged and validates against ../contracts/fixtures/api/{context,outline,design,blueprint,blueprint.blocked}.json; the profile lists all values for <= 20 distinct, top 5 otherwise, uses at most 2 queries per source and a byte-identical prompt text; 30 columns fit 6k tokens and a 60-column source sends columns 41-60 as name and type only; `uv run pytest` passes; manual (live): `uv run python -m dss.data.profile <the sample CSV's table> --json` prints the profile in <= 10 s.
   - Review focus: ../contracts/api.md 2.0 types; no rows fetched for profiling; atomic writes.
-- [ ] 15.3 Context node and endpoints
+- [x] 15.3 Context node and endpoints
   - Goal: notes + profiles -> validated Context draft -> context.md; edit, revalidate and confirm.
   - Spec: docs/architecture.md#Context; docs/architecture.md#Working memory assembly
   - Files: src/dss/harness/nodes/context.py, src/dss/harness/graph.py, src/dss/harness/context.py, src/dss/api/workflow.py, src/dss/main.py, prompts/v1/context.md, skills/context.md, tests/test_context_node.py
