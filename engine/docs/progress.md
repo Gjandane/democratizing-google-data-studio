@@ -382,3 +382,9 @@ context. Task status lives in docs/plan.md, not here.
 - Decisions: preserve strict checks and failed evidence; document observed intermittent behavior. Existing progress.md contains legacy non-UTF-8 bytes, so appended this entry without rewriting earlier entries. Final stamp/lint/diff checks pass before docs-only commit.
 - Left open: none for engine POC acceptance. Optional retrospective, local release tag or separately planned new version. Cross-part gates/program integration audit belong to the program-root session.
 - Next: nothing left to build in engine; continue release/integration work from the program root.
+
+## 2026-10-21: Change live chart fields on a compiled recipe (program)
+- What changed: task 8.1 (M) added in Phase 8; the final audit's ACCEPTED verdict covers tasks to 7.1 only.
+- Why: release 2.3 live run b_31ee6bedd325 ended `partial` (ok 19, failed 25): add_chart scorecard after a date control, time_series, bar, pie, table and every dropdown add_control timed out with the default Record Count inserted and the Setup panel not shown; s006_failed.png shows the editor drawn in the top-left quarter of a 3840 x 2400 capture. Evidence: ../data/builds/b_31ee6bedd325/v1/ (recipe.jsonl, events.jsonl, screens/).
+- Ruling: user chose an engine fix (release never edits parts). No contract change: recipe 1.0 stays the interface.
+- Tasks affected: 8.1 only; release 2.3 waits on it.
