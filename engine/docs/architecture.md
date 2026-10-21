@@ -140,9 +140,15 @@ These conventions consolidate the verified build decisions and selector traps fr
 - Disambiguate the saved-report View action from the View menu. Saving a new report requires
   Save and share and the acknowledgement; return the saved URL without `/edit`.
 - Data-access review dialogs (on create and on first save) may or may not carry the "I understand
-  and accept the risk." checkbox (Data Studio dropped it by 2026-10-21). Detect the dialog itself
+  and accept the risk." checkbox (both variants observed on 2026-10-21). Detect the dialog itself
   (exact name: "Review data access" is a prefix of the save dialog's name), tick the checkbox only
   when present, click the dialog's own Acknowledge button (never Close), and wait for it to hide.
+  Dialog visibility does not mean its controls are ready: the risk checkbox can render later
+  while acknowledgement stays disabled. Within the existing operation/run budget, recheck for a
+  visible checkbox and accept it when necessary, or proceed when acknowledgement is enabled.
+  Do not spend the remaining budget waiting on a disabled button without rechecking the checkbox.
+  Apply the same readiness rule in the spike. A timeout consumes the shared retry budget; retry
+  is not a recovery strategy for this race.
 - Wait for lazy chart iframes and their rendered content; scorecards and tables render directly.
   Saved images may be visible before `naturalWidth` is nonzero. Generic chart selectors also
   match uploaded images: exclude `image_content` when enumerating charts.
@@ -184,3 +190,4 @@ These conventions consolidate the verified build decisions and selector traps fr
 | 2026-10-20 | Retain pending background uploads and element identity; refresh owning-page registry indices after reordering | upload again on retry; page-wide image lookup; stale paint-order indices | avoids duplicates and preserves later style targeting beside other images | task 5.3, final re-audit |
 | 2026-10-20 | Capture source fields at editor readiness; poll exact title-font readback and saved image loading | defer field lookup until after image selection; immediate readback | live acceptance exposed cleared field panels and asynchronous editor/view state | task 5.4, final re-audit |
 | 2026-10-21 | Detect data-access review dialogs by dialog, with the risk checkbox optional | pin a template or URL that avoids the dialog | Data Studio's dialog now has Close/Acknowledge only and blocked release 2.3; user chose the engine fix | change 2026-10-21, task 6.1 |
+| 2026-10-21 | Wait for review controls within the existing deadline, rechecking the optional checkbox until acknowledgement is enabled | check checkbox once at dialog visibility; rely on retry | audit probe proved the checkbox renders after the dialog while the button stays disabled, consuming the shared attempt budget | final re-audit, task 7.1 |

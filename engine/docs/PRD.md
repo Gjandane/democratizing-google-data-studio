@@ -63,6 +63,8 @@ engine replays a compiled recipe of UI ops deterministically, with no LLM in the
 - none (the spike, task 1.3, answers the UI unknowns and stops for the user)
 
 ## Later
+- The exact-dialog selector regression checks selector strings rather than accessible-name
+  behavior; live acceptance remains the semantic check (audit 2026-10-21).
 - Headless mode with a stored session for Cloud Run (program, next version).
 - LLM-assisted selector repair on failure (plan).
 - Successful geo-map rendering on a compatible geographic source remains unverified; the

@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:73b165510fee (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:4c4bb6ef4ede (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: engine
 One page, read at the start of every build session. A summary of docs/architecture.md, which
 wins if the two disagree.
@@ -36,6 +36,8 @@ tests/                   offline tests (fake driver); tests/live/ marked `live`
   Poll exact title-font readback and saved image loading within their existing budgets.
 - Data-access review dialogs (create, first save): detect the dialog by exact name; the risk
   checkbox is optional (tick only if present); click the dialog's Acknowledge, never Close.
+  Controls may render after the dialog: recheck the checkbox until acknowledgement is enabled
+  within the existing budget. A disabled-button timeout leaves no retry budget. Same for spike.
 - Schema extension fields are op-specific: read chart-only arguments only on `add_chart`.
   Wait for rendered charts/loaded images; preserve text blank lines through block/BR readback.
 - Screencast is opt-in JPEG quality 60 at most once per 500 ms; acknowledge dropped CDP frames
