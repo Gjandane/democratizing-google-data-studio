@@ -984,3 +984,27 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: none.
 - Next: Task 15.5 Theme kit and design endpoints; add prefill/revalidation at Outline confirmation.
+
+## 2026-10-21: Task 15.5 Theme kit and design endpoints
+- Status: partial
+- Plan check: off
+- What changed: Six OKF presets, checked Data Studio font inventory, deterministic kits, code-only Design prefill/edit/revalidation endpoints and approval-sheet renderer. Outline confirmation preserves existing Design preferences.
+- Checks: `uv run pytest tests/test_design.py tests/test_api_contract.py` PASS (82); `uv run pytest` PASS (1264, 10 live deselected). `uv run python scripts/render_presets.py` produced six PNGs plus preset_sheet.png in data/preset_sheets; all opened and visually checked; browser gallery opened. Reviewer: no findings after fixing persistence P2. User approval pending.
+- Decisions: Reference background snaps by nearest accessible black/white blend; preset surface/text/font stay. Design confirmation dispatch belongs to 15.6 with its Blueprint node. Outside Files: prototype.py resets empty-shape padding; browser regression verifies 4px rules. AGENTS.md records Georgia width and backup timing traps.
+- Digest: artifacts/design.py: presets/prefill/validate/load/persist; render/kits.py: decorations/content_row. GET/PUT design, GET design/presets, POST design/prefill; Outline confirm keeps/revalidates Design. Wire design/confirm in 15.6.
+- Tried and failed: 1em heading estimate clipped bold Georgia; corrected. First complete suite: 1263 passed, one backup-spy timing failure; unchanged isolated test and serial full rerun passed.
+- Gotchas: see AGENTS.md.
+- Left open: none in review; required preset approval remains.
+- Next: Obtain approval or changes for all six sheets, then mark 15.5 done and commit. Do not begin 15.6 in this session.
+
+## 2026-10-21: Task 15.5 Theme kit and design endpoints
+- Status: done
+- Plan check: off
+- What changed: Six approved OKF presets, checked Data Studio font catalog, deterministic decoration kits, Design prefill/edit/revalidation endpoints, and preset-sheet renderer. Outline confirmation preserves existing Design preferences.
+- Checks: Verified before approval: `uv run pytest tests/test_design.py tests/test_api_contract.py` PASS (82); `uv run pytest` PASS (1264, 10 live deselected). `uv run python scripts/render_presets.py` generated all six sheets and the combined PNG; visually checked and user explicitly approved all six on 2026-10-21. Reviewer: no findings after persistence fix. Approval follow-up changes documentation only.
+- Decisions: Reference background uses the nearest accessible black/white blend; preset surface/text/font stay. Design confirmation dispatch belongs to 15.6 with its Blueprint node. Outside Files: prototype.py resets empty-shape padding, covered by a browser regression. AGENTS.md records Georgia width and backup timing gotchas. No dependencies added.
+- Digest: artifacts/design.py: presets/prefill/validate/load/persist; render/kits.py: decorations/content_row. GET/PUT design, GET design/presets, POST design/prefill; Outline confirm keeps/revalidates Design. Wire design/confirm in 15.6.
+- Tried and failed: Prior entry records the corrected heading estimate and transient backup-test failure; final serial suite passed unchanged.
+- Gotchas: see AGENTS.md.
+- Left open: none.
+- Next: Task 15.6 Blueprint node, view sources and union view; wire Design confirmation to the Blueprint run.

@@ -55,3 +55,5 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Windows system Python defaults text I/O to cp1252: pass `encoding="utf-8"` when reading and writing source/tests, or Unicode fixtures become mojibake.
 - A successful BigQuery dry run proves SQL resolves, not that declared derived types are correct: compare its returned schema before accepting numeric KPI or threshold uses.
 - The 100 ms feasibility timing oracle hit 104.9 ms in a full run, then passed unchanged in isolation and a serial full rerun; avoid overlapping check runs before diagnosing a timing failure.
+- Bold Georgia's W measures about 1.126em in Chromium; a 1em-per-character header estimate can clip an allowed 80-character title.
+- The periodic-backup test once saw `backups=[]` in a full run, then passed unchanged in isolation and a serial rerun; retry before diagnosing this timing assertion.

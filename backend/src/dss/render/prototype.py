@@ -250,6 +250,11 @@ def render(spec, *, layer=None, data=None, folder=None):
                         style += ';display:none'
                 else:
                     defaults = {'background': theme.accent if item.kind in ('band','divider') else theme.surface if item.kind == 'panel' else 'transparent'}
+                    if not item.text:
+                        # Empty shapes may be thinner than .item's 16px padding.
+                        # With border-box sizing padding otherwise expands a 4px
+                        # rule to 32px and can cover adjacent header text.
+                        style += ';padding:0'
                     aliases = {'background_color': 'background', 'color': 'color', 'font_size': 'font-size', 'font_weight': 'font-weight', 'border_radius': 'border-radius'}
                     defaults.update({aliases.get(k, k): v for k, v in item.style.items() if k in (*aliases, 'background', 'font-size', 'font-weight', 'border-radius', 'opacity')})
                     style += ''.join(f';{k}:{css_value(v)}' + ('px' if isinstance(v, (int, float)) and k in ('font-size','border-radius') else '') for k, v in defaults.items())

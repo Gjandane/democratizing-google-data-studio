@@ -423,7 +423,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_outline.py tests/test_api_contract.py` passes per the Outline oracle (3-5 sections, stable ids, other questions and selections survive re-confirm and re-propose, duplicates dropped, a ratio-only question is not recommended, unsupported other text keeps a blocked requirement and an assistant reply, 25 selected -> 409, shapes = outline.json); `uv run pytest` passes; `uv run pytest -m live tests/live/test_staged_flow.py -k outline` proposes 3-5 sections for the sample CSV with valid kpi_refs.
   - Review focus: ../contracts/api.md 2.0 outline endpoints; one generation per action, no repair; extraction only for other text.
-- [ ] 15.5 Theme kit and design endpoints
+- [x] 15.5 Theme kit and design endpoints
   - Goal: at least 6 design-time theme presets with decoration kits, the Data Studio font list, and the code-only design stage.
   - Spec: docs/architecture.md#Design and theme kit
   - Files: knowledge/themes/*.md, knowledge/themes/index.md, knowledge/themes/log.md, knowledge/datastudio/fonts.md, src/dss/render/kits.py, src/dss/artifacts/design.py, src/dss/api/workflow.py, scripts/render_presets.py, tests/test_design.py

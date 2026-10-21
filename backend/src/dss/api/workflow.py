@@ -7,7 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 from dss.api.builds import build_response
 from dss.api.prototype import current
 from dss.artifacts import state as stages
-from dss.artifacts.models import Context
+from dss.artifacts import design as design_node
+from dss.artifacts.models import Context, Design
 from dss.db import new_id, now
 from dss.harness.guardrails import RunError
 from dss.harness.nodes import context as node
@@ -208,12 +209,66 @@ async def suggest_outline(build_id: str, request: Request, body: Suggest):
 async def confirm_outline(build_id: str, request: Request):
     state = request.app.state
     with stages.action(state, build_id, ('outline',)) as build:
-        _, draft = outline_inputs(state, build)
+        folder, draft = outline_inputs(state, build)
         selected = sum(q.selected for s in draft.sections for q in s.questions)
         issues = [] if 1 <= selected <= 24 else [{'path': '/sections', 'message': 'Select 1-24 questions'}]
-        stages.save(state.db, build_id, stages.confirmed(build, 'outline', issues))
-        # Task 15.5 supplies Design prefill/revalidation at this transition.
-        await state.harness.emit(build_id, None, 'stage.changed', {'stage': 'design'})
+        advanced = {**build, **stages.confirmed(build, 'outline', issues)}
+        existing = design_node.load(folder)
+        design = (design_node.validate(existing, draft) if existing is not None else
+                  design_node.prefill(build, node.load(folder), draft, design_node.reference_style(folder)))
+        await design_node.persist(state.harness, advanced, folder, design)
         built = build_response(state.db, state.settings.get(), build_id)
-        await state.harness.emit(build_id, None, 'build.updated', {'build': built})
         return built
+
+
+@router.get('/{build_id}/design/presets')
+async def get_design_presets(build_id: str, request: Request):
+    current(request.app.state, build_id)
+    return design_node.presets()
+
+
+@router.get('/{build_id}/design')
+async def get_design(build_id: str, request: Request):
+    _, folder = current(request.app.state, build_id)
+    return design_node.load(folder)
+
+
+def design_inputs(state, build):
+    _, folder = current(state, build['id'])
+    outline = outline_node.load(folder)
+    values = stages.states(build)
+    if not outline or any(values[name] != 'confirmed' for name in ('context', 'outline')):
+        raise stages.wrong_stage(build)
+    return folder, outline
+
+
+@router.post('/{build_id}/design/prefill')
+async def prefill_design(build_id: str, request: Request):
+    state = request.app.state
+    with stages.action(state, build_id, ('design',)) as build:
+        folder, outline = design_inputs(state, build)
+        draft = design_node.prefill(build, node.load(folder), outline, design_node.reference_style(folder))
+        return await design_node.persist(state.harness, build, folder, draft)
+
+
+@router.put('/{build_id}/design')
+async def put_design(build_id: str, request: Request):
+    from dss.api.synthetic_data import read_json, invalid_request
+    body = await read_json(request)
+    if not isinstance(body, dict) or {'revision', 'issues'} & body.keys():
+        raise invalid_request()
+    try:
+        draft = Design.model_validate({**body, 'revision': 1, 'issues': []})
+    except ValidationError as exc:
+        raise RunError('invalid_request', 'Invalid Design structure', 422, {'issues': [
+            {'path': '/' + '/'.join(map(str, e['loc'])), 'message': 'Invalid Design structure: ' + e['type']}
+            for e in exc.errors(include_input=False, include_context=False)]}) from None
+    state = request.app.state
+    with stages.action(state, build_id) as build:
+        stages.require_edit(build, 'design')
+        folder, outline = design_inputs(state, build)
+        return await design_node.persist(state.harness, build, folder, design_node.validate(draft, outline))
+
+
+# Design confirmation dispatches the Blueprint node in task 15.6, alongside
+# that node's harness branch; no placeholder run may claim a successful draft.
