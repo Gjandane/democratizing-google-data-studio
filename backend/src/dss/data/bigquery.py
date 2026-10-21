@@ -304,41 +304,8 @@ class BigQuery:
             self.check_generation(uri)
 
     def profile(self, table):
-        table_uri(table)
-        metadata = self.client.get_table(table, timeout=30)
-        columns = []
-        # One aggregate query per column, no raw rows enter the harness or an LLM.
-        for field in metadata.schema:
-            name = quoted(field.name)
-            text = f"CAST({name} AS STRING)"
-            if field.field_type == "BYTES":
-                text = f"TO_BASE64({name})"
-            if field.field_type in ("GEOGRAPHY", "JSON"):
-                text = f"ST_ASTEXT({name})" if field.field_type == "GEOGRAPHY" else f"TO_JSON_STRING({name})"
-            nested = field.mode == "REPEATED" or field.field_type in ("RECORD", "STRUCT")
-            if nested:
-                text = f"TO_JSON_STRING({name})"
-            ordered = not nested and field.field_type not in ("GEOGRAPHY", "JSON", "BYTES")
-            sql = (f"SELECT COUNT(*) AS row_count, COUNTIF({name} IS NULL) AS null_count, "
-                   f"COUNT(DISTINCT {text}) AS distinct_count, "
-                   f"MIN({name if ordered else text}) AS min_value, MAX({name if ordered else text}) AS max_value, "
-                   f"ARRAY_AGG({text} IGNORE NULLS LIMIT 3) AS samples FROM {quoted(table)}")
-            row = next(iter(self.client.query(sql, location=self.config.bq_location).result(timeout=120)))
-            count = row["row_count"]
-            samples = [str(value) for value in row["samples"] or []]
-            kind = field.field_type
-            api_type = ("string" if nested else "number" if kind in ("INTEGER", "INT64", "FLOAT", "FLOAT64", "NUMERIC", "BIGNUMERIC") else
-                        "date" if kind == "DATE" else "datetime" if kind in ("TIMESTAMP", "DATETIME", "TIME") else
-                        "boolean" if kind in ("BOOL", "BOOLEAN") else "geo" if kind == "GEOGRAPHY" else "string")
-            columns.append({"name": field.name, "type": api_type, "sample": samples,
-                            "bq_type": kind, "null_pct": 100 * row["null_count"] / count if count else 0,
-                            "distinct_count": row["distinct_count"],
-                            "min": None if row["min_value"] is None else str(row["min_value"]),
-                            "max": None if row["max_value"] is None else str(row["max_value"]),
-                            "date_like": kind == "STRING" and bool(samples) and all(is_date(v) for v in samples)})
-        if not metadata.schema or not columns or count == 0:
-            raise invalid("Source has zero data rows")
-        return {"row_count": count, "columns": columns}
+        from dss.data.profile import profile_table
+        return profile_table(self, table)
 
 
 def public_source(source):

@@ -399,7 +399,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest` passes: `tests/test_api_contract.py` matches build.json, build.done.json, builds.json, messages.json and the 2.0 SSE fixtures (notes, artifacts, no ready_for_plan); `POST interview/start`, `POST messages` and `POST plan` return 404; tests/test_artifact_state.py covers every Stage rule (draft/stale/back-move per edit in each stage, edits in build or done -> `409 wrong_stage`, confirm with issues -> `409 artifact_invalid`); a stored build in stage interview or plan migrates to context; a build with all four artifacts missing and a spec (legacy) still compiles and runs; the dev load-spec route still reaches prototype and a dry-run build; old interview/plan tests are deleted, not skipped (list them in the progress entry).
   - Review focus: ../contracts/api.md 2.0 (Build, Stage rules, removed routes); additive migration; nothing else of the old flow left reachable.
-- [ ] 15.2 Artifact models, OKF writer and the profile script
+- [x] 15.2 Artifact models, OKF writer and the profile script
   - Goal: the four artifact models and their OKF read/write, and the reusable data profile script that intake now uses.
   - Spec: docs/architecture.md#Staged workflow; docs/architecture.md#Data profile
   - Files: src/dss/artifacts/models.py, src/dss/artifacts/okf.py, src/dss/data/profile.py, src/dss/data/bigquery.py, src/dss/harness/nodes/intake.py, tests/test_artifacts.py, tests/test_profile.py, tests/test_intake.py

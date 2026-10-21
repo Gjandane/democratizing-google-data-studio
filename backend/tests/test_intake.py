@@ -1,4 +1,5 @@
 import csv
+from collections import Counter
 import io
 import json
 from pathlib import Path
@@ -41,6 +42,8 @@ class FakeBigQuery:
             values = [row[field.name] for row in rows if row[field.name] != ""]
             kind = "number" if field.field_type in ("FLOAT", "INTEGER") else "date" if field.field_type == "DATE" else "string"
             cols.append({"name": field.name, "type": kind, "sample": values[:3], "bq_type": field.field_type,
+                         "values": [{"value": value[:60], "count": count} for value, count in Counter(values).most_common(20 if len(set(values)) <= 20 else 5)],
+                         "values_complete": len(set(values)) <= 20,
                          "date_like": field.field_type == "STRING" and bool(values) and all(data.is_date(v) for v in values[:3]),
                          "null_pct": 100 * (len(rows) - len(values)) / len(rows) if rows else 0,
                          "distinct_count": len(set(values)), "min": min(values) if values else None,
@@ -123,6 +126,10 @@ def test_multi_upload_profile_and_trace(setup):
         assert all(len(col["sample"]) == 3 for col in source["columns"])
     profile = profile_doc(app, build)
     assert profile["type"] == "BigQuery Table" and len(profile["sources"]) == 2
+    assert profile['sources'][0]['columns'][0]['values_complete']
+    from dss.data.profile import prompt_text
+    body = (app.state.settings.get().data_dir / 'builds' / build['id'] / 'v1/docs/data-profile.md').read_text(encoding='utf-8')
+    assert prompt_text(profile['sources'][0]) in body
     docs = app.state.settings.get().data_dir / "builds" / build["id"] / "v1/docs"
     for path in docs.glob("*.md"):
         assert yaml.safe_load(path.read_text(encoding="utf-8").split("---", 2)[1])["type"]
@@ -217,8 +224,9 @@ def test_adapter_jobs_and_profile():
     config = Config(gcp_project_id="test-project")
     client = Mock()
     client.get_table.return_value = SimpleNamespace(schema=[bigquery.SchemaField("event_date", "STRING")])
-    client.query.return_value.result.return_value = [{"row_count": 4, "null_count": 1, "distinct_count": 2,
-        "min_value": "01/03/2026", "max_value": "01/04/2026", "samples": ["01/03/2026", "01/04/2026", "01/03/2026"]}]
+    client.query.return_value.result.return_value = [{"row_count": 4, "c0": {"null_count": 1, "distinct_count": 2,
+        "min_value": "2026-01-03", "max_value": "2026-01-04", "invalid_dates": 0,
+        "value_counts": [{'value': '01/03/2026', 'count': 2}, {'value': '01/04/2026', 'count': 1}]}}]
     service = data.BigQuery(config, client=client)
     service.load_csv("test-project.dss_demo.sales", SALES)
     call = client.load_table_from_file.call_args
@@ -236,9 +244,9 @@ def test_adapter_jobs_and_profile():
     profile = service.profile("test-project.dss_demo.existing")
     col = profile["columns"][0]
     assert profile["row_count"] == 4 and col["date_like"] is True and col["null_pct"] == 25
-    assert col["distinct_count"] == 2 and len(col["sample"]) == 3
+    assert col["distinct_count"] == 2 and col['values_complete'] and len(col["sample"]) == 2
     sql = client.query.call_args.args[0]
-    assert "COUNTIF(`event_date` IS NULL)" in sql and "LIMIT 3" in sql
+    assert "COUNTIF(`event_date` IS NULL)" in sql and 'APPROX_TOP_COUNT' in sql
     assert "`test-project.dss_demo.existing`" in sql
     service.current_generation.side_effect = ["123", "456"]
     with pytest.raises(Exception, match="Source could not be loaded") as error:
@@ -250,8 +258,9 @@ def test_adapter_jobs_and_profile():
 def test_profile_type_mapping(field_type, expected):
     client = Mock()
     client.get_table.return_value = SimpleNamespace(schema=[bigquery.SchemaField("order", field_type)])
-    client.query.return_value.result.return_value = [{"row_count": 3, "null_count": 0, "distinct_count": 3,
-        "min_value": None, "max_value": None, "samples": ["a", "b", "c"]}]
+    client.query.return_value.result.return_value = [{"row_count": 3, "c0": {"null_count": 0, "distinct_count": 3,
+        "min_value": None, "max_value": None, "invalid_dates": 0,
+        "value_counts": [{'value': v, 'count': 1} for v in ('a', 'b', 'c')]}}]
     service = data.BigQuery(Config(gcp_project_id="test-project"), client=client)
     assert service.profile("test-project.dss_demo.existing")["columns"][0]["type"] == expected
 
@@ -308,8 +317,9 @@ def test_long_fields_and_nonfinite_numeric_strings():
 def test_nested_profile_and_empty_table():
     client = Mock()
     client.get_table.return_value = SimpleNamespace(schema=[bigquery.SchemaField("items", "INTEGER", mode="REPEATED")])
-    client.query.return_value.result.return_value = [{"row_count": 3, "null_count": 0, "distinct_count": 2,
-        "min_value": "[1]", "max_value": "[3]", "samples": ["[1]", "[3]", "[1]"]}]
+    client.query.return_value.result.return_value = [{"row_count": 3, "c0": {"null_count": 0, "distinct_count": 2,
+        "min_value": None, "max_value": None, "invalid_dates": 0,
+        "value_counts": [{'value': '[1]', 'count': 2}, {'value': '[3]', 'count': 1}]}}]
     service = data.BigQuery(Config(gcp_project_id="test-project"), client=client)
     assert service.profile("test-project.dss_demo.existing")["columns"][0]["type"] == "string"
     assert "TO_JSON_STRING(`items`)" in client.query.call_args.args[0]

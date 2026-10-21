@@ -5,13 +5,13 @@ from pathlib import Path
 import yaml
 
 from dss.data.bigquery import invalid, prepare_csv, public_source, snake_names
+from dss.data.profile import render_profiles
+from dss.artifacts.okf import atomic_write
 from dss.db import new_id, now
 
 
 def write_doc(path, metadata, body):
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text("---\n" + yaml.safe_dump(metadata, sort_keys=False, allow_unicode=True) + "---\n\n" + body, encoding="utf-8")
-    temporary.replace(path)
+    atomic_write(path, "---\n" + yaml.safe_dump(metadata, sort_keys=False, allow_unicode=True) + "---\n\n" + body)
 
 
 def perform(db, build_id, payload):
@@ -59,7 +59,7 @@ def register(connection, config, build_id, version, loaded):
     docs.mkdir(parents=True, exist_ok=True)
     sources = existing + loaded
     write_doc(docs / "data-profile.md", {"type": "BigQuery Table", "title": "Data profile", "sources": sources},
-              "# Data profile\n\n" + "\n".join(f'- {source["name"]}: `{source["bq_table"]}` ({source["row_count"]} rows)' for source in sources) + "\n")
+              render_profiles(sources))
     if not (docs / "index.md").exists():
         write_doc(docs / "index.md", {"type": "Index", "title": "Build documents"}, "# Build documents\n\n- [Data profile](data-profile.md)\n")
     if not (docs / "log.md").exists():

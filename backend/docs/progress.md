@@ -948,3 +948,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: none.
 - Next: Task 15.2 Artifact models, OKF writer and profile script.
+
+## 2026-10-21: Task 15.2 Artifact models, OKF writer and the profile script
+- Status: done
+- Plan check: off
+- What changed: Added contract-shaped artifact models, readable atomic OKF persistence with update events, and aggregate-only profiling shared by BigQuery intake and the CLI.
+- Checks: `uv run pytest tests/test_artifacts.py tests/test_profile.py tests/test_intake.py` PASS (40); `uv run pytest` PASS (1184, 6 live deselected, 2 upstream warnings); live sample CLI PASS (2000 rows, 10 columns, 7.458 s); `git diff --check -- .` PASS. Independent review: no findings.
+- Decisions: One aggregate query per source. Profiles add values/counts and values_complete; sample remains public. prompt_text uses deterministic ordering, samples-first trimming, top-five reduction and conservative UTF-8 sizing; columns after 40 retain only name/type. write_artifact requires an async build/run-bound emit callback and maintains index/log.
+- Digest: artifacts.models defines Context/Outline/Design/Blueprint; okf.read_artifact(path), async write_artifact(path, artifact, emit=...). profile_table(service, table), prompt_text(profile); columns add values[{value,count}] and values_complete. BigQuery.profile delegates.
+- Tried and failed: none.
+- Gotchas: none.
+- Left open: none.
+- Next: Task 15.3 Context node and endpoints; consume these models, OKF helpers and compact profiles.
