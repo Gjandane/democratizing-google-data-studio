@@ -232,7 +232,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `npm test -- design` and `npm run typecheck` pass: picking a preset fills every field; Reset to preset calls design/prefill; palette chips accept #RRGGBB only (3-8); a low-contrast issue from the server shows on the field; per_section shows the page count from the confirmed outline; source `reference` shows "From your reference"; screenshots/14.4-design-{1280,1440}.png checked against docs/staged-ui.md and the UI design section, user colors only as data swatches.
   - Review focus: ../contracts/api.md 2.0 design endpoints; swatches have text labels (not color alone); tokens elsewhere.
-- [ ] 14.5 Blueprint review, prototype page tabs and the live staged walkthrough
+- [x] 14.5 Blueprint review, prototype page tabs and the live staged walkthrough
   - Goal: the blueprint table with feasibility decisions and accept; page tabs on the prototype; the whole staged flow verified against the real backend.
   - Spec: docs/staged-ui.md
   - Files: src/features/workspace/blueprint/*, src/features/workspace/FeasibilityPanel.tsx, src/features/workspace/prototype/*, src/mocks/*.ts, tests/blueprint.test.tsx, tests/prototype.test.tsx

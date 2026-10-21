@@ -11,7 +11,22 @@ export interface Target {
   cid: string;
   label: string;
   kind: string;
+  /** Position of its page section in the canvas; null when the page has no sections. */
+  page: number | null;
   box: Box;
+}
+
+/** One `<section data-page>` of the canvas (contracts/api.md 2.0, Prototype HTML). */
+export interface Page {
+  /** Position among the sections, top to bottom. */
+  index: number;
+  /** Its `data-page` number. */
+  n: number;
+  /** Its `data-page-name`, or "Page <n>". */
+  name: string;
+  /** Canvas coordinates of the section. */
+  top: number;
+  height: number;
 }
 
 export interface PendingComment {

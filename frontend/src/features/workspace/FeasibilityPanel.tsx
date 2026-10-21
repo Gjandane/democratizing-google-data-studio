@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '../../api/client';
 import { ApiError, type Assessment, type BuildEventMap, type FeasibilityDecision, type Issue } from '../../api/types';
 import { Button } from '../../components/Button';
 import { ErrorState } from '../../components/ErrorState';
 import { focusRing } from '../../components/focus';
 import { LoadingState } from '../../components/Spinner';
+import { IssueSlotContext } from './blueprint/issueSlots';
 import { subscribeWorkspace } from './stretch';
 
 export interface FeasibilityGates { planReady: boolean; buildReady: boolean }
@@ -50,6 +52,11 @@ export function FeasibilityPanel({ buildId, referencesReady = true, readOnly = f
 
   const assessmentNotify = useRef(onAssessmentChange);
   assessmentNotify.current = onAssessmentChange;
+  // In Blueprint, each blocked row's issue renders under that row (a portal); the rest stay here.
+  const slotHost = useContext(IssueSlotContext);
+  const setHostIssues = slotHost?.setIssues;
+  const notifyDecided = slotHost?.notifyDecided;
+  const hostRefresh = slotHost?.refresh ?? 0;
   const action = useRef<'check' | 'reapply' | 'replan'>('check');
   const success = () => action.current === 'check' ? 'Feasibility checked. Review the result.' : 'Prototype update finished. Review the current assessment.';
 
@@ -138,6 +145,13 @@ export function FeasibilityPanel({ buildId, referencesReady = true, readOnly = f
     notify.current?.(closed);
     void load();
   }, [load, referencesReady, refreshKey]);
+  useEffect(() => {
+    if (hostRefresh > 0) void load();
+  }, [load, hostRefresh]);
+  useEffect(() => {
+    setHostIssues?.(assessment?.issues ?? null);
+  }, [setHostIssues, assessment]);
+  useEffect(() => () => setHostIssues?.(null), [setHostIssues]);
 
   const check = async (kind: 'check' | 'reapply' | 'replan' = 'check') => {
     const value = current.current;
@@ -203,6 +217,7 @@ export function FeasibilityPanel({ buildId, referencesReady = true, readOnly = f
       // A refetch or newer assessment arrived while the decision was in flight.
       if (current.current?.id === assessmentId && request === seq.current) adopt(value);
       setStatus('Decision saved. Review the current assessment before continuing.');
+      notifyDecided?.();
       await load();
     } catch (reason) {
       if (!mounted.current) return;
@@ -221,6 +236,35 @@ export function FeasibilityPanel({ buildId, referencesReady = true, readOnly = f
   // Nothing to act on: heading, summary and any status share one line, so the stage content stays above the fold.
   const oneLine = !loadError && assessment?.state === 'ready' && resolved && !assessment.prototype_stale && !assessment.pending_comments;
   const replan = !readOnly && canReplan && assessment?.prototype_stale && !assessment.pending_comments;
+  const slots = slotHost?.slots;
+  const slotOf = (issue: Issue) => (loadError ? undefined : slots?.get(issue.id));
+  const open = assessment?.issues.filter((issue) => issue.resolution === 'unresolved') ?? [];
+  const here = open.filter((issue) => !slotOf(issue));
+  const decision = (issue: Issue, value: Assessment) => <fieldset key={`${value.id}-${issue.id}`} disabled={disabled} className="min-w-0 space-y-2 rounded-control border border-border bg-surface p-3">
+    <legend className="max-w-full px-1 text-body font-semibold text-text [overflow-wrap:anywhere]">{issue.requirement}</legend>
+    <p className="text-body font-medium text-text">{issue.status === 'unsupported_app' && /animate GPS points/i.test(issue.requirement) ? 'This app cannot animate GPS points.' : reasons[issue.status]}</p>
+    <p className="text-body text-text-muted [overflow-wrap:anywhere]">{issue.reason}</p>
+    <ul className="space-y-1 text-label [overflow-wrap:anywhere]" aria-label="Evidence">{issue.evidence.map((entry, index) => <li key={index}>{/^https?:\/\//i.test(entry) ? <a href={entry} target="_blank" rel="noopener noreferrer" className={`text-primary underline hover:text-primary-hover ${focusRing}`}>{entry}<span className="sr-only"> (opens in a new tab)</span></a> : <code className="font-mono text-text-muted">{entry}</code>}</li>)}</ul>
+    {issue.alternatives.map((alternative) => <label key={alternative.id} className="flex items-start gap-2 text-body text-text">
+      <input type="radio" name={`${id}-${issue.id}`} value={alternative.id} checked={selected[issue.id] === alternative.id} onChange={() => setSelected((current) => ({ ...current, [issue.id]: alternative.id }))} className={`mt-1 accent-primary ${focusRing}`} />
+      <span className="min-w-0 [overflow-wrap:anywhere]">{alternative.label}</span>
+    </label>)}
+    <div className="flex flex-wrap gap-2">
+      {issue.alternatives.length > 0 && <Button disabled={disabled || !selected[issue.id] || !value.id} onClick={() => void decide({ issue_id: issue.id, action: 'accept_alternative', alternative_id: selected[issue.id]! })}>Use this alternative</Button>}
+      <Button disabled={disabled || !value.id} onClick={() => void decide({ issue_id: issue.id, action: 'drop', alternative_id: null })}>Drop this requirement</Button>
+    </div>
+  </fieldset>;
+  // Under a blocked row: the open decision, or what the user chose.
+  const portals: ReactNode[] = [];
+  for (const issue of assessment?.issues ?? []) {
+    const slot = slotOf(issue);
+    if (!slot || !assessment) continue;
+    portals.push(createPortal(issue.resolution === 'unresolved' ? decision(issue, assessment) : (
+      <p className="pt-1 text-body text-text [overflow-wrap:anywhere]">
+        <span className="font-medium">{issue.resolution === 'dropped' ? 'Dropped: ' : 'Alternative accepted: '}</span>{issue.requirement}
+      </p>
+    ), slot, `${assessment.id}-${issue.id}`));
+  }
   return (
     <section aria-labelledby={`${id}-heading`} className={`mt-4 min-w-0 rounded-panel border border-border bg-surface ${oneLine ? 'flex flex-wrap items-baseline gap-x-3 px-4 py-2' : 'p-4'}`}>
       <h3 ref={heading} id={`${id}-heading`} tabIndex={-1} className={`rounded-control text-title font-semibold text-text ${focusRing}`}>Feasibility</h3>
@@ -228,22 +272,9 @@ export function FeasibilityPanel({ buildId, referencesReady = true, readOnly = f
       {!assessment && !loadError && <LoadingState>Loading feasibility…</LoadingState>}
       {loadError && <ErrorState className="mt-3" title="Couldn't load feasibility" message={loadError} onRetry={() => { setFocusRequest((n) => n + 1); void load(); }} retryLabel="Retry feasibility" retryLoading={refreshing} />}
       {!loadError && assessment && !oneLine && <div className="mt-2 space-y-3">
-        <p className="text-body text-text-muted">{assessment.state === 'ready' ? 'Your requirements are resolved.' : assessment.state === 'blocked' ? 'Resolve these requirements before generating or building.' : assessment.state === 'stale' ? 'Requirements changed. Regenerate the blueprint or reapply saved comments before continuing.' : 'Check what this app supports before generating or building.'}</p>
+        <p className="text-body text-text-muted">{assessment.state === 'ready' ? 'Your requirements are resolved.' : assessment.state === 'blocked' ? (open.length > 0 && here.length === 0 ? 'Resolve each blocked row below before accepting the blueprint.' : 'Resolve these requirements before generating or building.') : assessment.state === 'stale' ? 'Requirements changed. Regenerate the blueprint or reapply saved comments before continuing.' : 'Check what this app supports before generating or building.'}</p>
         {assessment.prototype_stale && <p className="text-body font-medium text-danger">This prototype is out of date. Regenerate the blueprint before generating a recipe or building.</p>}
-        {assessment.issues.filter((issue) => issue.resolution === 'unresolved').map((issue) => <fieldset key={`${assessment.id}-${issue.id}`} disabled={disabled} className="min-w-0 space-y-2 rounded-control border border-border p-3">
-          <legend className="max-w-full px-1 text-body font-semibold text-text [overflow-wrap:anywhere]">{issue.requirement}</legend>
-          <p className="text-body font-medium text-text">{issue.status === 'unsupported_app' && /animate GPS points/i.test(issue.requirement) ? 'This app cannot animate GPS points.' : reasons[issue.status]}</p>
-          <p className="text-body text-text-muted [overflow-wrap:anywhere]">{issue.reason}</p>
-          <ul className="space-y-1 text-label [overflow-wrap:anywhere]" aria-label="Evidence">{issue.evidence.map((entry, index) => <li key={index}>{/^https?:\/\//i.test(entry) ? <a href={entry} target="_blank" rel="noopener noreferrer" className={`text-primary underline hover:text-primary-hover ${focusRing}`}>{entry}<span className="sr-only"> (opens in a new tab)</span></a> : <code className="font-mono text-text-muted">{entry}</code>}</li>)}</ul>
-          {issue.alternatives.map((alternative) => <label key={alternative.id} className="flex items-start gap-2 text-body text-text">
-            <input type="radio" name={`${id}-${issue.id}`} value={alternative.id} checked={selected[issue.id] === alternative.id} onChange={() => setSelected((value) => ({ ...value, [issue.id]: alternative.id }))} className={`mt-1 accent-primary ${focusRing}`} />
-            <span className="min-w-0 [overflow-wrap:anywhere]">{alternative.label}</span>
-          </label>)}
-          <div className="flex flex-wrap gap-2">
-            {issue.alternatives.length > 0 && <Button disabled={disabled || !selected[issue.id] || !assessment.id} onClick={() => void decide({ issue_id: issue.id, action: 'accept_alternative', alternative_id: selected[issue.id]! })}>Use this alternative</Button>}
-            <Button disabled={disabled || !assessment.id} onClick={() => void decide({ issue_id: issue.id, action: 'drop', alternative_id: null })}>Drop this requirement</Button>
-          </div>
-        </fieldset>)}
+        {here.map((issue) => decision(issue, assessment))}
         {!readOnly && !resolved && (assessment.state !== 'ready' || assessment.issues.some((issue) => issue.status === 'unknown' && issue.resolution === 'unresolved')) && <Button disabled={disabled} loading={busy} onClick={() => void check()}>Check feasibility</Button>}
       </div>}
       {assessment?.pending_comments && <section aria-label="Saved comment batch" className="mt-3 space-y-3 rounded-control border border-border p-3">
@@ -262,6 +293,7 @@ export function FeasibilityPanel({ buildId, referencesReady = true, readOnly = f
       {replan && localCommentsPending && <p id={`${id}-drafts`} className="mt-2 text-body text-text-muted">Apply or remove your draft comments before regenerating the blueprint.</p>}
       {error && <p role="alert" className={`${oneLine ? '' : 'mt-2 '}text-body text-danger`}>{error}</p>}
       <p role="status" className={`${status && !oneLine ? 'mt-2 ' : ''}min-w-0 text-label text-text-muted`}>{status}</p>
+      {portals}
     </section>
   );
 }

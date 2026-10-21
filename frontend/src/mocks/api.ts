@@ -10,6 +10,7 @@ import {
   type Blueprint,
   type Context,
   type Design,
+  type Issue,
   type Outline,
   type OutlineQuestion,
   type ValidationIssue,
@@ -97,6 +98,8 @@ interface MockState {
   serviceFault: MockServiceFault;
   /** Nodes whose next runs fail, with their `run.finished` error text (null: no text). */
   runFailures: Partial<Record<MockFailingNode, string | null>>;
+  /** Blueprint drafts block the ratio KPI row (q2), as blueprint.blocked.json does. */
+  blueprintBlocked: boolean;
   nextSeq: number;
 }
 
@@ -130,6 +133,7 @@ function seed(): MockState {
     screencast: true,
     serviceFault: null,
     runFailures: {},
+    blueprintBlocked: false,
     nextSeq: 0x1000,
   };
 }
@@ -185,6 +189,29 @@ export function setMockServiceFault(fault: MockServiceFault): void {
 export function setMockRunFailure(node: MockFailingNode, error: string | null | undefined): void {
   if (error === undefined) delete state.runFailures[node];
   else state.runFailures[node] = error;
+}
+
+/** The issue a blocked ratio row names (blueprint.blocked.json): the code-built alternative splits it (dashboard-intent.md 1.2). */
+export const MOCK_RATIO_ISSUE_ID = 'i_aov_ratio';
+export function mockRatioIssue(): Issue {
+  return {
+    id: MOCK_RATIO_ISSUE_ID,
+    requirement: 'Show the average order value (net revenue / orders) as one scorecard.',
+    status: 'unsupported_app',
+    reason: 'A view column cannot hold SUM(revenue)/COUNT(DISTINCT order_id), and the recipe has no calculated-field op for it.',
+    evidence: ['contracts/recipe.md#Operations', 'context:avg_order_value'],
+    alternatives: [{ id: 'alt_aov_split', label: 'Show net revenue and orders as two scorecards' }],
+    resolution: 'unresolved',
+  };
+}
+
+/**
+ * Makes every next blueprint draft block the ratio row (q2) with mockRatioIssue, until reset with
+ * false. A decision on the issue is kept: a later draft shows the alternative (accepted) or drops
+ * the row (dropped). For tests and the dev server.
+ */
+export function setMockBlueprintBlocked(on: boolean): void {
+  state.blueprintBlocked = on;
 }
 
 /** Changes a stored build (its stage, artifact states, spec version...) without events. For tests and previews. */
@@ -669,8 +696,18 @@ function draftBlueprint(build: Build): void {
   assessment.input_digest ??= `digest_${build.id}`;
   assessment.state = assessment.issues.some((issue) => issue.resolution === 'unresolved') ? 'blocked' : 'ready';
   assessment.prototype_stale = false;
+  const blueprint = draftedBlueprint(build, assessment.id);
+  if (state.blueprintBlocked && blueprint.rows.some((row) => row.question_id === 'q2')) {
+    const prior = assessment.issues.find((issue) => issue.id === MOCK_RATIO_ISSUE_ID);
+    if (!prior) assessment.issues.push(mockRatioIssue());
+    const resolution = prior?.resolution ?? 'unresolved';
+    // Accepted: the fixture's own q2 row is the alternative (net revenue and orders apart).
+    if (resolution === 'dropped') blueprint.rows = blueprint.rows.filter((row) => row.question_id !== 'q2');
+    else if (resolution === 'unresolved') blueprint.rows = blueprint.rows.map((row) => (row.question_id === 'q2' ? clone(fixtures.blueprintBlocked.rows.find((r) => r.question_id === 'q2')!) : row));
+    assessment.state = assessment.issues.some((issue) => issue.resolution === 'unresolved') ? 'blocked' : 'ready';
+  }
   state.assessments.set(build.id, assessment);
-  save(build, 'blueprint', draftedBlueprint(build, assessment.id));
+  save(build, 'blueprint', blueprint);
   build.artifacts.blueprint = 'draft';
   touch(build);
   announce(build);
@@ -804,6 +841,16 @@ export function createMockApi(): ApiClient {
       updated.id = `assessment_${nextId('r')}`;
       updated.state = updated.issues.some((issue) => issue.resolution === 'unresolved') ? 'blocked' : updated.prototype_stale ? 'stale' : 'ready';
       state.assessments.set(id, updated);
+      // A decision on the ratio row rewrites it in code, as the live backend does: the alternative
+      // (the fixture's own q2 row) or no row. Like the live backend, no artifact.updated follows
+      // (seen 2026-10-21): the client reads the blueprint again after a saved decision.
+      const ratio = decisions.find((decision) => decision.issue_id === MOCK_RATIO_ISSUE_ID);
+      const blueprint = artifactsOf(id).blueprint;
+      if (ratio && blueprint?.rows.some((row) => row.issue_ids.includes(MOCK_RATIO_ISSUE_ID))) {
+        const alternative = fixtures.blueprint.rows.find((row) => row.question_id === 'q2')!;
+        const rows = blueprint.rows.flatMap((row) => (!row.issue_ids.includes(MOCK_RATIO_ISSUE_ID) ? [row] : ratio.action === 'drop' ? [] : [clone(alternative)]));
+        artifactsOf(id).blueprint = { ...clone(blueprint), rows, revision: blueprint.revision + 1, assessment_id: updated.id };
+      }
       return updated;
     }),
     reapplyComments: (id, assessmentId, batchId) => respond(() => {
@@ -1282,13 +1329,16 @@ export function createMockApi(): ApiClient {
       const path = `/api/builds/${encodeURIComponent(id)}/prototype?layer=${layer}&v=${v ?? 0}`;
       // Without blob URLs (some test DOMs) the plain path; tests load the fixture into their iframe themselves.
       if (typeof URL.createObjectURL !== 'function') return path;
-      const cached = blobUrls.get(path);
+      // A per_section design renders one page per section: the two-page fixture.
+      const pages = state.artifacts.get(id)?.design?.page_structure === 'per_section' ? fixtures.prototypeMultipageHtml : fixtures.prototypeHtml;
+      const key = `${path}|${pages === fixtures.prototypeHtml ? 'single' : 'per_section'}`;
+      const cached = blobUrls.get(key);
       if (cached) return cached;
       const hide = '<style>[data-kind="component"]{visibility:hidden}</style></head>';
-      const html = layer === 'decoration' ? fixtures.prototypeHtml.replace('</head>', hide) : fixtures.prototypeHtml;
+      const html = layer === 'decoration' ? pages.replace('</head>', hide) : pages;
       // A blob URL made by this page is same-origin, so the overlay can read the iframe's DOM.
       const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
-      blobUrls.set(path, url);
+      blobUrls.set(key, url);
       return url;
     },
 

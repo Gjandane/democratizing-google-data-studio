@@ -44,6 +44,7 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
   }, [pending.length]);
   useEffect(() => () => notify.current?.(0), []);
   const [presentCids, setPresentCids] = useState<Set<string>>(new Set());
+  const [pageNames, setPageNames] = useState<Map<string, string>>(new Map());
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -96,7 +97,7 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
       <EmptyState
         icon={<MousePointerClick />}
         title="No prototype yet"
-        description="The prototype shows up here, ready for comments, once the plan is done."
+        description="The prototype shows up here, ready for comments, once you accept the blueprint."
         headingLevel={3}
         framed
         className="mt-6"
@@ -174,11 +175,15 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
         disabled={busy}
         hoveredId={hoveredId}
         onAdd={add}
-        onRead={setPresentCids}
+        onRead={(cids, names) => {
+          setPresentCids(cids);
+          setPageNames(names);
+        }}
       />
       <PendingList
         comments={pending}
         presentCids={presentCids}
+        pageNames={pageNames}
         applying={busy}
         batchSize={batchSize}
         error={error}

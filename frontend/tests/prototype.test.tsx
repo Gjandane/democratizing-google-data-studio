@@ -448,3 +448,106 @@ describe('useBuildStream: comments run'  , () => {
     expect(latest!.commentsError!.seq).toBeGreaterThan(seq);
   });
 });
+
+/** Writes the two-page fixture and stubs its section and component boxes (each page stacks below the last). */
+function loadPages(html: string = fixtures.prototypeMultipageHtml) {
+  const frame = screen.getByTitle(/^Prototype of /) as HTMLIFrameElement;
+  const doc = frame.contentDocument!;
+  doc.open();
+  doc.write(html);
+  doc.close();
+  let top = 0;
+  const sections = Array.from(doc.querySelectorAll<HTMLElement>('section[data-page]'));
+  for (const section of sections) {
+    const pageTop = top;
+    const height = parseFloat(section.style.height);
+    section.getBoundingClientRect = () => rect(0, pageTop, 1200, height);
+    section.querySelectorAll<HTMLElement>('[data-cid]').forEach((el) => {
+      const px = (name: 'left' | 'top' | 'width' | 'height') => parseFloat(el.style[name]);
+      el.getBoundingClientRect = () => rect(px('left'), pageTop + px('top'), px('width'), px('height'));
+    });
+    top += height;
+  }
+  doc.getElementById('dss-canvas')!.getBoundingClientRect = () => rect(0, 0, 1200, top);
+  fireEvent.load(frame);
+  return sections;
+}
+
+/** The fixture's page names and each page's labels, read from the HTML itself. */
+function pagesOf(html: string) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  return Array.from(doc.querySelectorAll('section[data-page]')).map((s) => ({
+    name: s.getAttribute('data-page-name')!,
+    labels: Array.from(s.querySelectorAll('[data-cid]')).map((el) => el.getAttribute('data-label')!),
+  }));
+}
+
+describe('Prototype page tabs', () => {
+  const [first, second] = pagesOf(fixtures.prototypeMultipageHtml) as [ReturnType<typeof pagesOf>[number], ReturnType<typeof pagesOf>[number]];
+
+  async function setupPages() {
+    const created = await api.createBuild({ archetype: 'executive', mode: 'data' });
+    const build: Build = { ...(await api.getBuild(created.id)), stage: 'prototype', spec_version: 2 };
+    render(<Holder initial={build} open={fakeStream().open} />);
+    loadPages();
+  }
+  const tab = (name: string) => within(screen.getByRole('tablist', { name: 'Prototype pages' })).getByRole('tab', { name: new RegExp(`^${name}`) });
+  const targets = () => screen.getAllByRole('button', { name: /^Comment on / }).map((b) => b.getAttribute('aria-label')!.replace('Comment on ', ''));
+
+  it('reads one tab per data-page-name; the first page shows only its own targets', async () => {
+    await setupPages();
+    const tabs = within(screen.getByRole('tablist', { name: 'Prototype pages' })).getAllByRole('tab');
+    expect(tabs.map((t) => t.textContent)).toEqual([first.name, second.name]);
+    expect(tab(first.name).getAttribute('aria-selected')).toBe('true');
+    expect(tab(second.name).getAttribute('aria-selected')).toBe('false');
+    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(tab(first.name).id);
+    expect(targets().sort()).toEqual([...first.labels].sort());
+    expect(screen.getByTestId('prototype-scale').style.top).toBe('0px');
+  });
+
+  it('a second tab shows that page: its section scrolled into the frame and only its targets', async () => {
+    await setupPages();
+    fireEvent.click(tab(second.name));
+    expect(tab(second.name).getAttribute('aria-selected')).toBe('true');
+    expect(targets().sort()).toEqual([...second.labels].sort());
+    // Page 1 is 900 px tall in the fixture, page 2 600 px.
+    expect(screen.getByTestId('prototype-scale').style.top).toBe('-900px');
+    expect(screen.getByRole('tabpanel').style.height).toBe('600px');
+  });
+
+  it('pins stay on their page; the tab counts them and the list names the page', async () => {
+    await setupPages();
+    fireEvent.click(tab(second.name));
+    const label = second.labels.find((l) => !/band|title/i.test(l))!;
+    comment(label, 'Sort by revenue');
+    // Canvas coordinates: page 2 starts at 900.
+    expect(Number.parseFloat(pinAnchor(1).style.top)).toBeGreaterThanOrEqual(900);
+    expect(tab(second.name).textContent).toBe(`${second.name}, 1 comment on this page`);
+    fireEvent.click(tab(first.name));
+    expect(within(pins()).queryByRole('img', { name: 'Comment 1' })).toBeNull();
+    expect(screen.queryByRole('button', { name: `Comment on ${label}` })).toBeNull();
+    const list = screen.getByRole('list', { name: 'Pending comments' });
+    expect(list.textContent).toContain(`${second.name} · ${label}`);
+    fireEvent.click(tab(second.name));
+    expect(within(pins()).getByRole('img', { name: 'Comment 1' })).toBeTruthy();
+  });
+
+  it('arrow keys move between tabs; Home and End jump to the ends', async () => {
+    await setupPages();
+    fireEvent.keyDown(tab(first.name), { key: 'ArrowRight' });
+    expect(tab(second.name).getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(tab(second.name));
+    fireEvent.keyDown(tab(second.name), { key: 'ArrowRight' });
+    expect(tab(first.name).getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(tab(first.name), { key: 'End' });
+    expect(tab(second.name).getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(tab(second.name), { key: 'Home' });
+    expect(tab(first.name).getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('a one-page prototype has no tabs', async () => {
+    await setup();
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(screen.getByTestId('prototype-scale').style.top).toBe('0px');
+  });
+});

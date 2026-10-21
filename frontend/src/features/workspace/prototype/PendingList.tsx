@@ -8,6 +8,8 @@ interface PendingListProps {
   comments: PendingComment[];
   /** Component ids that exist in the page now. */
   presentCids: Set<string>;
+  /** Each component's page name, when the prototype has 2+ pages. */
+  pageNames?: Map<string, string>;
   applying: boolean;
   /** Size of the batch being applied. */
   batchSize: number;
@@ -20,7 +22,7 @@ interface PendingListProps {
 
 const plural = (n: number) => `${n} comment${n === 1 ? '' : 's'}`;
 
-export function PendingList({ comments, presentCids, applying, batchSize, error, headingRef, onRemove, onApply, onHover }: PendingListProps) {
+export function PendingList({ comments, presentCids, pageNames, applying, batchSize, error, headingRef, onRemove, onApply, onHover }: PendingListProps) {
   const tooMany = comments.length > MAX_COMMENTS;
   return (
     <section aria-labelledby="pending-heading" className="rounded-panel border border-border bg-surface">
@@ -46,6 +48,7 @@ export function PendingList({ comments, presentCids, applying, batchSize, error,
                 <Pin n={index + 1} className="mt-0.5" />
                 <div className="min-w-0 flex-1">
                   <p className="text-caption text-text-muted">
+                    {pageNames?.get(comment.component_id) && <span>{pageNames.get(comment.component_id)} · </span>}
                     {comment.label}
                     {!presentCids.has(comment.component_id) && <span> · Not in this version</span>}
                   </p>

@@ -1,9 +1,9 @@
 // The four artifact stages (context, outline, design, blueprint) in one frame: load, refetch on
 // `artifact.updated`, a read-only summary, and the stage's confirm and secondary actions.
-// The context has its editor (14.2), the outline its picker (14.3) and the design its picker (14.4);
-// task 14.5 replaces the blueprint summary the same way.
+// The context has its editor (14.2), the outline its picker (14.3), the design its picker (14.4)
+// and the blueprint its table with each blocked row's Feasibility issue inline (14.5).
 import { FileQuestion } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../../api/client';
 import {
   ApiError,
@@ -24,6 +24,8 @@ import { ErrorState } from '../../components/ErrorState';
 import { LoadingState } from '../../components/Spinner';
 import { presetFor } from '../activity/presets';
 import type { BuildStream, RunErrorNode } from '../activity/useBuildStream';
+import { BlueprintTable } from './blueprint/BlueprintTable';
+import { IssueSlotContext, IssueSlotProvider, rowResolved } from './blueprint/issueSlots';
 import { ContextEditor } from './context/ContextEditor';
 import { DesignPicker } from './design/DesignPicker';
 import { OutlinePicker, selectedCount } from './outline/OutlinePicker';
@@ -102,7 +104,6 @@ function newer<T extends { revision: number }>(current: Load<T>, value: T | null
 
 const errorText = (error: unknown, fallback: string) => (error instanceof ApiError ? error.message : fallback);
 const mono = 'font-mono text-label text-text-muted';
-const sectionTitle = 'mt-5 mb-2 text-title font-semibold text-text';
 
 function Issues({ issues }: { issues: ValidationIssue[] }) {
   if (issues.length === 0) return null;
@@ -117,39 +118,7 @@ function Issues({ issues }: { issues: ValidationIssue[] }) {
   );
 }
 
-function BlueprintSummary({ blueprint }: { blueprint: Blueprint }) {
-  const pages = [...new Set(blueprint.rows.map((r) => r.page))].sort((a, b) => a - b);
-  return (
-    <>
-      {pages.map((page) => (
-        <section key={page} aria-labelledby={`blueprint-page-${page}`}>
-          <h3 id={`blueprint-page-${page}`} className={sectionTitle}>Page {page}</h3>
-          <ul className="space-y-1">
-            {blueprint.rows.filter((r) => r.page === page).map((row, i) => (
-              <li key={i} className="flex items-baseline gap-2 text-body text-text">
-                <span className="min-w-0 flex-1">{row.component.label}</span>
-                <code className={mono}>{row.component.type}</code>
-                <code className={`${mono} w-8`}>{row.question_id ?? ''}</code>
-                <span className={`w-16 text-label font-medium ${row.status === 'blocked' ? 'text-danger' : 'text-success'}`}>{row.status === 'blocked' ? 'Blocked' : 'OK'}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
-    </>
-  );
-}
-
-/** Mount with `key={name}`: its loaded value belongs to one artifact. */
-export function ArtifactStage({
-  build,
-  name,
-  stream,
-  feasibility,
-  acceptReady,
-  onBuildChange,
-  children,
-}: {
+type ArtifactStageProps = {
   build: Build;
   name: ArtifactName;
   stream: Pick<BuildStream, 'artifactSeq' | 'running' | 'runErrors'> & Partial<Pick<BuildStream, 'activity'>>;
@@ -160,8 +129,29 @@ export function ArtifactStage({
   onBuildChange: (build: Build) => void;
   /** More panels at the end of the body (references). */
   children?: ReactNode;
-}) {
+};
+
+/** Mount with `key={name}`: its loaded value belongs to one artifact. */
+export function ArtifactStage(props: ArtifactStageProps) {
+  // The blueprint table and the Feasibility panel share the blocked rows' issues.
+  return (
+    <IssueSlotProvider>
+      <ArtifactStageBody {...props} />
+    </IssueSlotProvider>
+  );
+}
+
+function ArtifactStageBody({
+  build,
+  name,
+  stream,
+  feasibility,
+  acceptReady,
+  onBuildChange,
+  children,
+}: ArtifactStageProps) {
   const copy = COPY[name];
+  const slotHost = useContext(IssueSlotContext);
   const [load, setLoad] = useState<Load<Values[ArtifactName]>>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const [pending, setPending] = useState<'primary' | 'secondary' | null>(null);
@@ -173,7 +163,8 @@ export function ArtifactStage({
   // The picker's count, unsaved ticks included.
   const [outlineCount, setOutlineCount] = useState<number | null>(null);
   const mounted = useRef(true);
-  const seq = build.id + name + stream.artifactSeq[name];
+  // A saved feasibility decision may rewrite the blueprint rows (the live backend does): read it again.
+  const seq = build.id + name + stream.artifactSeq[name] + (name === 'blueprint' ? `|${slotHost?.decided ?? 0}` : '');
 
   useEffect(() => {
     mounted.current = true;
@@ -220,9 +211,11 @@ export function ArtifactStage({
     if (!valid) status = 'Fix the open issues to confirm';
   } else if (value && name === 'blueprint') {
     const rows = (value as Blueprint).rows;
-    const blocked = rows.filter((r) => r.status === 'blocked').length;
+    const blocked = rows.filter((r) => r.status === 'blocked' && !rowResolved(r.issue_ids, slotHost?.issues ?? null)).length;
     valid = acceptReady && rows.some((r) => r.status === 'ok');
     if (blocked > 0) status = blocked === 1 ? '1 blocked row' : `${blocked} blocked rows`;
+    else if (!rows.some((r) => r.status === 'ok')) status = 'Accept needs at least one row that is not blocked';
+    else if (!acceptReady) status = 'Accept opens once feasibility and references are ready';
   }
   // While a run holds the build's lock, the strip's phrase says why everything waits.
   if (stream.running) status = `${presetFor(stream.running).phrases[0]}…`;
@@ -274,6 +267,8 @@ export function ArtifactStage({
     } catch (error) {
       if (!mounted.current) return;
       const issues = error instanceof ApiError && error.code === 'artifact_invalid' ? artifactIssues(error) : [];
+      // The assessment changed under us: the panel refetches, so the rows show what blocks now.
+      if (error instanceof ApiError && error.code === 'feasibility_blocked') slotHost?.requestRefresh();
       setActionError({ message: errorText(error, `${kind === 'primary' ? copy.confirm : copy.secondary} didn't work. Try again.`), issues });
     } finally {
       busy.current = false;
@@ -297,7 +292,7 @@ export function ArtifactStage({
     body = <OutlinePicker build={build} outline={value as Outline} disabled={locked} onSaved={(saved) => void onSaved(saved)} onSavingChange={onSavingChange} onCountChange={setOutlineCount} startedRuns={startedRuns} />;
   else if (name === 'design')
     body = <DesignPicker build={build} design={value as Design} disabled={locked} onSaved={(saved) => void onSaved(saved)} onSavingChange={onSavingChange} />;
-  else body = <BlueprintSummary blueprint={value as Blueprint} />;
+  else body = <BlueprintTable build={build} blueprint={value as Blueprint} outlineSeq={stream.artifactSeq.outline} />;
 
   return (
     <StageFrame
