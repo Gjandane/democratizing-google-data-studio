@@ -1,10 +1,16 @@
 # Contract: dashboard references and feasibility
+Version 1.2 (2026-10-21, change staged workflow): requirements come from structured artifacts
+instead of free-text chat (Feasibility assessment); the stages and actions of api.md 2.0 replace
+`interview` and `plan`. Where older text below says interview it means the context, outline and
+design stages; plan, replan and direct plan mean `blueprint/accept` (and `blueprint/regenerate`);
+ready_for_plan means an assessment `ready` at `blueprint/accept`. Assessment, Issue and decision
+shapes are unchanged; the fixtures stay valid.
 Version 1.1 (2026-10-19). Change: explicit synthetic-data fallback for screenshot-only builds;
 original reference/feasibility rules retained. Version 1.0 was the initial planned contract. Provider: backend. Consumers: frontend, release.
 2026-10-20 (no version change, shapes unchanged): example fixtures added for alternatives,
 pending comments and a stale assessment; implementation task IDs follow frontend's split.
 Status: backend 11.1-11.8 (task split 2026-10-20) and frontend 10.1-10.3 (split 2026-10-20).
-API transport: contracts/api.md 1.5. Recipe transport stays at 1.0.
+API transport: contracts/api.md 2.0. Recipe transport stays at 1.0.
 Shared fixtures: contracts/fixtures/dashboard-intent/{reference_set,feasibility}.json, plus the
 Assessment variants feasibility.alternatives.json (blocked, alternatives offered),
 feasibility.pending.json (a blocked comment batch in pending_comments) and feasibility.stale.json.
@@ -32,7 +38,8 @@ No new dependency is assumed. Animated/unsupported/corrupt content rejects with 
 oversize bytes use `413`. Image text cannot authorize actions or override capability rules.
 
 `POST reference-images`: multipart `files`, `mode=style|recreate`, `instructions` (0-2000 chars).
-Allowed only in connect, interview or prototype with no active action on the build. Files get
+Allowed only in connect, context, outline, design, blueprint or prototype with no active action
+on the build. Files get
 server-generated plain names `reference_<id>.png|jpg` in the current version folder. Retain original
 bytes for review through the existing authenticated files endpoint; never place them in recipes,
 backgrounds, global memory or logs. Persist safe descriptors and extraction in `references.json`,
@@ -47,7 +54,7 @@ Names are display strings, never paths. URLs for previews use the existing files
 No raw model output is exposed. `DELETE reference-images` clears the current set, reference.md,
 and reference-owned style.md and bytes. This changes future intent, not the already saved spec.
 Replacing/deleting invalidates feasibility and marks any existing prototype stale (see assessment).
-Replanning is explicit. During plan/build/done, mutations return `409 wrong_stage`; use New version
+Replanning is explicit. During build/done, mutations return `409 wrong_stage`; use New version
 from done. New version copies reference bytes, extracted observations and confirmed mappings,
 but clears assessment IDs and recomputes feasibility before compiling or executing. Durable
 requirement-scoped choices carry over only if still valid under the copied inputs/evidence.
@@ -71,7 +78,10 @@ evidence. Native product exclusions require official documentation; documentatio
 unknown native support. An app exclusion can independently block the request.
 
 ## Feasibility assessment
-Normalize explicit user requirements from messages, image observations and pending comments into
+Requirement records come from (1.2): each selected outline question and the blueprint row that
+answers it (structured, no text extraction), the confirmed context's KPI definitions, the Design's
+choices, normalized outline `other` text, image observations and pending comments. Only `other`
+text, image observations and comments go through model extraction. Normalize them into
 stable requirement records; preserve requested behavior (not just the eventual chart type).
 Match against capabilities, connected schema, metric definitions and compiler/engine coverage.
 Code owns the final classification and checks. A model may extract requirements or suggest a
@@ -94,8 +104,9 @@ and summarized in OKF `feasibility.md`; the UI response is the blocking-issue pr
 
 `POST feasibility/check` (empty body) starts bounded assessment and returns `202 {run_id}`,
 using capability_check and existing run events. This is the recovery action for unchecked/legacy
-builds. Allowed in connect/interview/prototype, under the per-build action lock. It never creates
-SQL, renders or launches the engine. Interview/reference/comment actions also refresh assessment.
+builds. Allowed in connect, context, outline, design, blueprint and prototype, under the per-build
+action lock. It never creates SQL, renders or launches the engine. Blueprint, outline `other`,
+reference and comment actions also refresh assessment.
 GET never launches model work. A stale prototype may be replanned/reapplied once intent issues
 are resolved; `prototype_stale` blocks recipe/run, not the action that repairs it.
 
@@ -112,7 +123,7 @@ action:"accept_alternative"|"drop", alternative_id:string|null}]}`; 1-20 distinc
 Accept requires an offered alternative id; drop requires null. The exact current assessment id is
 mandatory; stale IDs get `409 feasibility_stale`. Apply atomically, record explicit user choices,
 recompute and return the Assessment (200). Ambiguities requiring new data or text are answered
-through the existing data/interview flow. The server never treats silence or elapsed time as consent.
+through a context edit, outline `other` text or new data (1.2). The server never treats silence or elapsed time as consent.
 Decisions do not launch planning, SQL, rendering or builds.
 
 For any change to user intent, references, connected schema, spec, capabilities or allowed types,
@@ -126,14 +137,17 @@ set/extraction, schema/definitions, spec when present, registry version/content 
 Serialize with the existing per-build action lock; no check/use gap when committing an artifact.
 
 ## Enforcement
-- Interview: explain unsupported requests immediately, give a supported alternative if any, and
-  ask about ambiguous mappings. Do not signal ready_for_plan while active issues are unresolved.
-- Direct plan calls also assess before creating any BigQuery view. The Generate shortcut
+- Blueprint (1.2): code checks every blueprint row against the registry, catalog limits, field
+  roles and the confirmed definitions; a row that fails after its one repair becomes an Issue
+  with code-built alternatives where any exist (for a ratio Kpi: its numerator and denominator as
+  separate metrics). Outline `other` text that asks for unsupported behavior is explained in an
+  assistant message at once and kept as a requirement. `blueprint/accept` needs `ready`.
+- `blueprint/accept` also assesses before creating any BigQuery view. The Generate shortcut
   cannot bypass this rule. Preflight blocks perform no view writes. After preflight succeeds, use
   a new run-specific candidate view for spec/render validation; later failure deletes only that
   candidate and preserves the previous spec/prototype/view. Commit the successful candidate
   reference atomically with the spec/artifacts; never replace a view used by an older report.
-  On a block, preserve artifacts and return to interview.
+  On a block, preserve artifacts and stay in `blueprint`.
 - Validate a generated/revised spec against normalized requirements AND the registry before
   publishing a prototype. An allowed geo_map with `animate=true` is rejected, not silently stripped.
 - Comments: assess the requested behavior before patching. A blocked batch leaves the entire spec

@@ -2,16 +2,16 @@ event: ready
 data: {"build_id": "b_3f9a0c12d4e5"}
 
 event: run.started
-data: {"run_id": "r_00000000000b", "node": "plan"}
+data: {"run_id": "r_00000000000b", "node": "blueprint"}
 
 event: run.usage
-data: {"run_id": "r_00000000000b", "node": "plan", "input_tokens": 8420, "output_tokens": 1310}
+data: {"run_id": "r_00000000000b", "node": "blueprint", "input_tokens": 8420, "output_tokens": 1310}
 
 event: node.progress
-data: {"run_id": "r_00000000000b", "node": "plan", "text": "Writing questions.md"}
+data: {"run_id": "r_00000000000b", "node": "blueprint", "text": "Checking feasibility"}
 
 event: run.usage
-data: {"run_id": "r_00000000000b", "node": "plan", "input_tokens": 80140, "output_tokens": 12360}
+data: {"run_id": "r_00000000000b", "node": "blueprint", "input_tokens": 9870, "output_tokens": 2140}
 
 event: run.finished
-data: {"run_id": "r_00000000000b", "node": "plan", "status": "ok", "error": null}
+data: {"run_id": "r_00000000000b", "node": "blueprint", "status": "ok", "error": null}

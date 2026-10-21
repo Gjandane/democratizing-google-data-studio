@@ -12,7 +12,9 @@ src/api/         client.ts (fetch wrappers, relative /api), types.ts (from ../co
 src/mocks/       mock API + fake event stream; data comes from ../contracts/fixtures/api/ (never copied)
 src/styles/      tokens.css (all colors, type, spacing, radius as CSS variables)
 src/components/  base components (Button, Input, Panel, Stepper, Pin, Popover, Toast, Spinner, EmptyState, ErrorState, Modal, Table)
-src/features/    history/, workspace/ (shell, chat/, connect/, plan/, prototype/, build/), settings/, trace/
+src/features/    history/, activity/ (strip, run cards, node presets), access/, workspace/ (shell, connect/,
+                 context/, outline/, design/, blueprint/, prototype/, build/), settings/, trace/
+                 (workspace chat/ and plan/ removed 2026-10-21)
 tests/           vitest specs; contract.test.ts checks ../contracts/fixtures/api/ against types.ts guards
 screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
 ```
@@ -22,7 +24,7 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
 - Relative /api; Vite proxy locally, backend static hosting on Cloud Run. Gate access with the
   cookie; never retain the code. Agent mode uses the agent panel instead of local sign-in.
 - Exact runtime contract guards; mocks import shared fixtures. One EventSource per build;
-  reconnect refetches state. Build/SSE guards stay exact in API 1.4 (Source.kind adds synthetic).
+  reconnect refetches state. Build/SSE guards stay exact in API 2.0 (stages, artifacts, notes, artifact.updated).
 - Backend prototype iframe and pin overlay share one scaled 1200px canvas; no injected scripts.
   jsdom geometry is stubbed; verify real geometry at both UI viewports.
 - Use contract node names; run-card anchor is message count at start. Clock stays in strip/card.
@@ -40,8 +42,8 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
 - Tokens: src/styles/tokens.css; components use tokens only.
 - Palette: bg #F8FAFC, surface #FFFFFF, surface-muted #F1F5F9, text #0F172A, text-muted #475569, border #E2E8F0, primary #1E40AF (hover #1E3A8A, on #FFFFFF), accent #D97706 (comment pins, "Apply" CTA; on #000000), success #15803D, danger #DC2626, focus ring #1E40AF.
 - Type and spacing: Inter (UI), Fira Code (recipe lines, ids); 12/13/14/16/20/24 px, body 14; spacing 4/8/12/16/24/32; radius 6 controls, 10 panels; shadow only on popovers/modals.
-- Layout: top bar 48 px (logo, build title, stepper, Trace, Settings); left chat column 380 px fixed; stage area fills the rest; History is a single centered list (max 960 px). Stage areas: Connect (archetype, sources); Interview (sources summary, archetype card, questions answered so far, "Generate plan"); Plan (progress lines, docs); Prototype (scaled iframe, pins, pending list); Build (recipe ops, live status); Done (link card, versions, "New version"); above the chat input, the activity strip (task 6.1).
-- Activity: strip above the chat input (phrase · m:ss · tokens), 400 ms after `run.started`, in
+- Layout: top bar 48 px (logo, build title, stepper, Trace, Settings); left activity column 380 px fixed (messages, run cards, activity strip at its foot; no input); stage area fills the rest; History is a single centered list (max 960 px). Stage areas: docs/staged-ui.md (change 2026-10-21).
+- Activity: strip at the foot of the activity column (phrase · m:ss · tokens), 400 ms after `run.started`, in
   a reserved slot; preset checklist card in the log, last step ticks only on `run.finished` ok.
 - Copy: sentence case, active voice; buttons are verbs ("Apply 3 comments"); errors say what to do next.
 - States: every data view has loading, empty and error; every control has hover, focus-visible and disabled.
@@ -56,10 +58,10 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
 ## Contracts
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
-| ../contracts/api.md | 1.5 | consumes | `npm test -- contract` |
+| ../contracts/api.md | 2.0 | consumes | `npm test -- contract` |
 | ../contracts/conventions.md | 1.2 | consumes | manual: port 5173, `/api` proxy to 8000 |
-| ../contracts/dashboard-intent.md | 1.1 | consumes | `npm test -- contract` |
-| ../contracts/synthetic-data.md | 1.1 | consumes | `npm test -- synthetic` |
+| ../contracts/dashboard-intent.md | 1.2 | consumes | `npm test -- contract` |
+| ../contracts/synthetic-data.md | 1.2 | consumes | `npm test -- synthetic` |
 
 ## Dependencies
 | Package | Registry | Version | Why | Verified |

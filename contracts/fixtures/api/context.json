@@ -1,0 +1,88 @@
+{
+  "revision": 2,
+  "title": "Sales Performance Overview: Web Shop (Jan-Sep 2026)",
+  "goal": "Show the sales director which regions, categories and segments drive net revenue, and how revenue trends month over month.",
+  "audience": "Sales director",
+  "datasets": [
+    {
+      "source_id": "s_a1b2c3d4e5f6",
+      "summary": "2,000 web-shop order lines from 2026-01-03 to 2026-09-30. One row per order line; revenue is net of discounts (user note)."
+    }
+  ],
+  "derived_fields": [
+    {
+      "name": "order_size_band",
+      "expression": "CASE WHEN `quantity` >= 3 THEN 'Bulk' ELSE 'Single' END",
+      "type": "string",
+      "description": "Bulk when an order line has 3 or more units."
+    }
+  ],
+  "kpis": [
+    {
+      "id": "net_revenue",
+      "name": "Net revenue",
+      "description": "Sum of revenue (already net of discounts).",
+      "unit": "USD",
+      "measure": {
+        "field": "revenue",
+        "agg": "sum"
+      },
+      "ratio": null
+    },
+    {
+      "id": "orders",
+      "name": "Orders",
+      "description": "Distinct order ids.",
+      "unit": null,
+      "measure": {
+        "field": "order_id",
+        "agg": "count_distinct"
+      },
+      "ratio": null
+    },
+    {
+      "id": "units_sold",
+      "name": "Units sold",
+      "description": "Sum of quantity.",
+      "unit": "units",
+      "measure": {
+        "field": "quantity",
+        "agg": "sum"
+      },
+      "ratio": null
+    },
+    {
+      "id": "avg_order_value",
+      "name": "Average order value",
+      "description": "Net revenue divided by orders.",
+      "unit": "USD",
+      "measure": null,
+      "ratio": {
+        "numerator": "net_revenue",
+        "denominator": "orders"
+      }
+    }
+  ],
+  "thresholds": [
+    {
+      "id": "bulk_quantity",
+      "name": "Bulk order line",
+      "field": "quantity",
+      "operator": ">=",
+      "value": 3,
+      "unit": "units",
+      "description": "Lines at or above this quantity count as bulk."
+    }
+  ],
+  "glossary": [
+    {
+      "term": "Net revenue",
+      "definition": "Revenue after discounts, as stored in the revenue column."
+    },
+    {
+      "term": "Segment",
+      "definition": "Customer segment: Consumer, SMB or Enterprise."
+    }
+  ],
+  "issues": []
+}

@@ -1,13 +1,14 @@
 # Program: Democratizing Google Data Studio
-An agentic app that interviews a user, designs a Data Studio dashboard as an HTML prototype, and
-builds the real dashboard in Data Studio from a compiled recipe. GCP hackathon entry, local first.
+An agentic app that drafts a business context from the user's data, lets the user pick the
+questions and the design, maps them to a feasible technical blueprint, renders an HTML prototype,
+and builds the real dashboard in Data Studio from a compiled recipe. GCP hackathon entry, local first.
 Written 2026-10-18.
 
 ## Problem and users
 - Problem: building a Data Studio dashboard takes hours of clicking plus design skill; people who
   know their data (analysts, managers, students) can't turn their questions into a good dashboard.
-- Local user (one, no accounts): connects data or describes a topic, answers an interview,
-  comments on a prototype, and gets a real Data Studio dashboard link.
+- Local user (one, no accounts): connects data or describes a topic, confirms a drafted
+  context, picks questions and a design, accepts a blueprint, comments on a prototype, and gets a real Data Studio dashboard link.
 - Context: Google GCP hackathon (AI Builder Cup). Deadline **2026-10-23 01:05 MPST** (moved from
   2026-10-20 01:05 by the user on 2026-10-20, change 2026-10-20; earlier moved from 2026-10-19 01:05,
   change 2026-10-19).
@@ -26,6 +27,13 @@ Written 2026-10-18.
 ## Goals and non-goals
 - Target: POC (hackathon prototype). No auth, no scaling; tests on the core flows and the contracts only.
 - Goal: flow 1 works end to end for the demo; flows 2 and 3 after it.
+- Goal (change staged workflow 2026-10-21): a staged workflow, connect -> context -> outline ->
+  design -> blueprint -> prototype -> build. Each stage writes one OKF artifact (context.md,
+  outline.md, design.md, blueprint.md) that the user confirms. Code computes profiles, validates
+  and writes every file; a model gets compact profiles and upstream artifacts, never data rows
+  or the chat history, and fills only judgment fields. The outline is picked from suggested
+  questions (Recommended flags, Other, suggest more); design from design-time theme presets;
+  pages single or one per outline section. Replaces the free-text interview and the plan action.
 - Goal: data sources: local CSV upload, CSV in GCS, BigQuery (multiple tables). All of them land in
   BigQuery; joins and derived fields live in one active BigQuery view per accepted spec.
 - Goal: 4 dashboard archetypes (executive, storytelling, operational, analytical) as skills.
@@ -59,15 +67,19 @@ Written 2026-10-18.
 
 ## Core flows (end to end)
 1. **Build (must-have):** user uploads a CSV or picks GCS/BigQuery tables (frontend) -> intake
-   loads it to BigQuery and profiles the schema (backend) -> interview through chat (frontend,
-   backend) -> plan writes OKF build docs and the Dashboard Spec; render makes the HTML prototype
+   loads it to BigQuery and profiles the schema (backend) -> the user adds notes about the data;
+   context drafts KPI definitions, derived fields and thresholds; the user edits and confirms
+   them (frontend, backend) -> outline proposes sections and questions; the user ticks them, adds
+   Other text, confirms -> the user picks a theme preset and page structure -> blueprint maps
+   each question to a chart and fields, code checks feasibility and dry-runs the view; the user
+   resolves blocked rows and accepts -> code lays out the spec and renders the HTML prototype
    (backend) -> user pins comments on prototype elements and applies them (frontend) -> revise
    patches the spec, re-render (backend) -> user clicks Build: backend compiles the recipe and
    runs `dsengine` (backend, engine) -> the light Chrome window shows the build; build events
    stream to the Build stage (engine, backend, frontend) -> the dashboard link shows (frontend).
 2. **Research mode (stretch):** prompt -> capped web research (10-20 pages) -> cleaned CSV plus a
-   sources file (backend) -> flow 1 from the interview.
-3. **History:** open a past build from History (frontend) -> comment or chat edits -> re-run the
+   sources file (backend) -> flow 1 from the context step.
+3. **History:** open a past build from History (frontend) -> comment edits -> re-run the
    recipe as a new dashboard version (backend, engine).
 4. **Hosted (must-have after flow 1):** the user opens the Cloud Run URL and enters the access code
    (frontend, backend) -> flow 1 runs in the hosted app -> on Build, the backend queues a job ->
@@ -79,9 +91,9 @@ Written 2026-10-18.
 |---|---|---|---|---|
 | contracts/conventions.md | 1.2 | program | engine, backend, frontend, release | release: `uv run --project integration python integration/check_contracts.py` (the one root `.env.example` has every name); manual: each part's config reads these names, ports and paths |
 | contracts/recipe.md | 1.0 | backend (recipe), engine (events) | engine, backend, release | engine: `uv run pytest tests/test_contract.py`; backend: `uv run pytest tests/test_recipe_contract.py` |
-| contracts/api.md | 1.5 | backend | frontend, release | backend: `uv run pytest tests/test_api_contract.py`; frontend: `npm test -- contract`; both against contracts/fixtures/api/ |
-| contracts/dashboard-intent.md | 1.1 | backend | frontend, release | backend: capability/reference/feasibility tests; frontend: contract and reference tests; release: tasks 2.5 and 4.3 |
-| contracts/synthetic-data.md | 1.1 | backend | frontend, release | backend synthetic tests, frontend 11.1-11.2, release 2.5, 2.6 and 4.3 |
+| contracts/api.md | 2.0 | backend | frontend, release | backend: `uv run pytest tests/test_api_contract.py`; frontend: `npm test -- contract`; both against contracts/fixtures/api/ |
+| contracts/dashboard-intent.md | 1.2 | backend | frontend, release | backend: capability/reference/feasibility tests; frontend: contract and reference tests; release: tasks 2.5 and 4.3 |
+| contracts/synthetic-data.md | 1.2 | backend | frontend, release | backend synthetic tests, frontend 11.1-11.2, release 2.5, 2.6 and 4.3 |
 
 ## Delivery
 - Targets: one GitHub repo, https://github.com/Gjandane/democratizing-google-data-studio (this
@@ -103,12 +115,13 @@ Written 2026-10-18.
 - CI: none.
 
 ## Roadmap
-Current priority (change 2026-10-21, release retry): build backend 14.2 (M, conversational definitions and styling)
-in backend/, then resume release 2.2 at this root from its saved driver. Release 2.2 waits on
-14.2; 14.1 is done but the exact release transcript still fails. Earlier backend final-audit
-acceptance does not verify these repairs. This is one
-core-flow blocker repair before the existing local acceptance, GitHub and Cloud Run sequence;
-no additional feature scope or broad audit-fix phase is added.
+Current priority (change staged workflow 2026-10-21): the staged workflow (contracts/api.md 2.0)
+replaces the interview and plan. Order: backend 15.1-15.11 in backend/ (15.5 has a STOP for the
+user's approval of the theme kit); frontend 14.1-14.5 in frontend/ in parallel, against the 2.0
+fixtures (no gate until frontend 14.5's live check); then release 2.3 at this root, gated on
+backend 15.11, frontend 14.5 and engine 6.1, and the later release tasks in their order. The user
+put this workflow ahead of the deadline (2026-10-21): the deadline stays, but it no longer cuts
+this scope; when it nears, report the state and let the user decide on a card.
 
 Re-planned 2026-10-19 (change 2026-10-19, revised by its delta audit). State then: engine 7/9
 (4.2 in progress), frontend 10/11, backend 0 done (no code yet: the critical path), release 0/11.
@@ -152,7 +165,8 @@ phases" below.
   that fallback; Cloud Run without the engine can't build in local mode.
 - If engine chart ops slip: set `DSS_ALLOWED_TYPES` to the types the engine passes; the spec node
   and validator then only use those.
-- Must survive: reference style/recreation and feasibility rejection (release 2.5 and 4.3), plus CSV -> interview -> prototype -> one comment edit -> recipe -> live build -> link
+- Must survive: reference style/recreation and feasibility rejection (release 2.5 and 4.3), plus CSV -> context -> outline -> design -> blueprint -> prototype -> one comment edit -> recipe
+  -> live build -> link
   (locally), and the same flow at the Cloud Run URL at least to the recipe.
 - Final phases (change 2026-10-20 final phases), once backend 12.5 and frontend 10.3 and 11.2 are done
   (engine is done):
@@ -173,7 +187,7 @@ phases" below.
 - `uv run --project integration python integration/check_contracts.py`: the recipe and event
   fixtures validate against contracts/recipe.schema.json; every env name is in `.env.example`.
 - `uv run --project integration python integration/e2e_flow1.py --version2`: with `./start.sh`
-  running and `DSS_ENGINE_DRY_RUN=1`, the sample CSV and a scripted interview reach stage `done`
+  running and `DSS_ENGINE_DRY_RUN=1`, the sample CSV and scripted artifact picks (api.md 2.0) reach stage `done`
   (flow 1), then a second version reaches `done` (flow 3).
 - `uv run --project integration python integration/e2e_flow1.py --live`: same, with the real
   engine and the signed-in Chrome profile; prints a `https://datastudio.google.com/` link.
@@ -256,3 +270,12 @@ phases" below.
 | 2026-10-20 | Release 2.5 gates on frontend 10.3 and 11.2, the last tasks of frontend's split of 10.1 (10.1-10.3) and 11.1 (11.1-11.2); api.md 1.5 (consistency: cross-refs, complete `node` list); example fixtures for SyntheticDataset, a succeeded GenerationStatus and Assessment alternatives/pending/stale (dashboard-intent and synthetic-data keep 1.1, shapes unchanged); frontend consumes dashboard-intent and synthetic-data | keep the old gates; bump dashboard-intent and synthetic-data too | the old gates let release 2.5 start before frontend finishes; consumers test against shared fixtures instead of overrides; no shape changed, so no part rework | change 2026-10-20 frontend split (frontend delta audit) |
 | 2026-10-21 | Backend 14.1 repairs audience-context classification and interview clarification; release 2.2 waits, then recovers its saved driver | alter demo wording to evade feasibility; defer all checks until three answers | ordinary sales-audience context and incomplete metrics stopped the core flow; existing contract already requires clarification with readiness gated | change interview feasibility recovery |
 | 2026-10-21 | Backend 14.2 repairs coordinated formulas, forward reuse of confirmed definitions and supported blue styling; release 2.2 waits, then restores the 02:11 stash | change the release wording; drop unresolved requirements | 14.1 passed different wording, but release's explicit formulas and theme still block planning; one core-flow repair, no new feature or contract | change conversational definitions and styling |
+| 2026-10-21 | Staged workflow replaces the free-text interview and plan: context -> outline -> design -> blueprint, each a confirmed OKF artifact; api.md 2.0 (breaking), dashboard-intent.md 1.2, synthetic-data.md 1.2 | keep the interview and patch its extraction (14.1, 14.2 pattern); keep both paths as a quick mode | per-turn requirement extraction from chat was the repeated failure (14.1, 14.2, release 2.3 `llm_unavailable`); ticked choices are structured and need no extraction; each artifact is a checkpoint, so a failed step reruns alone | change staged workflow (user choice) |
+| 2026-10-21 | Code computes, the model judges, code writes files: profiles by a reusable Python script; models get compact profiles and upstream artifacts only, never rows or chat history; the spec is laid out by code from blueprint + design (no spec model node) | model writes OKF docs and the spec | smaller, cacheable prompts and deterministic files; user asked that the model get only enough context | change staged workflow (user choice) |
+| 2026-10-21 | Artifacts are OKF markdown with the structured data in YAML frontmatter, validated by pydantic; readable body for the UI | pure YAML; markdown only | matches the existing build-docs convention; code can validate it | change staged workflow (user choice) |
+| 2026-10-21 | Business facts come from an optional notes box at connect; the context model drafts KPI definitions, derived fields and thresholds; the user edits KPI cards and confirms | document upload; profile-only draft | definitions settled once, up front, instead of mid-chat | change staged workflow (user choice) |
+| 2026-10-21 | Outline: one proposal call (sections, questions, Recommended flags); the user ticks, adds Other text (one normalize call) or asks to suggest more for a section | section-by-section rounds | fewest model calls | change staged workflow (user choice) |
+| 2026-10-21 | Polished look from design-time theme presets and a decoration kit per archetype, crafted once with the frontend-design/ui-ux-pro-max skills; the runtime renderer stays deterministic and the background PNG carries the look into Data Studio | model writes HTML per build | the prototype keeps mirroring what the recipe can build | change staged workflow (user choice) |
+| 2026-10-21 | Pages: the user picks single or one per outline section (default per section, at most 5), all on one view | always per section; single page only | the recipe already has add_page/go_to_page | change staged workflow (user choice) |
+| 2026-10-21 | Unjoinable sources stay one view: feasibility flags them and offers one dataset or a UNION into a long table | a page per source with its own view | no spec, recipe or engine change | change staged workflow (user choice) |
+| 2026-10-21 | Recorded as a change in place (backend phase 15, frontend phase 14, release 2.3-2.6 rewritten), not a new version | archive v1 and plan v2 per part | starts building sooner; obsolete sections replaced in place | change staged workflow (user choice) |

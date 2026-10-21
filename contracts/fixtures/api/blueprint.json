@@ -1,0 +1,195 @@
+{
+  "revision": 2,
+  "view_sources": {
+    "base": "s_a1b2c3d4e5f6",
+    "joins": [],
+    "union": []
+  },
+  "derived_fields": [
+    {
+      "name": "order_size_band",
+      "expression": "CASE WHEN `quantity` >= 3 THEN 'Bulk' ELSE 'Single' END",
+      "type": "string",
+      "description": "Bulk when an order line has 3 or more units."
+    }
+  ],
+  "rows": [
+    {
+      "question_id": null,
+      "section_id": "s1",
+      "page": 1,
+      "component": {
+        "type": "date_range",
+        "label": "Date range",
+        "dimensions": [],
+        "metrics": [],
+        "date_dimension": "order_date",
+        "breakdown": null,
+        "sort": null,
+        "options": {}
+      },
+      "note": "Supporting control for the page.",
+      "status": "ok",
+      "issue_ids": []
+    },
+    {
+      "question_id": "q1",
+      "section_id": "s1",
+      "page": 1,
+      "component": {
+        "type": "scorecard",
+        "label": "Net revenue",
+        "dimensions": [],
+        "metrics": [
+          {
+            "field": "revenue",
+            "agg": "sum"
+          }
+        ],
+        "date_dimension": null,
+        "breakdown": null,
+        "sort": null,
+        "options": {}
+      },
+      "note": "One of three scorecards for q1.",
+      "status": "ok",
+      "issue_ids": []
+    },
+    {
+      "question_id": "q2",
+      "section_id": "s1",
+      "page": 1,
+      "component": {
+        "type": "scorecard",
+        "label": "Orders",
+        "dimensions": [],
+        "metrics": [
+          {
+            "field": "order_id",
+            "agg": "count_distinct"
+          }
+        ],
+        "date_dimension": null,
+        "breakdown": null,
+        "sort": null,
+        "options": {}
+      },
+      "note": "Accepted alternative for the ratio KPI: net revenue (q1) and orders shown separately.",
+      "status": "ok",
+      "issue_ids": []
+    },
+    {
+      "question_id": "q3",
+      "section_id": "s1",
+      "page": 1,
+      "component": {
+        "type": "time_series",
+        "label": "Net revenue by month",
+        "dimensions": [],
+        "metrics": [
+          {
+            "field": "revenue",
+            "agg": "sum"
+          }
+        ],
+        "date_dimension": "order_date",
+        "breakdown": null,
+        "sort": null,
+        "options": {}
+      },
+      "note": "Monthly grain set in Data Studio.",
+      "status": "ok",
+      "issue_ids": []
+    },
+    {
+      "question_id": "q4",
+      "section_id": "s2",
+      "page": 2,
+      "component": {
+        "type": "bar",
+        "label": "Net revenue by region",
+        "dimensions": [
+          "region"
+        ],
+        "metrics": [
+          {
+            "field": "revenue",
+            "agg": "sum"
+          }
+        ],
+        "date_dimension": null,
+        "breakdown": null,
+        "sort": {
+          "field": "revenue",
+          "order": "desc"
+        },
+        "options": {}
+      },
+      "note": "",
+      "status": "ok",
+      "issue_ids": []
+    },
+    {
+      "question_id": "q5",
+      "section_id": "s2",
+      "page": 2,
+      "component": {
+        "type": "bar",
+        "label": "Net revenue by category",
+        "dimensions": [
+          "category"
+        ],
+        "metrics": [
+          {
+            "field": "revenue",
+            "agg": "sum"
+          }
+        ],
+        "date_dimension": null,
+        "breakdown": null,
+        "sort": {
+          "field": "revenue",
+          "order": "desc"
+        },
+        "options": {
+          "orientation": "horizontal"
+        }
+      },
+      "note": "",
+      "status": "ok",
+      "issue_ids": []
+    },
+    {
+      "question_id": "q7",
+      "section_id": "s2",
+      "page": 2,
+      "component": {
+        "type": "pivot_table",
+        "label": "Bulk vs single by segment",
+        "dimensions": [],
+        "metrics": [
+          {
+            "field": "revenue",
+            "agg": "sum"
+          }
+        ],
+        "date_dimension": null,
+        "breakdown": null,
+        "sort": null,
+        "options": {
+          "row_dimensions": [
+            "customer_segment"
+          ],
+          "column_dimensions": [
+            "order_size_band"
+          ]
+        }
+      },
+      "note": "Uses derived field order_size_band.",
+      "status": "ok",
+      "issue_ids": []
+    }
+  ],
+  "view_table": "my-gcp-project.dss_demo.dash_b_3f9a0c12d4e5_v1_r_00000000000c",
+  "assessment_id": "a_000000000001"
+}

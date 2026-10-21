@@ -109,34 +109,34 @@
   ],
   "docs": [
     {
-      "path": "brief.md",
-      "title": "Dashboard brief",
-      "type": "Dashboard Brief"
-    },
-    {
-      "path": "questions.md",
-      "title": "Business questions",
-      "type": "Business Questions"
-    },
-    {
-      "path": "kpis.md",
-      "title": "KPI definitions",
-      "type": "KPI Definitions"
-    },
-    {
-      "path": "derived-fields.md",
-      "title": "Derived fields",
-      "type": "Derived Fields"
-    },
-    {
-      "path": "design.md",
-      "title": "Design direction",
-      "type": "Design Direction"
-    },
-    {
       "path": "data-profile.md",
       "title": "Data profile",
       "type": "BigQuery Table"
+    },
+    {
+      "path": "context.md",
+      "title": "Business and data context",
+      "type": "Business and Data Context"
+    },
+    {
+      "path": "outline.md",
+      "title": "Dashboard outline",
+      "type": "Dashboard Outline"
+    },
+    {
+      "path": "design.md",
+      "title": "Design preferences",
+      "type": "Design Preferences"
+    },
+    {
+      "path": "blueprint.md",
+      "title": "Technical blueprint",
+      "type": "Technical Blueprint"
+    },
+    {
+      "path": "feasibility.md",
+      "title": "Feasibility",
+      "type": "Feasibility Assessment"
     }
   ],
   "spec_version": 2,
@@ -150,5 +150,11 @@
     }
   ],
   "report_url": null,
-  "ready_for_plan": true
+  "notes": "Orders from our web shop. Revenue is already net of discounts. The sales director reviews it monthly.",
+  "artifacts": {
+    "context": "confirmed",
+    "outline": "confirmed",
+    "design": "confirmed",
+    "blueprint": "confirmed"
+  }
 }

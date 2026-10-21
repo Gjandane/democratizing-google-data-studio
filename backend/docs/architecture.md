@@ -28,12 +28,14 @@ backend/
     db.py                 schema and connection helpers
     bus.py                per-build async pub/sub for SSE
     api/                  builds.py, chat.py, prototype.py, run.py, settings.py, traces.py, engine.py,
+                          workflow.py (context/outline/design/blueprint endpoints, 2026-10-21),
                           session.py (access code), agent.py (agent endpoints)
     agent/                jobs.py (job queue, heartbeat, timeouts), client.py (`dss-agent` CLI)
     harness/
       graph.py            the ADK Workflow: action router + nodes + edges
-      nodes/              intake, interview, plan, view, spec, validate, render, revise, compile,
-                          execute, publish, ux_audit, style_extract, research, consolidate
+      nodes/              intake, context, outline, blueprint, feasibility, view, layout, validate,
+                          render, revise, compile, execute, publish, ux_audit, style_extract,
+                          research, consolidate (interview, plan, spec removed 2026-10-21)
       context.py          working memory assembly (per-node context recipes, budgets)
       llm.py              model routing (planner / worker), token accounting
       guardrails.py       loop limits and output checks at every loop exit
@@ -42,21 +44,23 @@ backend/
       procedural.py       skill loader (skills/*.md)
       semantic.py         OKF navigator over knowledge/ and data/knowledge/
       episodic.py         messages, events, FTS5 retrieval
-    data/bigquery.py      intake loads, profiling, view creation, aggregate queries
+    artifacts/            models.py (Context, Outline, Design, Blueprint), okf.py (read/write), state.py
+    data/bigquery.py      intake loads, view creation, aggregate queries; data/profile.py (script)
     spec/                 models.py, validate.py, layout.py, patch.py
-    render/               prototype.py, background.py
+    render/               prototype.py, background.py, kits.py (decoration kits)
     recipe/compiler.py    spec -> recipe.jsonl (../contracts/recipe.md)
-  skills/                 procedural memory: interview.md, archetype-*.md (4), plan.md, spec.md,
-                          revise.md, ux-audit.md, style-extract.md, research.md
+  skills/                 procedural memory: context.md, outline.md, blueprint.md, archetype-*.md (4),
+                          revise.md, ux-audit.md, style-extract.md, research.md (2026-10-21)
   knowledge/              semantic memory seed (OKF): index.md, log.md, catalog/ (12 types),
-                          archetypes/ (4), datastudio/ (product limits)
+                          archetypes/ (4), datastudio/ (product limits, fonts.md), themes/
   prompts/v1/             system prompts per node: the versioned release artifact
   tests/                  offline tests with FakeLLM, FakeBigQuery, fake engine
 ```
 
 ## Data model
 SQLite `data/dss.sqlite`:
-- `builds(id, title, archetype, mode, stage, current_version, created_at, updated_at)`
+- `builds(id, title, archetype, mode, stage, current_version, created_at, updated_at, notes,
+  artifacts_json)` (notes and artifacts_json added 2026-10-21)
 - `versions(build_id, n, status, spec_version, report_url, created_at)`
 - `sources(id, build_id, kind, name, bq_table, row_count, columns_json)`; kind adds `synthetic`
 - `synthetic_generations(generation_key, build_id, request_hash, run_id, source_id, bq_table,
@@ -75,23 +79,20 @@ Files per version: `data/builds/<id>/v<n>/` (../contracts/conventions.md).
   (messages/events) -> emit SSE -> write exactly one trace -> drop run state. After each model
   response that reports usage, the run's running totals go out as `run.usage` (change
   2026-10-19; ../contracts/api.md 1.2), counted once per response, never per streamed chunk.
-- **interview_turn**: user message saved -> interview node (worker, skills: interview +
-  archetype-<x>) -> reply streamed as `message.delta`/`message.done`. When the interview has
-  enough, the agent calls its tool `mark_ready_for_plan()` (never a text marker), which sets
-  `ready_for_plan` and emits `build.updated`.
-  Feasibility issues are input to this conversation, not a reason to skip it: ask for missing
-  definitions and explain unsupported behavior while readiness remains false. Extraction,
-  provider and guardrail failures still use the existing error path.
+- **staged workflow** (change 2026-10-21; #Staged workflow): context (draft, edit, confirm) ->
+  outline (propose, tick, other, suggest, confirm) -> design (prefill, edit, confirm) -> blueprint
+  (draft, feasibility, view dry run, decisions, accept) -> prototype. Each step writes its artifact
+  through code and emits `artifact.updated`.
 - **intake**: CSV upload -> column names to snake_case (dedupe with `_2`), UTF-8 with latin-1
   fallback, reject over 100 MB or zero rows (`422 invalid_source`, `detail.reason`) -> BigQuery
   load job with autodetect into `src_<build_id>_<file slug>` -> profile (type, null %, distinct
   count, min/max, 3 samples; STRING columns whose samples parse as dates are flagged
   `date_like`) -> `data-profile.md`. GCS: load job from the `gs://` URI, same rules. BigQuery:
   profile in place, no copy.
-- **plan**: feasibility preflight -> plan docs staged -> SQL dry run (one repair) -> new
-  run-specific candidate view -> spec -> validation/repair (<=2) -> staged render/background ->
+- **blueprint accept** (replaces plan): feasibility recheck -> new run-specific candidate view
+  from the blueprint -> code layout (#Spec layout) -> validate -> staged render/backgrounds ->
   atomic publish of spec/artifacts with the candidate table identity -> prototype. Failure
-  cleans only the candidate and leaves prior docs/spec/view intact (Capability verification).
+  cleans only the candidate and leaves prior docs/spec/view intact; the stage stays `blueprint`.
 - **revise**: comments -> revise node (worker) -> JSON patch -> validate (repair <= 1) -> render ->
   background -> `spec_version` + 1 -> `prototype.updated`.
 - **build**: take the global engine lock (else `409 engine_busy`) -> compile -> execute
@@ -104,8 +105,7 @@ Files per version: `data/builds/<id>/v<n>/` (../contracts/conventions.md).
   thread.
 - Failure paths: LLM error or missing key -> `run.finished(error)` with `llm_unavailable`, stage
   unchanged; BigQuery error -> `422`/`run.finished(error)` with BigQuery's message; spec still
-  invalid after repairs -> `run.finished(error)` listing the validation errors, stage back to
-  `interview`; engine exit 3 -> `build.finished(failed)` + `engine_not_signed_in`; missing
+  invalid -> `run.finished(error)` listing the validation errors, stage stays `blueprint`; engine exit 3 -> `build.finished(failed)` + `engine_not_signed_in`; missing
   `gcp_project_id` -> `503 gcp_not_configured` before any BigQuery call.
 
 - **access** (when `DSS_ACCESS_CODE` is set): one middleware in front of every `/api` route except
@@ -193,18 +193,188 @@ Final-audit corrections (2026-10-19):
   A copy, capture or DB failure leaves the old version usable and an immediate retry possible;
   restart cleans an abandoned owned destination. Never remove a committed/existing version.
 
+### Staged workflow
+- Problem (change staged workflow 2026-10-21): the free-text interview needed a model to extract
+  requirements from every chat turn, and one large plan run did docs, SQL, spec and render, so a
+  wording quirk or one failed call sent the user back to the interview (14.1, 14.2, release 2.3).
+  The staged workflow replaces both: connect -> context -> outline -> design -> blueprint ->
+  prototype, each middle stage one artifact the user confirms (../contracts/api.md 2.0, Staged
+  workflow endpoints; ../contracts/dashboard-intent.md 1.2).
+- Principle: code computes, the model judges, code writes files. Code profiles the data, builds
+  every prompt from upstream artifacts, validates every model output and writes every artifact
+  file. A model gets compact profiles and upstream artifacts, never data rows, never the chat
+  history, and returns structured JSON (response_json_schema) for the judgment fields only.
+- Artifacts: pydantic models for Context, Outline, Design and Blueprint, field for field as
+  api.md 2.0 (one module, `src/dss/artifacts/`). Each is saved as OKF markdown in the version's
+  `docs/`: frontmatter `type` (`Business and Data Context`, `Dashboard Outline`, `Design
+  Preferences`, `Technical Blueprint`), `title`, `revision`, then the model JSON under `data:`;
+  the body is a readable rendering by code (KPI table, question list, theme swatch list, question
+  -> chart -> fields table). Reading an artifact parses the frontmatter only. Writes are atomic
+  (temp file + rename) and emit `artifact.updated`, `docs.updated`. Artifact states and `notes`
+  live on the build row (additive migration: `builds.notes`, `builds.artifacts_json`).
+- State rules (api.md 2.0 Stage rules): confirm needs zero issues; edits only in stages context
+  to prototype (build/done -> `409 wrong_stage`); an edit to an earlier artifact sets it `draft`,
+  every later one `stale`, and the stage back. Confirming again keeps work: a stale downstream
+  artifact is revalidated by code (unknown references removed with a note, selections and user
+  edits kept), never replaced; replacing is explicit (`outline/propose`, `design/prefill`,
+  `blueprint/regenerate`). The published spec/view/prototype stay until a new prototype commits
+  (Plan publication). Stored stages interview/plan read as context; a legacy build (all four
+  artifacts missing, a saved spec) skips the four-confirmed rule for recipe, run and versions.
+  Every action takes the existing per-build lock.
+- Oracle: tests/test_artifacts.py: every artifact round-trips model -> file -> model unchanged,
+  frontmatter parses with its `type`; state transitions match the Stage rules table for every
+  edit/confirm in every stage; fixture shapes equal ../contracts/fixtures/api/*.json.
+
+### Data profile
+- Problem: give every model node enough facts about the data in a few thousand tokens.
+- Reusable script: `uv run python -m dss.data.profile <project.dataset.table> [--json]` and the
+  function the intake and nodes call. Per column: name, type, null %, distinct count (approx),
+  min/max for numbers and dates, the full value list with counts when distinct <= 20 (each value
+  <= 60 chars), else the top 5 values with counts plus 3 samples; per source: row count and date
+  range of each date-like column. Computed with BigQuery aggregate queries (approximate counts and
+  top counts), never by fetching rows; at most 2 queries per source. Stored in
+  `data-profile.md` frontmatter, replacing the old 3-sample profile; intake rules unchanged.
+- Prompt form: one deterministic compact text per source (`column type null% distinct values`),
+  stable across calls so it caches; budget 6k tokens for 30 columns: drop samples first, then
+  shorten value lists to the top 5; columns past the first 40 of a source go as name and type
+  only; a column is never dropped.
+- Edge cases: all-null column (type kept, "all null"); a BigQuery source profiled in place.
+- Oracle: tests/test_profile.py with FakeBigQuery: low-cardinality columns list all values,
+  high-cardinality ones the top 5; the prompt text is byte-identical for the same profile;
+  30 columns fit the budget; 60 columns send 41-60 as name and type. Live: profiling the 2,000-row sample takes <= 10 s.
+
+### Context
+- Input: compact profiles of all sources, `notes` (<= 4000 chars), archetype, recreate reference
+  observation labels if any. Output: a Context draft (api.md 2.0) from one worker generation.
+- Code validation fills `issues` (ValidationIssue paths): every field reference exists (base or
+  derived); a derived expression has no aggregate or window function and all derived fields pass
+  one BigQuery dry run `SELECT <exprs> FROM <base>`; SUM/AVG only on numbers, MIN/MAX on numbers
+  and dates, COUNT/COUNT_DISTINCT on any field; exactly one of `measure`/`ratio`, and a ratio names
+  two measure KPIs; ids unique snake_case, derived names don't collide with columns; a threshold's
+  field exists and is numeric; at most 15 KPIs, 15 derived fields, 15 thresholds, 30 terms.
+- One repair generation when the draft has issues (input: the draft plus its issues only); what
+  remains goes to the user, who fixes it with `PUT context`, which reruns the same checks (no model).
+- Gross/net, count/distinct and similar choices are the user's: the draft states its assumption in
+  the KPI description, and the KPI cards are where the user changes it. No chat clarification.
+- Budget: input <= 10k counted tokens, output <= 3k; one generation + at most one repair.
+- Oracle: tests/test_context_node.py with FakeLLM: a valid draft writes context.md with no issues; an
+  unknown field, an aggregate inside a derived expression, SUM on a string and a ratio naming a
+  missing KPI each give an issue at the right path; one repair runs, never two; PUT revalidates
+  without a model call; confirm with issues -> `409 artifact_invalid`.
+
+### Outline
+- outline_propose (on context confirm): input = context frontmatter, the compact field list,
+  archetype skill, recreate observations if any, consolidated user facts (<= 500 tokens). Output:
+  3-5 sections of 3-6 questions, each with rationale (<= 200 chars), `recommended`, `kpi_refs`.
+  Code assigns ids (q1, q2 ... never reused within a build), drops unknown kpi_refs with a note,
+  removes duplicates (case- and space-normalized text), sets `recommended = false` (the rationale
+  says why) for a question whose kpi_refs are all ratio KPIs, sets `selected = recommended`. A
+  later context confirm revalidates the existing outline in code instead (unknown kpi_refs removed
+  with a note, selections kept); `outline/propose` re-proposes explicitly, keeping `other`
+  questions and the selection of questions whose text is unchanged. Budget 8k in / 3k out, one
+  generation, no repair.
+- outline_suggest: the same input plus one section and its question texts; up to 5 new questions,
+  unselected. Budget 6k / 2k.
+- outline_other: input = context KPIs and fields, the section, the user's text (saved as a user
+  Message). One generation returns 1-3 normalized questions (selected, origin `other`) and the
+  requirement records of any behavior the text asks for (the existing extraction schema and
+  limits, dashboard-intent.md 1.2); unsupported behavior gets an assistant message at once and
+  stays in the ledger. Budget 6k / 2k.
+- Selection is code only; confirm needs 1-24 selected questions.
+- Oracle: tests/test_outline.py with FakeLLM: 3-5 sections; ids stable across suggest/other/
+  re-propose; other questions and selections survive re-confirm and re-propose; a ratio-only
+  question is not recommended; duplicates dropped; "animate the GPS points" as other text keeps
+  a blocked requirement and a reply; 25 selected -> `409 artifact_invalid`.
+
+### Design and theme kit
+- Theme kit (design-time, task 15.4): at least 6 presets covering the 4 archetypes, as OKF files
+  `knowledge/themes/<id>.md` (`type: Theme Preset`, frontmatter = ThemePreset), plus the
+  decoration kits they name (header band, panel grid, side rail ...) as deterministic decoration
+  generators in `render/kits.py`. Crafted once with the frontend-design and ui-ux-pro-max skills;
+  every text/surface pair has contrast >= 4.5:1; palettes stay distinguishable for common color
+  blindness (a stdlib check in tests/test_design.py: simulate protanopia and deuteranopia with
+  standard matrices; the first 4 palette colors keep a pairwise CIE76 delta E >= 10); fonts only from `knowledge/datastudio/fonts.md` (fonts Data
+  Studio offers, checked in its font menu). The user approves the rendered preset sheet (STOP).
+- Design (code only, no model): prefill = the archetype's default preset; a style or recreate
+  reference overrides background/accent/palette with the StyleProfile colors snapped to valid
+  values (`source: reference`); `per_section` when 1-5 sections have a selected question, else
+  `single`; an existing Design is kept and revalidated, `design/prefill` replaces it. Validation:
+  #RRGGBB, palette 3-8, text contrast >= 4.5:1 on background and surface, font among the presets'
+  fonts (all from fonts.md), title <= 80 chars, `per_section` needs 1-5 outline
+  sections with a selected question.
+- Oracle: tests/test_design.py: every preset passes its own validation; prefill per archetype and
+  with a reference; a low-contrast edit gives an issue; 6 selected sections with per_section ->
+  issue. Manual: the preset sheet PNG reviewed by the user.
+
+### Blueprint
+- Problem: map each selected question to one buildable component, the user's KPI definitions
+  intact, and prove it buildable before any prototype work.
+- Input (planner model, one generation): context (derived fields, KPIs, thresholds), the compact
+  field list with roles, selected questions (id, text, kpi_refs, section), the page plan (code:
+  section -> page by `page_structure`), the catalog summary (allowed types with slot limits and
+  options from `knowledge/catalog/*.md` frontmatter, `DSS_ALLOWED_TYPES`, the recipe's lack of
+  chart filters: filtering is a derived field), and the join facts code found (columns with equal
+  names and types across sources). Output: ViewSources, extra derived fields, and rows: every
+  selected question 1-3 rows; at most 2 supporting controls per page; at most 12 rows per page.
+- Code feasibility, per row (the requirement records are the rows: no text extraction): type in
+  the catalog, the registry and `DSS_ALLOWED_TYPES`; dimension/metric counts and date dimension
+  per catalog; fields exist in the view's field list; roles and aggregations as the spec
+  validator; every selected question has a row; a page holds at most 12 rows; sort field among the row's fields; option keys per recipe.md; a KPI the question
+  names is used with exactly its field and aggregation; a ratio KPI cannot be a metric (Data
+  Studio calculated fields are a non-goal); more than one source needs joins or union, never both.
+- Repair and issues: failing rows (except ratio and source rules) go back once with their errors;
+  the view is built from ViewSources + derived fields (BigQuery view below) and dry-run, with one
+  SQL repair. What still fails becomes Issues on the Assessment with code-built alternatives:
+  ratio -> numerator and denominator as two metrics, or drop; no date field -> the nearest type
+  without one; no join key -> one source per option, or union; a question without a row -> drop;
+  a page over 12 rows -> drop its last non-recommended questions until it fits, or per_section
+  pages when 1-5 sections; always drop. Decisions apply in code (alternative replaces the row,
+  drop removes it); no regeneration.
+- Redraft (design confirm with an existing blueprint): rows of unchanged selected questions and
+  their decisions are kept and rechecked by code; only new or changed questions go to the model;
+  rows of deselected questions are removed. `blueprint/regenerate` redrafts every row. Accept
+  needs at least one ok row (`409 artifact_invalid`).
+- Union: base columns plus each other source's columns, missing ones as typed NULL, plus
+  `dataset_name`; built by the view builder.
+- Budget: input <= 14k counted tokens, output <= 6k; one generation + at most one row repair + at
+  most one SQL repair; no candidate view is published here (Plan publication still applies at
+  accept).
+- Oracle: tests/test_blueprint.py with FakeLLM and FakeBigQuery: the ecommerce fixture gives
+  ok rows plus a blocked ratio row with its two alternatives; a time_series without a date ->
+  repair, then an issue; a question naming a KPI but using another aggregation is rejected; two
+  unjoinable sources -> issue with one-source and union options; accept with a blocked row ->
+  `409 feasibility_blocked`; decisions update rows without a model call; a fake omitting a
+  question -> repair, then an issue; a redraft sends only changed questions; 13 rows on a page ->
+  issue; zero ok rows -> `409 artifact_invalid`.
+
+### Spec layout
+- Problem: blueprint + design -> a valid spec with no model call (replaces the spec node).
+- Rules: pages from the page plan (names = section titles; single -> the design title); theme
+  from the design; decorations from the preset's kit (title, subtitle, section heading,
+  synthetic footer when required); components from ok rows in order, `question_ref` = question id;
+  per page: controls row, then scorecards (up to 4 per row), then charts packed by a per-type
+  default footprint and the density (time_series, table and pivot_table full width; others half
+  width), each at least the catalog's `min_w`/`min_h`; page height grows to fit; no overlaps; a
+  page whose rows were all dropped is omitted (later pages renumber, names kept).
+  Deterministic: the same inputs give byte-identical spec.json. The result passes the existing
+  validator (Dashboard Spec) unchanged except for the page count.
+- Oracle: tests/test_layout_auto.py: golden blueprint + design -> golden spec; property test
+  (fixed seed): any valid blueprint (<= 12 rows per page, 1-5 pages) gives a validator-valid spec.
+
 ### Graph
 - Problem: one ADK 2.0 `Workflow` that is the harness's agent run for every action.
 - Model check: at startup and when settings change, list the available models; if the planner
-  model is missing, log a warning and use the worker model for plan and spec.
+  model is missing, log a warning and use the worker model for blueprint.
 - Inputs and outputs: `{action, build_id, payload}` -> SSE events, DB writes, one trace.
-- Rules: START -> router(action) -> the action's branch (Key flows). LLM nodes: interview, plan,
-  spec, revise, ux_audit, style_extract, research, consolidate, reference_extract,
-  capability_check, synthetic_schema. Code nodes: intake, view (SQL build + dry run), validate,
-  render, compile, execute, publish, synthetic_generate. Requirement extraction is a node inside
-  the triggering action's Workflow (interview, plan, revise, reference, feasibility check), never
-  a second run: one action, one trace, its tokens in that trace (audit 2026-10-20). The validate -> spec (or revise)
-  edge is the only loop, conditional, at most 2 passes. Every branch ends at a guardrail node.
+- Rules (change staged workflow 2026-10-21): START -> router(action) -> the action's branch. LLM
+  nodes: context, outline_propose, outline_suggest, outline_other, blueprint, revise, ux_audit,
+  style_extract, research, consolidate, reference_extract, synthetic_schema. Code nodes: intake,
+  profile, artifact validation and write, feasibility, view (SQL build + dry run), layout, validate,
+  render, compile, execute, publish, synthetic_generate. Repair edges: context -> context (once),
+  blueprint rows -> blueprint (once), view dry run -> blueprint (once), revise validate -> revise
+  (once). The interview, plan and spec nodes and per-message requirement extraction are removed;
+  extraction runs only inside outline_other, revise (comments) and reference actions, as a node in
+  that action's Workflow. Every branch ends at a guardrail node.
 - Edge cases: unknown action -> error, no LLM call; concurrent actions on one build -> the second
   gets `409 wrong_stage`.
 - Approach: builder's choice within ADK 2.0 (`Workflow(edges=[...])`, router nodes, function
@@ -215,20 +385,25 @@ Final-audit corrections (2026-10-19):
 - Problem: give each LLM node only what it needs, in a cache-friendly order, under a token budget.
 - Inputs and outputs: node name, build, user input -> ordered list of context sections + the
   token count per section (recorded in the trace span).
-- Rules: order = system prompt (`prompts/v1/<node>.md`) -> skills -> semantic concepts -> data
-  profile -> build docs / spec subset -> episodic (past builds) -> current chat history -> user
-  input; stable sections first so Gemini's implicit prefix caching can hit. Per-node recipe:
+- Rules (change staged workflow 2026-10-21): order = system prompt (`prompts/v1/<node>.md`) ->
+  skills -> semantic concepts (catalog, archetype, themes) -> compact data profile -> upstream
+  artifacts (frontmatter only) -> this action's input; stable sections first so Gemini's implicit
+  prefix caching can hit. No node reads data rows, the chat history or FTS hits. Per-node recipe:
 
   | node | skills | semantic | other |
   |---|---|---|---|
-  | interview | interview, archetype-<x> | archetypes/<x>.md, catalog/index.md | data profile, last 12 messages, FTS top 3 past |
-  | plan | plan, archetype-<x> | archetypes/<x>.md, catalog/index.md, user facts | data profile, full interview transcript |
-  | spec | spec | catalog/<types named in kpis/questions>.md, archetypes/<x>.md | build docs, field list |
+  | context | context, archetype-<x> | archetypes/<x>.md | compact profiles, notes, reference labels |
+  | outline_propose | outline, archetype-<x> | archetypes/<x>.md, user facts | context, field list, reference observations |
+  | outline_suggest | outline | archetypes/<x>.md | context, field list, the section and its questions |
+  | outline_other | outline, capability-check | - | context KPIs and fields, the section, the user's text |
+  | blueprint | blueprint | catalog summary (allowed types, slots, options) | context, field list, selected questions, page plan, join facts |
   | revise | revise | catalog/<types of targeted components>.md | targeted components + their grid neighbours only |
   | ux_audit | ux-audit | archetypes/<x>.md | spec summary (ids, types, boxes) |
-- Budgets (input tokens): interview 8k, plan 20k, spec 16k, revise 6k, ux_audit 10k. Over budget
-  -> drop FTS past results, then the oldest messages, then semantic concepts beyond the first;
-  never drop the system prompt, skills or user input. Count with the API's token counter or
+- Budgets (input tokens): context 10k, outline_propose 8k, outline_suggest 6k, outline_other 6k,
+  blueprint 14k, revise 6k, ux_audit 10k. Over budget -> shorten profile value lists to the top 5,
+  then drop reference observations, then semantic concepts beyond the first; never drop the
+  system prompt, skills, upstream artifacts or user input (if those alone exceed it, refuse with
+  `llm_unavailable` detail `over_budget`). Count with the API's token counter or
   chars/4 when offline.
 - Offline assembly may use chars/4 as an estimate; live requests must count the complete
   effective request with the configured model's token counter before generation, including
@@ -248,6 +423,9 @@ Final-audit corrections (2026-10-19):
 - Oracle: unit tests assert section order, budget enforcement and the drop order.
 
 ### Episodic retrieval
+- Change staged workflow 2026-10-21: no model node reads chat history or FTS hits any more;
+  messages stay the episodic log for the UI and consolidation. The rules below stay for
+  `messages_fts` and its tests.
 - Problem: past context that is both recent and relevant, without embeddings.
 - Rules: recency = this build's last 12 messages (current chat history); relevance = FTS5 `bm25`
   over `messages_fts` of other builds, query = the user input's terms (stopwords
@@ -261,14 +439,14 @@ Final-audit corrections (2026-10-19):
 - Problem: distill episodes into durable facts in semantic memory (the only semantic write path).
 - Rules: after a build reaches `done`, `chats_since += 1`; when it reaches `DSS_CONSOLIDATE_EVERY`
   (default 5; 1 for the demo), the consolidate node
-  (worker model) reads those builds' interview summaries and decisions plus `data/knowledge/user/
+  (worker model) reads those builds' context, outline and design summaries and decisions plus `data/knowledge/user/
   index.md`, and writes OKF concepts (`type: User Preference` or `Design Decision`) under
   `data/knowledge/user/`, updates `index.md`, prepends to `log.md`; then `chats_since = 0`. A
   changed fact keeps the old value under "Previously" with its date. Runs after the build's
   response, never blocking it.
 - Count each successful/partial `build.finished` under the snapshot lock; consume only the
   count included in a successful snapshot, preserving builds completed while it ran. Inputs
-  are brief/design/decisions, at most 3000 characters each, newest first; skip missing docs.
+  are context/outline/design/decisions (old builds: brief/design/decisions), at most 3000 characters each, newest first; skip missing docs.
   Consolidation has its own Workflow and one build-less trace. Failure preserves the counter.
 - Oracle: test with FakeLLM and `DSS_CONSOLIDATE_EVERY=5`: 4 builds -> no write; 5th -> files written, counter reset, every
   file has parseable frontmatter with non-empty `type`.
@@ -311,11 +489,13 @@ Final-audit corrections (2026-10-19):
   fixture that exercises it (the engine's files are another part's); an option the schema accepts
   with no such citation is unsupported_app. Tests derive coverage from recipe.schema.json.
   Keep product sources in OKF product-limits.md and link the registry in knowledge indexes.
-- Input: user text, current requirements/decisions, reference interpretation, schema/definitions,
-  candidate spec and effective registry. Output: requirements.json plus Assessment/feasibility.md.
+- Input (change 2026-10-21, dashboard-intent.md 1.2): blueprint rows, confirmed KPI definitions,
+  design choices, outline `other` text, comments, current requirements/decisions, reference
+  interpretation, schema and effective registry. Selected questions and blueprint rows are
+  structured requirements and skip extraction. Output: requirements.json plus Assessment/feasibility.md.
   Internal requirement: id, source reference (message/comment/image item), text, capability ids,
   proposed fields/unit/aggregation/grain, resolution and component bindings. Preserve provenance.
-- Extract with at most one worker generation per incoming message/comment batch/reference change,
+- Extract with at most one worker generation per outline `other` text/comment batch/reference change,
   as a node in that action's Workflow and trace (Graph);
   input <=12k full counted tokens, output <=4k, max 40 requirements, max 20 issues/alternatives
   total. Use full existing request guard; no unbounded retries, repairs or live searches. If limits
@@ -347,82 +527,15 @@ Final-audit corrections (2026-10-19):
   the repaired artifact passes; pending supported comments retain their explicit reapply flow.
 
 ### Interview feasibility recovery
-- Problem (release 2.2, 2026-10-21): ordinary audience context was classified as an unknown
-  capability, and incomplete metric definitions bypassed the interviewer that should collect them.
-  Inputs are the original message, extracted requirements/provenance, existing ledger, schema
-  and current assessment. Outputs are a grounded next interview reply and updated assessment;
-  this change introduces no API fields, statuses or capability grants.
-- Audience and decision-making context does not itself request executable behavior. Recognize
-  it conservatively and retain it for interview/planning with context evidence. Handle both
-  standalone audience answers (including "The audience is sales executives.") and the same
-  clause within a message that also requests metrics. Check original source coverage: a mixed
-  message's chart, animation or unknown-feature request must remain in the requirement ledger.
-  Do not whitelist arbitrary empty-needs rows, whole messages with an audience prefix, or
-  model assertions that something is merely context.
-- An assessment blocked on missing definitions, unknown or unsupported behavior does not end
-  an otherwise valid interview turn. Feed the issues to the interviewer in the same run; ask
-  for definitions or explain a refusal and valid alternatives. Persist/stream the reply and
-  finish that conversational turn normally while assessment remains blocked and readiness false.
-  Extraction/validation/provider/guardrail failures still fail; do not catch all errors as clarification.
-- Later explicit answers reconcile the affected unresolved metric (field, aggregation, unit
-  and grain as applicable), preserving provenance and unrelated requirements/decisions. Never
-  guess gross/net or count/distinct-count. The interview has no fixed three-answer rule:
-  readiness requires enough interview information AND a ready assessment. An early readiness
-  tool call cannot bypass unresolved issues. Direct plan, recipe and run keep their existing gates.
-- Existing misclassified audience rows must recover on bounded reassessment without deleting
-  their source messages or accepting a user "drop" decision for harmless context. Cover both
-  empty-needs and unknown.unclassified sentinel representations, without clearing a genuine
-  unknown behavior, mapping or unsupported need. No general migration framework is required.
-- Budget: retain one requirement-extraction generation per incoming action, its 12k/4k token
-  and 40-requirement limits, existing interview budgets/tool limit and one Workflow/trace per
-  action. No extra extraction loop, web search, new dependency or increased repair budget.
-- Oracle: API/graph regressions cover audience-only and mixed audience/metrics, three successive
-  incomplete-to-explicit answers, gross/net ambiguity then explicit resolution, reload/reassessment
-  of persisted audience rows, and mixed audience plus GPS animation/unknown-feature requests.
-  Before resolution, attempted readiness is false and plan/recipe/run have no view, render,
-  compile, queue or engine side effects. After resolution, existing supported planning still works.
-  A live isolated interview exercises the release wording and real extractor; release 2.2 remains
-  the separate end-to-end verification through dry-run execution and a second version.
+- Superseded by #Staged workflow (change 2026-10-21): the interview and its per-message
+  extraction are removed. Audience and goal live in the Context; incomplete definitions are
+  Context issues the user fixes on the KPI cards. History: tasks 14.1 and progress.md.
 
 ### Conversational definitions and supported styling
-- Problem (release 2.2 retry, build b_04db6ec42f78): comma/conjunction-separated formulas
-  remain unconfirmed; later revenue charts lose the preceding definition; ordinary blue-theme
-  wording becomes an unknown requirement. Task 14.1's passing live wording did not cover these.
-  Inputs: original ordered messages/comments, extracted rows, confirmed mappings and provenance,
-  current schema, registry and candidate spec. Output: a reconciled ledger and assessment that
-  permit the existing supported flow without dropping intent or inventing metric definitions.
-- Recognize coordinated affirmative definitions, including commas and "and", without requiring
-  one formula per sentence. Bind each label to its own field/aggregation; retain COUNT versus
-  COUNT DISTINCT. Negated, hypothetical, quoted example or contradictory formulas are not
-  authorization. Gross/net and incompatible definitions still need explicit clarification.
-- Reuse a previously explicit, schema-valid definition for a later compatible request for the
-  same metric, with source provenance attached. Do not infer sameness from a shared field alone
-  or propagate definitions across different sources, units, meanings or incompatible grains.
-  Conflicts block until resolved explicitly. Reassessment/reload retains valid definitions;
-  schema or intent changes revalidate them. Existing failed ledgers must recover through the
-  normal bounded check/clarification path, without deleting sources or patching runtime files.
-- A qualitative request for a clean blue theme or dark blue component accent authorizes choosing
-  a suitable blue shade within already evidenced styling capabilities (such as style.colors,
-  style.background or style.border_color). Normalize to supported concrete values and preserve
-  the preference through spec/recipe validation. A color word alone does not authorize arbitrary
-  features; mixed animation/unknown requests remain blocked. "Proceed" is not acceptance of an
-  alternative or permission to drop an issue. Component comments retain their target, position,
-  field bindings and data; preserving those is a constraint, not an unknown executable feature.
-- Budget/invariants: keep the existing extraction token/row limits, one extraction per action,
-  one Workflow/trace, deterministic recomputation target and spec repair budget. No dependencies,
-  API changes, registry support grants without evidence, or extra model retry loops.
-- Exact regression conversation (backend-owned fixture; release's sample field names):
-  1. "The audience is sales executives. Track total revenue, order count, quantity sold and sales trends using only the uploaded columns."
-  2. "Compare regions and product categories over the full available date range; revenue is SUM(revenue), order count is COUNT(DISTINCT order_id), and quantity sold is SUM(quantity)."
-  3. "Use one executive overview page with KPI scorecards, a revenue trend grouped by order_date at monthly grain, and revenue by region. Use a clean blue theme; proceed with these choices."
-  After a valid prototype, comment: "Use a dark blue accent for this component; preserve its position and data."
-- Oracle: real API/graph with fake providers covers coordinated definitions and their forward
-  reuse, preserved monthly order_date, blue styling, reload and negative cases above. All three
-  exact answers must clear feasibility, permit readiness and pass plan preflight; a supported
-  candidate spec must pass fulfillment. The comment must validate and change only supported
-  styling. Live extraction must pass the same unchanged conversation and supported comment
-  through prototype/revision; preserve failed as well as successful evidence. No substitutions
-  of hex-only wording, silent drop decisions or injected ledger/spec in the live regression.
+- Superseded by #Staged workflow (change 2026-10-21): metric definitions are structured KPIs in
+  the confirmed Context, so no formula is parsed from chat; styling comes from the Design
+  (presets, palette), and comments still revise per-chart colors (task 14.2's `colors` stays).
+  History: task 14.2 and progress.md.
 
 ### Synthetic data
 - Problem: a reference can describe a dashboard without supplying its source data. Offer explicit
@@ -464,7 +577,7 @@ Final-audit corrections (2026-10-19):
   HTTP 422 and a clean nonzero CLI exit, never OverflowError/500/traceback or a partial CSV.
 
 ### Plan publication
-- Ownership: nodes/plan.py, view.py, render.py and data/bigquery.py stage docs,
+- Ownership: nodes/blueprint.py (accept), view.py, render.py and data/bigquery.py stage docs,
   candidate view and rendered files. Persist candidate run ownership before creation; on failed
   attempt/restart clean only abandoned candidate views, never published/legacy view identities.
   Keep previous artifacts until new files/spec/table pointer are committed under the build lock.
@@ -472,24 +585,26 @@ Final-audit corrections (2026-10-19):
   for new attempts. This is superseding behavior for old create-or-replace SQL golden tests.
 
 ### Build docs
-- Problem: the plan node's output, the durable design brief (OKF bundle per version).
-- Rules: `data/builds/<id>/v<n>/docs/` holds `index.md`, `log.md`, `data-profile.md`
-  (`type: BigQuery Table`, written by intake code), `brief.md` (`Dashboard Brief`),
-  `questions.md` (`Business Questions`: q1..qn with priority), `kpis.md` (`KPI Definitions`),
-  `derived-fields.md` (`Derived Fields`, frontmatter `fields: [{name, sql, type}]`, `joins:
-  [{table, on}]`), `design.md` (`Design Direction`), optional `style.md` (`Style Profile`),
-  `decisions.md` (`Design Decisions`, appended by revise). Every file has OKF frontmatter.
+- Problem: the durable design brief (OKF bundle per version), written by code (change 2026-10-21).
+- Rules (change staged workflow 2026-10-21): `data/builds/<id>/v<n>/docs/` holds `index.md`,
+  `log.md`, `data-profile.md` (`type: BigQuery Table`, #Data profile), `context.md`,
+  `outline.md`, `design.md`, `blueprint.md` (#Staged workflow, all written by code),
+  `feasibility.md`, optional `style.md` (`Style Profile`), `decisions.md` (`Design Decisions`,
+  appended by revise). Every file has OKF frontmatter. Builds made before the change keep their
+  old docs (brief, questions, kpis, derived-fields) and their spec; a new version from them works,
+  and re-planning one starts at context.
 - Oracle: test asserts every doc parses and has its `type`.
 
 ### BigQuery view
 - Problem: one active view per accepted spec holds joins and derived fields; old report views
   remain stable. New plan attempts create a distinct candidate (change 2026-10-19).
 - Rules: new attempts use `CREATE VIEW <project>.<BQ_DATASET>.dash_<build_id>_v<n>_<run_id> AS SELECT <base
-  columns>, <expr> AS <name> ... FROM <base> [LEFT JOIN ...]`, built from `derived-fields.md`
-  frontmatter by code; every identifier backtick-quoted (reserved words such as `date`, `order`,
+  columns>, <expr> AS <name> ... FROM <base> [LEFT JOIN ...]`, built by code from the blueprint's
+  `view_sources` and `derived_fields` (union: NULL-padded `UNION ALL` with `dataset_name`; change
+  2026-10-21); every identifier backtick-quoted (reserved words such as `date`, `order`,
   `group` must work); field names snake_case and unique; `date_like` STRING columns exposed as
   `SAFE.PARSE_DATE` (or `SAFE_CAST` to TIMESTAMP) under the same name; dry run first; on dry-run
-  error, one plan-node repair turn with the error text, then fail. A new version (`POST
+  error, one blueprint-node SQL repair with the error text, then fail. A new version (`POST
   /versions`) reuses the latest view (the spec's `datasource.table`) unless re-planned.
 - Oracle: unit tests on the generated SQL strings (golden strings); live manual check.
 
@@ -499,20 +614,23 @@ Final-audit corrections (2026-10-19):
   `{spec_version, build_id, title, archetype, canvas{width:1200,height}, grid{columns:12,
   row_height:20, gutter:16, margin:24}, theme{background, surface, text, muted, accent,
   palette[], font_family, radius}, datasource{table, fields[{name, type, label, role, default_agg}]},
-  pages[{index, name, height, decorations[], components[]}]}`. POC: exactly one page.
+  pages[{index, name, height, decorations[], components[]}]}`. 1-5 pages (change 2026-10-21).
   Decoration: `{id, kind: band|panel|title|subtitle|text|logo|divider, grid{col,row,w,h}, text?, style?}`.
   Component: `{id, type, label, grid{col,row,w,h}, dimensions[], metrics[{field,agg}],
   date_dimension?, breakdown?, sort?, options?, text?, image_path?, field?, question_ref?}`,
   `type` in the 12 catalog types: scorecard, time_series, bar, pie, table, pivot_table, geo_map,
   scatter, text, image, date_range, dropdown.
-- Rules (validator): exactly one page; ids unique and snake_case with page prefix; types in the
-  catalog and in `DSS_ALLOWED_TYPES` (the spec node's prompt lists only the allowed types); fields
+- Rules (validator): 1-5 pages; ids unique and snake_case with page prefix; types in the
+  catalog and in `DSS_ALLOWED_TYPES` (the blueprint prompt lists only the allowed types); fields
   exist in `datasource.fields` with a role the catalog slot allows; dimension/metric counts within
   the type's catalog limits (`knowledge/catalog/<type>.md` frontmatter: `min_dimensions`,
   `max_dimensions`, `min_metrics`, `max_metrics`, `requires_date_dimension`, `min_w`, `min_h`);
   grid inside 12 columns and the page height; no two components overlap (decorations may sit
-  under components); every question in `questions.md` with priority high is referenced by at
-  least one component's `question_ref`. Errors are a list of `{path, message}` fed to the repair turn.
+  under components); every blueprint row with status ok is a component whose `question_ref` is its
+  question id, checked on the code layout output; a revise patch may remove a component, which
+  decisions.md records (change 2026-10-21; old builds: questions.md high priority). Errors are a list of
+  `{path, message}`, fed to the revise repair turn; a code layout that fails validation is a
+  `run.finished(error)` with those errors (a defect, never sent to a model).
 - Sort is a validated `{field, order: asc|desc}` object, matching the recipe contract. Renderer
   SQL and compiler consume that same shape; unknown keys or orders fail before publication.
   An explicitly ascending bar/table must render ascending as it will in Data Studio.
@@ -538,7 +656,8 @@ Final-audit corrections (2026-10-19):
   spec; `data-cid`, `data-label`, `data-kind` on every component and decoration;
   `layer=decoration` hides components; a chart type the catalog lacks can't render (raises).
   Background: Playwright Chromium (sync API in a worker thread) screenshots `layer=decoration` at
-  canvas size -> `background_p<n>.png` (POC: `background_p1.png`).
+  canvas size -> `background_p<n>.png`, one per page (change 2026-10-21). Each page is a
+  `section[data-page][data-page-name]` under `#dss-canvas` (../contracts/api.md 2.0).
 - Deferred preview parity (change 2026-10-20; PRD Later, former 13.4): supported options are to
   have matching visible semantics: bar orientation/stacking, pie donut,
   scorecard compact formatting, table rows_per_page (within the 20-row query cap) and pivot row/column assignments. Derive both aggregate
@@ -559,8 +678,10 @@ Final-audit corrections (2026-10-19):
   ids (and neighbours it must move to avoid overlap); the patch is applied to a copy, validated
   (one repair turn), then saved as `spec_version + 1`; each comment and the resulting change are
   appended to `decisions.md`.
-- Edge cases: a comment on a decoration patches the decoration (it is re-rendered into the
-  background); a request for a type outside the catalog or `DSS_ALLOWED_TYPES` is refused with an
+- Edge cases: a comment on a decoration patches the decoration within its kit's style keys
+  (text, color, background, border_color) and is re-rendered into the background; a color request
+  on a decoration is supported, never `invalid_request` (change 2026-10-21, release 2.2 P1); a
+  removal comment deletes the component and records it in decisions.md; a request for a type outside the catalog or `DSS_ALLOWED_TYPES` is refused with an
   assistant message saying what Data Studio offers instead; conflicting comments on one id apply
   in order (last wins) and the message says so; an empty patch keeps `spec_version` and says
   "no change needed".
@@ -586,7 +707,7 @@ Final-audit corrections (2026-10-19):
 ## External APIs and services
 | Service | Used for | Auth | Limits and failure handling |
 |---|---|---|---|
-| Gemini API (`gemini-4-argon`, `gemini-3.8-flash`) | LLM nodes | `GOOGLE_API_KEY` | per-call timeout (sent to Google, which enforces it as a 504): planner (plan/spec) 120 s, worker 30 s; errors -> `llm_unavailable`; one retry on 429/500/503, none on 504 (task 11.9) |
+| Gemini API (`gemini-4-argon`, `gemini-3.8-flash`) | LLM nodes | `GOOGLE_API_KEY` | per-call timeout (sent to Google, which enforces it as a 504): planner (blueprint) 120 s, worker 30 s; errors -> `llm_unavailable`; one retry on 429/500/503, none on 504 (task 11.9) |
 | BigQuery | loads, profile, view, aggregates | ADC (`gcloud auth application-default login`) | errors surfaced with BigQuery's message |
 | GCS | CSV source URIs (read by BigQuery load jobs) | ADC | bad URI -> `422 invalid_source` |
 | Google Search (ADK tool) | research discovery (stretch) | API key | one model call; provider-internal fetches opaque |
@@ -645,9 +766,8 @@ runtime dependency), pytest + pytest-asyncio (tests).
   initialization after extraction. Keep volume ownership/commit records when removing rollback
   artifacts: SQLite backups can lag them. Retain candidate ownership until the deterministic
   BigQuery job is terminal; result(timeout=...) can leave it running. Never clean a published view.
-- Interview streams every LlmAgent; structured extractors ignore partial fragments and validate
-  only the accumulated final response. Metric definitions start a sentence, optionally preceded
-  by `For [the] [one qualifier] <audience role>,`; suggestions alone cannot confirm a mapping.
+- Structured model nodes ignore partial streamed fragments and validate only the accumulated
+  final response (change 2026-10-21: the interview sentence rules no longer apply).
 - Synthetic generator version dss-synthetic/1 seeds independent column streams from the canonical
   seed/name/index/version, uses Decimal ticks and half-away-from-zero product rounding, and
   publishes completed files without replacing existing output. Generation keys own deterministic
@@ -709,3 +829,5 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-20 | Shared-schema recipe validation, Windows Job ownership/0.4 s cleanup, shared cached text fitting and existing context-section ordering | repeated schema loading, wrapper-only cleanup, enlarged heading boxes or changed context recipes | retain completed task decisions and unchanged repair/deadline limits | tasks 13.1-13.3; final re-audit |
 | 2026-10-21 | Preserve audience context and continue interview clarification while feasibility blocks readiness and side effects | rewrite release answers to evade the gate; suspend feasibility until a fixed answer count | release 2.2 demonstrated a core-flow failure; the interviewer must be able to collect missing definitions | change interview feasibility recovery (program root) |
 | 2026-10-21 | Recognize coordinated explicit formulas, reuse confirmed metric definitions with provenance, and normalize ordinary blue styling to evidenced capabilities | rewrite the integration fixture into isolated sentences and hex-only style requests; automatically drop unresolved rows | release 2.2 still fails after 14.1; persisted evidence shows parser boundaries, missing forward definition reuse and unclassified styling | change conversational definitions and styling (program root) |
+| 2026-10-21 | Staged workflow: context, outline, design and blueprint artifacts replace the interview, plan and spec nodes; code profiles, validates, lays out and writes files; models see compact profiles and upstream artifacts only | keep the interview and patch extraction; keep both paths | per-message extraction was the repeated failure; structured picks need none; checkpoints rerun alone; smaller cacheable prompts | change staged workflow (program decision log) |
+| 2026-10-21 | Spec laid out by code from blueprint + design, 1-5 pages; ratio KPIs and unjoinable sources become feasibility issues with code-built alternatives | spec model node; Data Studio calculated fields | determinism and no extra model call; calculated fields stay a non-goal | change staged workflow |

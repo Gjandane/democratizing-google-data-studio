@@ -1,0 +1,51 @@
+[
+  {
+    "id": "studio_light",
+    "name": "Studio Light",
+    "description": "White surfaces, blue accent, quiet header band.",
+    "archetypes": [
+      "executive",
+      "analytical"
+    ],
+    "background": "#F8FAFC",
+    "surface": "#FFFFFF",
+    "text": "#0F172A",
+    "muted": "#64748B",
+    "accent": "#1D4ED8",
+    "palette": [
+      "#1D4ED8",
+      "#0EA5E9",
+      "#14B8A6",
+      "#F59E0B",
+      "#EF4444",
+      "#8B5CF6"
+    ],
+    "font_family": "Roboto",
+    "radius": 8,
+    "decoration_kit": "band_header"
+  },
+  {
+    "id": "night_ops",
+    "name": "Night Ops",
+    "description": "Dark navy canvas with bright signal colors.",
+    "archetypes": [
+      "operational"
+    ],
+    "background": "#0B1220",
+    "surface": "#111A2E",
+    "text": "#E2E8F0",
+    "muted": "#94A3B8",
+    "accent": "#22D3EE",
+    "palette": [
+      "#22D3EE",
+      "#A3E635",
+      "#F472B6",
+      "#FBBF24",
+      "#60A5FA",
+      "#F87171"
+    ],
+    "font_family": "Inter",
+    "radius": 6,
+    "decoration_kit": "panel_grid"
+  }
+]

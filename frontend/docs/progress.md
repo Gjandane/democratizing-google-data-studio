@@ -410,3 +410,12 @@ context. Task status lives in docs/plan.md, not here.
 - Docs: plan.md 13.1 Files line. No new Decisions or Known gotchas to sort (13.1 recorded none).
 - Release checklist (POC): AGENTS.md Commands run the mock demo in under 5 minutes; core flow covered by `npm test` and the earlier audits' screenshots (screenshots/audit2-*, 12.1-prototype-*); known limitations in PRD `## Later`.
 - Next: nothing left to build. Retro, tag or a new version on the user's call.
+
+## 2026-10-21: Change staged workflow (program root)
+- What changed: PRD goals, flows, features and defaults (chat input removed; reference attach in Connect/Design/Prototype; user colors as data swatches); essentials folder map, layout and contract versions; new docs/staged-ui.md (stage areas, stepper states); reference-ui.md wording for blueprint/accept; phase 14 tasks 14.1-14.5 (14.5 Needs backend 15.11 for its live leg).
+- Why: per-message requirement extraction in the free-text interview kept failing (backend 14.1, 14.2; release 2.3 `llm_unavailable`), and the one large plan run failed about 1 in 3 live runs, sending users back to the interview. The user asked for a context-engineered, node-per-artifact workflow where the model gets only enough context and code generates the files.
+- Contracts: api.md 2.0, dashboard-intent.md 1.2, synthetic-data.md 1.2 (consumer); fixtures updated at the root.
+- Tasks affected: none reopened; 14.1 is next and builds against the 2.0 fixtures.
+
+## 2026-10-21: Audit (delta, staged workflow, program root)
+- 16 findings (1 P1, 10 P2, 5 P3), all accepted and applied; details in ../docs/progress.md (same date).

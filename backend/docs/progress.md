@@ -927,3 +927,12 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: P2 "preserve its position and data" baseline freezes the component against later edits/replans - src/dss/spec/requirements.py; P2 derived mapping_origins/clarifications in meaning() may reopen legacy decisions on defined rows - requirements.py meaning(); P2 sentence-level "Do not use these definitions." before a separate sentence still authorizes - requirements.py _affirmative; P2 _effective_text "Actually," cuts earlier row text; P3 colors on non-chart reported as invalid JSON in repair; P3 unit regex `in [a-z]{3}` matches months; P3 failed-ledger fixture built from fake script; P3 two message-level blue preferences unsatisfiable; core live test_interview_to_prototype failed once with invalid_request (no evidence saved), passed twice after.
 - Next: resume release 2.2 at the program root using its latest stash.
+
+## 2026-10-21: Change staged workflow (program root)
+- What changed: architecture.md: new sections Staged workflow, Data profile, Context, Outline, Design and theme kit, Blueprint, Spec layout; Graph, Working memory assembly, Key flows, Build docs, BigQuery view, Dashboard Spec (1-5 pages), Prototype renderer, Revise (decoration color comments), Capability verification, Consolidation and folder structure updated; Interview feasibility recovery and Conversational definitions marked superseded; two decision-log rows. Essentials restamped; PRD goals, flows, features, success criteria, defaults and Later updated. Phase 15 tasks 15.1-15.11 added.
+- Why: per-message requirement extraction in the free-text interview kept failing (backend 14.1, 14.2; release 2.3 `llm_unavailable`), and the one large plan run failed about 1 in 3 live runs, sending users back to the interview. The user asked for a context-engineered, node-per-artifact workflow where the model gets only enough context and code generates the files.
+- Contracts: api.md 2.0, dashboard-intent.md 1.2, synthetic-data.md 1.2 (provider).
+- Tasks affected: none reopened; 15.1 is next.
+
+## 2026-10-21: Audit (delta, staged workflow, program root)
+- 16 findings (1 P1, 10 P2, 5 P3), all accepted and applied; details in ../docs/progress.md (same date).

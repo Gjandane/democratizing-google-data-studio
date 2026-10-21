@@ -2,8 +2,8 @@
 Target: POC · Written 2026-10-18 · Kind: a part of a program (../docs/program.md)
 
 ## Problem
-The harness needs a face that makes the build process visible and steerable: a chat for the
-interview, clear planning stages, a prototype the user can point at and comment on, and a live
+The harness needs a face that makes the build process visible and steerable: reviewable
+artifacts the user confirms by clicking (change staged workflow 2026-10-21), clear stages, a prototype the user can point at and comment on, and a live
 view of the dashboard being built.
 
 ## Users
@@ -11,8 +11,11 @@ view of the dashboard being built.
 - Hackathon judges watching the demo: the stages and the live build must read at a glance.
 
 ## Goals
-1. One workspace walks a build through Connect -> Interview -> Plan -> Prototype -> Build -> Done
-   with a stage stepper, the chat always visible on the left.
+1. One workspace walks a build through Connect -> Context -> Outline -> Design -> Blueprint ->
+   Prototype -> Build -> Done with a stage stepper that shows each artifact's state (draft,
+   confirmed, stale), and the activity log always visible on the left (change staged workflow
+   2026-10-21; ../contracts/api.md 2.0). Users click to choose: KPI cards, question checkboxes
+   with Recommended badges and Other text, theme presets; typing is optional.
 2. Click-to-comment on the prototype: hover outlines any component or decoration, click opens a
    comment popover, numbered pins collect comments, "Apply N comments" sends them in one batch.
 3. The Build stage shows the recipe as CLI lines and ticks each op live as the engine runs it,
@@ -42,21 +45,24 @@ view of the dashboard being built.
 
 ## Core flows
 1. History -> "New dashboard" -> pick archetype + mode -> Connect: drop CSVs (or GCS/BigQuery) ->
-   "Start interview" -> chat -> "Generate plan" -> Plan docs stream in -> Prototype appears.
+   notes about the data -> "Draft context" -> edit KPI cards -> "Confirm context" -> tick
+   questions (Other, Suggest more) -> "Confirm outline" -> pick a theme preset and page
+   structure -> "Confirm design" -> blueprint table, resolve blocked rows -> "Accept blueprint"
+   -> Prototype appears (page tabs).
 2. Prototype: click elements, add comments -> "Apply N comments" -> prototype reloads at v+1.
 3. Build: check engine sign-in (button to sign in) -> "Generate recipe" -> "Build in Data
    Studio" -> ops tick live -> link card.
 4. History: open a done build -> "New version" -> Prototype stage of v2.
 5. Screenshot-only (change 2026-10-19): Connect with no data -> attach a recreate reference ->
    "Generate sample data" -> review schema, row count, seed -> generate -> download CSV ->
-   interview -> prototype, labeled as sample data throughout.
+   context -> outline -> design -> blueprint -> prototype, labeled as sample data throughout.
 
 ## Features
 | Must | Should | Won't (this version) |
 |---|---|---|
-| History, workspace shell, stepper, chat with streaming | Trace tab | mobile layout |
+| History, workspace shell, stepper with artifact states, activity log | Trace tab | mobile layout; free-text chat (removed 2026-10-21) |
 | Connect: archetype, CSV upload, GCS/BQ form, sources table | UX audit button | multi-user |
-| Plan docs viewer; reference modes and feasibility decisions | | chart rendering in the client |
+| Context review, outline picker, design picker, blueprint review, docs viewer; reference modes and feasibility decisions | | chart rendering in the client |
 | Prototype click-to-comment, apply, reload | research-mode prompt | |
 | Build: recipe lines, live op status, link, engine sign-in | screencast panel | |
 | Settings modal; mock mode against fixtures | | |
@@ -77,6 +83,11 @@ view of the dashboard being built.
 - Against the real backend, flow 5 reaches a labeled prototype without uploading a CSV.
 
 ## Decided by default
+- Change staged workflow 2026-10-21: the chat input is removed (api.md 2.0 has no POST
+  messages); the left column keeps the message log, run cards and activity strip. Other text and
+  KPI edits are the only typing. Reference attach moves from the chat to the References panel in
+  Connect, Design and Prototype. The design picker shows user-chosen colors as data swatches
+  (inline style on swatches and the mini preview only; components still use tokens).
 - Mock mode via a small fixture-driven fake API (no MSW dependency), switched by `VITE_MOCK=1`.
 - Routing with react-router (two routes: `/` History, `/builds/:id` Workspace).
 - Markdown in chat and docs via react-markdown; icons via lucide-react.

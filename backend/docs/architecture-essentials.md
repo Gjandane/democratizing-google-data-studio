@@ -1,28 +1,32 @@
-<!-- essentials-of: docs/architecture.md sha256:99497e802025 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:5e20e961ec29 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 Read every build session. docs/architecture.md wins if they disagree.
 
 ## Stack
 - Python 3.12/uv; FastAPI/uvicorn (no reload), SSE; ADK 2.x Workflow/LlmAgent; Gemini planner
-  `gemini-4-argon` (plan/spec), worker `gemini-3.8-flash` (others), overridable in settings.
+  `gemini-4-argon` (blueprint), worker `gemini-3.8-flash` (others), overridable in settings.
   SQLite/FTS5; BigQuery/ADC; Playwright Chromium; httpx. Cloud Run: one instance, local dss-agent.
 
 ## Folder map
 ```text
-src/dss/        api/, agent/, harness/ (graph, nodes, context, llm, guardrails, tracing),
-                memory/, data/ (bigquery, research), spec/, render/, recipe/, ops/
+src/dss/        api/, agent/, artifacts/ (models, okf, state), harness/ (graph, nodes, context,
+                llm, guardrails, tracing), memory/, data/ (bigquery, profile, research), spec/,
+                render/ (prototype, background, kits), recipe/, ops/
 skills/         procedural memory; prompts/v1/ versioned system prompts
-knowledge/      OKF seed: catalog/, archetypes/, datastudio/, index.md, log.md
+knowledge/      OKF seed: catalog/, archetypes/, datastudio/ (fonts.md), themes/, index.md, log.md
 tests/          offline fakes; tests/live/ explicitly marked live
 ```
 
 ## Conventions
 - Harness vocabulary: ../harness-architecture.md. One API action = one agent run = one ADK
   Workflow invocation = exactly one `traces` row.
-- Context via `harness/context.py`; no raw rows. Enforce whole-request budgets;
-  chars/4 is offline estimation. See architecture.md#Working memory assembly.
-- The LLM writes only OKF build docs, the spec, a spec JSON patch or bounded structured
-  observations (pydantic-validated). HTML, PNG, SQL, CSV and recipe: code.
+- Context via `harness/context.py`; whole-request budgets (chars/4 offline only);
+  architecture.md#Working memory assembly.
+- Staged workflow (architecture.md#Staged workflow, api.md 2.0): connect -> context -> outline ->
+  design -> blueprint -> prototype. Code computes (profile script), validates, lays out the spec
+  and writes every file; the LLM returns only pydantic-validated JSON (artifact drafts, a spec
+  patch, bounded observations). Models get compact profiles + upstream artifact frontmatter,
+  never rows or chat history. Each LLM node: one generation + at most one repair.
 - Only consolidate writes runtime semantic memory (`data/knowledge/`); git knowledge is the seed.
 - Every OKF file: YAML frontmatter with non-empty `type`; folders have `index.md` and `log.md`.
 - Config: `../.env` via python-dotenv, settings table overrides; names in ../contracts/conventions.md.
@@ -31,44 +35,42 @@ tests/          offline fakes; tests/live/ explicitly marked live
   a worker thread (Windows). Provider schemas: response_json_schema; guard raw output before ADK
   validation, sanitize model errors, callable context instructions. Gemini timeout: planner
   120 s, worker 30 s; one retry on 429/500/503, never 504.
-- One page per spec; component types limited to `DSS_ALLOWED_TYPES`. Sort `{field, order}`.
+- 1-5 pages per spec, laid out by code; types limited to `DSS_ALLOWED_TYPES`. Sort `{field, order}`.
 - Cloud: SPA/$PORT, code cookie/header, fail-closed startup; DB backup API every 30 s when dirty;
   agent token, model-only settings, 60 s whole-attempt retry deadline. Preview needs no engine;
   run recompiles the current spec; flat job image names (architecture.md#Build consistency).
 - Staging, recipe schema shipping, text fitting, Windows cleanup and provenance:
   architecture.md#Implementation conventions. `/api/dev/*` requires `DSS_DEV=1`.
 - Tests: fixture keys/types, offline fakes unless marked live (architecture.md#Testing).
-- Research: discovery + metadata calls; <=20 scraper fetches, no retries.
-- References/feasibility: architecture.md#Reference interpretation through #Conversational
-  definitions and supported styling. Images are not data; issues gate readiness, not clarification.
-  Retain context and confirmed definitions with provenance; one extraction/action.
-- Task 14.2 user-approved extension (2026-10-21): optional per-chart `colors` overrides the
-  shared theme palette in prototype and recipe; scoped accent comments patch only that chart.
-  Use the existing evidenced `style.colors`; preserve geometry, bindings and other charts.
-  Also approved: COUNT/COUNT DISTINCT may use a dimension field in a metric slot;
-  other catalog role checks and SUM/AVG numeric checks still apply.
-- Plan publication: each plan attempt makes a run-specific candidate view; publish it with spec
-  and artifacts; clean only uncommitted candidates; never replace a published view.
+- Research: <=20 scraper fetches, no retries.
+- References/feasibility: architecture.md#Reference interpretation, #Capability verification,
+  #Blueprint (dashboard-intent.md 1.2). Blueprint rows are structured requirements; extraction
+  only for outline other text, comments and references, one per action. Images are not data.
+- Per-chart `colors` override the theme palette (prototype and recipe); accent comments patch
+  only their target. COUNT/COUNT DISTINCT may take a dimension field (14.2).
+- Plan publication: each blueprint accept makes a run-specific candidate view, published with
+  spec and artifacts; clean only uncommitted candidates; never replace a published view.
 - Synthetic data (#Synthetic data, synthetic-data.md): schema/count/seed -> deterministic stdlib
   CSV -> typed BQ intake; opt-in; unremovable sample-data label.
 
 ## Never do
 - No LangGraph, no vector store, no embeddings, no pandas.
 - Never send the API key, the access code or the agent token to the frontend or a log; never put
-  them in a prompt.
+  them in a prompt. Never put data rows or the chat history in a prompt.
 - Never copy a live SQLite file byte by byte or open it on the GCS volume; use the backup API.
 - Never write semantic memory outside the consolidate node.
-- Never let an LLM produce HTML, SQL DDL text that bypasses the view builder, or recipe lines.
+- Never let an LLM produce HTML, a whole spec, an artifact file, SQL DDL text that bypasses the
+  view builder, or recipe lines.
 - Never edit ../contracts/; a needed change is a blocked task.
 
 ## Contracts
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
-| ../contracts/api.md | 1.5 | provides | `uv run pytest tests/test_api_contract.py` |
+| ../contracts/api.md | 2.0 | provides | `uv run pytest tests/test_api_contract.py` |
 | ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.0 | provides recipes; consumes events | `uv run pytest tests/test_recipe_contract.py` |
 | ../contracts/conventions.md | 1.2 | consumes | manual: env names, ports, paths and IDs match (1.2 renames the Cloud Run service only) |
-| ../contracts/dashboard-intent.md | 1.1 | provides | `uv run pytest tests/test_api_contract.py tests/test_feasibility.py` |
-| ../contracts/synthetic-data.md | 1.1 | provides | `uv run pytest tests -k synthetic` |
+| ../contracts/dashboard-intent.md | 1.2 | provides | `uv run pytest tests/test_api_contract.py tests/test_feasibility.py` |
+| ../contracts/synthetic-data.md | 1.2 | provides | `uv run pytest tests -k synthetic` |
 
 ## Dependencies
 | Package | Registry | Version | Why | Verified |

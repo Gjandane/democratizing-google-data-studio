@@ -1,0 +1,21 @@
+{
+  "revision": 1,
+  "preset_id": "studio_light",
+  "background": "#F8FAFC",
+  "surface": "#FFFFFF",
+  "text": "#0F172A",
+  "accent": "#1D4ED8",
+  "palette": [
+    "#1D4ED8",
+    "#0EA5E9",
+    "#14B8A6",
+    "#F59E0B"
+  ],
+  "font_family": "Roboto",
+  "page_structure": "per_section",
+  "density": "comfortable",
+  "title": "Sales Performance Overview",
+  "subtitle": "Web shop, Jan-Sep 2026",
+  "source": "preset",
+  "issues": []
+}

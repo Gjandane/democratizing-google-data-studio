@@ -1,18 +1,21 @@
 # Contract: synthetic CSV generation
-Version 1.1 (2026-10-20). Provider: backend. Consumers: frontend, release.
-Change log: 1.1 (2026-10-20) durability uses the generation table plus immediate DB backups
+Version 1.2 (2026-10-21). Provider: backend. Consumers: frontend, release.
+Change log: 1.2 (2026-10-21, change staged workflow) stage names follow api.md 2.0: writes are
+allowed at `connect` only, and the flow continues to context/outline instead of the interview;
+shapes unchanged. 1.1 (2026-10-20) durability uses the generation table plus immediate DB backups
 instead of immutable manifests and startup reconciliation; HTTP shapes unchanged. 1.0 (2026-10-19)
 initial planned contract. 2026-10-20 (no version change, shapes unchanged): example fixtures
 `dataset.json` (SyntheticDataset) and `job.succeeded.json` (GenerationStatus) added.
 Planned implementation: backend 12.1-12.5, frontend 11.1-11.2, release 2.5/2.6 (local) and 4.3 (hosted) acceptance.
-Transport: api.md 1.5. Source.kind adds `synthetic`; existing Source keys stay unchanged.
+Transport: api.md 2.0. Source.kind adds `synthetic`; existing Source keys stay unchanged.
 Shared fixtures: contracts/fixtures/synthetic-data/ (request, proposal, dataset, source,
 job.succeeded, job.failed).
 
 ## Purpose and flow
 Reference screenshot, no CSV -> extract visual observations -> propose a sample-data schema ->
 show schema/assumptions and editable row count/seed -> user chooses Generate sample data ->
-Python generates CSV -> ordinary BigQuery intake/profiling -> interview/feasibility -> prototype
+Python generates CSV -> ordinary BigQuery intake/profiling -> context -> outline -> design ->
+blueprint/feasibility -> prototype
 and real Data Studio report. No need to upload a CSV before reference extraction/schema proposal.
 Manual schemas also work without a screenshot or model call.
 
@@ -66,7 +69,7 @@ Tests measure 100,000x10 on the supported dev machine and report time/peak memor
 additional allocation). Use stdlib csv/random/decimal/datetime/hashlib, existing Pydantic.
 
 ## HTTP workflow and provenance
-Auth, existing action lock and normal error shape apply. Writes allowed only at connect/interview,
+Auth, existing action lock and normal error shape apply. Writes allowed only at connect,
 with no active action and no existing sources. Otherwise `409 wrong_stage` or
 `409 synthetic_requires_empty_build`: offer New dashboard, never replace/merge real sources.
 This is a POC policy; the reusable local generator has no build-stage restrictions.
@@ -163,7 +166,8 @@ The backend's configured state-bucket mount is the storage choice, not a browser
 - Invalid/cyclic schemas, unknown generators, resource limits and existing CLI outputs reject;
   failures leave no usable partial dataset. Formula-like string values reject before generation.
 - Screenshot only: proposal is available at connect with zero sources; edit count to 1,000,
-  Generate -> CSV download -> synthetic Source -> interview -> recreation -> labeled real report.
+  Generate -> CSV download -> synthetic Source -> context -> outline (prefilled from the reference)
+  -> recreation -> labeled real report.
 - Replayed requests do not duplicate sources; changed-key payload conflicts are clear; wrong
   build/source download rejects; stale proposals reject; crash/upload/load failure is recoverable.
 - Container replacement right after the 202 or after registration restores job/source identity

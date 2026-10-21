@@ -8,23 +8,29 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 
 ## Users
 - frontend: calls the REST API and listens to the build's SSE stream (../contracts/api.md).
-- the demo user, through the frontend: connects data, answers the interview, comments, builds.
+- the demo user, through the frontend: connects data, confirms the context, picks questions and
+  a design, accepts the blueprint, comments, builds (change staged workflow 2026-10-21).
 
 ## Goals
-1. Flow 1 end to end: CSV/GCS/BigQuery -> interview -> OKF build docs -> Dashboard Spec -> HTML
-   prototype + background PNG -> comments revise the spec -> recipe -> engine run -> link.
+1. Flow 1 end to end: CSV/GCS/BigQuery -> context -> outline -> design -> blueprint (feasibility)
+   -> code-laid-out Dashboard Spec -> HTML prototype + background PNGs (1-5 pages) -> comments
+   revise the spec -> recipe -> engine run -> link (change staged workflow 2026-10-21).
 2. The harness from ../harness-architecture.md: procedural memory (skill files), semantic memory
    (OKF bundle, no vector store), episodic memory (SQLite + FTS5), consolidation every 5 chats by
    the worker model, guardrails at every loop exit, exactly one trace per run.
 3. Graph engineering with Google ADK 2.0 Workflow: LLM nodes and code nodes, an action router,
    a validate-and-repair loop.
-4. Token economy: the LLM only writes OKF docs and a compact spec or spec patch; HTML, background,
-   SQL view and recipe are deterministic code; model routing (planner `gemini-4-argon` only for
-   plan and spec; `gemini-3.8-flash` for the rest).
+4. Token economy: code computes and writes; the LLM fills structured judgment fields from compact
+   profiles and upstream artifacts (never rows or chat history); artifacts, spec layout, HTML,
+   background, SQL view and recipe are deterministic code; model routing (planner
+   `gemini-4-argon` only for blueprint; `gemini-3.8-flash` for the rest).
 5. History: every build keeps its versions; a new version starts from the latest spec.
 
 6. Required: style/recreate reference extraction and data reconciliation, with evidence-backed
-   feasibility gates before plan, prototype, recipe and execution (dashboard-intent.md 1.1).
+   feasibility gates at blueprint, prototype, recipe and execution (dashboard-intent.md 1.2).
+
+8. Staged workflow (change 2026-10-21): four confirmed OKF artifacts (context, outline, design,
+   blueprint) per ../contracts/api.md 2.0; a reusable profile script; design-time theme presets.
 
 7. Screenshot-only builds: schema/row-count/seed driven Python CSV generation, exposed as a
    reusable function/CLI and API; typed BigQuery intake, visible synthetic provenance.
@@ -44,11 +50,12 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 
 ## Core flows
 1. Create build -> upload CSV -> intake loads it to BigQuery and writes `data-profile.md`.
-2. Interview: start -> assistant asks one question at a time (worker model, interview skill +
-   archetype skill) -> user answers -> ... -> the assistant says it has enough and suggests "Generate".
-3. Plan: planner writes OKF build docs -> BigQuery view created (dry-run validated) -> planner
-   writes the spec -> validator (repair loop, at most 2) -> render prototype + background ->
-   stage `prototype`.
+2. Context: notes -> worker drafts KPIs, derived fields, thresholds, glossary from the profile ->
+   code validates -> user edits and confirms. Outline: one proposal -> user ticks, adds other
+   text, asks for more -> confirms. Design: preset prefill -> user edits -> confirms.
+3. Blueprint: planner maps questions to components -> code feasibility + view dry run (one repair
+   each) -> user resolves issues -> accept -> code layout -> validate -> render prototype +
+   backgrounds -> stage `prototype`.
 4. Comments: N comments -> worker writes a JSON patch for the named ids -> validate -> re-render
    -> `prototype.updated`.
 5. Build: compile recipe -> run `dsengine` -> relay events -> `build.finished` with the link ->
@@ -63,8 +70,8 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 |---|---|---|
 | API per ../contracts/api.md (except stretch routes) | consolidation into data/knowledge/user | vector store |
 | intake: CSV upload, GCS CSV, BigQuery tables; profile | UX audit node (ux-audit skill) | engine on Cloud Run |
-| interview, plan, spec, revise, render, compile, execute, publish nodes; reference modes, feasibility, synthetic data | (style-from-picture now in reference modes) | LLM-judge release gate automation |
-| episodic memory, context assembly, traces | research mode (google_search, capped) | multi-user |
+| context, outline, blueprint, layout, revise, render, compile, execute, publish nodes; theme kit; reference modes, feasibility, synthetic data | (style-from-picture now in reference modes) | LLM-judge release gate automation |
+| episodic memory, context assembly, traces | research mode (google_search, capped) | multi-user; LLM-written prototype HTML |
 | 4 archetype skills, 12-type catalog in OKF | LLM-judge eval script | |
 | cloud mode, access code, agent mode + `dss-agent` | | |
 | | live token totals on the event stream (`run.usage`, change 2026-10-19) | |
@@ -77,10 +84,18 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 
 ## Success criteria
 - `uv run pytest` passes offline (fake LLM, fake BigQuery, fake engine).
-- Live: with the sample CSV and real Gemini/BigQuery, a scripted interview reaches a prototype
-  whose every component passes validation, and `DSS_ENGINE_DRY_RUN=1` reaches `done`.
+- Live: with the sample CSV and real Gemini/BigQuery, scripted artifact picks reach a multi-page
+  prototype whose every component passes validation, and `DSS_ENGINE_DRY_RUN=1` reaches `done`;
+  the two-source GPS-style fixture reaches a blueprint with a union and a flagged ratio KPI.
 
 ## Decided by default
+- Change staged workflow 2026-10-21 (user choices in ../docs/program.md decision log): the
+  defaults below about the interview and conversational definitions are superseded. New
+  defaults: profile value lists for <= 20 distinct values; at most 15 KPIs/derived fields/
+  thresholds, 24 selected questions, 12 rows per page, 5 pages; one repair per model node; the
+  live two-source check uses a small backend-owned GPS-style fixture modelled on the user's
+  activity_summary/route_speeding_events schema (the real files are not in the repo); builds
+  made before the change keep their spec and re-plan from context.
 - Change 2026-10-21 (release retry): explicit metric definitions apply to later compatible
   requests with provenance; ordinary blue-theme/accent wording permits choosing a supported
   blue shade. Reason: these are existing interview/style goals, and requiring special formula
@@ -111,6 +126,9 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 - none
 
 ## Later
+- One view per page for unjoinable sources (spec, recipe and engine change) (change staged
+  workflow 2026-10-21).
+- Document upload as context input (change staged workflow 2026-10-21).
 - Cloud SQL/Firestore for episodic memory, more than one instance (change 2026-10-19).
 - Automated Eval -> Gate -> Release loop with versioned prompts (plan).
 - Data Studio calculated fields when a view can't express them (plan).

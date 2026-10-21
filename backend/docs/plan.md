@@ -1,5 +1,5 @@
 # Plan: backend
-Target: POC · Audit: done 2026-10-20 (final re-audit: ACCEPTED; fixes 13.1-13.3 verified; details in docs/audit-reaudit-2026-10-20.md; known limitations in PRD Later)
+Target: POC · Audit: done 2026-10-21 (delta, staged workflow: 16 findings, 16 applied; final re-audit 2026-10-20 ACCEPTED, details in docs/audit-reaudit-2026-10-20.md)
 
 Markers: [ ] to do, [~] in progress, [x] done, [!] blocked. Only blueprint.py changes them.
 Sizes: S small, M a normal session, L needs a whole fresh session (never run unattended).
@@ -389,3 +389,94 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Done when: `uv run pytest tests/test_interview.py tests/test_feasibility.py tests/test_plan.py tests/test_revise.py tests/test_api_contract.py` passes. Through the real API/graph with fake providers, the three exact answers in the Spec resolve all three aggregates, reuse revenue's confirmed SUM in later trend/regional charts, preserve monthly order_date and blue styling, become ready and pass plan preflight plus supported candidate fulfillment. The exact accent comment revises supported styling while preserving its component target, geometry and data bindings. Cover reload/reassessment of a sanitized failed-ledger fixture, conflicting definitions, negated/conditional/quoted formulas, gross/net ambiguity, different metrics sharing a field, and mixed style plus GPS animation/unknown feature; unresolved cases still block plan/recipe/run without downstream side effects. `uv run pytest -m live tests/live/test_backend_flow.py -k interview` passes an isolated regression with those exact three answers and real extraction/planning/revision, no injected ledger/spec, then the exact component comment; save/inspect the resulting prototype to confirm blue styling and preserved component geometry/data. Preserve all failure evidence and user's runtime/config. `uv run pytest` passes.
   - Review focus: coordinated formulas are evidence only when affirmative; forward reuse cannot invent semantic equivalence; supported styling must survive fulfillment rather than being ignored; no changes to contracts, capabilities evidence, budgets or unrelated P2 work.
   - If: the live run exposes another defect in this same extraction/reconciliation path -> repair within the task; never rewrite the exact regression into hex colors/separate definition sentences or drop issues to pass. A defect outside the listed files follows the normal blocked-task rule.
+
+## Phase 15: Staged workflow (change 2026-10-21)
+- [ ] 15.1 Switch to the 2.0 build shape and remove the interview and plan path
+  - Goal: Build, Stage and the artifact state machine follow api.md 2.0 (notes, artifacts, Stage rules), stored builds migrate, and the interview, POST messages and plan paths are gone with their nodes, prompts, skills and tests, so the suite is green on the 2.0 fixtures from here on.
+  - Spec: docs/architecture.md#Staged workflow
+  - Files: src/dss/artifacts/__init__.py, src/dss/artifacts/state.py, src/dss/db.py, src/dss/api/builds.py, src/dss/api/chat.py, src/dss/main.py, src/dss/harness/graph.py, src/dss/harness/context.py, src/dss/harness/nodes/interview.py, src/dss/harness/nodes/plan.py, src/dss/harness/nodes/spec.py, prompts/v1/interview.md, prompts/v1/plan.md, prompts/v1/spec.md, skills/interview.md, skills/plan.md, skills/spec.md, tests/test_interview.py, tests/test_plan.py, tests/test_spec_node.py, tests/test_api_contract.py, tests/test_artifact_state.py, tests/live/test_backend_flow.py
+  - Depends on: 14.2
+  - Size: M
+  - Done when: `uv run pytest` passes: `tests/test_api_contract.py` matches build.json, build.done.json, builds.json, messages.json and the 2.0 SSE fixtures (notes, artifacts, no ready_for_plan); `POST interview/start`, `POST messages` and `POST plan` return 404; tests/test_artifact_state.py covers every Stage rule (draft/stale/back-move per edit in each stage, edits in build or done -> `409 wrong_stage`, confirm with issues -> `409 artifact_invalid`); a stored build in stage interview or plan migrates to context; a build with all four artifacts missing and a spec (legacy) still compiles and runs; the dev load-spec route still reaches prototype and a dry-run build; old interview/plan tests are deleted, not skipped (list them in the progress entry).
+  - Review focus: ../contracts/api.md 2.0 (Build, Stage rules, removed routes); additive migration; nothing else of the old flow left reachable.
+- [ ] 15.2 Artifact models, OKF writer and the profile script
+  - Goal: the four artifact models and their OKF read/write, and the reusable data profile script that intake now uses.
+  - Spec: docs/architecture.md#Staged workflow; docs/architecture.md#Data profile
+  - Files: src/dss/artifacts/models.py, src/dss/artifacts/okf.py, src/dss/data/profile.py, src/dss/data/bigquery.py, src/dss/harness/nodes/intake.py, tests/test_artifacts.py, tests/test_profile.py, tests/test_intake.py
+  - Depends on: 15.1
+  - Size: M
+  - Done when: `uv run pytest tests/test_artifacts.py tests/test_profile.py tests/test_intake.py` passes: every model round-trips model -> OKF file -> model unchanged and validates against ../contracts/fixtures/api/{context,outline,design,blueprint,blueprint.blocked}.json; the profile lists all values for <= 20 distinct, top 5 otherwise, uses at most 2 queries per source and a byte-identical prompt text; 30 columns fit 6k tokens and a 60-column source sends columns 41-60 as name and type only; `uv run pytest` passes; manual (live): `uv run python -m dss.data.profile <the sample CSV's table> --json` prints the profile in <= 10 s.
+  - Review focus: ../contracts/api.md 2.0 types; no rows fetched for profiling; atomic writes.
+- [ ] 15.3 Context node and endpoints
+  - Goal: notes + profiles -> validated Context draft -> context.md; edit, revalidate and confirm.
+  - Spec: docs/architecture.md#Context; docs/architecture.md#Working memory assembly
+  - Files: src/dss/harness/nodes/context.py, src/dss/harness/graph.py, src/dss/harness/context.py, src/dss/api/workflow.py, src/dss/main.py, prompts/v1/context.md, skills/context.md, tests/test_context_node.py
+  - Depends on: 15.2
+  - Size: M
+  - Done when: `uv run pytest tests/test_context_node.py tests/test_api_contract.py` passes with FakeLLM and FakeBigQuery per the Context oracle (valid draft -> context.md, each invalid case gives its issue path, at most one repair, PUT revalidates without a model call, confirm with issues -> `409 artifact_invalid`, shapes = context.json); the assembled prompt sections hold no data rows and no messages; `uv run pytest` passes; `uv run pytest -m live tests/live/test_staged_flow.py -k context` drafts a Context for the sample CSV with zero issues after at most one repair.
+  - Review focus: ../contracts/api.md 2.0 context endpoints; code owns validation; budget 10k/3k.
+- [ ] 15.4 Outline nodes and endpoints
+  - Goal: proposal on first context confirm, revalidation on later confirms, explicit re-propose, selection, other text and suggest-more, confirm.
+  - Spec: docs/architecture.md#Outline
+  - Files: src/dss/harness/nodes/outline.py, src/dss/harness/graph.py, src/dss/harness/context.py, src/dss/api/workflow.py, src/dss/spec/requirements.py, prompts/v1/outline.md, skills/outline.md, tests/test_outline.py
+  - Depends on: 15.3
+  - Size: M
+  - Done when: `uv run pytest tests/test_outline.py tests/test_api_contract.py` passes per the Outline oracle (3-5 sections, stable ids, other questions and selections survive re-confirm and re-propose, duplicates dropped, a ratio-only question is not recommended, unsupported other text keeps a blocked requirement and an assistant reply, 25 selected -> 409, shapes = outline.json); `uv run pytest` passes; `uv run pytest -m live tests/live/test_staged_flow.py -k outline` proposes 3-5 sections for the sample CSV with valid kpi_refs.
+  - Review focus: ../contracts/api.md 2.0 outline endpoints; one generation per action, no repair; extraction only for other text.
+- [ ] 15.5 Theme kit and design endpoints
+  - Goal: at least 6 design-time theme presets with decoration kits, the Data Studio font list, and the code-only design stage.
+  - Spec: docs/architecture.md#Design and theme kit
+  - Files: knowledge/themes/*.md, knowledge/themes/index.md, knowledge/themes/log.md, knowledge/datastudio/fonts.md, src/dss/render/kits.py, src/dss/artifacts/design.py, src/dss/api/workflow.py, scripts/render_presets.py, tests/test_design.py
+  - Depends on: 15.2
+  - Size: M
+  - STOP: show the user the preset sheet (`uv run python scripts/render_presets.py` writes one PNG per preset: header kit, palette swatches, a sample scorecard and bar in the theme) and get approval or changes before marking done.
+  - Done when: `uv run pytest tests/test_design.py tests/test_api_contract.py` passes per the Design oracle (every preset valid, contrast >= 4.5:1, the stdlib color-blindness check passes, fonts in fonts.md, prefill per archetype and from a reference, per_section prefilled only for 1-5 sections, low-contrast edit and per_section with 6 sections give issues, shapes = design.json and design_presets.json); `uv run pytest` passes; the preset sheet PNGs are opened and visually checked, then approved by the user.
+  - Review focus: ../contracts/api.md 2.0 design endpoints; built with the frontend-design and ui-ux-pro-max skills; decorations deterministic; no new dependency.
+- [ ] 15.6 Blueprint node, view sources and union view
+  - Goal: selected questions -> blueprint rows, view sources and derived fields; the view built and dry-run from them; unchanged questions keep their rows on a redraft.
+  - Spec: docs/architecture.md#Blueprint; docs/architecture.md#BigQuery view
+  - Files: src/dss/harness/nodes/blueprint.py, src/dss/harness/nodes/view.py, src/dss/data/bigquery.py, src/dss/harness/graph.py, src/dss/harness/context.py, src/dss/api/workflow.py, prompts/v1/blueprint.md, skills/blueprint.md, tests/test_blueprint.py, tests/test_view_sql.py, tests/data/gps_activity_summary.csv, tests/data/gps_route_speeding_events.csv
+  - Depends on: 15.4; 15.5
+  - Size: M
+  - Done when: `uv run pytest tests/test_blueprint.py tests/test_view_sql.py` passes with FakeLLM and FakeBigQuery: the ecommerce fixture gives rows for every selected question (shapes = blueprint.json); a fake that omits a selected question gets one row repair, then an issue for that question; page numbers follow the page plan; on a redraft after one question changes, only that question goes to the model and the other rows are kept; join and union SQL are golden strings (union NULL-pads missing columns, adds `dataset_name`, quotes reserved words); a view dry-run error triggers exactly one SQL repair; the prompt holds the catalog summary, never rows or messages; the two GPS-style fixture CSVs (schemas of activity_summary/route_speeding_events, <= 50 rows each) exist; `uv run pytest` passes.
+  - Review focus: one generation; budget 14k/6k; filtering only through derived fields.
+- [ ] 15.7 Blueprint feasibility, repair, issues and decisions
+  - Goal: code checks every row, repairs failing rows once, turns the rest into Assessment issues with code-built alternatives, applies decisions in code; accept is gated.
+  - Spec: docs/architecture.md#Blueprint; ../contracts/dashboard-intent.md#Enforcement
+  - Files: src/dss/spec/feasibility.py, src/dss/spec/requirements.py, src/dss/spec/capabilities.py, src/dss/harness/nodes/blueprint.py, src/dss/api/feasibility.py, src/dss/api/workflow.py, tests/test_blueprint.py, tests/test_feasibility.py
+  - Depends on: 15.6
+  - Size: M
+  - Done when: `uv run pytest tests/test_blueprint.py tests/test_feasibility.py tests/test_api_contract.py` passes per the Blueprint oracle: ratio KPI row blocked with numerator/denominator and drop alternatives (shapes = blueprint.blocked.json); time_series without a date -> one repair then an issue; a KPI used with another aggregation rejected; a page with 13 rows gives the too-many-components issue; the GPS-style fixture's two sources without a join give one-source and union options; decisions update rows with no model call; `blueprint/accept` with a blocked row -> `409 feasibility_blocked`, with zero ok rows -> `409 artifact_invalid`; Assessment/Issue shapes still match the dashboard-intent fixtures; required oracle cases 1-6 of dashboard-intent.md still pass; `uv run pytest` passes.
+  - Review focus: ../contracts/dashboard-intent.md 1.2; rows are requirements without extraction; no support granted without registry evidence; issues never disappear silently.
+- [ ] 15.8 Code layout: blueprint and design to a multi-page spec
+  - Goal: the spec built by code (no spec model node), 1-5 pages, validated.
+  - Spec: docs/architecture.md#Spec layout; docs/architecture.md#Dashboard Spec; docs/architecture.md#Layout
+  - Files: src/dss/spec/auto_layout.py, src/dss/spec/validate.py, src/dss/spec/models.py, tests/test_layout_auto.py, tests/test_spec_validate.py, tests/data/golden_blueprint.json, tests/data/golden_design.json, tests/data/golden_spec.json
+  - Depends on: 15.7
+  - Size: M
+  - Done when: `uv run pytest tests/test_layout_auto.py tests/test_spec_validate.py` passes: golden blueprint + design -> byte-identical golden spec; property test (fixed seed, 200 cases) of valid blueprints (1-12 rows per page, 1-5 pages, both densities, pages whose rows were all dropped) all give validator-valid specs with no overlaps, catalog minimum sizes and no empty page; the validator accepts 1-5 pages and rejects 6; the question_ref coverage rule applies to the layout output and not to revise patches; synthetic footer reserved when a synthetic source participates; `uv run pytest` passes.
+  - Review focus: deterministic; reuses Layout and text fitting; no model call.
+- [ ] 15.9 Multi-page render, backgrounds, compile and decoration comments
+  - Goal: blueprint accept renders every page and its background, compiles add_page per page, and revise accepts color comments on decorations and chart removals.
+  - Spec: docs/architecture.md#Prototype renderer; docs/architecture.md#Recipe compiler; docs/architecture.md#Revise; docs/architecture.md#Plan publication
+  - Files: src/dss/render/prototype.py, src/dss/render/background.py, src/dss/render/kits.py, src/dss/recipe/compiler.py, src/dss/harness/nodes/render.py, src/dss/harness/nodes/revise.py, src/dss/harness/nodes/publish.py, src/dss/harness/graph.py, src/dss/api/workflow.py, tests/test_render.py, tests/test_compiler.py, tests/test_revise.py
+  - Depends on: 15.8
+  - Size: M
+  - Done when: `uv run pytest tests/test_render.py tests/test_compiler.py tests/test_revise.py` passes: a 3-page spec renders the structure of ../contracts/fixtures/api/prototype.multipage.html (one `section[data-page]` per page under `#dss-canvas`, one `data-cid` per item), the decoration layer hides components per page, `background_p1..3.png` at canvas size; the recipe has `add_page` + `set_canvas` + `set_background_image` per extra page and validates against ../contracts/recipe.schema.json; render + backgrounds of 3 pages x 8 components <= 30 s; "Use a dark blue accent for this component" on a header decoration patches only that decoration's style (release 2.2 P1); "Remove this chart" removes the component and records it in decisions.md; a prototype PNG per page is saved and visually checked; `uv run dsengine validate` (from ../engine) accepts the compiled recipe; `uv run pytest` passes.
+  - Review focus: ../contracts/api.md 2.0 Prototype HTML; one background per page; contract-valid recipe; Plan publication rules unchanged.
+- [ ] 15.10 Wire references, synthetic data, research, versions and consolidation into the staged flow
+  - Goal: every remaining action works with the new stages, and each branch's trace shows its nodes.
+  - Spec: docs/architecture.md#Graph; docs/architecture.md#Key flows; docs/architecture.md#Consolidation
+  - Files: src/dss/harness/graph.py, src/dss/harness/nodes/reference_extract.py, src/dss/harness/nodes/style_extract.py, src/dss/harness/nodes/research.py, src/dss/harness/nodes/consolidate.py, src/dss/harness/nodes/synthetic_schema.py, src/dss/api/builds.py, src/dss/api/feasibility.py, src/dss/api/synthetic_data.py, src/dss/artifacts/design.py, tests/test_graph.py, tests/test_references.py, tests/test_synthetic_api.py, tests/test_consolidation.py, tests/test_thin_slice.py
+  - Depends on: 15.9
+  - Size: M
+  - Done when: `uv run pytest` passes: each branch's trace spans list its nodes in order; a recreate reference pre-fills the outline proposal input and the design, a style reference pre-fills the design; synthetic and research sources reach context; `POST versions` copies the four artifacts (and a legacy build's spec with artifacts missing); consolidation reads context/outline/design; `uv run pytest tests/test_api_contract.py` matches every 2.0 fixture.
+  - Review focus: ../contracts/api.md 2.0 and ../contracts/synthetic-data.md 1.2; one Workflow and one trace per action; budgets per Working memory assembly.
+- [ ] 15.11 Live staged flow on the sample and the GPS-style fixture
+  - Goal: prove the staged workflow live, end to end through the dry-run engine, before release takes it.
+  - Spec: docs/architecture.md#Staged workflow
+  - Files: tests/live/test_staged_flow.py, tests/live/test_backend_flow.py
+  - Depends on: 15.10
+  - Size: M
+  - Done when: `uv run pytest -m live tests/live/test_staged_flow.py` passes with real Gemini and BigQuery and `DSS_ENGINE_DRY_RUN=1`: the sample CSV goes context -> PUT a context that adds the ratio KPI average order value (net revenue / orders) -> confirm -> outline (recommended picks, the ratio question ticked, one other text) -> design (per_section) -> blueprint (the ratio row blocked; accept the numerator/denominator alternative) -> accept -> a 2+ page prototype -> one component comment and one decoration comment -> recipe -> run `done`; the GPS-style fixture reaches a blueprint with a union view; prints per-node input/output tokens (each within its budget) and stage timings; prototype PNGs of every page are saved and visually checked; rerun once on a model failure and record both runs.
+  - Review focus: no data rows or chat history in any prompt (trace sections); failure evidence kept.

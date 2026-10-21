@@ -7,14 +7,16 @@
 <title>Sales overview (prototype v2)</title>
 <style>
   body { margin: 0; background: #E2E8F0; font-family: Roboto, Arial, sans-serif; }
-  #dss-canvas { position: relative; width: 1200px; height: 900px; background: #F8FAFC; }
+  #dss-canvas { width: 1200px; background: #F8FAFC; }
+  section[data-page] { position: relative; width: 1200px; }
   [data-cid] { position: absolute; box-sizing: border-box; }
   [data-kind="component"] { background: #FFFFFF; border-radius: 8px; padding: 12px; color: #0F172A; font-size: 13px; }
   .ph { background: #E2E8F0; border-radius: 4px; height: calc(100% - 28px); margin-top: 8px; }
 </style>
 </head>
 <body>
-<div id="dss-canvas" data-page="1">
+<div id="dss-canvas" style="height:900px;">
+<section data-page="1" data-page-name="Overview" style="height:900px;">
   <div data-cid="p1_band_header" data-label="Header band" data-kind="decoration" style="left:0;top:0;width:1200px;height:88px;background:#1E40AF;"></div>
   <div data-cid="p1_title" data-label="Dashboard title" data-kind="decoration" style="left:24px;top:24px;width:600px;height:40px;color:#FFFFFF;font-size:28px;font-weight:600;">Sales overview</div>
   <div data-cid="p1_date_range" data-label="Date range control" data-kind="component" style="left:936px;top:32px;width:240px;height:40px;padding:8px;">Jan 1 - Sep 30, 2026</div>
@@ -24,6 +26,7 @@
   <div data-cid="p1_revenue_by_region" data-label="Revenue by region (bar)" data-kind="component" style="left:808px;top:248px;width:368px;height:300px;">Revenue by region<div class="ph"></div></div>
   <div data-cid="p1_category_share" data-label="Category share (pie)" data-kind="component" style="left:24px;top:572px;width:368px;height:300px;">Category share<div class="ph"></div></div>
   <div data-cid="p1_top_products" data-label="Top products (table)" data-kind="component" style="left:416px;top:572px;width:760px;height:300px;">Top products<div class="ph"></div></div>
+</section>
 </div>
 </body>
 </html>

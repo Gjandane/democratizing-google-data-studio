@@ -1,0 +1,98 @@
+{
+  "revision": 3,
+  "sections": [
+    {
+      "id": "s1",
+      "title": "Revenue snapshot",
+      "purpose": "The headline numbers for the period.",
+      "questions": [
+        {
+          "id": "q1",
+          "text": "What were net revenue, orders and units sold in the period?",
+          "rationale": "Answers the goal directly.",
+          "recommended": true,
+          "selected": true,
+          "kpi_refs": [
+            "net_revenue",
+            "orders",
+            "units_sold"
+          ],
+          "origin": "proposed"
+        },
+        {
+          "id": "q2",
+          "text": "What is the average order value?",
+          "rationale": "Ratio KPI: one chart metric can't hold it; pick it to see the alternatives.",
+          "recommended": false,
+          "selected": true,
+          "kpi_refs": [
+            "avg_order_value"
+          ],
+          "origin": "proposed"
+        },
+        {
+          "id": "q3",
+          "text": "How does net revenue trend month over month?",
+          "rationale": "Answers the goal directly.",
+          "recommended": true,
+          "selected": true,
+          "kpi_refs": [
+            "net_revenue"
+          ],
+          "origin": "proposed"
+        }
+      ]
+    },
+    {
+      "id": "s2",
+      "title": "Where revenue comes from",
+      "purpose": "Breakdowns by region, category and segment.",
+      "questions": [
+        {
+          "id": "q4",
+          "text": "Which regions bring the most net revenue?",
+          "rationale": "Answers the goal directly.",
+          "recommended": true,
+          "selected": true,
+          "kpi_refs": [
+            "net_revenue"
+          ],
+          "origin": "proposed"
+        },
+        {
+          "id": "q5",
+          "text": "Which product categories bring the most net revenue?",
+          "rationale": "Answers the goal directly.",
+          "recommended": true,
+          "selected": true,
+          "kpi_refs": [
+            "net_revenue"
+          ],
+          "origin": "proposed"
+        },
+        {
+          "id": "q6",
+          "text": "Which countries bring the most net revenue?",
+          "rationale": "A map adds detail but repeats the region view.",
+          "recommended": false,
+          "selected": false,
+          "kpi_refs": [
+            "net_revenue"
+          ],
+          "origin": "proposed"
+        },
+        {
+          "id": "q7",
+          "text": "How do bulk and single order lines compare by segment?",
+          "rationale": "Added by the user.",
+          "recommended": false,
+          "selected": true,
+          "kpi_refs": [
+            "net_revenue"
+          ],
+          "origin": "other"
+        }
+      ]
+    }
+  ]
+}
