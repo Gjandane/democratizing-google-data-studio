@@ -14,7 +14,7 @@ const reasons: Record<Issue['status'], string> = {
   unsupported_app: 'This app cannot produce this requirement.',
   needs_data: 'More data is needed for this requirement.',
   needs_clarification: 'Your clarification is needed for this requirement.',
-  unknown: 'Support for this requirement is uncertain. Check feasibility or clarify it in chat.',
+  unknown: 'Support for this requirement is uncertain. Check feasibility, or clarify it in the context or outline.',
 };
 const messageOf = (error: unknown) => error instanceof ApiError ? error.message : "Couldn't check feasibility. Try again.";
 
@@ -148,10 +148,10 @@ export function FeasibilityPanel({ buildId, referencesReady = true, readOnly = f
     action.current = kind;
     const ticket = ++checkTicket.current;
     checking.current = true;
-    locked.current = true; setBusy(true); setError(null); setStatus(kind === 'check' ? 'Checking feasibility…' : kind === 'reapply' ? 'Reapplying saved comments…' : 'Replanning prototype…');
+    locked.current = true; setBusy(true); setError(null); setStatus(kind === 'check' ? 'Checking feasibility…' : kind === 'reapply' ? 'Reapplying saved comments…' : 'Regenerating the blueprint…');
     try {
       const accepted = kind === 'check' ? await api.checkFeasibility(buildId) : kind === 'reapply'
-        ? await api.reapplyComments(buildId, value!.id!, value!.pending_comments!.id) : await api.generatePlan(buildId);
+        ? await api.reapplyComments(buildId, value!.id!, value!.pending_comments!.id) : await api.regenerateBlueprint(buildId);
       if (!mounted.current || ticket !== checkTicket.current) return;
       pending.current = accepted.run_id;
       const finished = completions.current.get(accepted.run_id);
@@ -228,8 +228,8 @@ export function FeasibilityPanel({ buildId, referencesReady = true, readOnly = f
       {!assessment && !loadError && <LoadingState>Loading feasibility…</LoadingState>}
       {loadError && <ErrorState className="mt-3" title="Couldn't load feasibility" message={loadError} onRetry={() => { setFocusRequest((n) => n + 1); void load(); }} retryLabel="Retry feasibility" retryLoading={refreshing} />}
       {!loadError && assessment && !oneLine && <div className="mt-2 space-y-3">
-        <p className="text-body text-text-muted">{assessment.state === 'ready' ? 'Your requirements are resolved.' : assessment.state === 'blocked' ? 'Resolve these requirements before generating or building.' : assessment.state === 'stale' ? 'Requirements changed. Replan the prototype or reapply saved comments before continuing.' : 'Check what this app supports before generating or building.'}</p>
-        {assessment.prototype_stale && <p className="text-body font-medium text-danger">This prototype is out of date. Update the plan before generating a recipe or building.</p>}
+        <p className="text-body text-text-muted">{assessment.state === 'ready' ? 'Your requirements are resolved.' : assessment.state === 'blocked' ? 'Resolve these requirements before generating or building.' : assessment.state === 'stale' ? 'Requirements changed. Regenerate the blueprint or reapply saved comments before continuing.' : 'Check what this app supports before generating or building.'}</p>
+        {assessment.prototype_stale && <p className="text-body font-medium text-danger">This prototype is out of date. Regenerate the blueprint before generating a recipe or building.</p>}
         {assessment.issues.filter((issue) => issue.resolution === 'unresolved').map((issue) => <fieldset key={`${assessment.id}-${issue.id}`} disabled={disabled} className="min-w-0 space-y-2 rounded-control border border-border p-3">
           <legend className="max-w-full px-1 text-body font-semibold text-text [overflow-wrap:anywhere]">{issue.requirement}</legend>
           <p className="text-body font-medium text-text">{issue.status === 'unsupported_app' && /animate GPS points/i.test(issue.requirement) ? 'This app cannot animate GPS points.' : reasons[issue.status]}</p>
@@ -242,7 +242,6 @@ export function FeasibilityPanel({ buildId, referencesReady = true, readOnly = f
           <div className="flex flex-wrap gap-2">
             {issue.alternatives.length > 0 && <Button disabled={disabled || !selected[issue.id] || !assessment.id} onClick={() => void decide({ issue_id: issue.id, action: 'accept_alternative', alternative_id: selected[issue.id]! })}>Use this alternative</Button>}
             <Button disabled={disabled || !assessment.id} onClick={() => void decide({ issue_id: issue.id, action: 'drop', alternative_id: null })}>Drop this requirement</Button>
-            {issue.status === 'needs_clarification' && <Button variant="ghost" onClick={() => document.querySelector<HTMLTextAreaElement>('aside[aria-label="Chat"] textarea')?.focus()}>Clarify in chat</Button>}
           </div>
         </fieldset>)}
         {!readOnly && !resolved && (assessment.state !== 'ready' || assessment.issues.some((issue) => issue.status === 'unknown' && issue.resolution === 'unresolved')) && <Button disabled={disabled} loading={busy} onClick={() => void check()}>Check feasibility</Button>}
@@ -259,8 +258,8 @@ export function FeasibilityPanel({ buildId, referencesReady = true, readOnly = f
           <Button disabled={disabled || !assessment.id} onClick={() => void discard()}>Discard pending comments</Button>
         </div>}
       </section>}
-      {replan && <Button className="mt-3" disabled={disabled || !resolved || !assessment.id || localCommentsPending} aria-describedby={localCommentsPending ? `${id}-drafts` : undefined} onClick={() => void check('replan')}>Replan</Button>}
-      {replan && localCommentsPending && <p id={`${id}-drafts`} className="mt-2 text-body text-text-muted">Apply or remove your draft comments before replanning.</p>}
+      {replan && <Button className="mt-3" disabled={disabled || !resolved || !assessment.id || localCommentsPending} aria-describedby={localCommentsPending ? `${id}-drafts` : undefined} onClick={() => void check('replan')}>Regenerate blueprint</Button>}
+      {replan && localCommentsPending && <p id={`${id}-drafts`} className="mt-2 text-body text-text-muted">Apply or remove your draft comments before regenerating the blueprint.</p>}
       {error && <p role="alert" className={`${oneLine ? '' : 'mt-2 '}text-body text-danger`}>{error}</p>}
       <p role="status" className={`${status && !oneLine ? 'mt-2 ' : ''}min-w-0 text-label text-text-muted`}>{status}</p>
     </section>

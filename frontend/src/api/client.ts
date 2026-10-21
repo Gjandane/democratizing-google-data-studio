@@ -28,7 +28,22 @@ import {
   type EngineStatus,
   type Health,
   type Message,
-  type MessageAccepted,
+  type Blueprint,
+  type Context,
+  type ContextUpdate,
+  type Design,
+  type DesignUpdate,
+  isBlueprint,
+  isBuild,
+  isContext,
+  isDesign,
+  isOutline,
+  isRunAccepted,
+  isThemePreset,
+  nullable,
+  type Outline,
+  type QuestionSelection,
+  type ThemePreset,
   type NewBuild,
   oversizeError,
   type Recipe,
@@ -82,11 +97,35 @@ export interface ApiClient {
   syntheticCsvUrl(buildId: string, sourceId: string): string;
   uploadStyleImages(buildId: string, files: File[]): Promise<RunAccepted>;
   startResearch(buildId: string, prompt: string): Promise<RunAccepted>;
-  startInterview(buildId: string): Promise<RunAccepted>;
-  /** Oldest first. */
+  /** Oldest first: assistant explanations, refusals and revise outcomes (2.0 has no chat input). */
   listMessages(buildId: string): Promise<Message[]>;
-  sendMessage(buildId: string, text: string): Promise<MessageAccepted>;
-  generatePlan(buildId: string): Promise<RunAccepted>;
+  /** Saves the "about this data" notes (at most 4000 chars) and drafts the Context (node `context`). */
+  draftContext(buildId: string, notes?: string): Promise<RunAccepted>;
+  getContext(buildId: string): Promise<Context | null>;
+  updateContext(buildId: string, context: ContextUpdate): Promise<Context>;
+  /** Needs no open issues; proposes or revalidates the Outline (node `outline_propose`). */
+  confirmContext(buildId: string): Promise<RunAccepted>;
+  getOutline(buildId: string): Promise<Outline | null>;
+  /** Re-proposes explicitly, keeping `other` questions and unchanged selections. */
+  proposeOutline(buildId: string): Promise<RunAccepted>;
+  /** 1-100 questions per call; code only, no run. */
+  updateOutlineSelection(buildId: string, questions: QuestionSelection[]): Promise<Outline>;
+  /** 1-1000 chars; `sectionId` null adds a new section. */
+  addOutlineQuestions(buildId: string, sectionId: string | null, text: string): Promise<RunAccepted>;
+  suggestOutlineQuestions(buildId: string, sectionId: string): Promise<RunAccepted>;
+  /** Needs 1-24 selected questions; prefills a missing Design. */
+  confirmOutline(buildId: string): Promise<Build>;
+  listDesignPresets(buildId: string): Promise<ThemePreset[]>;
+  getDesign(buildId: string): Promise<Design | null>;
+  /** Replaces the Design with a fresh prefill (code only). */
+  prefillDesign(buildId: string): Promise<Design>;
+  updateDesign(buildId: string, design: DesignUpdate): Promise<Design>;
+  /** Needs no open issues; drafts the Blueprint (node `blueprint`). */
+  confirmDesign(buildId: string): Promise<RunAccepted>;
+  getBlueprint(buildId: string): Promise<Blueprint | null>;
+  regenerateBlueprint(buildId: string): Promise<RunAccepted>;
+  /** Needs a ready assessment and an ok row; lays out the spec and renders (node `prototype`). */
+  acceptBlueprint(buildId: string): Promise<RunAccepted>;
   /** Markdown of one build doc. */
   getDoc(buildId: string, path: string): Promise<string>;
   /** The current spec JSON, for read-only display. */
@@ -168,11 +207,22 @@ async function assessment(method: string, path: string, body?: unknown): Promise
 }
 
 /** A JSON response checked against its contract guard; `unreadable` is the message when it doesn't match. */
-async function checkedJson<T>(method: string, path: string, guard: Guard<T>, unreadable: string): Promise<T> {
-  const value: unknown = await json(method, path);
+async function checkedJson<T>(method: string, path: string, guard: Guard<T>, unreadable: string, body?: unknown): Promise<T> {
+  const value: unknown = await json(method, path, body);
   if (!guard(value)) throw new ApiError(502, 'invalid_response', unreadable);
   return value;
 }
+
+const UNREADABLE = {
+  context: "Couldn't read the context. Try again.",
+  outline: "Couldn't read the outline. Try again.",
+  design: "Couldn't read the design. Try again.",
+  blueprint: "Couldn't read the blueprint. Try again.",
+  build: "Couldn't read this build: the backend may predate API 2.0. Update it, then try again.",
+};
+
+/** A staged action's `202 {run_id}`. */
+const accepted = (path: string, body?: unknown) => checkedJson('POST', path, isRunAccepted, "Couldn't read the server's answer. Reload the page.", body);
 
 export const httpApi: ApiClient = {
   health: () => json('GET', '/health'),
@@ -181,8 +231,8 @@ export const httpApi: ApiClient = {
   getSettings: () => json('GET', '/settings'),
   updateSettings: (update) => json('PUT', '/settings', update),
   listBuilds: () => json('GET', '/builds'),
-  createBuild: (body) => json('POST', '/builds', body),
-  getBuild: (id) => json('GET', buildPath(id)),
+  createBuild: (body) => checkedJson('POST', '/builds', isBuild, UNREADABLE.build, body),
+  getBuild: (id) => checkedJson('GET', buildPath(id), isBuild, UNREADABLE.build),
   uploadSources: (id, files) => upload(buildPath(id, '/sources/upload'), files),
   addSource: (id, body) => json('POST', buildPath(id, '/sources'), body),
   getFeasibility: (id) => assessment('GET', buildPath(id, '/feasibility')),
@@ -233,10 +283,25 @@ export const httpApi: ApiClient = {
   syntheticCsvUrl: (id, sourceId) => `/api${buildPath(id, `/synthetic-data/${seg(sourceId)}/csv`)}`,
   uploadStyleImages: (id, files) => upload(buildPath(id, '/style-images'), files),
   startResearch: (id, prompt) => json('POST', buildPath(id, '/research'), { prompt }),
-  startInterview: (id) => json('POST', buildPath(id, '/interview/start')),
   listMessages: (id) => json('GET', buildPath(id, '/messages')),
-  sendMessage: (id, message) => json('POST', buildPath(id, '/messages'), { text: message }),
-  generatePlan: (id) => json('POST', buildPath(id, '/plan')),
+  draftContext: (id, notes) => accepted(buildPath(id, '/context'), notes === undefined ? {} : { notes }),
+  getContext: (id) => checkedJson('GET', buildPath(id, '/context'), nullable(isContext), UNREADABLE.context),
+  updateContext: (id, context) => checkedJson('PUT', buildPath(id, '/context'), isContext, UNREADABLE.context, context),
+  confirmContext: (id) => accepted(buildPath(id, '/context/confirm')),
+  getOutline: (id) => checkedJson('GET', buildPath(id, '/outline'), nullable(isOutline), UNREADABLE.outline),
+  proposeOutline: (id) => accepted(buildPath(id, '/outline/propose')),
+  updateOutlineSelection: (id, questions) => checkedJson('PUT', buildPath(id, '/outline/selection'), isOutline, UNREADABLE.outline, { questions }),
+  addOutlineQuestions: (id, sectionId, text) => accepted(buildPath(id, '/outline/other'), { section_id: sectionId, text }),
+  suggestOutlineQuestions: (id, sectionId) => accepted(buildPath(id, '/outline/suggest'), { section_id: sectionId }),
+  confirmOutline: (id) => checkedJson('POST', buildPath(id, '/outline/confirm'), isBuild, "Couldn't read the build. Reload the page."),
+  listDesignPresets: (id) => checkedJson('GET', buildPath(id, '/design/presets'), arrayOf(isThemePreset), "Couldn't read the design presets. Try again."),
+  getDesign: (id) => checkedJson('GET', buildPath(id, '/design'), nullable(isDesign), UNREADABLE.design),
+  prefillDesign: (id) => checkedJson('POST', buildPath(id, '/design/prefill'), isDesign, UNREADABLE.design),
+  updateDesign: (id, design) => checkedJson('PUT', buildPath(id, '/design'), isDesign, UNREADABLE.design, design),
+  confirmDesign: (id) => accepted(buildPath(id, '/design/confirm')),
+  getBlueprint: (id) => checkedJson('GET', buildPath(id, '/blueprint'), nullable(isBlueprint), UNREADABLE.blueprint),
+  regenerateBlueprint: (id) => accepted(buildPath(id, '/blueprint/regenerate')),
+  acceptBlueprint: (id) => accepted(buildPath(id, '/blueprint/accept')),
   getDoc: (id, path) => text(buildPath(id, `/docs/${segs(path)}`)),
   getSpec: (id) => json('GET', buildPath(id, '/spec')),
   prototypeUrl: (id, v, layer = 'all') =>

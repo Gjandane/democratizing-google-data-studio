@@ -1,66 +1,35 @@
-import { Activity, ArrowLeft, ChartColumn, CircleCheck, Database, FileText, Hammer, MessagesSquare, MousePointerClick, Settings } from 'lucide-react';
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { Activity, ArrowLeft, ChartColumn, Hammer, Settings } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
-import { ApiError, type Assessment, type Build, type Message, type Stage } from '../../api/types';
+import { ApiError, ARTIFACTS, type ArtifactName, type Assessment, type Build, type Stage } from '../../api/types';
 import { Button, buttonClass } from '../../components/Button';
 import { ErrorState } from '../../components/ErrorState';
 import { focusRing } from '../../components/focus';
 import { LoadingState } from '../../components/Spinner';
+import { ActivityColumn } from '../activity/ActivityColumn';
+import { useBuildStream, type BuildStream } from '../activity/useBuildStream';
 import { DoneStage } from '../history/DoneStage';
-import { ChatPanel } from './chat/ChatPanel';
-import { InterviewStage } from './chat/InterviewStage';
-import { useBuildStream, type BuildStream, type ProgressLine, type StretchRuns } from './chat/useBuildStream';
 import { ConnectStage } from './connect/ConnectStage';
 import { BuildStage } from './build/BuildStage';
-import { failedCount, idleRun, type BuildRun } from './build/buildRun';
-import { PlanStage } from './plan/PlanStage';
+import { failedCount, idleRun } from './build/buildRun';
 import { PrototypeStage } from './prototype/PrototypeStage';
+import { ArtifactStage } from './ArtifactStage';
 import { FeasibilityPanel, type FeasibilityGates } from './FeasibilityPanel';
 import { ReferencePanel } from './ReferencePanel';
-import { STAGE_LABELS, Stepper } from './Stepper';
+import { prototypeStale, STAGE_LABELS, staleCause, Stepper } from './Stepper';
 
 type Load = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; build: Build };
 
-/** Stage areas until each stage's own view replaces its entry here. */
-const STAGE_VIEWS: Record<Stage, { lead: string; icon: ReactNode; title: string; text: string }> = {
-  connect: {
-    lead: 'Add the data this dashboard reads from.',
-    icon: <Database />,
-    title: 'No sources yet',
-    text: 'CSV files and BigQuery tables you add show up here, with their columns.',
-  },
-  interview: {
-    lead: "Answer the assistant's questions in the chat.",
-    icon: <MessagesSquare />,
-    title: 'Interview',
-    text: 'Questions answered in the chat show up here.',
-  },
-  plan: {
-    lead: 'The planner writes the build docs.',
-    icon: <FileText />,
-    title: 'Build docs',
-    text: 'Docs show up here as the planner writes them.',
-  },
-  prototype: {
-    lead: 'Click any part of the prototype to comment on it.',
-    icon: <MousePointerClick />,
-    title: 'Prototype',
-    text: 'The prototype shows up here, ready for comments.',
-  },
-  build: {
-    lead: 'The engine builds the dashboard in Data Studio.',
-    icon: <Hammer />,
-    title: 'Recipe',
-    text: 'Recipe steps show up here and tick off as the engine runs them.',
-  },
-  done: {
-    lead: 'The dashboard is published in Data Studio.',
-    icon: <CircleCheck />,
-    title: 'Published dashboard',
-    text: 'The dashboard link and its versions show up here.',
-  },
+/** The lead line of the stage areas without an artifact (the artifact stages have their own). */
+const STAGE_LEADS: Record<'connect' | 'prototype' | 'build' | 'done', string> = {
+  connect: 'Add the data this dashboard reads from.',
+  prototype: 'Click any part of the prototype to comment on it.',
+  build: 'The engine builds the dashboard in Data Studio.',
+  done: 'The dashboard is published in Data Studio.',
 };
+
+const isArtifact = (stage: Stage): stage is ArtifactName => (ARTIFACTS as readonly string[]).includes(stage);
 
 interface WorkspaceShellProps {
   /** The Trace and Settings buttons stay disabled until something handles them. */
@@ -68,7 +37,7 @@ interface WorkspaceShellProps {
   onOpenSettings?: () => void;
 }
 
-function TopBar({ build, onOpenTrace, onOpenSettings }: { build: Build | null } & WorkspaceShellProps) {
+function TopBar({ build, viewing, onSelect, onOpenTrace, onOpenSettings }: { build: Build | null; viewing: Stage | null; onSelect: (stage: Stage) => void } & WorkspaceShellProps) {
   return (
     <header className="grid h-(--layout-topbar) grid-cols-[var(--layout-chat)_minmax(0,1fr)_auto] items-center border-b border-border bg-surface">
       <div className="flex h-full min-w-0 items-center gap-3 border-r border-border px-4">
@@ -85,13 +54,14 @@ function TopBar({ build, onOpenTrace, onOpenSettings }: { build: Build | null } 
           </h1>
         )}
       </div>
-      <div className="min-w-0 px-6">{build && <Stepper current={build.stage} />}</div>
+      <div className="min-w-0 px-4">{build && <Stepper build={build} viewing={viewing ?? build.stage} onSelect={onSelect} />}</div>
+      {/* Below 1440 px the eight-step stepper needs the room: Trace and Settings keep their names for screen readers only. */}
       <div className="flex items-center gap-1 px-3">
-        <Button variant="ghost" size="sm" icon={<Activity aria-hidden="true" />} disabled={!onOpenTrace} onClick={onOpenTrace}>
-          Trace
+        <Button variant="ghost" size="sm" icon={<Activity aria-hidden="true" />} disabled={!onOpenTrace} onClick={onOpenTrace} title="Trace" className="max-[1439px]:gap-0 max-[1439px]:px-1.5">
+          <span className="max-[1439px]:sr-only">Trace</span>
         </Button>
-        <Button variant="ghost" size="sm" icon={<Settings aria-hidden="true" />} disabled={!onOpenSettings} onClick={onOpenSettings}>
-          Settings
+        <Button variant="ghost" size="sm" icon={<Settings aria-hidden="true" />} disabled={!onOpenSettings} onClick={onOpenSettings} title="Settings" className="max-[1439px]:gap-0 max-[1439px]:px-1.5">
+          <span className="max-[1439px]:sr-only">Settings</span>
         </Button>
       </div>
     </header>
@@ -100,16 +70,9 @@ function TopBar({ build, onOpenTrace, onOpenSettings }: { build: Build | null } 
 
 function StageArea({
   build,
+  shown,
   mainRef,
-  messages,
-  loadError,
-  progress,
-  planning,
-  applying,
-  commentsError,
-  runErrors,
-  buildRun,
-  stretchRuns,
+  stream,
   buildOpen,
   onBuildOpen,
   pendingComments,
@@ -117,16 +80,10 @@ function StageArea({
   onBuildChange,
 }: {
   build: Build;
+  /** The stage area on screen: the build's stage, or an earlier step the stepper reopened. */
+  shown: Stage;
   mainRef: RefObject<HTMLElement | null>;
-  messages: Message[] | null;
-  loadError: string | null;
-  progress: ProgressLine[];
-  planning: boolean;
-  applying: boolean;
-  commentsError: BuildStream['commentsError'];
-  runErrors: BuildStream['runErrors'];
-  buildRun: BuildRun;
-  stretchRuns: StretchRuns;
+  stream: BuildStream;
   buildOpen: boolean;
   onBuildOpen: (open: boolean) => void;
   pendingComments: number;
@@ -139,77 +96,104 @@ function StageArea({
   const [feasibility, setFeasibility] = useState<FeasibilityGates>({ planReady: false, buildReady: false });
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [assessmentRefresh, refreshAssessment] = useState(0);
-  const showBuild = build.stage === 'build' || ((build.stage === 'prototype' || build.stage === 'done') && buildOpen);
+  const { applying, commentsError, buildRun, stretchRuns } = stream;
+  const showBuild = shown === build.stage && (build.stage === 'build' || ((build.stage === 'prototype' || build.stage === 'done') && buildOpen));
   // A result from an earlier version's run doesn't belong to the current version.
   const run = buildRun.finished && buildRun.finished.version !== build.current_version ? idleRun : buildRun;
-  const view = STAGE_VIEWS[showBuild ? 'build' : build.stage];
+  const view: Stage = showBuild ? 'build' : shown;
+  const staleProto = shown === 'prototype' && prototypeStale(build);
+  const feasibilityPanel = build.stage !== 'done' && (
+    <FeasibilityPanel key={`${build.id}-${build.current_version}`} buildId={build.id} referencesReady={referencesReady} readOnly={build.stage === 'build'} onReadyChange={setFeasibility} onAssessmentChange={setAssessment} refreshKey={assessmentRefresh} canReplan={build.stage === 'prototype'} localCommentsPending={pendingComments > 0} />
+  );
+  const references = (
+    <div className="mt-6">
+      <ReferencePanel buildId={build.id} version={build.current_version} readOnly={build.stage === 'build' || build.stage === 'done'} onReadyChange={setReferencesReady} />
+    </div>
+  );
   return (
-    <main ref={mainRef} tabIndex={-1} className="relative min-h-0 overflow-y-auto outline-none">
-      <div className="px-6 py-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h2 className="text-heading font-semibold text-text">{STAGE_LABELS[showBuild ? 'build' : build.stage]}</h2>
-            <p className="mt-0.5 text-body text-text-muted">{view.lead}</p>
-          </div>
-          {build.stage === 'prototype' && !showBuild && (
-            <div className="flex shrink-0 items-center gap-3">
-              {pendingComments > 0 && (
-                <p id="continue-hint" className="text-label text-text-muted">
-                  Apply or remove your comments first.
-                </p>
-              )}
-              <Button
-                variant="primary"
-                icon={<Hammer aria-hidden="true" />}
-                disabled={applying || pendingComments > 0 || !referencesReady || !feasibility.buildReady}
-                aria-describedby={pendingComments > 0 ? 'continue-hint' : undefined}
-                onClick={() => onBuildOpen(true)}
-              >
-                Continue to build
-              </Button>
-            </div>
-          )}
-          {build.stage === 'prototype' && showBuild && (
-            <Button variant="ghost" icon={<ArrowLeft aria-hidden="true" />} onClick={() => onBuildOpen(false)}>
-              Back to prototype
-            </Button>
-          )}
-          {build.stage === 'done' && showBuild && (
-            <Button variant="ghost" icon={<ArrowLeft aria-hidden="true" />} onClick={() => onBuildOpen(false)}>
-              Back to versions
-            </Button>
-          )}
-        </div>
-        {build.stage !== 'done' && <FeasibilityPanel key={`${build.id}-${build.current_version}`} buildId={build.id} referencesReady={referencesReady} readOnly={build.stage === 'build' || build.stage === 'plan'} onReadyChange={setFeasibility} onAssessmentChange={setAssessment} refreshKey={assessmentRefresh} canReplan={build.stage === 'prototype'} localCommentsPending={pendingComments > 0} />}
-        {showBuild ? (
-          <>
-            <div className="mt-6"><ReferencePanel buildId={build.id} version={build.current_version} readOnly={build.stage !== 'prototype'} onReadyChange={setReferencesReady} /></div>
-            <BuildStage build={build} run={run} referencesReady={referencesReady} feasibilityReady={feasibility.buildReady} />
-          </>
-        ) : build.stage === 'connect' ? (
-          <ConnectStage build={build} onBuildChange={onBuildChange} stretchRuns={stretchRuns} onReferenceReadyChange={setReferencesReady} onAssessmentInvalidated={() => refreshAssessment((n) => n + 1)} />
-        ) : build.stage === 'interview' ? (
-          <InterviewStage build={build} messages={messages} loadError={loadError} runErrors={runErrors} referencesReady={referencesReady} feasibilityReady={feasibility.planReady} onReferenceReadyChange={setReferencesReady} />
-        ) : build.stage === 'plan' ? (
-          <PlanStage build={build} progress={progress} planning={planning} />
-        ) : build.stage === 'prototype' ? (
-          <PrototypeStage assessment={assessment} onAssessmentInvalidated={() => refreshAssessment((n) => n + 1)} build={build} applying={applying} commentsError={commentsError} stretchRuns={stretchRuns} onPendingChange={onPendingChange} onReferenceReadyChange={setReferencesReady} />
-        ) : (
-          <DoneStage
+    <main ref={mainRef} tabIndex={-1} className="relative min-h-0 scroll-pb-20 overflow-y-auto outline-none">
+      <div className="flex min-h-full flex-col px-6 py-6">
+        {isArtifact(view) ? (
+          <ArtifactStage
+            key={view}
             build={build}
-            failedOps={run.finished?.status === 'partial' ? failedCount(run) : 0}
+            name={view}
+            stream={stream}
+            feasibility={feasibilityPanel}
+            acceptReady={referencesReady && feasibility.planReady}
             onBuildChange={onBuildChange}
-            onNewVersion={() => buildOpen && onBuildOpen(false)}
-          />
+          >
+            {references}
+          </ArtifactStage>
+        ) : (
+          <>
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <h2 className="text-heading font-semibold text-text">{STAGE_LABELS[view]}</h2>
+                <p className="mt-0.5 text-body text-text-muted">{STAGE_LEADS[view]}</p>
+              </div>
+              {build.stage === 'prototype' && !showBuild && (
+                <div className="flex shrink-0 items-center gap-3">
+                  {pendingComments > 0 && (
+                    <p id="continue-hint" className="text-label text-text-muted">
+                      Apply or remove your comments first.
+                    </p>
+                  )}
+                  <Button
+                    variant="primary"
+                    icon={<Hammer aria-hidden="true" />}
+                    disabled={applying || pendingComments > 0 || !referencesReady || !feasibility.buildReady}
+                    aria-describedby={pendingComments > 0 ? 'continue-hint' : undefined}
+                    onClick={() => onBuildOpen(true)}
+                  >
+                    Continue to build
+                  </Button>
+                </div>
+              )}
+              {build.stage === 'prototype' && showBuild && (
+                <Button variant="ghost" icon={<ArrowLeft aria-hidden="true" />} onClick={() => onBuildOpen(false)}>
+                  Back to prototype
+                </Button>
+              )}
+              {build.stage === 'done' && showBuild && (
+                <Button variant="ghost" icon={<ArrowLeft aria-hidden="true" />} onClick={() => onBuildOpen(false)}>
+                  Back to versions
+                </Button>
+              )}
+            </div>
+            {staleProto && (
+              <p role="status" className="mt-4 rounded-control border border-dashed border-text-muted px-3 py-2 text-body text-text">
+                This prototype is stale ({`Changed: ${STAGE_LABELS[staleCause(build, 'prototype') ?? 'blueprint']}`}). Accept the blueprint again to update it; Build stays off until then.
+              </p>
+            )}
+            {feasibilityPanel}
+            {showBuild ? (
+              <>
+                {references}
+                <BuildStage build={build} run={run} referencesReady={referencesReady} feasibilityReady={feasibility.buildReady} />
+              </>
+            ) : view === 'connect' ? (
+              <ConnectStage build={build} onBuildChange={onBuildChange} stretchRuns={stretchRuns} onReferenceReadyChange={setReferencesReady} onAssessmentInvalidated={() => refreshAssessment((n) => n + 1)} />
+            ) : view === 'prototype' ? (
+              <PrototypeStage assessment={assessment} onAssessmentInvalidated={() => refreshAssessment((n) => n + 1)} build={build} applying={applying} commentsError={commentsError} stretchRuns={stretchRuns} onPendingChange={onPendingChange} onReferenceReadyChange={setReferencesReady} />
+            ) : (
+              <DoneStage
+                build={build}
+                failedOps={run.finished?.status === 'partial' ? failedCount(run) : 0}
+                onBuildChange={onBuildChange}
+                onNewVersion={() => buildOpen && onBuildOpen(false)}
+              />
+            )}
+          </>
         )}
       </div>
     </main>
   );
 }
 
-/** The open build: chat column and stage area share its one event stream. */
-function Workspace({ build, mainRef, onBuildChange }: { build: Build; mainRef: RefObject<HTMLElement | null>; onBuildChange: (build: Build) => void }) {
-  const chat = useBuildStream(build, onBuildChange);
+/** The open build: activity column and stage area share its one event stream. */
+function Workspace({ build, shown, mainRef, onBuildChange }: { build: Build; shown: Stage; mainRef: RefObject<HTMLElement | null>; onBuildChange: (build: Build) => void }) {
+  const stream = useBuildStream(build, onBuildChange);
   const [buildOpen, setBuildOpen] = useState(false);
   const [pendingComments, setPendingComments] = useState(0);
   const movedFocus = useRef(false);
@@ -230,19 +214,22 @@ function Workspace({ build, mainRef, onBuildChange }: { build: Build; mainRef: R
   }, [buildOpen, mainRef]);
   return (
     <div className="grid min-h-0 grid-cols-[var(--layout-chat)_minmax(0,1fr)]">
-      <ChatPanel build={build} chat={chat} />
-      <StageArea build={build} mainRef={mainRef} messages={chat.messages} loadError={chat.loadError} progress={chat.progress} planning={chat.planning} applying={chat.applying} commentsError={chat.commentsError} runErrors={chat.runErrors} buildRun={chat.buildRun} stretchRuns={chat.stretchRuns} buildOpen={buildOpen} onBuildOpen={toggleBuild} pendingComments={pendingComments} onPendingChange={setPendingComments} onBuildChange={onBuildChange} />
+      <ActivityColumn build={build} stream={stream} />
+      <StageArea build={build} shown={shown} mainRef={mainRef} stream={stream} buildOpen={buildOpen} onBuildOpen={toggleBuild} pendingComments={pendingComments} onPendingChange={setPendingComments} onBuildChange={onBuildChange} />
     </div>
   );
 }
 
-/** The workspace: top bar with the stepper, the chat column on the left, the stage area. */
+/** The workspace: top bar with the stepper, the activity column on the left, the stage area. */
 export function WorkspaceShell({ onOpenTrace, onOpenSettings }: WorkspaceShellProps) {
   const { id = '' } = useParams();
   const [load, setLoad] = useState<Load>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
+  // A step the stepper reopened, kept only while the build stays in the stage it was opened from.
+  const [reopened, setReopened] = useState<{ stage: Stage; from: Stage } | null>(null);
   const main = useRef<HTMLElement>(null);
   const retried = useRef(false);
+  const selected = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -272,19 +259,30 @@ export function WorkspaceShell({ onOpenTrace, onOpenSettings }: WorkspaceShellPr
 
   // A stage change unmounts the control that started it; move keyboard focus to the new stage.
   const stage = load.status === 'ready' ? load.build.stage : null;
+  const shown = stage !== null && reopened?.from === stage ? reopened.stage : stage;
+  useEffect(() => {
+    if (reopened && reopened.from !== stage) setReopened(null);
+  }, [reopened, stage]);
   const shownStage = useRef<string | null>(null);
   useEffect(() => {
-    if (stage === null) return;
-    // Stream-driven changes arrive with no user action: never pull focus out of the chat composer.
+    if (shown === null) return;
+    // Stream-driven changes arrive with no user action: never pull focus out of the top bar or a control outside the stage.
     const active = document.activeElement;
-    const free = !active || active === document.body || main.current?.contains(active);
-    if (shownStage.current !== null && shownStage.current !== stage && free) main.current?.focus();
-    shownStage.current = stage;
-  }, [stage]);
+    const free = selected.current || !active || active === document.body || main.current?.contains(active);
+    if (shownStage.current !== null && shownStage.current !== shown && free) main.current?.focus();
+    selected.current = false;
+    shownStage.current = shown;
+  }, [shown]);
 
   const retry = () => {
     retried.current = true;
     setAttempt((n) => n + 1);
+  };
+
+  const select = (next: Stage) => {
+    if (stage === null) return;
+    selected.current = true;
+    setReopened(next === stage ? null : { stage: next, from: stage });
   };
 
   const title = load.status === 'ready' ? load.build.title : null;
@@ -299,14 +297,12 @@ export function WorkspaceShell({ onOpenTrace, onOpenSettings }: WorkspaceShellPr
 
   return (
     <div className="grid h-full grid-rows-[var(--layout-topbar)_minmax(0,1fr)]">
-      <TopBar build={load.status === 'ready' ? load.build : null} onOpenTrace={onOpenTrace} onOpenSettings={onOpenSettings} />
-      {load.status === 'ready' ? (
-        <Workspace build={load.build} mainRef={main} onBuildChange={(b) => setLoad({ status: 'ready', build: b })} />
+      <TopBar build={load.status === 'ready' ? load.build : null} viewing={shown} onSelect={select} onOpenTrace={onOpenTrace} onOpenSettings={onOpenSettings} />
+      {load.status === 'ready' && shown !== null ? (
+        <Workspace build={load.build} shown={shown} mainRef={main} onBuildChange={(b) => setLoad({ status: 'ready', build: b })} />
       ) : (
         <main ref={main} tabIndex={-1} className="mx-auto w-full max-w-(--layout-page) px-6 py-8 outline-none">
-          {load.status === 'loading' ? (
-            <LoadingState>Loading the build…</LoadingState>
-          ) : (
+          {load.status === 'error' ? (
             <ErrorState
               title="Couldn't open this build"
               message={load.message}
@@ -317,6 +313,8 @@ export function WorkspaceShell({ onOpenTrace, onOpenSettings }: WorkspaceShellPr
                 </Link>
               }
             />
+          ) : (
+            <LoadingState>Loading the build…</LoadingState>
           )}
         </main>
       )}

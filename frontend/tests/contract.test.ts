@@ -11,7 +11,12 @@ import {
   arrayOf,
   buildEventGuards,
   isApiErrorBody,
+  isBlueprint,
   isBuild,
+  isContext,
+  isDesign,
+  isOutline,
+  isThemePreset,
   isBuildSummary,
   isEngineStatus,
   isGenerationRequest,
@@ -34,7 +39,8 @@ import {
   toBuildEvent,
   type Guard,
 } from '../src/api/types';
-import { createMockApi, resetMockState, setMockAssessment } from '../src/mocks/api';
+import { createMockApi, resetMockState, setMockAssessment, setMockRunFailure } from '../src/mocks/api';
+import { openMockBuildEvents } from '../src/mocks/events';
 import { fixtures } from '../src/mocks/fixtures';
 import { parseSse } from '../src/mocks/sse';
 import feasibilityFixture from '../../contracts/fixtures/dashboard-intent/feasibility.json';
@@ -60,6 +66,12 @@ const jsonGuards: Record<string, Guard<unknown>> = {
   'build.done.json': isBuild,
   'builds.json': arrayOf(isBuildSummary),
   'agent_job.json': isJob,
+  'blueprint.json': isBlueprint,
+  'blueprint.blocked.json': isBlueprint,
+  'context.json': isContext,
+  'design.json': isDesign,
+  'design_presets.json': arrayOf(isThemePreset),
+  'outline.json': isOutline,
   'engine_status.json': isEngineStatus,
   'engine_status.local.json': isEngineStatus,
   'error.json': isApiErrorBody,
@@ -73,7 +85,7 @@ const jsonGuards: Record<string, Guard<unknown>> = {
 
 describe('shared fixtures match the contract', () => {
   it('has a check for every fixture file', () => {
-    const checked = [...Object.keys(jsonGuards), 'events.sse', 'events.usage.sse', 'prototype.sample.html'];
+    const checked = [...Object.keys(jsonGuards), 'events.sse', 'events.usage.sse', 'prototype.sample.html', 'prototype.multipage.html'];
     expect(Object.keys(fixture).sort()).toEqual(checked.sort());
   });
 
@@ -99,8 +111,9 @@ describe('shared fixtures match the contract', () => {
     });
   });
 
-  it('the event fixtures cover every event but the stretch screencast frame', () => {
-    const expected = Object.keys(buildEventGuards).filter((name) => name !== 'build.frame');
+  // 2.0's fixtures stream no assistant message; message.delta and message.done keep their 1.x shapes (checked below).
+  it('the event fixtures cover every event but the screencast frame and the message stream', () => {
+    const expected = Object.keys(buildEventGuards).filter((name) => !['build.frame', 'message.delta', 'message.done'].includes(name));
     expect([...names].sort()).toEqual(expected.sort());
   });
 
@@ -116,13 +129,20 @@ describe('shared fixtures match the contract', () => {
     expect(finished).toBeGreaterThan(events.lastIndexOf(usage[usage.length - 1]!));
   });
 
-  it('prototype.sample.html: one canvas, flat data-cid roots with a label and a kind', () => {
-    const doc = new DOMParser().parseFromString(fixture['prototype.sample.html'] ?? '', 'text/html');
+  it.each([
+    ['prototype.sample.html', 1],
+    ['prototype.multipage.html', 2],
+  ])('%s: one canvas of named page sections, flat data-cid roots with a label and a kind', (file, pages) => {
+    const doc = new DOMParser().parseFromString(fixture[file] ?? '', 'text/html');
     const canvas = doc.getElementById('dss-canvas');
-    expect(canvas?.dataset.page).toBe('1');
+    expect(canvas).not.toBeNull();
+    const sections = [...canvas!.querySelectorAll<HTMLElement>(':scope > section[data-page]')];
+    expect(sections.map((section) => section.dataset.page)).toEqual(Array.from({ length: pages }, (_, i) => String(i + 1)));
+    for (const section of sections) expect(section.dataset.pageName).toBeTruthy();
     const elements = [...doc.querySelectorAll<HTMLElement>('[data-cid]')];
     expect(elements.length).toBeGreaterThan(0);
     for (const el of elements) {
+      expect(el.closest('section[data-page]'), `${el.dataset.cid} sits in a page section`).not.toBeNull();
       expect(el.dataset.label, el.dataset.cid).toBeTruthy();
       expect(['component', 'decoration'], el.dataset.cid).toContain(el.dataset.kind);
       expect(el.parentElement?.closest('[data-cid]') ?? null, `${el.dataset.cid} is nested`).toBeNull();
@@ -147,9 +167,40 @@ describe('the guards reject what the contract forbids', () => {
     expect(toBuildEvent('stage.changed', { stage: 'shipped' })).toBeNull();
   });
 
+  it('a Build with the removed ready_for_plan, or with the removed interview and plan stages, fails', () => {
+    expect(problemsOf(isBuild, { ...build, ready_for_plan: true })).toEqual(['$.ready_for_plan: not in the contract']);
+    for (const stage of ['interview', 'plan']) expect(isBuild({ ...build, stage })).toBe(false);
+    expect(problemsOf(isBuild, { ...build, artifacts: { ...(build.artifacts as object), outline: 'approved' } })).toEqual([
+      '$.artifacts.outline: expected one of missing | draft | confirmed | stale, got "approved"',
+    ]);
+    expect(STAGES).toEqual(['connect', 'context', 'outline', 'design', 'blueprint', 'prototype', 'build', 'done']);
+  });
+
+  it('staged artifacts: missing, extra and mistyped keys fail at every level', () => {
+    const context = json('context.json') as Record<string, unknown>;
+    const kpi = (context.kpis as object[])[0]!;
+    expect(problemsOf(isContext, { ...context, kpis: [{ ...kpi, measure: { field: 'revenue', agg: 'median' } }] })).toEqual([
+      '$.kpis[0].measure.agg: expected one of sum | avg | count | count_distinct | min | max, got "median"',
+    ]);
+    const { issues: _issues, ...noIssues } = context;
+    expect(problemsOf(isContext, noIssues)).toEqual(['$.issues: missing']);
+    const outline = json('outline.json') as { sections: Array<{ questions: object[] }> };
+    const question = outline.sections[0]!.questions[0]!;
+    expect(isOutline({ ...outline, sections: [{ ...outline.sections[0], questions: [{ ...question, origin: 'model' }] }] })).toBe(false);
+    const design = json('design.json') as Record<string, unknown>;
+    expect(problemsOf(isDesign, { ...design, page_structure: 'tabs' })).toEqual(['$.page_structure: expected one of single | per_section, got "tabs"']);
+    expect(problemsOf(isDesign, { ...design, theme: 'dark' })).toEqual(['$.theme: not in the contract']);
+    const blueprint = json('blueprint.json') as { rows: Array<Record<string, unknown>> };
+    const row = blueprint.rows[1]!;
+    expect(isBlueprint({ ...blueprint, rows: [{ ...row, status: 'warning' }] })).toBe(false);
+    expect(isBlueprint({ ...blueprint, rows: [{ ...row, page: 1.5 }] })).toBe(false);
+    expect(toBuildEvent('artifact.updated', { artifact: 'outline', revision: 3 })).toEqual({ name: 'artifact.updated', data: { artifact: 'outline', revision: 3 } });
+    expect(toBuildEvent('artifact.updated', { artifact: 'spec', revision: 3 })).toBeNull();
+  });
+
   it('a missing key, an extra key, a wrong JSON type and a nested mismatch fail', () => {
-    const { ready_for_plan: _dropped, ...missing } = build;
-    expect(problemsOf(isBuild, missing)).toEqual(['$.ready_for_plan: missing']);
+    const { notes: _dropped, ...missing } = build;
+    expect(problemsOf(isBuild, missing)).toEqual(['$.notes: missing']);
     expect(problemsOf(isBuild, { ...build, owner: 'me' })).toEqual(['$.owner: not in the contract']);
     expect(problemsOf(isBuild, { ...build, spec_version: '2' })).toEqual(['$.spec_version: expected an integer']);
     const sources = [{ ...(build.sources as object[])[0], row_count: 1.5 }];
@@ -175,10 +226,12 @@ describe('the guards reject what the contract forbids', () => {
   it('an unknown event name and malformed event data fail', () => {
     expect(toBuildEvent('build.deleted', {})).toBeNull();
     expect(toBuildEvent('message.delta', { message_id: 'm_000000000003' })).toBeNull();
-    const usage = { run_id: 'r_00000000000b', node: 'plan', input_tokens: 10, output_tokens: 2 };
+    expect(toBuildEvent('message.delta', { message_id: 'm_000000000003', text: 'Average order' })).not.toBeNull();
+    expect(toBuildEvent('message.done', { message: (json('messages.json') as unknown[])[2] })).not.toBeNull();
+    const usage = { run_id: 'r_00000000000b', node: 'blueprint', input_tokens: 10, output_tokens: 2 };
     expect(toBuildEvent('run.usage', usage)).toEqual({ name: 'run.usage', data: usage });
     expect(toBuildEvent('run.usage', { ...usage, output_tokens: '2' })).toBeNull();
-    expect(toBuildEvent('run.usage', { run_id: 'r_00000000000b', node: 'plan', input_tokens: 10 })).toBeNull();
+    expect(toBuildEvent('run.usage', { run_id: 'r_00000000000b', node: 'blueprint', input_tokens: 10 })).toBeNull();
     expect(toBuildEvent('ready', { build_id: 'b_3f9a0c12d4e5' })).toEqual({ name: 'ready', data: { build_id: 'b_3f9a0c12d4e5' } });
   });
 });
@@ -443,10 +496,60 @@ describe('the HTTP client speaks the contract' , () => {
 
   it('turns error.json into an ApiError with its code, message and detail', async () => {
     stubFetch(409, fixture['error.json'] ?? '');
-    const error = await httpApi.generatePlan('b_3f9a0c12d4e5').catch((e: unknown) => e);
+    const error = await httpApi.draftContext('b_3f9a0c12d4e5').catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ status: 409, code: 'wrong_stage', detail: { stage: 'connect' } });
     expect((error as ApiError).message).toBe('Generate the plan after the interview has started.');
+  });
+
+  it('speaks every staged workflow endpoint (api.md 2.0) on relative paths, and checks each response', async () => {
+    const accepted = fixture['run_accepted.json'] ?? '';
+    const calls: Array<[string, () => Promise<unknown>, string, string, unknown]> = [
+      [accepted, () => httpApi.draftContext('b/1', 'Net of discounts.'), 'POST', '/context', { notes: 'Net of discounts.' }],
+      [accepted, () => httpApi.draftContext('b/1'), 'POST', '/context', {}],
+      [fixture['context.json']!, () => httpApi.getContext('b/1'), 'GET', '/context', undefined],
+      [fixture['context.json']!, () => httpApi.updateContext('b/1', fixtures.context), 'PUT', '/context', fixtures.context],
+      [accepted, () => httpApi.confirmContext('b/1'), 'POST', '/context/confirm', undefined],
+      [fixture['outline.json']!, () => httpApi.getOutline('b/1'), 'GET', '/outline', undefined],
+      [accepted, () => httpApi.proposeOutline('b/1'), 'POST', '/outline/propose', undefined],
+      [fixture['outline.json']!, () => httpApi.updateOutlineSelection('b/1', [{ id: 'q6', selected: true }]), 'PUT', '/outline/selection', { questions: [{ id: 'q6', selected: true }] }],
+      [accepted, () => httpApi.addOutlineQuestions('b/1', null, 'Bulk orders by segment'), 'POST', '/outline/other', { section_id: null, text: 'Bulk orders by segment' }],
+      [accepted, () => httpApi.suggestOutlineQuestions('b/1', 's2'), 'POST', '/outline/suggest', { section_id: 's2' }],
+      [fixture['build.json']!, () => httpApi.confirmOutline('b/1'), 'POST', '/outline/confirm', undefined],
+      [fixture['design_presets.json']!, () => httpApi.listDesignPresets('b/1'), 'GET', '/design/presets', undefined],
+      [fixture['design.json']!, () => httpApi.getDesign('b/1'), 'GET', '/design', undefined],
+      [fixture['design.json']!, () => httpApi.prefillDesign('b/1'), 'POST', '/design/prefill', undefined],
+      [fixture['design.json']!, () => httpApi.updateDesign('b/1', fixtures.design), 'PUT', '/design', fixtures.design],
+      [accepted, () => httpApi.confirmDesign('b/1'), 'POST', '/design/confirm', undefined],
+      [fixture['blueprint.json']!, () => httpApi.getBlueprint('b/1'), 'GET', '/blueprint', undefined],
+      [accepted, () => httpApi.regenerateBlueprint('b/1'), 'POST', '/blueprint/regenerate', undefined],
+      [accepted, () => httpApi.acceptBlueprint('b/1'), 'POST', '/blueprint/accept', undefined],
+    ];
+    for (const [body, call, method, path, sent] of calls) {
+      const fetchMock = stubFetch(200, body);
+      await expect(call()).resolves.toEqual(JSON.parse(body));
+      const [url, init] = fetchMock.mock.calls[0]!;
+      expect([init?.method, url]).toEqual([method, `/api/builds/b%2F1${path}`]);
+      expect(init?.body === undefined ? undefined : JSON.parse(String(init.body))).toEqual(sent);
+    }
+    stubFetch(200, 'null');
+    await expect(httpApi.getOutline('b/1')).resolves.toBeNull();
+    stubFetch(200, JSON.stringify({ ...fixtures.design, theme: 'dark' }));
+    await expect(httpApi.getDesign('b/1')).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+    // A 1.x build (no artifacts) fails closed instead of crashing the stepper.
+    const { artifacts: _artifacts, notes: _notes, ...legacy } = fixtures.build;
+    stubFetch(200, JSON.stringify({ ...legacy, ready_for_plan: true }));
+    await expect(httpApi.getBuild('b/1')).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+  });
+
+  it('has no interview, chat-input or plan calls left (api.md 2.0 removed them)', () => {
+    for (const name of ['startInterview', 'sendMessage', 'generatePlan']) expect(name in httpApi, name).toBe(false);
+    const sources = import.meta.glob<string>('../src/**/*.{ts,tsx}', { eager: true, query: '?raw', import: 'default' });
+    expect(Object.keys(sources).length).toBeGreaterThan(20);
+    for (const [file, text] of Object.entries(sources)) {
+      // `/interview/start`, a `/plan` route or a 'plan' node, a body sent to `/messages` (the old chat input).
+      expect(text, file).not.toMatch(/interview\/start|['"`/]plan['"`]|\/messages['"`]\),\s*\{/);
+    }
   });
 
   it('reports an unreachable backend (empty 502 from the proxy) as network_error', async () => {
@@ -561,5 +664,101 @@ describe('mock feasibility decisions', () => {
     expect(ready.state).toBe('ready');
     expect(ready.issues.map((issue) => issue.resolution)).toEqual(['accepted_alternative', 'dropped']);
     expect(await api.getBuild(id)).toEqual(original);
+  });
+});
+
+describe('mock staged workflow (api.md 2.0)', () => {
+  afterEach(() => {
+    setMockRunFailure('prototype', undefined);
+    resetMockState();
+  });
+
+  /** Resolves with the run's run.finished once the mock has played it. */
+  function finished(buildId: string, runId: string) {
+    return new Promise<{ status: string; error: string | null }>((resolve) => {
+      const close = openMockBuildEvents(buildId, {
+        onEvent: (event) => {
+          if (event.name === 'run.finished' && event.data.run_id === runId) {
+            close();
+            resolve(event.data);
+          }
+        },
+      });
+    });
+  }
+
+  it('walks every stage from connect to done, confirming each artifact', async () => {
+    const api = createMockApi();
+    const { id } = await api.createBuild({ archetype: 'executive', mode: 'data' });
+    await expect(api.draftContext(id)).rejects.toMatchObject({ status: 409, code: 'wrong_stage' });
+    await api.uploadSources(id, [new File(['a,b'], 'sales.csv', { type: 'text/csv' })]);
+    const seen: string[] = [];
+    const close = openMockBuildEvents(id, { onEvent: (event) => void (event.name === 'stage.changed' && seen.push(event.data.stage)) });
+    const run = async (start: Promise<{ run_id: string }>) => {
+      const { run_id } = await start;
+      expect((await finished(id, run_id)).status).toBe('ok');
+    };
+
+    await run(api.draftContext(id, 'Revenue is net of discounts.'));
+    expect(await api.getBuild(id)).toMatchObject({ stage: 'context', notes: 'Revenue is net of discounts.', artifacts: { context: 'draft', outline: 'missing' } });
+    expect(problemsOf(isContext, await api.getContext(id))).toEqual([]);
+    await run(api.confirmContext(id));
+    expect(await api.getBuild(id)).toMatchObject({ stage: 'outline', artifacts: { context: 'confirmed', outline: 'draft' } });
+    const outline = (await api.getOutline(id))!;
+    expect(outline.sections.flatMap((s) => s.questions).filter((q) => q.selected).every((q) => q.recommended)).toBe(true);
+    await run(api.addOutlineQuestions(id, 's2', 'how do bulk and single orders compare by segment'));
+    expect((await api.getOutline(id))!.sections[1]!.questions.at(-1)).toMatchObject({ origin: 'other', selected: true, text: 'How do bulk and single orders compare by segment?' });
+    expect((await api.confirmOutline(id)).stage).toBe('design');
+    expect(await api.getDesign(id)).toMatchObject({ preset_id: 'studio_light', page_structure: 'per_section', source: 'preset', issues: [] });
+    await run(api.confirmDesign(id));
+    expect(await api.getBuild(id)).toMatchObject({ stage: 'blueprint', artifacts: { design: 'confirmed', blueprint: 'draft' } });
+    expect((await api.getBlueprint(id))!.rows.every((row) => row.status === 'ok')).toBe(true);
+    await run(api.acceptBlueprint(id));
+    expect(await api.getBuild(id)).toMatchObject({
+      stage: 'prototype',
+      spec_version: 1,
+      artifacts: { context: 'confirmed', outline: 'confirmed', design: 'confirmed', blueprint: 'confirmed' },
+    });
+    await api.runBuild(id);
+    await vi.waitFor(async () => expect((await api.getBuild(id)).stage).toBe('done'));
+    close();
+    expect(seen).toEqual(['context', 'outline', 'design', 'blueprint', 'prototype', 'build', 'done']);
+  });
+
+  it('an edit in a later stage drafts that artifact, stales the later ones and moves the stage back', async () => {
+    const api = createMockApi();
+    const id = fixtures.build.id;
+    const updated: string[] = [];
+    const close = openMockBuildEvents(id, { onEvent: (event) => void (event.name === 'artifact.updated' && updated.push(`${event.data.artifact}@${event.data.revision}`)) });
+    await api.updateOutlineSelection(id, [{ id: 'q6', selected: true }]);
+    close();
+    expect(updated).toEqual([`outline@${fixtures.outline.revision + 1}`]);
+    expect(await api.getBuild(id)).toMatchObject({
+      stage: 'outline',
+      spec_version: fixtures.build.spec_version,
+      artifacts: { context: 'confirmed', outline: 'draft', design: 'stale', blueprint: 'stale' },
+    });
+    await expect(api.runBuild(id)).rejects.toMatchObject({ code: 'wrong_stage' });
+    await expect(api.updateContext(fixtures.buildDone.id, fixtures.context)).rejects.toMatchObject({ status: 409, code: 'wrong_stage' });
+  });
+
+  it('confirm refuses open issues with artifact_invalid', async () => {
+    const api = createMockApi();
+    const id = fixtures.build.id;
+    const broken = { ...fixtures.context, kpis: [{ ...fixtures.context.kpis[0]!, measure: { field: 'profit', agg: 'sum' as const } }] };
+    const saved = await api.updateContext(id, broken);
+    expect(saved.issues).toEqual([{ path: '/kpis/0/measure/field', message: expect.stringContaining('profit') }]);
+    await expect(api.confirmContext(id)).rejects.toMatchObject({ status: 409, code: 'artifact_invalid', detail: { issues: saved.issues } });
+  });
+
+  it('a failed accept stays in Blueprint with the blueprint unconfirmed', async () => {
+    const api = createMockApi();
+    const id = fixtures.build.id;
+    const regenerate = await api.regenerateBlueprint(id);
+    await finished(id, regenerate.run_id);
+    setMockRunFailure('prototype', 'Rendering failed: the view dry run timed out.');
+    const accept = await api.acceptBlueprint(id);
+    expect(await finished(id, accept.run_id)).toMatchObject({ status: 'error', error: 'Rendering failed: the view dry run timed out.' });
+    expect(await api.getBuild(id)).toMatchObject({ stage: 'blueprint', spec_version: fixtures.build.spec_version, artifacts: { blueprint: 'draft' } });
   });
 });

@@ -83,10 +83,10 @@ describe('New build dialog', () => {
 });
 
 describe('Connect stage', () => {
-  it('shows the empty state and keeps Start interview disabled with no source', async () => {
+  it('shows the empty state and keeps Draft context disabled with no source', async () => {
     await renderConnect();
     expect(screen.getByText('No sources yet')).toBeTruthy();
-    expect(off(screen.getByRole('button', { name: 'Start interview' }))).toBe(true);
+    expect(off(screen.getByRole('button', { name: 'Draft context' }))).toBe(true);
     expect(screen.getByText('Add at least one source to start.')).toBeTruthy();
   });
 
@@ -115,7 +115,7 @@ describe('Connect stage', () => {
     // The same files would fail again: no retry, only Dismiss.
     expect(within(alert).queryByRole('button', { name: 'Try again' })).toBeNull();
     expect(screen.queryByRole('table')).toBeNull();
-    expect(off(screen.getByRole('button', { name: 'Start interview' }))).toBe(true);
+    expect(off(screen.getByRole('button', { name: 'Draft context' }))).toBe(true);
   });
 
   it('shows the uploading state while the call runs', async () => {
@@ -142,16 +142,16 @@ describe('Connect stage', () => {
     expect(await screen.findByRole('table', { name: 'Sources' })).toBeTruthy();
   });
 
-  it('enables Start interview after an upload and starts the interview', async () => {
+  it('enables Draft context after an upload and drafts the context', async () => {
     const build = await renderConnect();
-    const start = vi.spyOn(api, 'startInterview');
-    const button = screen.getByRole('button', { name: 'Start interview' });
+    const start = vi.spyOn(api, 'draftContext');
+    const button = screen.getByRole('button', { name: 'Draft context' });
     expect(off(button)).toBe(true);
     drop(csv('orders.csv'));
     await screen.findByRole('table', { name: 'Sources' });
     expect(off(button)).toBe(false);
     fireEvent.click(button);
     await waitFor(() => expect(start).toHaveBeenCalledWith(build.id));
-    await waitFor(async () => expect((await api.getBuild(build.id)).stage).toBe('interview'));
+    await waitFor(async () => expect((await api.getBuild(build.id)).stage).toBe('context'));
   });
 });

@@ -4,7 +4,7 @@ import { api } from '../../../api/client';
 import { Button } from '../../../components/Button';
 import { TextArea } from '../../../components/Input';
 import { Spinner } from '../../../components/Spinner';
-import type { StretchRuns } from '../chat/useBuildStream';
+import type { StretchRuns } from '../../activity/useBuildStream';
 import { useRefocusAfter, useStretchAction } from '../stretch';
 
 /** Research mode: a prompt for the research run, whose findings land in the sources table. */

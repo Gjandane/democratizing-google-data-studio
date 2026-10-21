@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../src/api/client';
-import { ApiError, STAGES } from '../src/api/types';
+import { ApiError, ARTIFACTS, STAGES, type Build, type Stage } from '../src/api/types';
 import { Button } from '../src/components/Button';
 import { EmptyState } from '../src/components/EmptyState';
 import { ErrorState } from '../src/components/ErrorState';
@@ -84,34 +84,40 @@ describe('Button', () => {
 
 describe('Stepper', () => {
   const step = (name: string) => screen.getByText(name).closest('li') as HTMLLIElement;
+  /** A build at `stage`: earlier artifacts confirmed, its own a draft, later ones missing. */
+  const at = (stage: Stage): Build => {
+    const i = STAGES.indexOf(stage);
+    const state = (name: (typeof ARTIFACTS)[number]) => (STAGES.indexOf(name) < i ? 'confirmed' : STAGES.indexOf(name) === i ? 'draft' : 'missing');
+    return { ...fixtures.build, stage, spec_version: null, artifacts: { context: state('context'), outline: state('outline'), design: state('design'), blueprint: state('blueprint') } };
+  };
 
   it('marks the stages before the current one done and the current one with aria-current', () => {
-    render(<Stepper current="plan" />);
+    render(<Stepper build={at('design')} />);
     const nav = screen.getByRole('navigation', { name: 'Build stages' });
     expect(within(nav).getAllByRole('listitem')).toHaveLength(STAGES.length);
 
-    for (const name of ['Connect', 'Interview']) {
+    for (const name of ['Connect', 'Context', 'Outline']) {
       expect(step(name).dataset.state).toBe('done');
-      expect(step(name).textContent).toContain('(done)');
+      expect(step(name).textContent).toMatch(/\((done|confirmed)\)/);
       expect(step(name).getAttribute('aria-current')).toBeNull();
     }
-    expect(step('Plan').dataset.state).toBe('current');
-    expect(step('Plan').getAttribute('aria-current')).toBe('step');
-    for (const name of ['Prototype', 'Build', 'Done']) {
+    expect(step('Design').dataset.state).toBe('current');
+    expect(step('Design').getAttribute('aria-current')).toBe('step');
+    for (const name of ['Blueprint', 'Prototype', 'Build', 'Done']) {
       expect(step(name).dataset.state).toBe('upcoming');
       expect(step(name).getAttribute('aria-current')).toBeNull();
     }
   });
 
   it('starts on Connect with nothing done', () => {
-    render(<Stepper current="connect" />);
+    render(<Stepper build={at('connect')} />);
     expect(step('Connect').getAttribute('aria-current')).toBe('step');
     expect(screen.queryByText('(done)')).toBeNull();
   });
 
   it('ends on Done with every earlier stage done', () => {
-    render(<Stepper current="done" />);
-    expect(screen.getAllByText('(done)')).toHaveLength(STAGES.length - 1);
+    render(<Stepper build={at('done')} />);
+    expect(screen.getAllByRole('listitem').filter((li) => li.dataset.state === 'done')).toHaveLength(STAGES.length - 1);
     expect(step('Done').getAttribute('aria-current')).toBe('step');
   });
 });
@@ -333,7 +339,7 @@ describe('WorkspaceShell', () => {
       </MemoryRouter>,
     );
 
-  it('shows the title, the stepper on Connect, the chat column and the stage area for a new build', async () => {
+  it('shows the title, the stepper on Connect, the activity column and the stage area for a new build', async () => {
     const build = await api.createBuild({ title: 'Marketing funnel', archetype: 'analytical', mode: 'data' });
     renderShell(build.id);
     expect(screen.getByRole('status').textContent).toMatch(/loading/i);
@@ -341,7 +347,7 @@ describe('WorkspaceShell', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Marketing funnel' })).toBeTruthy();
     const current = screen.getByRole('navigation', { name: 'Build stages' }).querySelector('[aria-current="step"]');
     expect(current?.textContent).toBe('1Connect');
-    expect(screen.getByRole('complementary', { name: 'Chat' })).toBeTruthy();
+    expect(screen.getByRole('complementary', { name: 'Activity' })).toBeTruthy();
     expect(screen.getByRole('heading', { level: 2, name: 'Connect' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'All dashboards' }).getAttribute('href')).toBe('/');
     // Nothing handles Trace and Settings yet.

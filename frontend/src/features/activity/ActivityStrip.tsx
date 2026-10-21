@@ -31,7 +31,7 @@ function Tokens({ run }: { run: ActivityRun }) {
 }
 
 /**
- * One line above the chat input: what the current run is doing, its elapsed time and live tokens.
+ * One line at the foot of the activity column: what the current run is doing, its elapsed time and live tokens.
  * Its height is always reserved, so the message list never jumps when it appears.
  */
 export function ActivityStrip({ activity }: { activity: Activity }) {

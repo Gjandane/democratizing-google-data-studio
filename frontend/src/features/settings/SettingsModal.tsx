@@ -13,7 +13,7 @@ const FORM_ID = 'settings-form';
 type TextField = Exclude<keyof Settings, 'google_api_key_set'>;
 
 const FIELDS: Array<{ key: TextField; label: string; hint?: string }> = [
-  { key: 'planner_model', label: 'Planner model', hint: 'Writes the interview, plan and prototype.' },
+  { key: 'planner_model', label: 'Planner model', hint: 'Drafts the context, outline and blueprint, and lays out the prototype.' },
   { key: 'worker_model', label: 'Worker model', hint: 'Handles the smaller, faster steps.' },
   { key: 'gcp_project_id', label: 'GCP project', hint: 'Where uploaded data is loaded into BigQuery.' },
   { key: 'bq_dataset', label: 'BigQuery dataset' },

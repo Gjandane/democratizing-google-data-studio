@@ -23,7 +23,7 @@ export function RunCard({ activity, onShow }: { activity: Activity; onShow?: () 
   const now = Date.now();
   const run = cardRun(activity, now);
   useActivityClock(nextChange(run, activity, now));
-  // The card mounts on its own timer: let the chat log scroll to it.
+  // The card mounts on its own timer: let the activity log scroll to it.
   const shown = run?.runId;
   useLayoutEffect(() => {
     if (shown) onShow?.();
@@ -43,7 +43,7 @@ export function RunCard({ activity, onShow }: { activity: Activity; onShow?: () 
   return (
     <section
       aria-label={preset.title}
-      // Steps tick every few seconds: keep them out of the chat log's announcements (the strip speaks).
+      // Steps tick every few seconds: keep them out of the activity log's announcements (the strip speaks).
       aria-live="off"
       data-run-card={run.runId}
       className="w-full self-start rounded-panel border border-border bg-surface px-3 py-2"

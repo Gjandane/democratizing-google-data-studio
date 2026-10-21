@@ -133,7 +133,7 @@ function Probe() {
   const { openSettings } = useAppServices();
   return (
     <>
-      <button onClick={() => void api.sendMessage(fixtures.build.id, 'hello').catch(() => {})}>Send</button>
+      <button onClick={() => void api.regenerateBlueprint(fixtures.build.id).catch(() => {})}>Send</button>
       <button onClick={() => void api.addSource(fixtures.build.id, { kind: 'bigquery', uri: 'p.d.t' }).catch(() => {})}>Add source</button>
       <button onClick={openSettings}>Probe settings</button>
     </>

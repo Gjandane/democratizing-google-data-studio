@@ -1,4 +1,4 @@
-// Preset wording for the activity strip and run checklist (contracts/api.md 1.2 `node` values).
+// Preset wording for the activity strip and run checklist (contracts/api.md 2.0 `node` values).
 // Presets describe the usual order of work; they never claim a finished result: the last step
 // is ticked only by `run.finished` ok.
 
@@ -24,28 +24,41 @@ export const GENERIC: Preset = {
 };
 
 export const PRESETS: Readonly<Record<string, Preset>> = {
-  interview: {
-    phrases: ['Reading your answer', 'Checking the data profile', 'Thinking of the next question', 'Writing the reply'],
-  },
-  plan: {
-    title: 'Planning the dashboard',
-    phrases: ['Reading the data profile', 'Planning the dashboard', 'Writing the build docs', 'Designing the layout', 'Rendering the prototype'],
+  context: {
+    title: 'Drafting the context',
+    phrases: ['Reading the data profile', 'Reading your notes', 'Defining the KPIs', 'Checking the fields'],
     steps: [
-      { label: 'Reading the data profile', seconds: 8 },
-      { label: 'Writing build docs', seconds: 25 },
-      { label: 'Creating the BigQuery view', seconds: 12 },
-      { label: 'Writing the dashboard spec', seconds: 25 },
-      { label: 'Checking the layout', seconds: 8 },
-      { label: 'Rendering the prototype', seconds: 10 },
+      { label: 'Reading the data profile', seconds: 6 },
+      { label: 'Drafting KPIs and derived fields', seconds: 20 },
+      { label: 'Checking every field', seconds: 4 },
     ],
   },
-  spec: {
-    title: 'Writing the spec',
-    phrases: ['Reading the build docs', 'Choosing the charts', 'Writing the dashboard spec', 'Checking the layout'],
+  outline_propose: {
+    title: 'Proposing questions',
+    phrases: ['Reading the context', 'Grouping the sections', 'Proposing questions', 'Checking the KPIs'],
     steps: [
-      { label: 'Reading the build docs', seconds: 6 },
-      { label: 'Writing the dashboard spec', seconds: 25 },
-      { label: 'Checking the layout', seconds: 8 },
+      { label: 'Reading the context', seconds: 4 },
+      { label: 'Proposing sections and questions', seconds: 18 },
+      { label: 'Checking the KPI references', seconds: 3 },
+    ],
+  },
+  outline_other: { phrases: ['Reading your question', 'Normalizing the question', 'Adding it to the outline'] },
+  outline_suggest: { phrases: ['Reading the section', 'Suggesting questions', 'Adding them unselected'] },
+  blueprint: {
+    title: 'Drafting the blueprint',
+    phrases: ['Choosing the charts', 'Mapping the fields', 'Checking feasibility', 'Dry-running the view'],
+    steps: [
+      { label: 'Choosing a chart per question', seconds: 20 },
+      { label: 'Checking feasibility', seconds: 8 },
+      { label: 'Dry-running the BigQuery view', seconds: 10 },
+    ],
+  },
+  prototype: {
+    title: 'Rendering the prototype',
+    phrases: ['Laying out the pages', 'Writing the dashboard spec', 'Checking the layout', 'Rendering the prototype'],
+    steps: [
+      { label: 'Laying out the pages', seconds: 10 },
+      { label: 'Checking the layout', seconds: 6 },
       { label: 'Rendering the prototype', seconds: 10 },
     ],
   },

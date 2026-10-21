@@ -6,7 +6,6 @@ import { api, httpApi } from '../src/api/client';
 import { ApiError, type Assessment, type BuildEvent, type Issue } from '../src/api/types';
 import { FeasibilityPanel, type FeasibilityGates } from '../src/features/workspace/FeasibilityPanel';
 import { WorkspaceShell } from '../src/features/workspace/WorkspaceShell';
-import { InterviewStage } from '../src/features/workspace/chat/InterviewStage';
 import { BuildStage } from '../src/features/workspace/build/BuildStage';
 import { idleRun } from '../src/features/workspace/build/buildRun';
 import { publishWorkspace } from '../src/features/workspace/stretch';
@@ -25,7 +24,8 @@ const finished = (run_id: string, node = 'capability_check'): BuildEvent => ({ n
 function Gates() {
   const [gates, setGates] = useState<FeasibilityGates>({ planReady: false, buildReady: false });
   return <><FeasibilityPanel buildId={id} onReadyChange={setGates} />
-    <InterviewStage build={{ ...fixtures.build, stage: 'interview' }} messages={[]} feasibilityReady={gates.planReady} />
+    {/* The Blueprint stage's Accept follows the plan gate (ArtifactStage acceptReady). */}
+    <button type="button" disabled={!gates.planReady}>Accept blueprint</button>
     <BuildStage build={fixtures.build} run={idleRun} feasibilityReady={gates.buildReady} />
   </>;
 }
@@ -44,7 +44,7 @@ describe('Feasibility recovery and gates', () => {
     const post = vi.spyOn(api, 'checkFeasibility').mockResolvedValue({ run_id: 'mine' });
     render(<Gates />);
     const check = await screen.findByRole('button', { name: 'Check feasibility' });
-    expect(disabled('Generate plan')).toBe(true);
+    expect(disabled('Accept blueprint')).toBe(true);
     expect(disabled('Generate recipe')).toBe(true);
     expect(disabled('Build in Data Studio')).toBe(true);
     act(() => { fireEvent.click(check); fireEvent.click(check); });
@@ -57,7 +57,7 @@ describe('Feasibility recovery and gates', () => {
     setMockAssessment(id, ready);
     fire(finished('mine', 'different_node'));
     await screen.findByText('Your requirements are resolved.');
-    await waitFor(() => expect(disabled('Generate plan')).toBe(false));
+    await waitFor(() => expect(disabled('Accept blueprint')).toBe(false));
     expect(disabled('Generate recipe')).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Generate recipe' }));
     await screen.findByRole('list', { name: 'Recipe' });
@@ -86,9 +86,9 @@ describe('Feasibility recovery and gates', () => {
     setMockAssessment(id, ready);
     fire({ name: 'ready', data: { build_id: id } });
     await screen.findByText('Your requirements are resolved.');
-    expect(disabled('Generate plan')).toBe(false);
+    expect(disabled('Accept blueprint')).toBe(false);
     await act(async () => resolve({ run_id: 'missed' }));
-    expect(disabled('Generate plan')).toBe(false);
+    expect(disabled('Accept blueprint')).toBe(false);
     expect(disabled('Generate recipe')).toBe(false);
     expect(screen.queryByText('Checking feasibility…')).toBeNull();
   });
@@ -107,12 +107,12 @@ describe('Feasibility recovery and gates', () => {
     vi.spyOn(api, 'getFeasibility').mockRejectedValueOnce(new ApiError(500, 'failed', 'Try loading again.'));
     render(<Gates />);
     await screen.findByText("Couldn't load feasibility");
-    expect(disabled('Generate plan')).toBe(true);
+    expect(disabled('Accept blueprint')).toBe(true);
     expect(disabled('Generate recipe')).toBe(true);
     expect(disabled('Build in Data Studio')).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Retry feasibility' }));
     await screen.findByText('Your requirements are resolved.');
-    expect(disabled('Generate plan')).toBe(false);
+    expect(disabled('Accept blueprint')).toBe(false);
     expect(disabled('Generate recipe')).toBe(false);
   });
 
@@ -122,7 +122,7 @@ describe('Feasibility recovery and gates', () => {
     await screen.findByText(/This prototype is out of date/);
     expect(disabled('Generate recipe')).toBe(true);
     expect(disabled('Build in Data Studio')).toBe(true);
-    expect(disabled('Generate plan')).toBe(false);
+    expect(disabled('Accept blueprint')).toBe(false);
   });
 
   it('gates the actual shell Continue action on assessment and reference errors', async () => {
@@ -161,7 +161,7 @@ describe('Explicit requirements and decisions', () => {
     ['unsupported_app', 'This app cannot produce this requirement.'],
     ['needs_data', 'More data is needed for this requirement.'],
     ['needs_clarification', 'Your clarification is needed for this requirement.'],
-    ['unknown', 'Support for this requirement is uncertain. Check feasibility or clarify it in chat.'],
+    ['unknown', 'Support for this requirement is uncertain. Check feasibility, or clarify it in the context or outline.'],
   ] as const)('uses distinct %s copy', async (status, copy) => {
     const issue: Issue = { ...fixtures.feasibility.issues[0]!, status, requirement: 'Requested behavior' };
     await panel({ ...fixtures.feasibility, issues: [issue] });
@@ -170,7 +170,7 @@ describe('Explicit requirements and decisions', () => {
 
   it.each(['accept_alternative', 'drop'] as const)('sends only the explicit %s decision and focuses refreshed heading', async (action) => {
     const decide = vi.spyOn(api, 'decideFeasibility');
-    const plan = vi.spyOn(api, 'generatePlan');
+    const plan = vi.spyOn(api, 'acceptBlueprint');
     const recipe = vi.spyOn(api, 'compileRecipe');
     const run = vi.spyOn(api, 'runBuild');
     await panel();
@@ -211,14 +211,14 @@ describe('Explicit requirements and decisions', () => {
     expect(screen.queryByText('Animate GPS points along a route.')).toBeNull();
   });
 
-  it('focuses the actual chat input for needs_clarification', async () => {
+  it('offers no chat clarification for needs_clarification (api.md 2.0 has no chat input)', async () => {
     setMockAssessment(id, fixtures.feasibilityAlternatives);
     render(<MemoryRouter initialEntries={[`/builds/${id}`]}><Routes><Route path="/builds/:id" element={<WorkspaceShell />} /></Routes></MemoryRouter>);
-    fireEvent.click(await screen.findByRole('button', { name: 'Clarify in chat' }));
-    expect(document.activeElement).toBe(screen.getByLabelText('Message'));
+    await screen.findAllByRole('button', { name: 'Drop this requirement' });
+    expect(screen.queryByRole('button', { name: /Clarify in chat/ })).toBeNull();
   });
 
-  it('does not steal chat focus on later background refetches after a decision', async () => {
+  it('does not steal focus from the top bar on later background refetches after a decision', async () => {
     setMockAssessment(id, fixtures.feasibilityAlternatives);
     render(<MemoryRouter initialEntries={[`/builds/${id}`]}><Routes><Route path="/builds/:id" element={<WorkspaceShell />} /></Routes></MemoryRouter>);
     const drop = await screen.findAllByRole('button', { name: 'Drop this requirement' });
@@ -226,7 +226,7 @@ describe('Explicit requirements and decisions', () => {
     fireEvent.click(drop[0]!);
     await screen.findByText('Decision saved. Review the current assessment before continuing.');
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Feasibility' })));
-    const input = screen.getByLabelText('Message');
+    const input = screen.getByRole('link', { name: 'All dashboards' });
     input.focus();
     fire({ name: 'docs.updated', data: { docs: [] } });
     await screen.findByText('Show Revenue.');
@@ -248,7 +248,7 @@ describe('Background refetch keeps the last assessment (task 12.1)', () => {
   async function gatesWithRecipe() {
     setMockAssessment(id, ready);
     render(<Gates />);
-    await waitFor(() => expect(disabled('Generate plan')).toBe(false));
+    await waitFor(() => expect(disabled('Accept blueprint')).toBe(false));
     fireEvent.click(screen.getByRole('button', { name: 'Generate recipe' }));
     await waitFor(() => expect(disabled('Build in Data Studio')).toBe(false));
   }
@@ -262,7 +262,7 @@ describe('Background refetch keeps the last assessment (task 12.1)', () => {
     const use = within(issue).getByRole('button', { name: 'Use this alternative' });
     use.focus();
     const { get } = pendingGet();
-    fire(finished('elsewhere', 'interview'));
+    fire(finished('elsewhere', 'outline_other'));
     fire(docs);
     expect(get).toHaveBeenCalledTimes(2);
     expect(within(assessmentPanel()).getAllByRole('group')[0]).toBe(issue);
@@ -272,20 +272,20 @@ describe('Background refetch keeps the last assessment (task 12.1)', () => {
     expect(screen.queryByText('Loading feasibility…')).toBeNull();
   });
 
-  it('keeps Generate plan, recipe and Build enabled for a loaded ready assessment until the refetch lands, then follows it', async () => {
+  it('keeps Accept blueprint, recipe and Build enabled for a loaded ready assessment until the refetch lands, then follows it', async () => {
     await gatesWithRecipe();
     const { get, resolve } = pendingGet();
     fire(docs);
-    fire(finished('elsewhere', 'interview'));
+    fire(finished('elsewhere', 'outline_other'));
     expect(get).toHaveBeenCalledTimes(2);
     expect(screen.getByText('Your requirements are resolved.')).toBeTruthy();
-    expect(disabled('Generate plan')).toBe(false);
+    expect(disabled('Accept blueprint')).toBe(false);
     expect(disabled('Regenerate')).toBe(false);
     expect(disabled('Build in Data Studio')).toBe(false);
     expect(screen.queryByText('Loading feasibility…')).toBeNull();
     await resolve(fixtures.feasibilityAlternatives);
     await screen.findByText('Animate GPS points along a route.');
-    expect(disabled('Generate plan')).toBe(true);
+    expect(disabled('Accept blueprint')).toBe(true);
     expect(disabled('Regenerate')).toBe(true);
     expect(disabled('Build in Data Studio')).toBe(true);
   });
@@ -293,14 +293,14 @@ describe('Background refetch keeps the last assessment (task 12.1)', () => {
   it('keeps the gates closed after a run until its refetch lands, never reopening on the pre-run assessment', async () => {
     setMockAssessment(id, ready);
     render(<Gates />);
-    await waitFor(() => expect(disabled('Generate plan')).toBe(false));
-    fire({ name: 'run.started', data: { run_id: 'chat', node: 'interview' } });
-    expect(disabled('Generate plan')).toBe(true);
+    await waitFor(() => expect(disabled('Accept blueprint')).toBe(false));
+    fire({ name: 'run.started', data: { run_id: 'chat', node: 'outline_other' } });
+    expect(disabled('Accept blueprint')).toBe(true);
     const { resolve } = pendingGet();
-    fire(finished('chat', 'interview'));
-    expect(disabled('Generate plan')).toBe(true);
+    fire(finished('chat', 'outline_other'));
+    expect(disabled('Accept blueprint')).toBe(true);
     await resolve(ready);
-    expect(disabled('Generate plan')).toBe(false);
+    expect(disabled('Accept blueprint')).toBe(false);
   });
 
   it('fails closed when a background refetch fails, and stays closed while Retry is pending', async () => {
@@ -308,24 +308,24 @@ describe('Background refetch keeps the last assessment (task 12.1)', () => {
     vi.spyOn(api, 'getFeasibility').mockRejectedValueOnce(new ApiError(500, 'failed', 'Try loading again.'));
     fire(docs);
     await screen.findByText("Couldn't load feasibility");
-    expect(disabled('Generate plan')).toBe(true);
+    expect(disabled('Accept blueprint')).toBe(true);
     expect(disabled('Regenerate')).toBe(true);
     expect(disabled('Build in Data Studio')).toBe(true);
     const { resolve } = pendingGet();
     fireEvent.click(screen.getByRole('button', { name: 'Retry feasibility' }));
     expect(screen.getByText("Couldn't load feasibility")).toBeTruthy();
-    expect(disabled('Generate plan')).toBe(true);
+    expect(disabled('Accept blueprint')).toBe(true);
     expect(disabled('Build in Data Studio')).toBe(true);
     await resolve(ready);
     expect(screen.queryByText("Couldn't load feasibility")).toBeNull();
-    expect(disabled('Generate plan')).toBe(false);
+    expect(disabled('Accept blueprint')).toBe(false);
     expect(disabled('Build in Data Studio')).toBe(false);
   });
 
   it('drops a late response for an older refetch, in the panel and the gates', async () => {
     setMockAssessment(id, ready);
     render(<Gates />);
-    await waitFor(() => expect(disabled('Generate plan')).toBe(false));
+    await waitFor(() => expect(disabled('Accept blueprint')).toBe(false));
     let resolveOld!: (value: Assessment) => void;
     vi.spyOn(api, 'getFeasibility').mockImplementationOnce(() => new Promise((r) => { resolveOld = r; })).mockResolvedValueOnce(fixtures.feasibilityAlternatives);
     fire(docs);
@@ -334,7 +334,7 @@ describe('Background refetch keeps the last assessment (task 12.1)', () => {
     await act(async () => resolveOld(ready));
     expect(screen.getByText('Animate GPS points along a route.')).toBeTruthy();
     expect(screen.queryByText('Your requirements are resolved.')).toBeNull();
-    expect(disabled('Generate plan')).toBe(true);
+    expect(disabled('Accept blueprint')).toBe(true);
   });
 
   it('drops a GET sent before a discard once the discard response lands', async () => {
@@ -395,7 +395,7 @@ describe('Saved comment batches and stale repair', () => {
     render(<Gates />);
     const button = await screen.findByRole('button', { name: 'Reapply saved comments' });
     expect(disabled('Generate recipe')).toBe(true);
-    expect(disabled('Generate plan')).toBe(true);
+    expect(disabled('Accept blueprint')).toBe(true);
     button.focus();
     act(() => { fireEvent.click(button); fireEvent.click(button); });
     expect(post).toHaveBeenCalledExactlyOnceWith(id, resolved.id, resolved.pending_comments!.id);
@@ -435,7 +435,7 @@ describe('Saved comment batches and stale repair', () => {
     const returned: Assessment = { ...saved, id: 'after_discard', issues: [independent], pending_comments: null };
     setMockAssessment(id, saved);
     const discard = vi.spyOn(api, 'discardComments').mockResolvedValue(returned);
-    const plan = vi.spyOn(api, 'generatePlan'); const recipe = vi.spyOn(api, 'compileRecipe'); const run = vi.spyOn(api, 'runBuild');
+    const plan = vi.spyOn(api, 'acceptBlueprint'); const recipe = vi.spyOn(api, 'compileRecipe'); const run = vi.spyOn(api, 'runBuild');
     render(<FeasibilityPanel buildId={id} />);
     const button = await screen.findByRole('button', { name: 'Discard pending comments' });
     button.focus();
@@ -471,22 +471,22 @@ describe('Saved comment batches and stale repair', () => {
     expect(disabled('Discard pending comments')).toBe(true);
   });
 
-  it('enables explicit Replan for resolved stale intent; Build and recipe wait for a current prototype', async () => {
+  it('enables explicit Regenerate blueprint for resolved stale intent; Build and recipe wait for a current prototype', async () => {
     setMockAssessment(id, fixtures.feasibilityStale);
-    const plan = vi.spyOn(api, 'generatePlan').mockResolvedValue({ run_id: 'plan' });
+    const plan = vi.spyOn(api, 'regenerateBlueprint').mockResolvedValue({ run_id: 'plan' });
     const recipe = vi.spyOn(api, 'compileRecipe'); const run = vi.spyOn(api, 'runBuild');
     render(<><FeasibilityPanel buildId={id} canReplan /><Gates /></>);
-    const button = await screen.findByRole('button', { name: 'Replan' });
+    const button = await screen.findByRole('button', { name: 'Regenerate blueprint' });
     expect(button.matches(':disabled')).toBe(false);
     expect(disabled('Generate recipe')).toBe(true); expect(disabled('Build in Data Studio')).toBe(true);
     act(() => { fireEvent.click(button); fireEvent.click(button); });
     expect(plan).toHaveBeenCalledExactlyOnceWith(id);
     setMockAssessment(id, { ...ready, prototype_stale: true });
-    fire(finished('plan', 'plan'));
+    fire(finished('plan', 'blueprint'));
     await screen.findAllByText('Your requirements are resolved.');
     expect(disabled('Generate recipe')).toBe(true);
     setMockAssessment(id, ready);
-    fire(finished('current', 'spec'));
+    fire(finished('current', 'prototype'));
     await waitFor(() => expect(disabled('Generate recipe')).toBe(false));
     expect(recipe).not.toHaveBeenCalled(); expect(run).not.toHaveBeenCalled();
   });

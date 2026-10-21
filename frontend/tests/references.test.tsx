@@ -10,16 +10,18 @@ import { GENERIC, presetFor } from '../src/features/activity/presets';
 import { DoneStage } from '../src/features/history/DoneStage';
 import { ReferencePanel } from '../src/features/workspace/ReferencePanel';
 import { WorkspaceShell } from '../src/features/workspace/WorkspaceShell';
-import { ChatPanel } from '../src/features/workspace/chat/ChatPanel';
-import { useBuildStream } from '../src/features/workspace/chat/useBuildStream';
+import { ActivityColumn } from '../src/features/activity/ActivityColumn';
+import { useBuildStream } from '../src/features/activity/useBuildStream';
 import { ConnectStage } from '../src/features/workspace/connect/ConnectStage';
-import { publishWorkspace } from '../src/features/workspace/stretch';
+import { openReferencePanel, publishWorkspace } from '../src/features/workspace/stretch';
 import { resetMockState } from '../src/mocks/api';
 import { fixtures } from '../src/mocks/fixtures';
 
 beforeEach(resetMockState);
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const buildId = fixtures.build.id;
+/** The fixture build moved back to Blueprint (its blueprint a draft again): Accept blueprint is the gated action. */
+const blueprintStage: Build = { ...fixtures.build, stage: 'blueprint', artifacts: { ...fixtures.build.artifacts, blueprint: 'draft' } };
 const png = (name = 'style.png') => new File(['image'], name, { type: 'image/png' });
 const pick = (...files: File[]) => fireEvent.change(screen.getByLabelText('Reference images'), { target: { files } });
 const upload = () => screen.getByRole('button', { name: /^(Upload|Replace) references$/ });
@@ -31,8 +33,8 @@ async function panel() {
 }
 function Workspace({ initial }: { initial: Build }) {
   const [build, setBuild] = useState(initial);
-  const chat = useBuildStream(build, setBuild);
-  return <><ChatPanel build={build} chat={chat} /><ConnectStage build={build} onBuildChange={setBuild} stretchRuns={chat.stretchRuns} /></>;
+  const stream = useBuildStream(build, setBuild);
+  return <><ActivityColumn build={build} stream={stream} /><ConnectStage build={build} onBuildChange={setBuild} stretchRuns={stream.stretchRuns} /></>;
 }
 
 describe('Required references', () => {
@@ -62,7 +64,7 @@ describe('Required references', () => {
     await screen.findByRole('img', { name: 'Recreate dashboard reference: dashboard.png' });
   });
 
-  it('opens the same stage panel from chat; upload appears there and restores on remount', async () => {
+  it('opens the same stage panel on request (the sample-data Attach reference); upload appears there and restores on remount', async () => {
     const build = await api.createBuild({ archetype: 'executive', mode: 'data' });
     render(<Workspace initial={build} />);
     await screen.findByText(/No references yet/);
@@ -70,7 +72,7 @@ describe('Required references', () => {
     const details = region.querySelector('details')!;
     fireEvent.click(within(region).getByText('References', { exact: true }));
     expect(details.open).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Attach reference' }));
+    act(() => openReferencePanel(build.id));
     await waitFor(() => expect(details.open).toBe(true));
     expect(document.activeElement).toBe(screen.getByRole('radio', { name: 'Use style' }));
     pick(png('shared.png'));
@@ -184,13 +186,13 @@ describe('Required references', () => {
     expect(screen.queryByRole('button', { name: 'Remove references' })).toBeNull();
   });
 
-  it('fails closed on reference GET errors and keeps Generate plan disabled until Retry succeeds', async () => {
-    vi.spyOn(api, 'getBuild').mockResolvedValue({ ...fixtures.build, stage: 'interview' });
+  it('fails closed on reference GET errors and keeps Accept blueprint disabled until Retry succeeds', async () => {
+    vi.spyOn(api, 'getBuild').mockResolvedValue(blueprintStage);
     const get = vi.spyOn(api, 'getReferences').mockRejectedValue(new ApiError(503, 'unavailable', 'References are unavailable. Retry.'));
-    const post = vi.spyOn(api, 'generatePlan');
+    const post = vi.spyOn(api, 'acceptBlueprint');
     render(<MemoryRouter initialEntries={[`/builds/${buildId}`]}><Routes><Route path="/builds/:id" element={<WorkspaceShell />} /></Routes></MemoryRouter>);
     await screen.findByText('References are unavailable. Retry.');
-    const button = screen.getByRole('button', { name: 'Generate plan' }) as HTMLButtonElement;
+    const button = await screen.findByRole('button', { name: 'Accept blueprint' }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
     fireEvent.click(button);
     expect(post).not.toHaveBeenCalled();
@@ -225,11 +227,11 @@ describe('Required references', () => {
     expect(ready).not.toHaveBeenCalledWith(false);
   });
 
-  it('never flickers Generate plan while a reference refetch is pending', async () => {
-    vi.spyOn(api, 'getBuild').mockResolvedValue({ ...fixtures.build, stage: 'interview' });
+  it('never flickers Accept blueprint while a reference refetch is pending', async () => {
+    vi.spyOn(api, 'getBuild').mockResolvedValue(blueprintStage);
     const get = vi.spyOn(api, 'getReferences').mockResolvedValue(null);
     render(<MemoryRouter initialEntries={[`/builds/${buildId}`]}><Routes><Route path="/builds/:id" element={<WorkspaceShell />} /></Routes></MemoryRouter>);
-    const button = await screen.findByRole('button', { name: 'Generate plan' }) as HTMLButtonElement;
+    const button = await screen.findByRole('button', { name: 'Accept blueprint' }) as HTMLButtonElement;
     await waitFor(() => expect(button.disabled).toBe(false));
     let resolve!: (value: null) => void;
     get.mockReturnValue(new Promise((r) => { resolve = r; }));
@@ -248,11 +250,11 @@ describe('Required references', () => {
     expect(flips).toEqual([]);
   });
 
-  it('keeps Generate plan closed after Remove references until the post-delete assessment lands', async () => {
-    vi.spyOn(api, 'getBuild').mockResolvedValue({ ...fixtures.build, stage: 'interview' });
+  it('keeps Accept blueprint closed after Remove references until the post-delete assessment lands', async () => {
+    vi.spyOn(api, 'getBuild').mockResolvedValue(blueprintStage);
     vi.spyOn(api, 'getReferences').mockResolvedValue(fixtures.referenceSet);
     render(<MemoryRouter initialEntries={[`/builds/${buildId}`]}><Routes><Route path="/builds/:id" element={<WorkspaceShell />} /></Routes></MemoryRouter>);
-    const button = await screen.findByRole('button', { name: 'Generate plan' }) as HTMLButtonElement;
+    const button = await screen.findByRole('button', { name: 'Accept blueprint' }) as HTMLButtonElement;
     await waitFor(() => expect(button.disabled).toBe(false));
     let resolveDelete!: () => void;
     vi.spyOn(api, 'deleteReferences').mockReturnValue(new Promise((r) => { resolveDelete = r; }));
@@ -272,7 +274,7 @@ describe('Required references', () => {
     await waitFor(() => expect(button.disabled).toBe(false));
   });
 
-  it('keeps Attach reference working in the Build view and guards recipe/Build after a failed refresh', async () => {
+  it('keeps opening references in the Build view and guards recipe/Build after a failed refresh', async () => {
     const get = vi.spyOn(api, 'getReferences').mockResolvedValue(null);
     const run = vi.spyOn(api, 'runBuild');
     const compile = vi.spyOn(api, 'compileRecipe');
@@ -283,7 +285,7 @@ describe('Required references', () => {
     await screen.findByRole('button', { name: 'Back to prototype' });
     await waitFor(() => expect(screen.getByRole('radio', { name: 'Use style' }).matches(':disabled')).toBe(false));
     fireEvent.click(screen.getByText('References', { exact: true }));
-    fireEvent.click(screen.getByRole('button', { name: 'Attach reference' }));
+    act(() => openReferencePanel(buildId));
     expect(document.activeElement).toBe(screen.getByRole('radio', { name: 'Use style' }));
     const generate = screen.getByRole('button', { name: 'Generate recipe' });
     fireEvent.click(generate);

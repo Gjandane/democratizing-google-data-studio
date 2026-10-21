@@ -10,7 +10,7 @@ import { focusRing } from '../../../components/focus';
 import { Spinner } from '../../../components/Spinner';
 import { Table, type Column as TableColumn } from '../../../components/Table';
 import { ARCHETYPE_INFO, NewBuildDialog } from '../../history/NewBuildDialog';
-import type { StretchRuns } from '../chat/useBuildStream';
+import type { StretchRuns } from '../../activity/useBuildStream';
 import { ResearchPanel } from './ResearchPanel';
 import { hasSyntheticSource, SYNTHETIC_LABEL, SyntheticBadge, SyntheticDataPanel, SyntheticDetails } from './SyntheticDataPanel';
 import { ReferencePanel } from '../ReferencePanel';
@@ -101,7 +101,7 @@ interface ConnectStageProps {
 
 /**
  * The Connect stage: add CSV files, a GCS path or a BigQuery table, or (with no source yet) generate
- * invented sample data, then start the interview.
+ * invented sample data, then draft the context.
  */
 const noRuns: StretchRuns = {};
 
@@ -137,7 +137,7 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
   // Generated sample data replaces the panel with the Sources table: say so, and keep keyboard focus.
   useLayoutEffect(() => {
     if (!hadSources.current && hasSources && build.sources.some((s) => s.kind === 'synthetic')) {
-      setNotice('Synthetic sample data added. Review it under Sources, then start the interview.');
+      setNotice('Synthetic sample data added. Review it under Sources, then draft the context.');
       refocus(startButton.current);
     }
     hadSources.current = hasSources;
@@ -231,26 +231,26 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
     }
   };
 
-  const startInterview = async () => {
+  const draftContext = async () => {
     if (latest.current.sources.length === 0 || busyRef.current) return;
     const id = latest.current.id;
     begin({ kind: 'start' });
     try {
-      await api.startInterview(id);
+      await api.draftContext(id);
     } catch (e) {
       finish();
       setFailure({
-        title: "Couldn't start the interview",
-        message: message(e, "Couldn't start the interview. Try again."),
-        retry: () => void startInterview(),
+        title: "Couldn't draft the context",
+        message: message(e, "Couldn't draft the context. Try again."),
+        retry: () => void draftContext(),
       });
       return;
     }
-    // The 202 already moved the build to interview: never start it twice, even if this read fails.
+    // The 202 already moved the build to context: never draft it twice, even if this read fails.
     try {
       onBuildChange(await api.getBuild(id));
     } catch {
-      onBuildChange({ ...latest.current, stage: 'interview' });
+      onBuildChange({ ...latest.current, stage: 'context' });
     }
   };
 
@@ -464,9 +464,9 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
           variant="primary"
           loading={busy?.kind === 'start'}
           disabled={!hasSources || isBusy}
-          onClick={() => void startInterview()}
+          onClick={() => void draftContext()}
         >
-          Start interview
+          Draft context
         </Button>
       </div>
       {newDashboard && <NewBuildDialog open onClose={() => setNewDashboard(false)} />}

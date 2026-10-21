@@ -7,7 +7,7 @@ import type { OpenBuildEvents, StreamHandlers } from '../src/api/events';
 import { ApiError, type Build, type BuildEvent, type OpFinished } from '../src/api/types';
 import { BuildStage } from '../src/features/workspace/build/BuildStage';
 import { failedCount, idleRun, reduceBuildRun } from '../src/features/workspace/build/buildRun';
-import { useBuildStream } from '../src/features/workspace/chat/useBuildStream';
+import { useBuildStream } from '../src/features/activity/useBuildStream';
 import { resetMockState, setMockBuildOutcome, setMockEngine } from '../src/mocks/api';
 import { WorkspaceShell } from '../src/features/workspace/WorkspaceShell';
 import { PrototypeStage } from '../src/features/workspace/prototype/PrototypeStage';

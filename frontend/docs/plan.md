@@ -200,7 +200,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Done when: `npm test` passes in 4 full-suite runs in a row (report each run's totals) and `npm run typecheck` passes; the focus assertion at tests/feasibility.test.tsx:77 is awaited (`waitFor`), and every other post-action focus assertion in tests/feasibility.test.tsx and tests/references.test.tsx that follows a status message is awaited the same way; `git diff` touches no file under src/.
 
 ## Phase 14: Staged workflow (change 2026-10-21)
-- [ ] 14.1 Contract 2.0 types, mocks, stepper and activity column
+- [x] 14.1 Contract 2.0 types, mocks, stepper and activity column
   - Goal: the app speaks api.md 2.0: new stages, artifacts, notes and artifact.updated; the mock serves every staged endpoint from the shared fixtures; the stepper shows eight stages with artifact states; the chat input and the Interview/Plan stage areas are gone, the left column is the activity log.
   - Spec: docs/staged-ui.md
   - Files: src/api/types.ts, src/api/client.ts, src/api/events.ts, src/mocks/*.ts, src/components/Stepper.tsx, src/features/workspace/WorkspaceShell.tsx, src/features/workspace/Stepper.tsx, src/features/activity/*, src/features/workspace/chat/*, src/features/workspace/plan/*, src/features/workspace/ReferencePanel.tsx, tests/contract.test.ts, tests/stepper.test.tsx, tests/*.test.tsx

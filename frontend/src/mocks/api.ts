@@ -4,7 +4,15 @@
 import type { ApiClient } from '../api/client';
 import {
   ApiError,
+  ARTIFACTS,
+  type ArtifactName,
   type Assessment,
+  type Blueprint,
+  type Context,
+  type Design,
+  type Outline,
+  type OutlineQuestion,
+  type ValidationIssue,
   type ColumnSpec,
   type GenerationRequest,
   type GenerationStatus,
@@ -46,8 +54,18 @@ const BUILD_STEP_MS = isTest ? 0 : 1200;
 export type MockBuildOutcome = 'ok' | 'partial' | 'failed';
 /** A 503 the mock answers on every action of that kind, whatever the settings say. */
 export type MockServiceFault = 'llm_unavailable' | 'gcp_not_configured' | null;
+/** The staged workflow's runs (api.md 2.0 `node` values). */
+type StagedNode = 'context' | 'outline_propose' | 'outline_other' | 'outline_suggest' | 'blueprint' | 'prototype';
 /** The runs the mock can fail (setMockRunFailure). */
-export type MockFailingNode = 'plan' | 'interview' | 'synthetic_schema' | 'synthetic_generate';
+export type MockFailingNode = StagedNode | 'synthetic_schema' | 'synthetic_generate';
+
+/** The four artifacts of a build; null until first written. */
+interface Artifacts {
+  context: Context | null;
+  outline: Outline | null;
+  design: Design | null;
+  blueprint: Blueprint | null;
+}
 
 /** The access code the mock accepts when the gate is on (setMockSession). */
 export const MOCK_ACCESS_CODE = 'mock-access-code';
@@ -66,6 +84,9 @@ interface MockState {
   syntheticBusy: Set<string>;
   session: Session;
   builds: Map<string, Build>;
+  artifacts: Map<string, Artifacts>;
+  /** Builds with a staged action running (api.md 2.0: one action per build at a time). */
+  stagedBusy: Set<string>;
   messages: Map<string, Message[]>;
   settings: Settings;
   traces: Trace[];
@@ -95,6 +116,11 @@ function seed(): MockState {
     syntheticBusy: new Set(),
     session: { required: false, ok: true },
     builds,
+    // Both fixture builds have all four artifacts confirmed.
+    artifacts: new Map([fixtures.build, fixtures.buildDone].map((build) => [build.id, {
+      context: clone(fixtures.context), outline: clone(fixtures.outline), design: clone(fixtures.design), blueprint: clone(fixtures.blueprint),
+    }])),
+    stagedBusy: new Set(),
     messages: new Map([[fixtures.build.id, clone(fixtures.messages)]]),
     settings: clone(fixtures.settings),
     traces: clone(fixtures.traces),
@@ -154,11 +180,21 @@ export function setMockServiceFault(fault: MockServiceFault): void {
 
 /**
  * Makes every next `node` run fail with `error` as its `run.finished` text (null: no text), until
- * reset with undefined. A failed plan goes back to the Interview stage. For tests and the dev server.
+ * reset with undefined. A failed staged run writes nothing; a failed accept stays in Blueprint. For tests and the dev server.
  */
 export function setMockRunFailure(node: MockFailingNode, error: string | null | undefined): void {
   if (error === undefined) delete state.runFailures[node];
   else state.runFailures[node] = error;
+}
+
+/** Changes a stored build (its stage, artifact states, spec version...) without events. For tests and previews. */
+export function patchMockBuild(buildId: string, patch: Partial<Build>): void {
+  Object.assign(findBuild(buildId), clone(patch));
+}
+
+/** Replaces one stored artifact (null removes it) without events. For tests and previews. */
+export function setMockArtifact<K extends ArtifactName>(buildId: string, name: K, value: Artifacts[K]): void {
+  artifactsOf(buildId)[name] = clone(value);
 }
 
 /** Overrides feasibility without mutating shared fixtures. For tests and previews. */
@@ -173,9 +209,9 @@ const currentAssessment = (id: string): Assessment => {
   return state.assessments.get(id) ?? uncheckedAssessment();
 };
 
-/** Synthetic writes: connect/interview only, no sources, no other action running (contracts/synthetic-data.md). */
+/** Synthetic writes: connect only, no sources, no other action running (contracts/synthetic-data.md 1.2). */
 function requireSyntheticWrite(build: Build): void {
-  requireStage(build, ['connect', 'interview'], 'Sample data can only be added before the plan.');
+  requireStage(build, ['connect'], 'Sample data can only be added in Connect, before the context.');
   if (build.sources.length > 0) {
     throw new ApiError(409, 'synthetic_requires_empty_build', 'This build already has data. Start a new dashboard to use sample data.');
   }
@@ -402,6 +438,231 @@ function gated(client: ApiClient): ApiClient {
   return wrapped as unknown as ApiClient;
 }
 
+// ---------- Staged workflow (api.md 2.0) ----------
+
+/** The stages before the engine run: references, feasibility and artifact edits work here. */
+const BEFORE_BUILD: Stage[] = ['connect', 'context', 'outline', 'design', 'blueprint', 'prototype'];
+
+function artifactsOf(buildId: string): Artifacts {
+  let artifacts = state.artifacts.get(buildId);
+  if (!artifacts) {
+    artifacts = { context: null, outline: null, design: null, blueprint: null };
+    state.artifacts.set(buildId, artifacts);
+  }
+  return artifacts;
+}
+
+/** Stores the next revision of an artifact; `artifact.updated` follows every write. */
+function save<K extends ArtifactName>(build: Build, name: K, value: NonNullable<Artifacts[K]>): NonNullable<Artifacts[K]> {
+  const artifacts = artifactsOf(build.id);
+  value.revision = (artifacts[name]?.revision ?? 0) + 1;
+  artifacts[name] = value;
+  emit(build.id, { name: 'artifact.updated', data: { artifact: name, revision: value.revision } });
+  return value;
+}
+
+/**
+ * An edit of `name`: it becomes a draft, every later artifact that exists goes stale, and the stage
+ * moves back to that artifact's stage (api.md 2.0 Stage rules). The spec and prototype stay.
+ */
+function markEdited(build: Build, name: ArtifactName): void {
+  build.artifacts[name] = 'draft';
+  for (const later of ARTIFACTS.slice(ARTIFACTS.indexOf(name) + 1)) {
+    if (build.artifacts[later] !== 'missing') build.artifacts[later] = 'stale';
+  }
+  if (build.stage !== name) setStage(build, name);
+  else touch(build);
+  announce(build);
+}
+
+/** Edits of `name`: allowed from its own stage up to prototype, never in build or done. */
+function requireEditable(build: Build, name: ArtifactName): void {
+  const at = BEFORE_BUILD.indexOf(build.stage);
+  if (at < BEFORE_BUILD.indexOf(name)) {
+    const message = build.stage === 'build' ? 'Wait for the build to finish.' : build.stage === 'done' ? 'Start a new version to change this dashboard.' : `Finish the earlier steps before the ${name}.`;
+    throw new ApiError(409, 'wrong_stage', message, { stage: build.stage });
+  }
+}
+
+function requireIdle(build: Build): void {
+  if (state.stagedBusy.has(build.id)) throw new ApiError(409, 'action_in_progress', 'Wait for the current action to finish.');
+}
+
+/** `recipe` and `run` need all four artifacts confirmed; a build made before 2.0 (all missing, with a spec) is exempt. */
+function requireConfirmed(build: Build): void {
+  const states = ARTIFACTS.map((name) => build.artifacts[name]);
+  const legacy = states.every((s) => s === 'missing') && build.spec_version !== null;
+  if (!legacy && states.some((s) => s !== 'confirmed')) {
+    throw new ApiError(409, 'wrong_stage', 'Confirm every step, then build.', { stage: build.stage });
+  }
+}
+
+const artifactInvalid = (issues: ValidationIssue[]) =>
+  new ApiError(409, 'artifact_invalid', 'Fix the open issues, then confirm again.', { issues });
+
+function requireArtifact<K extends ArtifactName>(build: Build, name: K): NonNullable<Artifacts[K]> {
+  const value = artifactsOf(build.id)[name];
+  if (!value) throw new ApiError(409, 'wrong_stage', `There is no ${name} yet.`, { stage: build.stage });
+  return value as NonNullable<Artifacts[K]>;
+}
+
+const PROGRESS: Record<StagedNode, string> = {
+  context: 'Reading the data profile',
+  outline_propose: 'Proposing questions',
+  outline_other: 'Reading your question',
+  outline_suggest: 'Suggesting questions',
+  blueprint: 'Drafting the blueprint',
+  prototype: 'Laying out the pages',
+};
+
+/** A staged run: holds the build's action lock; a failing node (setMockRunFailure) writes nothing. */
+function stagedRun(build: Build, node: StagedNode, steps: (runId: string) => Array<() => void>): RunAccepted {
+  state.stagedBusy.add(build.id);
+  const failed = failureOf(node)();
+  return startRun(
+    build,
+    node,
+    (runId) => [
+      () => emit(build.id, { name: 'node.progress', data: { run_id: runId, node, text: PROGRESS[node] } }),
+      ...(failed ? [] : steps(runId)),
+      () => state.stagedBusy.delete(build.id),
+    ],
+    { failure: () => failed },
+  );
+}
+
+const columnNames = (build: Build) => new Set(build.sources.flatMap((source) => source.columns.map((column) => column.name)));
+
+/** The code checks of a Context: known fields, exactly one of measure and ratio, known ratio KPIs. */
+function contextIssues(build: Build, context: Omit<Context, 'revision' | 'issues'>): ValidationIssue[] {
+  const fields = columnNames(build);
+  for (const derived of context.derived_fields) fields.add(derived.name);
+  const kpiIds = new Set(context.kpis.map((kpi) => kpi.id));
+  const issues: ValidationIssue[] = [];
+  context.kpis.forEach((kpi, i) => {
+    if ((kpi.measure === null) === (kpi.ratio === null)) issues.push({ path: `/kpis/${i}`, message: 'Pick a measure or a ratio, not both.' });
+    if (kpi.measure && !fields.has(kpi.measure.field)) issues.push({ path: `/kpis/${i}/measure/field`, message: `Unknown field ${kpi.measure.field}. Pick a column or a derived field.` });
+    for (const part of ['numerator', 'denominator'] as const) {
+      const ref = kpi.ratio?.[part];
+      if (ref !== undefined && (!kpiIds.has(ref) || ref === kpi.id)) issues.push({ path: `/kpis/${i}/ratio/${part}`, message: `Pick another KPI as the ${part}.` });
+    }
+  });
+  context.thresholds.forEach((threshold, i) => {
+    if (!fields.has(threshold.field)) issues.push({ path: `/thresholds/${i}/field`, message: `Unknown field ${threshold.field}. Pick a column or a derived field.` });
+  });
+  return issues;
+}
+
+/** The fixture context, describing this build's own sources. */
+function draftedContext(build: Build): Context {
+  const context = clone(fixtures.context);
+  context.datasets = build.sources.map((source) => ({
+    source_id: source.id,
+    summary: fixtures.context.datasets.find((d) => d.source_id === source.id)?.summary ?? `${source.row_count.toLocaleString('en-US')} rows from ${source.name}.`,
+  }));
+  context.issues = contextIssues(build, context);
+  return context;
+}
+
+/** A first proposal: the fixture's proposed questions, the recommended ones ticked. */
+function proposedOutline(): Outline {
+  const outline = clone(fixtures.outline);
+  for (const section of outline.sections) {
+    section.questions = section.questions.filter((q) => q.origin === 'proposed').map((q) => ({ ...q, selected: q.recommended }));
+  }
+  return outline;
+}
+
+const nextQuestionId = (outline: Outline) =>
+  `q${Math.max(0, ...outline.sections.flatMap((s) => s.questions.map((q) => Number(q.id.slice(1)) || 0))) + 1}`;
+
+/** Every question of the outline. */
+const questionsOf = (outline: Outline): OutlineQuestion[] => outline.sections.flatMap((section) => section.questions);
+
+function hex(value: string): boolean {
+  return /^#[0-9A-Fa-f]{6}$/.test(value);
+}
+
+/** WCAG contrast ratio of two #RRGGBB colors. */
+function contrast(a: string, b: string): number {
+  const luminance = (color: string) => {
+    const [r, g, bl] = [1, 3, 5].map((i) => {
+      const c = parseInt(color.slice(i, i + 2), 16) / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    }) as [number, number, number];
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+  };
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/** The code checks of a Design: colors, palette size, a preset font, readable text, a title. */
+function designIssues(design: Omit<Design, 'revision' | 'issues'>): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  for (const key of ['background', 'surface', 'text', 'accent'] as const) {
+    if (!hex(design[key])) issues.push({ path: `/${key}`, message: 'Use a color like #1E40AF.' });
+  }
+  if (design.palette.length < 3 || design.palette.length > 8) issues.push({ path: '/palette', message: 'Use 3 to 8 palette colors.' });
+  design.palette.forEach((color, i) => {
+    if (!hex(color)) issues.push({ path: `/palette/${i}`, message: 'Use a color like #1E40AF.' });
+  });
+  if (!fixtures.designPresets.some((preset) => preset.font_family === design.font_family)) issues.push({ path: '/font_family', message: 'Pick one of the listed fonts.' });
+  if (hex(design.text) && hex(design.background)) {
+    const ratio = contrast(design.text, design.background);
+    if (ratio < 4.5) issues.push({ path: '/text', message: `Text on the background has ${ratio.toFixed(1)}:1 contrast. Use 4.5:1 or more.` });
+  }
+  if (design.title.trim() === '') issues.push({ path: '/title', message: 'Enter a title.' });
+  return issues;
+}
+
+/** A fresh Design: the archetype's preset; one page per section when 1-5 sections have a selected question. */
+function prefilledDesign(build: Build): Design {
+  const preset = fixtures.designPresets.find((p) => p.archetypes.includes(build.archetype)) ?? fixtures.designPresets[0]!;
+  const { context, outline } = artifactsOf(build.id);
+  const sections = outline?.sections.filter((s) => s.questions.some((q) => q.selected)).length ?? 0;
+  return {
+    revision: 0,
+    preset_id: preset.id,
+    background: preset.background,
+    surface: preset.surface,
+    text: preset.text,
+    accent: preset.accent,
+    palette: clone(preset.palette),
+    font_family: preset.font_family,
+    page_structure: sections >= 1 && sections <= 5 ? 'per_section' : 'single',
+    density: 'comfortable',
+    title: context?.title ?? build.title,
+    subtitle: null,
+    source: 'preset',
+    issues: [],
+  };
+}
+
+/** The fixture blueprint for this build's base source and selected questions, bound to `assessmentId`. */
+function draftedBlueprint(build: Build, assessmentId: string): Blueprint {
+  const blueprint = clone(fixtures.blueprint);
+  const selected = new Set(questionsOf(artifactsOf(build.id).outline ?? fixtures.outline).filter((q) => q.selected).map((q) => q.id));
+  blueprint.rows = blueprint.rows.filter((row) => row.question_id === null || selected.has(row.question_id));
+  blueprint.view_sources.base = build.sources[0]?.id ?? blueprint.view_sources.base;
+  blueprint.view_table = `${state.settings.gcp_project_id || 'my-gcp-project'}.${state.settings.bq_dataset}.dash_${build.id}_v${build.current_version}`;
+  blueprint.assessment_id = assessmentId;
+  return blueprint;
+}
+
+/** Drafts the blueprint, checking feasibility: a ready assessment unless one with open issues is set. */
+function draftBlueprint(build: Build): void {
+  const assessment = clone(currentAssessment(build.id));
+  assessment.id = `assessment_${nextId('r')}`;
+  assessment.input_digest ??= `digest_${build.id}`;
+  assessment.state = assessment.issues.some((issue) => issue.resolution === 'unresolved') ? 'blocked' : 'ready';
+  assessment.prototype_stale = false;
+  state.assessments.set(build.id, assessment);
+  save(build, 'blueprint', draftedBlueprint(build, assessment.id));
+  build.artifacts.blueprint = 'draft';
+  touch(build);
+  announce(build);
+}
+
 // ---------- The mock client ----------
 
 export function createMockApi(): ApiClient {
@@ -453,7 +714,8 @@ export function createMockApi(): ApiClient {
           current_version: 1,
           versions: [{ n: 1, status: 'draft', report_url: null, created_at: at }],
           report_url: null,
-          ready_for_plan: false,
+          notes: null,
+          artifacts: { context: 'missing', outline: 'missing', design: 'missing', blueprint: 'missing' },
         };
         state.builds.set(build.id, build);
         return build;
@@ -499,7 +761,7 @@ export function createMockApi(): ApiClient {
     getFeasibility: (id) => respond(() => currentAssessment(id)),
     checkFeasibility: (id) => respond(() => {
       const build = findBuild(id);
-      requireStage(build, ['connect', 'interview', 'prototype'], 'Check feasibility before building.');
+      requireStage(build, BEFORE_BUILD, 'Check feasibility before building.');
       if (state.assessmentBusy.has(id)) throw new ApiError(409, 'action_in_progress', 'Wait for the current check.');
       state.assessmentBusy.add(id);
       return startRun(build, 'capability_check', () => [() => {
@@ -569,7 +831,7 @@ export function createMockApi(): ApiClient {
     }),
     uploadReferences: (id, files, mode, instructions) => respond(() => {
       const build = findBuild(id);
-      requireStage(build, ['connect', 'interview', 'prototype'], 'Start a new version to change references.');
+      requireStage(build, BEFORE_BUILD, 'Start a new version to change references.');
       if (state.referenceBusy.has(id)) throw new ApiError(409, 'build_busy', 'Wait for the current reference upload.');
       const problem = referenceValidation(files, mode, instructions);
       if (problem) throw new ApiError(422, 'invalid_source', problem);
@@ -591,7 +853,7 @@ export function createMockApi(): ApiClient {
     }),
     deleteReferences: (id) => respond(() => {
       const build = findBuild(id);
-      requireStage(build, ['connect', 'interview', 'prototype'], 'Start a new version to change references.');
+      requireStage(build, BEFORE_BUILD, 'Start a new version to change references.');
       if (state.referenceBusy.has(id)) throw new ApiError(409, 'build_busy', 'Wait for the current reference upload.');
       state.references.delete(`${id}:${build.current_version}`);
     }),
@@ -707,85 +969,278 @@ export function createMockApi(): ApiClient {
         ]);
       }),
 
-    startInterview: (id) =>
-      respond(() => {
-        const build = findBuild(id);
-        requireStage(build, ['connect', 'interview'], 'The interview has already finished for this build.');
-        requireModel();
-        setStage(build, 'interview');
-        const firstQuestion = fixtures.messages[0]?.text ?? 'Who will read this dashboard?';
-        return startRun(build, 'interview', () => streamAssistant(build.id, firstQuestion, 'interview'));
-      }),
-
     listMessages: (id) =>
       respond(() => {
         findBuild(id);
         return state.messages.get(id) ?? [];
       }),
 
-    sendMessage: (id, text) =>
+    draftContext: (id, notes) =>
       respond(() => {
         const build = findBuild(id);
+        requireStage(build, ['connect', 'context'], 'Draft the context from Connect or Context.');
+        if (build.sources.length === 0) throw new ApiError(409, 'wrong_stage', 'Add at least one source, then draft the context.', { stage: build.stage });
+        if (notes !== undefined && notes.length > 4000) throw invalid('invalid_request', 'Keep the notes to 4000 characters.', { field: 'notes' });
+        requireIdle(build);
         requireModel();
-        if (!text.trim()) throw invalid('invalid_request', 'Type a message first.');
-        const message: Message = { id: nextId('m'), role: 'user', text, node: null, created_at: now() };
-        const messages = [...(state.messages.get(id) ?? []), message];
-        state.messages.set(id, messages);
-        touch(build);
-        const answered = messages.filter((m) => m.role === 'user').length;
-        const enough = answered >= 2 && !build.ready_for_plan;
-        const reply = enough
-          ? "Thanks, that's enough to plan. Select **Generate plan** when you're ready, or keep adding detail."
-          : (fixtures.messages[2]?.text ?? 'Tell me more.');
-        const failure = failureOf('interview');
-        const run = failure()
-          ? startRun(build, 'interview', () => [], { failure })
-          : startRun(build, 'interview', () => [
-              ...streamAssistant(id, reply, 'interview'),
-              () => {
-                if (!enough) return;
-                build.ready_for_plan = true;
-                announce(build);
-              },
-            ]);
-        return { ...run, message_id: message.id };
+        if (notes !== undefined) build.notes = notes;
+        if (build.stage !== 'context') setStage(build, 'context');
+        announce(build);
+        return stagedRun(build, 'context', () => [
+          () => {
+            save(build, 'context', draftedContext(build));
+            markEdited(build, 'context');
+          },
+          ...streamAssistant(id, fixtures.messages[0]?.text ?? 'I drafted the context. Check it, then confirm.', 'context'),
+        ]);
       }),
 
-    generatePlan: (id) =>
+    getContext: (id) => respond(() => artifactsOf(findBuild(id).id).context),
+
+    updateContext: (id, body) =>
       respond(() => {
         const build = findBuild(id);
-        requireStage(
-          build,
-          ['interview', 'prototype'],
-          build.stage === 'connect' ? fixtures.error.error.message : `Planning isn't available while the build is in ${build.stage}.`,
-        );
-        requireModel();
-        const from = build.stage;
-        setStage(build, 'plan');
-        const failure = failureOf('plan');
-        if (failure()) {
-          return startRun(
-            build,
-            'plan',
-            (runId) => [
-              () => emit(id, { name: 'node.progress', data: { run_id: runId, node: 'plan', text: 'Reading the data profile' } }),
-              () => setStage(build, from),
-            ],
-            { failure },
-          );
-        }
-        return startRun(build, 'plan', (runId) => [
-          ...fixtures.build.docs.map(
-            (doc) => () => emit(id, { name: 'node.progress', data: { run_id: runId, node: 'plan', text: `Writing ${doc.path}` } }),
-          ),
+        requireEditable(build, 'context');
+        requireArtifact(build, 'context');
+        requireIdle(build);
+        const { revision: _r, issues: _i, ...fields } = body as Context;
+        const context = save(build, 'context', { ...clone(fields), revision: 0, issues: contextIssues(build, fields) });
+        markEdited(build, 'context');
+        return context;
+      }),
+
+    confirmContext: (id) =>
+      respond(() => {
+        const build = findBuild(id);
+        requireStage(build, ['context'], 'Open the Context step to confirm it.');
+        const context = requireArtifact(build, 'context');
+        if (context.issues.length > 0) throw artifactInvalid(context.issues);
+        requireIdle(build);
+        const hasOutline = artifactsOf(id).outline !== null;
+        if (!hasOutline) requireModel();
+        build.artifacts.context = 'confirmed';
+        setStage(build, 'outline');
+        announce(build);
+        return stagedRun(build, 'outline_propose', () => [
           () => {
+            const existing = artifactsOf(id).outline;
+            if (existing) {
+              // Revalidated in code: unknown KPI refs go, every selection stays.
+              const kpis = new Set(context.kpis.map((kpi) => kpi.id));
+              const outline = clone(existing);
+              for (const q of questionsOf(outline)) q.kpi_refs = q.kpi_refs.filter((ref) => kpis.has(ref));
+              save(build, 'outline', outline);
+            } else {
+              save(build, 'outline', proposedOutline());
+              build.artifacts.outline = 'draft';
+            }
+            touch(build);
+            announce(build);
+          },
+        ]);
+      }),
+
+    getOutline: (id) => respond(() => artifactsOf(findBuild(id).id).outline),
+
+    proposeOutline: (id) =>
+      respond(() => {
+        const build = findBuild(id);
+        requireStage(build, ['outline'], 'Open the Outline step to propose questions again.');
+        requireIdle(build);
+        requireModel();
+        return stagedRun(build, 'outline_propose', () => [
+          () => {
+            const old = artifactsOf(id).outline;
+            const outline = proposedOutline();
+            const kept = new Map(old ? questionsOf(old).map((q) => [q.text, q.selected]) : []);
+            for (const q of questionsOf(outline)) q.selected = kept.get(q.text) ?? q.selected;
+            // `other` questions stay, in their section (or one of their own when it's gone).
+            for (const section of old?.sections ?? []) {
+              const others = section.questions.filter((q) => q.origin === 'other');
+              if (others.length === 0) continue;
+              const target = outline.sections.find((s) => s.id === section.id);
+              const ids = new Set(questionsOf(outline).map((q) => q.id));
+              const moved = others.map((q) => (ids.has(q.id) ? { ...q, id: nextQuestionId(outline) } : q));
+              if (target) target.questions.push(...moved);
+              else outline.sections.push({ ...section, questions: moved });
+            }
+            save(build, 'outline', outline);
+            markEdited(build, 'outline');
+          },
+        ]);
+      }),
+
+    updateOutlineSelection: (id, questions) =>
+      respond(() => {
+        const build = findBuild(id);
+        requireEditable(build, 'outline');
+        const outline = clone(requireArtifact(build, 'outline'));
+        requireIdle(build);
+        if (questions.length < 1 || questions.length > 100) throw invalid('invalid_request', 'Send 1 to 100 questions.');
+        const byId = new Map(questionsOf(outline).map((q) => [q.id, q]));
+        const unknown = questions.find((q) => !byId.has(q.id));
+        if (unknown) throw invalid('invalid_request', `There's no question ${unknown.id} in this outline.`, { question_id: unknown.id });
+        for (const { id: qid, selected } of questions) byId.get(qid)!.selected = selected;
+        const saved = save(build, 'outline', outline);
+        markEdited(build, 'outline');
+        return saved;
+      }),
+
+    addOutlineQuestions: (id, sectionId, text) =>
+      respond(() => {
+        const build = findBuild(id);
+        requireEditable(build, 'outline');
+        const outline = requireArtifact(build, 'outline');
+        const trimmed = text.trim();
+        if (trimmed.length < 1 || text.length > 1000) throw invalid('invalid_request', 'Write 1 to 1000 characters.', { field: 'text' });
+        if (sectionId !== null && !outline.sections.some((s) => s.id === sectionId)) throw invalid('invalid_request', `There's no section ${sectionId} in this outline.`, { section_id: sectionId });
+        requireIdle(build);
+        requireModel();
+        markEdited(build, 'outline');
+        return stagedRun(build, 'outline_other', () => [
+          () => {
+            const next = clone(artifactsOf(id).outline!);
+            const question: OutlineQuestion = {
+              id: nextQuestionId(next),
+              text: `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1).replace(/[.?!]*$/, '')}?`,
+              rationale: 'Added by you.',
+              recommended: false,
+              selected: true,
+              kpi_refs: [],
+              origin: 'other',
+            };
+            const section = next.sections.find((s) => s.id === sectionId);
+            if (section) section.questions.push(question);
+            else next.sections.push({ id: `s${next.sections.length + 1}`, title: 'Your questions', purpose: 'Questions you added.', questions: [question] });
+            save(build, 'outline', next);
+          },
+        ]);
+      }),
+
+    suggestOutlineQuestions: (id, sectionId) =>
+      respond(() => {
+        const build = findBuild(id);
+        requireEditable(build, 'outline');
+        const section = requireArtifact(build, 'outline').sections.find((s) => s.id === sectionId);
+        if (!section) throw invalid('invalid_request', `There's no section ${sectionId} in this outline.`, { section_id: sectionId });
+        requireIdle(build);
+        requireModel();
+        markEdited(build, 'outline');
+        return stagedRun(build, 'outline_suggest', () => [
+          () => {
+            const next = clone(artifactsOf(id).outline!);
+            const target = next.sections.find((s) => s.id === sectionId)!;
+            const topic = target.title.toLowerCase();
+            for (const text of [`Which segment leads in ${topic}?`, `How has ${topic} changed since last quarter?`]) {
+              target.questions.push({ id: nextQuestionId(next), text, rationale: 'Suggested to round out this section.', recommended: false, selected: false, kpi_refs: [], origin: 'suggested' });
+            }
+            save(build, 'outline', next);
+          },
+        ]);
+      }),
+
+    confirmOutline: (id) =>
+      respond(() => {
+        const build = findBuild(id);
+        requireStage(build, ['outline'], 'Open the Outline step to confirm it.');
+        const selected = questionsOf(requireArtifact(build, 'outline')).filter((q) => q.selected).length;
+        if (selected < 1) throw artifactInvalid([{ path: '/sections', message: 'Select at least one question.' }]);
+        if (selected > 24) throw artifactInvalid([{ path: '/sections', message: `Select 24 questions at most (${selected} selected).` }]);
+        requireIdle(build);
+        build.artifacts.outline = 'confirmed';
+        const existing = artifactsOf(id).design;
+        if (existing) {
+          // Kept and revalidated; a stale design stays stale until confirmed again.
+          const { revision: _r, issues: _i, ...fields } = existing;
+          save(build, 'design', { ...clone(existing), issues: designIssues(fields) });
+        } else {
+          save(build, 'design', prefilledDesign(build));
+          build.artifacts.design = 'draft';
+        }
+        setStage(build, 'design');
+        announce(build);
+        return build;
+      }),
+
+    listDesignPresets: (id) =>
+      respond(() => {
+        findBuild(id);
+        return fixtures.designPresets;
+      }),
+
+    getDesign: (id) => respond(() => artifactsOf(findBuild(id).id).design),
+
+    prefillDesign: (id) =>
+      respond(() => {
+        const build = findBuild(id);
+        requireStage(build, ['design'], 'Open the Design step to reset it.');
+        requireIdle(build);
+        const design = save(build, 'design', prefilledDesign(build));
+        markEdited(build, 'design');
+        return design;
+      }),
+
+    updateDesign: (id, body) =>
+      respond(() => {
+        const build = findBuild(id);
+        requireEditable(build, 'design');
+        requireArtifact(build, 'design');
+        requireIdle(build);
+        const { revision: _r, issues: _i, ...fields } = body as Design;
+        const design = save(build, 'design', { ...clone(fields), revision: 0, issues: designIssues(fields) });
+        markEdited(build, 'design');
+        return design;
+      }),
+
+    confirmDesign: (id) =>
+      respond(() => {
+        const build = findBuild(id);
+        requireStage(build, ['design'], 'Open the Design step to confirm it.');
+        const design = requireArtifact(build, 'design');
+        if (design.issues.length > 0) throw artifactInvalid(design.issues);
+        requireIdle(build);
+        requireModel();
+        build.artifacts.design = 'confirmed';
+        setStage(build, 'blueprint');
+        announce(build);
+        return stagedRun(build, 'blueprint', (runId) => [
+          () => emit(id, { name: 'node.progress', data: { run_id: runId, node: 'blueprint', text: 'Checking feasibility' } }),
+          () => draftBlueprint(build),
+        ]);
+      }),
+
+    getBlueprint: (id) => respond(() => artifactsOf(findBuild(id).id).blueprint),
+
+    regenerateBlueprint: (id) =>
+      respond(() => {
+        const build = findBuild(id);
+        requireStage(build, ['blueprint', 'prototype'], 'Regenerate the blueprint from Blueprint or Prototype.');
+        requireIdle(build);
+        requireModel();
+        if (build.stage !== 'blueprint') setStage(build, 'blueprint');
+        return stagedRun(build, 'blueprint', () => [() => draftBlueprint(build)]);
+      }),
+
+    acceptBlueprint: (id) =>
+      respond(() => {
+        const build = findBuild(id);
+        requireStage(build, ['blueprint'], 'Open the Blueprint step to accept it.');
+        const blueprint = requireArtifact(build, 'blueprint');
+        const assessment = currentAssessment(id);
+        if (assessment.state !== 'ready') {
+          const open = assessment.issues.filter((issue) => issue.resolution === 'unresolved').map((issue) => issue.id);
+          throw new ApiError(409, 'feasibility_blocked', 'Resolve the blocked requirements, then accept.', { assessment_id: assessment.id, issue_ids: open });
+        }
+        if (!blueprint.rows.some((row) => row.status === 'ok')) throw artifactInvalid([{ path: '/rows', message: 'Every row is blocked. Resolve one, then accept.' }]);
+        requireIdle(build);
+        requireModel();
+        // On failure the stage stays Blueprint and nothing is confirmed (run.finished carries the error).
+        return stagedRun(build, 'prototype', (runId) => [
+          () => emit(id, { name: 'node.progress', data: { run_id: runId, node: 'prototype', text: 'Rendering the prototype' } }),
+          () => {
+            build.artifacts.blueprint = 'confirmed';
             build.docs = clone(fixtures.build.docs);
             emit(id, { name: 'docs.updated', data: { docs: clone(build.docs) } });
-          },
-          () => {
-            const assessment = clone(currentAssessment(id));
-            assessment.id = `assessment_${nextId('r')}`; assessment.state = 'ready'; assessment.prototype_stale = false;
-            state.assessments.set(id, assessment);
             build.spec_version = (build.spec_version ?? 0) + 1;
             emit(id, { name: 'prototype.updated', data: { spec_version: build.spec_version } });
             setStage(build, 'prototype');
@@ -798,13 +1253,13 @@ export function createMockApi(): ApiClient {
       respond(() => {
         const doc = findBuild(id).docs.find((d) => d.path === path);
         if (!doc) throw new ApiError(404, 'doc_not_found', `There's no ${path} in this build. Generate the plan first.`);
-        return `# ${doc.title}\n\n*${doc.type}* · mock document for \`${doc.path}\`.\n\n- Written by the planner from the interview.\n- Shown read-only here.\n`;
+        return `# ${doc.title}\n\n*${doc.type}* · mock document for \`${doc.path}\`.\n\n- Written from the confirmed context, outline, design and blueprint.\n- Shown read-only here.\n`;
       }),
 
     getSpec: (id) =>
       respond(() => {
         const build = findBuild(id);
-        if (build.spec_version === null) throw new ApiError(404, 'spec_not_found', 'There is no spec yet. Generate the plan first.');
+        if (build.spec_version === null) throw new ApiError(404, 'spec_not_found', 'There is no spec yet. Accept the blueprint first.');
         return { spec_version: build.spec_version };
       }),
 
@@ -868,7 +1323,8 @@ export function createMockApi(): ApiClient {
     compileRecipe: (id) =>
       respond(() => {
         const build = findBuild(id);
-        if (build.spec_version === null) throw new ApiError(409, 'wrong_stage', 'Generate the plan before the recipe.', { stage: build.stage });
+        if (build.spec_version === null) throw new ApiError(409, 'wrong_stage', 'Accept the blueprint before the recipe.', { stage: build.stage });
+        requireConfirmed(build);
         return fixtures.recipe;
       }),
 
@@ -883,6 +1339,7 @@ export function createMockApi(): ApiClient {
           throw new ApiError(424, 'engine_not_signed_in', agentMode() ? "Run dsengine login on the agent's machine, then build again." : 'Sign in to Google first, then build again.');
         }
         requireStage(build, ['prototype'], 'Build from the Prototype stage.');
+        requireConfirmed(build);
         const version = build.versions.find((v) => v.n === build.current_version);
         state.engineBusy = true;
         setStage(build, 'build');

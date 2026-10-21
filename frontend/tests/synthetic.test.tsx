@@ -12,7 +12,7 @@ import { DoneStage } from '../src/features/history/DoneStage';
 import { WorkspaceShell } from '../src/features/workspace/WorkspaceShell';
 import { BuildStage } from '../src/features/workspace/build/BuildStage';
 import { idleRun } from '../src/features/workspace/build/buildRun';
-import { useBuildStream } from '../src/features/workspace/chat/useBuildStream';
+import { useBuildStream } from '../src/features/activity/useBuildStream';
 import { ConnectStage } from '../src/features/workspace/connect/ConnectStage';
 import { POLL_MS, SYNTHETIC_LABEL, SyntheticDataPanel } from '../src/features/workspace/connect/SyntheticDataPanel';
 import { PrototypeStage } from '../src/features/workspace/prototype/PrototypeStage';
@@ -96,7 +96,7 @@ describe('Schema proposal', () => {
     const build = await setup('recreate');
     const reference = (await api.getReferences(build.id))!;
     const propose = vi.spyOn(api, 'proposeSyntheticSchema');
-    const sideEffects = (['decideFeasibility', 'compileRecipe', 'runBuild', 'startInterview', 'generatePlan'] as const).map((name) => vi.spyOn(api, name));
+    const sideEffects = (['decideFeasibility', 'compileRecipe', 'runBuild', 'draftContext', 'acceptBlueprint'] as const).map((name) => vi.spyOn(api, name));
     await openSampleData();
     const button = within(panel()).getByRole('button', { name: 'Propose schema' });
     act(() => {
@@ -152,7 +152,7 @@ describe('Schema editor', () => {
   it('works with no image: hand-written columns generate with proposal_id null, 1000 rows and seed 42', async () => {
     const build = await setup();
     const generate = vi.spyOn(api, 'generateSyntheticData');
-    const sideEffects = (['decideFeasibility', 'compileRecipe', 'runBuild', 'startInterview', 'generatePlan'] as const).map((name) => vi.spyOn(api, name));
+    const sideEffects = (['decideFeasibility', 'compileRecipe', 'runBuild', 'draftContext', 'acceptBlueprint'] as const).map((name) => vi.spyOn(api, name));
     await openSampleData();
     expect(within(panel()).getByText(/No reference yet/)).toBeTruthy();
     expect(rowsBox().value).toBe('1000');
@@ -173,8 +173,8 @@ describe('Schema editor', () => {
     const [name, kind] = within(within(sources).getAllByRole('row')[1]!).getAllByRole('cell');
     expect([name!.firstElementChild!.firstElementChild!.textContent, kind!.textContent]).toEqual(['Synthetic sample data', 'Synthetic sample data']);
     expect(screen.queryByRole('region', { name: 'Sample data' })).toBeNull();
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Start interview' }));
-    expect(screen.getByText('Synthetic sample data added. Review it under Sources, then start the interview.')).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Draft context' }));
+    expect(screen.getByText('Synthetic sample data added. Review it under Sources, then draft the context.')).toBeTruthy();
     for (const spy of sideEffects) expect(spy).not.toHaveBeenCalled();
   });
 
@@ -448,7 +448,7 @@ describe('Job status recovery', () => {
     expect(generate).toHaveBeenCalledTimes(1);
     expect(status).toHaveBeenCalledWith(build.id, sent(generate, 0).generation_key);
     expect(screen.queryByRole('alert')).toBeNull();
-    expect(screen.getByText('Synthetic sample data added. Review it under Sources, then start the interview.')).toBeTruthy();
+    expect(screen.getByText('Synthetic sample data added. Review it under Sources, then draft the context.')).toBeTruthy();
   });
 
   it('(2) polls an active job every 2 s, shows its stage, and stops on a terminal state', async () => {
@@ -714,7 +714,7 @@ describe('Synthetic labels after Connect', () => {
 
 describe('After a successful generation', () => {
   const effects = () =>
-    (['decideFeasibility', 'checkFeasibility', 'compileRecipe', 'runBuild', 'startInterview', 'generatePlan', 'postComments'] as const).map((name) =>
+    (['decideFeasibility', 'checkFeasibility', 'compileRecipe', 'runBuild', 'draftContext', 'acceptBlueprint', 'postComments'] as const).map((name) =>
       vi.spyOn(api, name),
     );
 

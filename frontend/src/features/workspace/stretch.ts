@@ -2,7 +2,7 @@
 // The three stretch routes may be missing on the backend: a 404 hides the control instead of erroring.
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { ApiError, type BuildEvent, type RunAccepted } from '../../api/types';
-import type { NodeRun, StretchNode, StretchRuns } from './chat/useBuildStream';
+import type { NodeRun, StretchNode, StretchRuns } from '../activity/useBuildStream';
 
 /** The control disables itself while its action runs, which drops focus to the body: put it back when it ends. */
 export function useRefocusAfter(busy: boolean, target: RefObject<HTMLElement | null>): void {

@@ -7,7 +7,7 @@ import { UPLOAD_LIMIT_BYTES, type Build } from '../src/api/types';
 import { SettingsModal } from '../src/features/settings/SettingsModal';
 import { BuildStage } from '../src/features/workspace/build/BuildStage';
 import { agentCommand } from '../src/features/workspace/build/EnginePanel';
-import { useBuildStream } from '../src/features/workspace/chat/useBuildStream';
+import { useBuildStream } from '../src/features/activity/useBuildStream';
 import { ConnectStage } from '../src/features/workspace/connect/ConnectStage';
 import { MOCK_ACCESS_CODE, resetMockState, setMockEngine } from '../src/mocks/api';
 import { fixtures } from '../src/mocks/fixtures';

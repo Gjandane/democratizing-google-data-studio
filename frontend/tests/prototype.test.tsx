@@ -6,13 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, httpApi } from '../src/api/client';
 import type { OpenBuildEvents, StreamHandlers } from '../src/api/events';
 import { ApiError, type Build, type BuildEvent } from '../src/api/types';
-import { InterviewStage } from '../src/features/workspace/chat/InterviewStage';
-import { useBuildStream } from '../src/features/workspace/chat/useBuildStream';
+import { useBuildStream } from '../src/features/activity/useBuildStream';
 import { ConnectStage } from '../src/features/workspace/connect/ConnectStage';
 import { PrototypeStage } from '../src/features/workspace/prototype/PrototypeStage';
 import { openReferencePanel } from '../src/features/workspace/stretch';
 import { fixtures } from '../src/mocks/fixtures';
-import { resetMockState, setMockAssessment } from '../src/mocks/api';
+import { patchMockBuild, resetMockState, setMockAssessment } from '../src/mocks/api';
 
 beforeEach(() => resetMockState());
 afterEach(() => {
@@ -325,20 +324,20 @@ describe('Prototype stage', () => {
 });
 
 describe('Stale prototype', () => {
-  it('guards the actual shell Replan action while unsent draft comments exist', async () => {
+  it('guards the actual shell Regenerate blueprint action while unsent draft comments exist', async () => {
     setMockAssessment(fixtures.build.id, fixtures.feasibilityStale);
-    const plan = vi.spyOn(api, 'generatePlan');
+    const plan = vi.spyOn(api, 'regenerateBlueprint');
     render(<MemoryRouter initialEntries={[`/builds/${fixtures.build.id}`]}><Routes><Route path="/builds/:id" element={<WorkspaceShell />} /></Routes></MemoryRouter>);
-    await screen.findByRole('button', { name: 'Replan' });
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Replan' }).matches(':disabled')).toBe(false));
+    await screen.findByRole('button', { name: 'Regenerate blueprint' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Regenerate blueprint' }).matches(':disabled')).toBe(false));
     loadFrame();
     comment('Revenue (scorecard)', 'An unsent edit');
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Replan' }).matches(':disabled')).toBe(true));
-    fireEvent.click(screen.getByRole('button', { name: 'Replan' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Regenerate blueprint' }).matches(':disabled')).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate blueprint' }));
     expect(plan).not.toHaveBeenCalled();
-    expect(screen.getByText('Apply or remove your draft comments before replanning.')).toBeTruthy();
+    expect(screen.getByText('Apply or remove your draft comments before regenerating the blueprint.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Remove comment 1' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Replan' }).matches(':disabled')).toBe(false));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Regenerate blueprint' }).matches(':disabled')).toBe(false));
   });
 
   it('keeps the Stale label outside the shared canvas so target/pin geometry is unchanged', () => {
@@ -370,7 +369,7 @@ describe('References fold (task 12.1)', () => {
   const details = () => screen.getByRole('region', { name: 'References' }).querySelector('details')!;
   const shell = () => render(<MemoryRouter initialEntries={[`/builds/${fixtures.build.id}`]}><Routes><Route path="/builds/:id" element={<WorkspaceShell />} /></Routes></MemoryRouter>);
 
-  it('starts collapsed on Prototype and open on Connect and Interview', async () => {
+  it('starts collapsed on Prototype and open on Connect and the artifact stages', async () => {
     render(<PrototypeStage build={fixtures.build} applying={false} commentsError={null} />);
     expect(details().open).toBe(false);
     cleanup();
@@ -378,16 +377,18 @@ describe('References fold (task 12.1)', () => {
     render(<ConnectStage build={created} onBuildChange={() => {}} />);
     expect(details().open).toBe(true);
     cleanup();
-    render(<InterviewStage build={{ ...fixtures.build, stage: 'interview' }} messages={[]} />);
+    patchMockBuild(fixtures.build.id, { stage: 'outline', artifacts: { ...fixtures.build.artifacts, outline: 'draft', design: 'stale', blueprint: 'stale' } });
+    shell();
+    await screen.findByRole('button', { name: 'Confirm outline' });
     expect(details().open).toBe(true);
   });
 
-  it('opens from chat Attach reference on Prototype and focuses the panel', async () => {
+  it('opens on request (the sample-data Attach reference) on Prototype and focuses the panel', async () => {
     shell();
     const style = await screen.findByRole('radio', { name: 'Use style' });
     await waitFor(() => expect(style.matches(':disabled')).toBe(false));
     expect(details().open).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Attach reference' }));
+    act(() => openReferencePanel(fixtures.build.id));
     expect(details().open).toBe(true);
     expect(document.activeElement).toBe(style);
   });

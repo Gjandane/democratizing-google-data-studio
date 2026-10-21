@@ -25,8 +25,8 @@ export interface ActivityRun {
   /** The step that was current when the run failed. */
   failedStep: number | null;
   /**
-   * Chat messages known when the run started: its card sits after them, so later messages render
-   * below it. null while the chat's first load hasn't landed (the card then goes after all of it).
+   * Activity messages known when the run started: its card sits after them, so later messages render
+   * below it. null while the log's first load hasn't landed (the card then goes after all of it).
    */
   after: number | null;
 }

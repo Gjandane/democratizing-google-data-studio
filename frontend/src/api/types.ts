@@ -1,4 +1,4 @@
-// Types and runtime guards for ../contracts/api.md 1.5 (and the dashboard-intent and synthetic-data
+// Types and runtime guards for ../contracts/api.md 2.0 (and the dashboard-intent and synthetic-data
 // contracts it cites). Names in the "Types" blocks are used exactly; the rest are named after their
 // endpoint or event.
 // A guard accepts exactly the contract's keys with the contract's JSON types (extra keys fail),
@@ -33,7 +33,7 @@ function oneOf<const T extends readonly string[]>(values: T): Guard<T[number]> {
     fail(path, problems, `expected one of ${values.join(' | ')}, got ${JSON.stringify(v)}`);
 }
 
-function nullable<T>(guard: Guard<T>): Guard<T | null> {
+export function nullable<T>(guard: Guard<T>): Guard<T | null> {
   return (v, path = '$', problems): v is T | null => v === null || guard(v, path, problems);
 }
 
@@ -75,7 +75,12 @@ export function problemsOf<T>(guard: Guard<T>, value: unknown, path = '$'): stri
 
 // ---------- Contract types ----------
 
-export const STAGES = ['connect', 'interview', 'plan', 'prototype', 'build', 'done'] as const;
+/** The order of the workflow (api.md 2.0, Staged workflow endpoints). */
+export const STAGES = ['connect', 'context', 'outline', 'design', 'blueprint', 'prototype', 'build', 'done'] as const;
+/** The four confirmed artifacts, in workflow order; each is produced in the stage of the same name. */
+export const ARTIFACTS = ['context', 'outline', 'design', 'blueprint'] as const;
+export const ARTIFACT_STATES = ['missing', 'draft', 'confirmed', 'stale'] as const;
+export const AGGS = ['sum', 'avg', 'count', 'count_distinct', 'min', 'max'] as const;
 export const ARCHETYPES = ['executive', 'storytelling', 'operational', 'analytical'] as const;
 export const MODES = ['data', 'research'] as const;
 export const COLUMN_TYPES = ['string', 'number', 'date', 'datetime', 'boolean', 'geo'] as const;
@@ -88,6 +93,9 @@ export type Archetype = (typeof ARCHETYPES)[number];
 export type Mode = (typeof MODES)[number];
 export type ColumnType = (typeof COLUMN_TYPES)[number];
 export type SourceKind = (typeof SOURCE_KINDS)[number];
+export type ArtifactName = (typeof ARTIFACTS)[number];
+export type ArtifactState = (typeof ARTIFACT_STATES)[number];
+export type Agg = (typeof AGGS)[number];
 
 export interface Column {
   name: string;
@@ -233,8 +241,9 @@ export interface Build {
   current_version: number;
   versions: Version[];
   report_url: string | null;
-  /** The interview has enough to plan. */
-  ready_for_plan: boolean;
+  /** The user's "about this data" text. */
+  notes: string | null;
+  artifacts: Record<ArtifactName, ArtifactState>;
 }
 
 export type BuildSummary = Pick<Build, 'id' | 'title' | 'archetype' | 'stage' | 'updated_at' | 'report_url'>;
@@ -277,6 +286,165 @@ export interface Settings {
   google_api_key_set: boolean;
 }
 
+// Staged workflow artifacts (api.md 2.0, Staged workflow endpoints). Colors are `#RRGGBB`.
+
+export interface ValidationIssue {
+  /** JSON pointer into the artifact. */
+  path: string;
+  message: string;
+}
+
+export interface DerivedField {
+  /** snake_case, unique across base and derived fields. */
+  name: string;
+  /** BigQuery row-level SQL over base columns; no aggregates. */
+  expression: string;
+  type: ColumnType;
+  description: string;
+}
+
+export interface Kpi {
+  /** snake_case */
+  id: string;
+  name: string;
+  description: string;
+  unit: string | null;
+  /** Exactly one of `measure` and `ratio` is non-null. */
+  measure: { field: string; agg: Agg } | null;
+  /** Kpi ids. */
+  ratio: { numerator: string; denominator: string } | null;
+}
+
+export interface Threshold {
+  id: string;
+  name: string;
+  field: string;
+  operator: '>' | '>=' | '<' | '<=' | '=';
+  value: number;
+  unit: string | null;
+  description: string;
+}
+
+export interface Term {
+  term: string;
+  definition: string;
+}
+
+export interface Context {
+  revision: number;
+  title: string;
+  goal: string;
+  audience: string | null;
+  datasets: { source_id: string; summary: string }[];
+  derived_fields: DerivedField[];
+  kpis: Kpi[];
+  thresholds: Threshold[];
+  glossary: Term[];
+  /** Code checks; confirm needs []. */
+  issues: ValidationIssue[];
+}
+
+export interface OutlineQuestion {
+  /** q1, q2 ... stable */
+  id: string;
+  text: string;
+  rationale: string;
+  recommended: boolean;
+  selected: boolean;
+  kpi_refs: string[];
+  origin: 'proposed' | 'suggested' | 'other';
+}
+
+export interface OutlineSection {
+  /** s1 ... */
+  id: string;
+  title: string;
+  purpose: string;
+  questions: OutlineQuestion[];
+}
+
+export interface Outline {
+  revision: number;
+  sections: OutlineSection[];
+}
+
+export interface ThemePreset {
+  id: string;
+  name: string;
+  description: string;
+  archetypes: Archetype[];
+  background: string;
+  surface: string;
+  text: string;
+  muted: string;
+  accent: string;
+  palette: string[];
+  font_family: string;
+  radius: number;
+  decoration_kit: string;
+}
+
+export interface Design {
+  revision: number;
+  preset_id: string;
+  background: string;
+  surface: string;
+  text: string;
+  accent: string;
+  /** 3-8 colors. */
+  palette: string[];
+  /** One of the presets' fonts. */
+  font_family: string;
+  page_structure: 'single' | 'per_section';
+  density: 'comfortable' | 'compact';
+  title: string;
+  subtitle: string | null;
+  source: 'preset' | 'user' | 'reference';
+  issues: ValidationIssue[];
+}
+
+export interface BlueprintComponent {
+  /** A catalog type allowed by DSS_ALLOWED_TYPES. */
+  type: string;
+  label: string;
+  dimensions: string[];
+  metrics: { field: string; agg: Agg | 'none' }[];
+  date_dimension: string | null;
+  breakdown: string | null;
+  sort: { field: string; order: 'asc' | 'desc' } | null;
+  options: Record<string, unknown>;
+}
+
+export interface BlueprintRow {
+  /** null for a supporting control. */
+  question_id: string | null;
+  section_id: string;
+  /** 1-based */
+  page: number;
+  component: BlueprintComponent;
+  note: string;
+  status: 'ok' | 'blocked';
+  issue_ids: string[];
+}
+
+export interface ViewSources {
+  /** Source id. */
+  base: string;
+  joins: { source_id: string; on: { left: string; right: string }[] }[];
+  /** Source ids stacked under base; joins and union are never both non-empty. */
+  union: string[];
+}
+
+export interface Blueprint {
+  revision: number;
+  view_sources: ViewSources;
+  derived_fields: DerivedField[];
+  rows: BlueprintRow[];
+  /** project.dataset.table, after a dry run passes. */
+  view_table: string | null;
+  assessment_id: string | null;
+}
+
 // ---------- Request and response bodies ----------
 
 /** PUT /api/settings: partial fields, plus the write-only key. */
@@ -300,11 +468,14 @@ export interface RunAccepted {
   run_id: string;
 }
 
-/** 202 body of POST /api/builds/{id}/messages. */
-export interface MessageAccepted {
-  run_id: string;
-  /** The user message's id. */
-  message_id: string;
+/** PUT /api/builds/{id}/context: code fills `issues` and bumps `revision`. */
+export type ContextUpdate = Omit<Context, 'revision' | 'issues'>;
+/** PUT /api/builds/{id}/design */
+export type DesignUpdate = Omit<Design, 'revision' | 'issues'>;
+/** One entry of PUT /api/builds/{id}/outline/selection (1-100 per call). */
+export interface QuestionSelection {
+  id: string;
+  selected: boolean;
 }
 
 /** 201 body of POST /api/builds/{id}/sources/upload. */
@@ -429,6 +600,12 @@ export function specFieldErrors(error: ApiError): SpecFieldError[] {
   });
 }
 
+/** The open issues of a `409 artifact_invalid` (`detail.issues`); malformed entries are skipped. */
+export function artifactIssues(error: ApiError): ValidationIssue[] {
+  const items = Array.isArray(error.detail.issues) ? (error.detail.issues as unknown[]) : [];
+  return items.flatMap((item) => (isRecord(item) && typeof item.path === 'string' && typeof item.message === 'string' ? [{ path: item.path, message: item.message }] : []));
+}
+
 // ---------- Guards ----------
 
 export const isStage = oneOf(STAGES);
@@ -477,7 +654,13 @@ export const isBuild = shape<Build>({
   current_version: isInt,
   versions: arrayOf(isVersion),
   report_url: nullable(isString),
-  ready_for_plan: isBoolean,
+  notes: nullable(isString),
+  artifacts: shape<Build['artifacts']>({
+    context: oneOf(ARTIFACT_STATES),
+    outline: oneOf(ARTIFACT_STATES),
+    design: oneOf(ARTIFACT_STATES),
+    blueprint: oneOf(ARTIFACT_STATES),
+  }),
 });
 
 export const isBuildSummary = shape<BuildSummary>({
@@ -618,8 +801,117 @@ export const isSettings = shape<Settings>({
   google_api_key_set: isBoolean,
 });
 
+export const isValidationIssue = shape<ValidationIssue>({ path: isString, message: isString });
+export const isDerivedField = shape<DerivedField>({ name: isString, expression: isString, type: oneOf(COLUMN_TYPES), description: isString });
+export const isKpi = shape<Kpi>({
+  id: isString,
+  name: isString,
+  description: isString,
+  unit: nullable(isString),
+  measure: nullable(shape<NonNullable<Kpi['measure']>>({ field: isString, agg: oneOf(AGGS) })),
+  ratio: nullable(shape<NonNullable<Kpi['ratio']>>({ numerator: isString, denominator: isString })),
+});
+export const isThreshold = shape<Threshold>({
+  id: isString,
+  name: isString,
+  field: isString,
+  operator: oneOf(['>', '>=', '<', '<=', '=']),
+  value: isNumber,
+  unit: nullable(isString),
+  description: isString,
+});
+export const isContext = shape<Context>({
+  revision: isInt,
+  title: isString,
+  goal: isString,
+  audience: nullable(isString),
+  datasets: arrayOf(shape<Context['datasets'][number]>({ source_id: isString, summary: isString })),
+  derived_fields: arrayOf(isDerivedField),
+  kpis: arrayOf(isKpi),
+  thresholds: arrayOf(isThreshold),
+  glossary: arrayOf(shape<Term>({ term: isString, definition: isString })),
+  issues: arrayOf(isValidationIssue),
+});
+export const isOutlineQuestion = shape<OutlineQuestion>({
+  id: isString,
+  text: isString,
+  rationale: isString,
+  recommended: isBoolean,
+  selected: isBoolean,
+  kpi_refs: arrayOf(isString),
+  origin: oneOf(['proposed', 'suggested', 'other']),
+});
+export const isOutline = shape<Outline>({
+  revision: isInt,
+  sections: arrayOf(shape<OutlineSection>({ id: isString, title: isString, purpose: isString, questions: arrayOf(isOutlineQuestion) })),
+});
+export const isThemePreset = shape<ThemePreset>({
+  id: isString,
+  name: isString,
+  description: isString,
+  archetypes: arrayOf(isArchetype),
+  background: isString,
+  surface: isString,
+  text: isString,
+  muted: isString,
+  accent: isString,
+  palette: arrayOf(isString),
+  font_family: isString,
+  radius: isInt,
+  decoration_kit: isString,
+});
+export const isDesign = shape<Design>({
+  revision: isInt,
+  preset_id: isString,
+  background: isString,
+  surface: isString,
+  text: isString,
+  accent: isString,
+  palette: arrayOf(isString),
+  font_family: isString,
+  page_structure: oneOf(['single', 'per_section']),
+  density: oneOf(['comfortable', 'compact']),
+  title: isString,
+  subtitle: nullable(isString),
+  source: oneOf(['preset', 'user', 'reference']),
+  issues: arrayOf(isValidationIssue),
+});
+export const isBlueprintComponent = shape<BlueprintComponent>({
+  type: isString,
+  label: isString,
+  dimensions: arrayOf(isString),
+  metrics: arrayOf(shape<BlueprintComponent['metrics'][number]>({ field: isString, agg: oneOf([...AGGS, 'none']) })),
+  date_dimension: nullable(isString),
+  breakdown: nullable(isString),
+  sort: nullable(shape<NonNullable<BlueprintComponent['sort']>>({ field: isString, order: oneOf(['asc', 'desc']) })),
+  options: isObject,
+});
+export const isBlueprintRow = shape<BlueprintRow>({
+  question_id: nullable(isString),
+  section_id: isString,
+  page: isInt,
+  component: isBlueprintComponent,
+  note: isString,
+  status: oneOf(['ok', 'blocked']),
+  issue_ids: arrayOf(isString),
+});
+export const isBlueprint = shape<Blueprint>({
+  revision: isInt,
+  view_sources: shape<ViewSources>({
+    base: isString,
+    joins: arrayOf(shape<ViewSources['joins'][number]>({
+      source_id: isString,
+      on: arrayOf(shape<ViewSources['joins'][number]['on'][number]>({ left: isString, right: isString })),
+    })),
+    union: arrayOf(isString),
+  }),
+  derived_fields: arrayOf(isDerivedField),
+  rows: arrayOf(isBlueprintRow),
+  view_table: nullable(isString),
+  assessment_id: nullable(isString),
+});
+
 export const isRunAccepted = shape<RunAccepted>({ run_id: isString });
-export const isMessageAccepted = shape<MessageAccepted>({ run_id: isString, message_id: isString });
 export const isSourcesUploaded = shape<SourcesUploaded>({ sources: arrayOf(isSource) });
 export const isRecipeOp = shape<RecipeOp>({ op_id: isString, line: isString });
 export const isRecipe = shape<Recipe>({ op_count: isInt, ops: arrayOf(isRecipeOp) });
@@ -664,6 +956,8 @@ export interface BuildEventMap {
   'message.done': { message: Message };
   'stage.changed': { stage: Stage };
   'build.updated': { build: Build };
+  /** Follows every artifact write: the client refetches that artifact. */
+  'artifact.updated': { artifact: ArtifactName; revision: number };
   'run.started': { run_id: string; node: string };
   /** The run's token totals so far; they only grow within a run. */
   'run.usage': { run_id: string; node: string; input_tokens: number; output_tokens: number };
@@ -691,6 +985,7 @@ export const buildEventGuards: { [K in BuildEventName]: Guard<M[K]> } = {
   'message.done': shape<M['message.done']>({ message: isMessage }),
   'stage.changed': shape<M['stage.changed']>({ stage: isStage }),
   'build.updated': shape<M['build.updated']>({ build: isBuild }),
+  'artifact.updated': shape<M['artifact.updated']>({ artifact: oneOf(ARTIFACTS), revision: isInt }),
   'run.started': shape<M['run.started']>({ run_id: isString, node: isString }),
   'run.usage': shape<M['run.usage']>({ run_id: isString, node: isString, input_tokens: isInt, output_tokens: isInt }),
   'node.progress': shape<M['node.progress']>({ run_id: isString, node: isString, text: isString }),

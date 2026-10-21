@@ -1,0 +1,421 @@
+// The four artifact stages (context, outline, design, blueprint) in one frame: load, refetch on
+// `artifact.updated`, a read-only summary, and the stage's confirm and secondary actions.
+// Tasks 14.2-14.5 replace each summary with its editor; the frame, states and actions stay.
+import { Check, Circle, FileQuestion } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { api } from '../../api/client';
+import {
+  ApiError,
+  artifactIssues,
+  STAGES,
+  type ArtifactName,
+  type Blueprint,
+  type Build,
+  type Context,
+  type Design,
+  type Outline,
+  type Stage,
+  type ValidationIssue,
+} from '../../api/types';
+import { Button } from '../../components/Button';
+import { EmptyState } from '../../components/EmptyState';
+import { ErrorState } from '../../components/ErrorState';
+import { LoadingState } from '../../components/Spinner';
+import { presetFor } from '../activity/presets';
+import type { BuildStream, RunErrorNode } from '../activity/useBuildStream';
+import { StageFrame } from './StageFrame';
+import { STAGE_LABELS, staleCause } from './Stepper';
+
+interface Values {
+  context: Context;
+  outline: Outline;
+  design: Design;
+  blueprint: Blueprint;
+}
+type Load<T> = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; value: T | null };
+
+const FETCH: { [K in ArtifactName]: (buildId: string) => Promise<Values[K] | null> } = {
+  context: (id) => api.getContext(id),
+  outline: (id) => api.getOutline(id),
+  design: (id) => api.getDesign(id),
+  blueprint: (id) => api.getBlueprint(id),
+};
+
+/** Most selected questions a confirm accepts (api.md 2.0, outline/confirm). */
+export const MAX_SELECTED = 24;
+
+const selectedCount = (outline: Outline) => outline.sections.reduce((n, s) => n + s.questions.filter((q) => q.selected).length, 0);
+
+interface StageCopy {
+  lead: string;
+  empty: string;
+  confirm: string;
+  secondary: string;
+  /** Stages where the secondary action is allowed. */
+  secondaryIn: readonly Stage[];
+  /** Runs whose failure shows here, with the action that retries each. */
+  runs: readonly RunErrorNode[];
+}
+
+const COPY: Record<ArtifactName, StageCopy> = {
+  context: {
+    lead: 'Check the KPIs, derived fields and thresholds drafted from your data, then confirm.',
+    empty: 'The draft shows up here when the context run finishes.',
+    confirm: 'Confirm context',
+    secondary: 'Redraft',
+    secondaryIn: ['connect', 'context'],
+    runs: ['context'],
+  },
+  outline: {
+    lead: 'Pick the questions the dashboard answers, then confirm.',
+    empty: 'Proposed questions show up here when the outline run finishes.',
+    confirm: 'Confirm outline',
+    secondary: 'Re-propose',
+    secondaryIn: ['outline'],
+    runs: ['outline_propose', 'outline_other', 'outline_suggest'],
+  },
+  design: {
+    lead: 'Choose colors, font and page structure, then confirm.',
+    empty: 'The design is prefilled when you confirm the outline.',
+    confirm: 'Confirm design',
+    secondary: 'Reset to preset',
+    secondaryIn: ['design'],
+    runs: [],
+  },
+  blueprint: {
+    lead: 'Check the chart chosen for each question, then accept to render the prototype.',
+    empty: 'The blueprint shows up here when the blueprint run finishes.',
+    confirm: 'Accept blueprint',
+    secondary: 'Regenerate',
+    secondaryIn: ['blueprint', 'prototype'],
+    runs: ['blueprint', 'prototype'],
+  },
+};
+
+const errorText = (error: unknown, fallback: string) => (error instanceof ApiError ? error.message : fallback);
+const mono = 'font-mono text-label text-text-muted';
+const sectionTitle = 'mt-5 mb-2 text-title font-semibold text-text';
+
+function Issues({ issues }: { issues: ValidationIssue[] }) {
+  if (issues.length === 0) return null;
+  return (
+    <ul aria-label="Open issues" className="mt-4 space-y-1 rounded-control border border-danger bg-danger-soft px-3 py-2">
+      {issues.map((issue, i) => (
+        <li key={i} className="text-body text-text [overflow-wrap:anywhere]">
+          <code className={mono}>{issue.path}</code> {issue.message}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ContextSummary({ context }: { context: Context }) {
+  return (
+    <>
+      <dl className="mt-4 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1 text-body">
+        <dt className="text-text-muted">Title</dt>
+        <dd className="text-text">{context.title}</dd>
+        <dt className="text-text-muted">Goal</dt>
+        <dd className="text-text">{context.goal}</dd>
+        <dt className="text-text-muted">Audience</dt>
+        <dd className="text-text">{context.audience ?? 'Not set'}</dd>
+      </dl>
+      <h3 className={sectionTitle}>Datasets</h3>
+      <ul className="space-y-1 text-body text-text">
+        {context.datasets.map((d) => (
+          <li key={d.source_id}>
+            <code className={mono}>{d.source_id}</code> {d.summary}
+          </li>
+        ))}
+      </ul>
+      <h3 className={sectionTitle}>KPIs</h3>
+      <ul className="space-y-1 text-body text-text">
+        {context.kpis.map((kpi) => (
+          <li key={kpi.id}>
+            <span className="font-medium">{kpi.name}</span>{' '}
+            <code className={mono}>
+              {kpi.measure ? `${kpi.measure.agg.toUpperCase()}(${kpi.measure.field})` : kpi.ratio ? `${kpi.ratio.numerator} / ${kpi.ratio.denominator}` : 'no definition'}
+            </code>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-4 text-body text-text-muted">
+        {context.derived_fields.length} derived fields · {context.thresholds.length} thresholds · {context.glossary.length} glossary terms
+      </p>
+      <Issues issues={context.issues} />
+    </>
+  );
+}
+
+function OutlineSummary({ outline }: { outline: Outline }) {
+  return (
+    <>
+      {outline.sections.map((section) => (
+        <section key={section.id} aria-labelledby={`outline-${section.id}`}>
+          <h3 id={`outline-${section.id}`} className={sectionTitle}>
+            {section.title}{' '}
+            <span className="text-label font-normal text-text-muted">
+              {section.questions.filter((q) => q.selected).length} of {section.questions.length} selected
+            </span>
+          </h3>
+          <ul className="space-y-1">
+            {section.questions.map((q) => (
+              <li key={q.id} className="flex items-start gap-2 text-body text-text">
+                {q.selected ? <Check aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-primary" /> : <Circle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-text-muted" />}
+                <span className="min-w-0">
+                  {q.text}
+                  <span className="sr-only">{q.selected ? ' (selected)' : ' (not selected)'}</span>
+                  {q.recommended && <span className="ml-2 text-caption font-medium text-primary">Recommended</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </>
+  );
+}
+
+/** A user-chosen color: shown only as a data swatch (inline style), always with its hex as text. */
+function Swatch({ color, name }: { color: string; name?: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span aria-hidden="true" className="size-4 shrink-0 rounded-control border border-border" style={{ backgroundColor: color }} />
+      <code className={mono}>{name ? `${name} ${color}` : color}</code>
+    </span>
+  );
+}
+
+function DesignSummary({ design }: { design: Design }) {
+  return (
+    <>
+      <dl className="mt-4 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-body">
+        <dt className="text-text-muted">Preset</dt>
+        <dd><code className={mono}>{design.preset_id}</code>{design.source === 'reference' && <span className="ml-2 text-label text-text-muted">From your reference</span>}</dd>
+        <dt className="text-text-muted">Colors</dt>
+        <dd className="flex flex-wrap gap-3">
+          <Swatch name="background" color={design.background} />
+          <Swatch name="surface" color={design.surface} />
+          <Swatch name="text" color={design.text} />
+          <Swatch name="accent" color={design.accent} />
+        </dd>
+        <dt className="text-text-muted">Palette</dt>
+        <dd className="flex flex-wrap gap-3">{design.palette.map((c, i) => <Swatch key={i} color={c} />)}</dd>
+        <dt className="text-text-muted">Font</dt>
+        <dd className="text-text">{design.font_family}</dd>
+        <dt className="text-text-muted">Pages</dt>
+        <dd className="text-text">{design.page_structure === 'per_section' ? 'One page per section' : 'A single page'}, {design.density}</dd>
+        <dt className="text-text-muted">Title</dt>
+        <dd className="text-text">{design.title}{design.subtitle && <span className="text-text-muted"> · {design.subtitle}</span>}</dd>
+      </dl>
+      <Issues issues={design.issues} />
+    </>
+  );
+}
+
+function BlueprintSummary({ blueprint }: { blueprint: Blueprint }) {
+  const pages = [...new Set(blueprint.rows.map((r) => r.page))].sort((a, b) => a - b);
+  return (
+    <>
+      {pages.map((page) => (
+        <section key={page} aria-labelledby={`blueprint-page-${page}`}>
+          <h3 id={`blueprint-page-${page}`} className={sectionTitle}>Page {page}</h3>
+          <ul className="space-y-1">
+            {blueprint.rows.filter((r) => r.page === page).map((row, i) => (
+              <li key={i} className="flex items-baseline gap-2 text-body text-text">
+                <span className="min-w-0 flex-1">{row.component.label}</span>
+                <code className={mono}>{row.component.type}</code>
+                <code className={`${mono} w-8`}>{row.question_id ?? ''}</code>
+                <span className={`w-16 text-label font-medium ${row.status === 'blocked' ? 'text-danger' : 'text-success'}`}>{row.status === 'blocked' ? 'Blocked' : 'OK'}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </>
+  );
+}
+
+function Summary({ name, value }: { name: ArtifactName; value: Values[ArtifactName] }) {
+  if (name === 'context') return <ContextSummary context={value as Context} />;
+  if (name === 'outline') return <OutlineSummary outline={value as Outline} />;
+  if (name === 'design') return <DesignSummary design={value as Design} />;
+  return <BlueprintSummary blueprint={value as Blueprint} />;
+}
+
+/** Mount with `key={name}`: its loaded value belongs to one artifact. */
+export function ArtifactStage({
+  build,
+  name,
+  stream,
+  feasibility,
+  acceptReady,
+  onBuildChange,
+  children,
+}: {
+  build: Build;
+  name: ArtifactName;
+  stream: Pick<BuildStream, 'artifactSeq' | 'running' | 'runErrors'>;
+  /** The Feasibility panel, under the header. */
+  feasibility?: ReactNode;
+  /** Blueprint only: feasibility resolved and references ready, so Accept may run. */
+  acceptReady: boolean;
+  onBuildChange: (build: Build) => void;
+  /** More panels at the end of the body (references). */
+  children?: ReactNode;
+}) {
+  const copy = COPY[name];
+  const [load, setLoad] = useState<Load<Values[ArtifactName]>>({ status: 'loading' });
+  const [attempt, setAttempt] = useState(0);
+  const [pending, setPending] = useState<'primary' | 'secondary' | null>(null);
+  const [actionError, setActionError] = useState<{ message: string; issues: ValidationIssue[] } | null>(null);
+  const busy = useRef(false);
+  const mounted = useRef(true);
+  const seq = build.id + name + stream.artifactSeq[name];
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  // A refetch after artifact.updated keeps the old content on screen until the new one lands.
+  useEffect(() => {
+    let active = true;
+    FETCH[name](build.id).then(
+      (value) => {
+        if (active) setLoad({ status: 'ready', value });
+      },
+      (error: unknown) => {
+        if (active) setLoad((current) => (current.status === 'ready' ? current : { status: 'error', message: errorText(error, `Couldn't load the ${name}. Try again.`) }));
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [build.id, name, seq, attempt]);
+
+  const value = load.status === 'ready' ? load.value : null;
+  const state = build.artifacts[name];
+  const here = build.stage === name;
+  const stageAt = STAGES.indexOf(build.stage);
+  const readOnly = build.stage === 'build' || build.stage === 'done';
+  const locked = stream.running !== null || pending !== null || readOnly;
+
+  let valid = value !== null;
+  let status: ReactNode = null;
+  if (value && name === 'context') {
+    const open = (value as Context).issues.length;
+    valid = open === 0;
+    status = open === 0 ? 'No open issues' : open === 1 ? '1 open issue' : `${open} open issues`;
+  } else if (value && name === 'outline') {
+    const n = selectedCount(value as Outline);
+    valid = n >= 1 && n <= MAX_SELECTED;
+    status = n > MAX_SELECTED ? `${n} of ${MAX_SELECTED} selected: ${MAX_SELECTED} at most` : `${n} of ${MAX_SELECTED} selected`;
+  } else if (value && name === 'design') {
+    valid = (value as Design).issues.length === 0;
+    if (!valid) status = 'Fix the open issues to confirm';
+  } else if (value && name === 'blueprint') {
+    const rows = (value as Blueprint).rows;
+    const blocked = rows.filter((r) => r.status === 'blocked').length;
+    valid = acceptReady && rows.some((r) => r.status === 'ok');
+    if (blocked > 0) status = blocked === 1 ? '1 blocked row' : `${blocked} blocked rows`;
+  }
+  // While a run holds the build's lock, the strip's phrase says why everything waits.
+  if (stream.running) status = `${presetFor(stream.running).phrases[0]}…`;
+
+  const confirm = (): Promise<unknown> => {
+    if (name === 'context') return api.confirmContext(build.id);
+    if (name === 'outline') return api.confirmOutline(build.id);
+    if (name === 'design') return api.confirmDesign(build.id);
+    return api.acceptBlueprint(build.id);
+  };
+  const secondary = (): Promise<unknown> => {
+    if (name === 'context') return api.draftContext(build.id);
+    if (name === 'outline') return api.proposeOutline(build.id);
+    if (name === 'design') return api.prefillDesign(build.id);
+    return api.regenerateBlueprint(build.id);
+  };
+
+  const act = async (kind: 'primary' | 'secondary') => {
+    if (busy.current) return;
+    busy.current = true;
+    setPending(kind);
+    setActionError(null);
+    try {
+      const result = await (kind === 'primary' ? confirm() : secondary());
+      if (!mounted.current) return;
+      if (name === 'design' && kind === 'secondary') setLoad({ status: 'ready', value: result as Design });
+      // The action may have moved the stage: read the build in case its stage.changed was missed.
+      try {
+        onBuildChange(await api.getBuild(build.id));
+      } catch {
+        // The stream's next event or reconnect brings it.
+      }
+    } catch (error) {
+      if (!mounted.current) return;
+      const issues = error instanceof ApiError && error.code === 'artifact_invalid' ? artifactIssues(error) : [];
+      setActionError({ message: errorText(error, `${kind === 'primary' ? copy.confirm : copy.secondary} didn't work. Try again.`), issues });
+    } finally {
+      busy.current = false;
+      if (mounted.current) setPending(null);
+    }
+  };
+
+  const runError = copy.runs.map((node) => ({ node, text: stream.runErrors[node] })).find((e) => e.text);
+  const retryNode = runError?.node;
+  const why = state === 'stale' ? staleCause(build, name) : null;
+
+  let body: ReactNode;
+  if (load.status === 'loading') body = <LoadingState className="mt-6">Loading the {name}…</LoadingState>;
+  else if (load.status === 'error')
+    body = <ErrorState className="mt-4" title={`Couldn't load the ${name}`} message={load.message} onRetry={() => { setLoad({ status: 'loading' }); setAttempt((n) => n + 1); }} />;
+  else if (value === null) body = <EmptyState framed className="mt-4" icon={<FileQuestion />} title={`No ${name} yet`} description={copy.empty} headingLevel={3} />;
+  else body = <Summary name={name} value={value} />;
+
+  return (
+    <StageFrame
+      title={STAGE_LABELS[name]}
+      lead={copy.lead}
+      state={state}
+      why={why ? `Changed: ${STAGE_LABELS[why]}` : null}
+      revision={value?.revision ?? null}
+      status={status}
+      secondary={
+        <Button disabled={locked || !copy.secondaryIn.includes(build.stage)} loading={pending === 'secondary'} onClick={() => void act('secondary')}>
+          {copy.secondary}
+        </Button>
+      }
+      primary={
+        <Button variant="primary" disabled={locked || !here || !valid} loading={pending === 'primary'} onClick={() => void act('primary')}>
+          {copy.confirm}
+        </Button>
+      }
+    >
+      {feasibility}
+      {stageAt > STAGES.indexOf(name) && !readOnly && (
+        <p className="mt-4 rounded-control bg-surface-muted px-3 py-2 text-body text-text">
+          You reopened this step. Editing it moves the build back here and marks the later steps stale.
+        </p>
+      )}
+      {runError && retryNode && (
+        <ErrorState
+          className="mt-4"
+          title={retryNode === 'prototype' ? "Couldn't render the prototype" : `The ${STAGE_LABELS[name].toLowerCase()} run failed`}
+          message={runError.text}
+          onRetry={() => void act(retryNode === 'prototype' ? 'primary' : 'secondary')}
+          retryDisabled={locked || (retryNode === 'prototype' ? !here || !valid : !copy.secondaryIn.includes(build.stage))}
+        />
+      )}
+      {actionError && (
+        <div role="alert" className="mt-4">
+          <p className="text-body text-danger">{actionError.message}</p>
+          <Issues issues={actionError.issues} />
+        </div>
+      )}
+      {body}
+      {children}
+    </StageFrame>
+  );
+}

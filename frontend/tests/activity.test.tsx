@@ -5,8 +5,8 @@ import { api } from '../src/api/client';
 import type { OpenBuildEvents, StreamHandlers } from '../src/api/events';
 import type { Build, BuildEvent } from '../src/api/types';
 import { formatTokens } from '../src/features/activity/activity';
-import { ChatPanel } from '../src/features/workspace/chat/ChatPanel';
-import { useBuildStream } from '../src/features/workspace/chat/useBuildStream';
+import { ActivityColumn } from '../src/features/activity/ActivityColumn';
+import { useBuildStream } from '../src/features/activity/useBuildStream';
 import { openMockBuildEvents } from '../src/mocks/events';
 import { fixtures } from '../src/mocks/fixtures';
 import { resetMockState } from '../src/mocks/api';
@@ -41,18 +41,25 @@ function fakeStream() {
 
 function Holder({ initial, open }: { initial: Build; open: OpenBuildEvents }) {
   const [build, setBuild] = useState(initial);
-  const chat = useBuildStream(build, setBuild, open);
-  return <ChatPanel build={build} chat={chat} />;
+  const stream = useBuildStream(build, setBuild, open);
+  return <ActivityColumn build={build} stream={stream} />;
 }
 
 function PropHolder({ build, open }: { build: Build; open: OpenBuildEvents }) {
-  const chat = useBuildStream(build, () => {}, open);
-  return <ChatPanel build={build} chat={chat} />;
+  const stream = useBuildStream(build, () => {}, open);
+  return <ActivityColumn build={build} stream={stream} />;
+}
+
+/** A build in Context with the assistant's first note. */
+async function contextBuild() {
+  const created = await call(api.createBuild({ archetype: 'executive', mode: 'data' }));
+  await call(api.uploadSources(created.id, [new File(['a'], 'sales.csv', { type: 'text/csv' })]));
+  await call(api.draftContext(created.id));
+  return created;
 }
 
 async function setup() {
-  const created = await call(api.createBuild({ archetype: 'executive', mode: 'data' }));
-  await call(api.startInterview(created.id));
+  const created = await contextBuild();
   const build = await call(api.getBuild(created.id));
   const stream = fakeStream();
   const view = render(<Holder initial={build} open={stream.open} />);
@@ -61,9 +68,9 @@ async function setup() {
   const start = (node: string, run_id = 'r_1') => stream.fire({ name: 'run.started', data: { run_id, node } });
   const finish = (node: string, status: 'ok' | 'error' = 'ok', run_id = 'r_1') =>
     stream.fire({ name: 'run.finished', data: { run_id, node, status, error: status === 'ok' ? null : 'Gemini timed out' } });
-  const usage = (input_tokens: number, output_tokens: number, node = 'plan') =>
+  const usage = (input_tokens: number, output_tokens: number, node = 'blueprint') =>
     stream.fire({ name: 'run.usage', data: { run_id: 'r_1', node, input_tokens, output_tokens } });
-  const progress = (text: string, node = 'plan') => stream.fire({ name: 'node.progress', data: { run_id: 'r_1', node, text } });
+  const progress = (text: string, node = 'blueprint') => stream.fire({ name: 'node.progress', data: { run_id: 'r_1', node, text } });
   return { build, view, ...stream, start, finish, usage, progress };
 }
 
@@ -86,11 +93,11 @@ describe('Activity strip', () => {
 
   it('shows the phrase and elapsed time 400 ms after run.started, and live tokens from run.usage', async () => {
     const { start, usage } = await setup();
-    await start('plan');
+    await start('blueprint');
     await advance(399);
     expect(strip()).toBe('');
     await advance(1);
-    expect(strip()).toBe('Reading the data profile · 0:00');
+    expect(strip()).toBe('Choosing the charts · 0:00');
     await advance(65_000);
     expect(strip()).toContain('1:05');
     expect(strip()).not.toContain('tokens');
@@ -102,18 +109,18 @@ describe('Activity strip', () => {
 
   it('rotates the phrase every 4 s', async () => {
     const { start } = await setup();
-    await start('plan');
+    await start('blueprint');
     await advance(400);
-    expect(strip()).toContain('Reading the data profile');
+    expect(strip()).toContain('Choosing the charts');
     await advance(3600);
-    expect(strip()).toContain('Planning the dashboard');
+    expect(strip()).toContain('Mapping the fields');
   });
 
   it('never shows a run that finishes within 400 ms', async () => {
     const { start, finish } = await setup();
-    await start('plan');
+    await start('blueprint');
     await advance(300);
-    await finish('plan');
+    await finish('blueprint');
     for (const ms of [100, 400, 5000]) {
       await advance(ms);
       expect(strip()).toBe('');
@@ -125,11 +132,11 @@ describe('Activity strip', () => {
     expect([formatTokens(950), formatTokens(12_400), formatTokens(92_500), formatTokens(1_234_567)]).toEqual(['950', '12.4k', '92.5k', '1.2M']);
   });
 
-  it('an interview turn shows the strip but no card', async () => {
+  it('an outline_other run shows the strip but no card', async () => {
     const { start } = await setup();
-    await start('interview');
+    await start('outline_other');
     await advance(400);
-    expect(strip()).toContain('Reading your answer');
+    expect(strip()).toContain('Reading your question');
     expect(card()).toBeNull();
   });
 
@@ -155,7 +162,7 @@ describe('Activity strip', () => {
 
   it('the dots animate only without prefers-reduced-motion', async () => {
     const { start } = await setup();
-    await start('plan');
+    await start('blueprint');
     await advance(400);
     const dots = Array.from(document.querySelectorAll<HTMLElement>('[data-dots] > span'));
     expect(dots).toHaveLength(3);
@@ -172,7 +179,7 @@ describe('Activity strip', () => {
     const { open, fire } = fakeStream();
     // Like the workspace route: the same component gets another build.
     const view = render(<PropHolder build={created} open={open} />);
-    await fire({ name: 'run.started', data: { run_id: 'r_1', node: 'plan' } });
+    await fire({ name: 'run.started', data: { run_id: 'r_1', node: 'blueprint' } });
     await advance(400);
     expect(strip()).not.toBe('');
     view.rerender(<PropHolder build={other} open={open} />);
@@ -183,7 +190,7 @@ describe('Activity strip', () => {
 
   it('leaves no timer behind on unmount', async () => {
     const { start, view } = await setup();
-    await start('plan');
+    await start('blueprint');
     await advance(400);
     view.unmount();
     expect(vi.getTimerCount()).toBe(0);
@@ -191,33 +198,30 @@ describe('Activity strip', () => {
 });
 
 describe('Run checklist card', () => {
-  it('lists the plan steps, ticks them on the timer, and ticks the last only on run.finished ok', async () => {
+  it('lists the blueprint steps, ticks them on the timer, and ticks the last only on run.finished ok', async () => {
     const { start, usage, finish } = await setup();
-    await start('plan');
+    await start('blueprint');
     await advance(400);
-    expect(card()?.getAttribute('aria-label')).toBe('Planning the dashboard');
+    expect(card()?.getAttribute('aria-label')).toBe('Drafting the blueprint');
     expect(steps().map((li) => li.querySelector('span:not(.sr-only)')?.textContent)).toEqual([
-      'Reading the data profile',
-      'Writing build docs',
-      'Creating the BigQuery view',
-      'Writing the dashboard spec',
-      'Checking the layout',
-      'Rendering the prototype',
+      'Choosing a chart per question',
+      'Checking feasibility',
+      'Dry-running the BigQuery view',
     ]);
-    expect(statuses()).toEqual(['active', 'pending', 'pending', 'pending', 'pending', 'pending']);
-    await advance(8000);
-    expect(statuses()).toEqual(['done', 'active', 'pending', 'pending', 'pending', 'pending']);
+    expect(statuses()).toEqual(['active', 'pending', 'pending']);
+    await advance(20_000);
+    expect(statuses()).toEqual(['done', 'active', 'pending']);
     await advance(600_000);
-    expect(statuses()).toEqual(['done', 'done', 'done', 'done', 'done', 'active']);
+    expect(statuses()).toEqual(['done', 'done', 'active']);
     await usage(80140, 12360);
-    await finish('plan');
-    expect(statuses()).toEqual(['done', 'done', 'done', 'done', 'done', 'done']);
-    expect(strip()).toBe('Done in 10:08 · 92.5k tokens');
+    await finish('blueprint');
+    expect(statuses()).toEqual(['done', 'done', 'done']);
+    expect(strip()).toBe('Done in 10:20 · 92.5k tokens');
     await advance(4999);
     expect(strip()).toContain('Done in');
     await advance(1);
     expect(strip()).toBe('');
-    expect(statuses()).toEqual(['done', 'done', 'done', 'done', 'done', 'done']);
+    expect(statuses()).toEqual(['done', 'done', 'done']);
   });
 
   it('scrolls the log to the card when it appears, and keeps its ticks out of the live log', async () => {
@@ -225,65 +229,64 @@ describe('Run checklist card', () => {
     const log = screen.getByRole('log');
     Object.defineProperty(log, 'scrollHeight', { configurable: true, value: 1000 });
     log.scrollTop = 0;
-    await start('plan');
+    await start('blueprint');
     await advance(400);
     expect(log.scrollTop).toBe(1000);
     expect(card()?.getAttribute('aria-live')).toBe('off');
     await usage(80140, 12360);
-    await finish('plan');
+    await finish('blueprint');
     expect(document.querySelector('[data-activity-strip] [role="status"]')?.textContent).toBe('Done in 0:00 · 92.5k tokens');
   });
 
   it('run.finished error marks the current step failed and later ones pending', async () => {
     const { start, finish } = await setup();
-    await start('plan');
-    await advance(10_000);
-    await finish('plan', 'error');
-    expect(statuses()).toEqual(['done', 'failed', 'pending', 'pending', 'pending', 'pending']);
-    expect(strip()).toBe('Stopped after 0:10');
+    await start('blueprint');
+    await advance(25_000);
+    await finish('blueprint', 'error');
+    expect(statuses()).toEqual(['done', 'failed', 'pending']);
+    expect(strip()).toBe('Stopped after 0:25');
     await advance(60_000);
-    expect(statuses()).toEqual(['done', 'failed', 'pending', 'pending', 'pending', 'pending']);
+    expect(statuses()).toEqual(['done', 'failed', 'pending']);
   });
 
   it('a node.progress text replaces the current step label', async () => {
     const { start, progress } = await setup();
-    await start('plan');
-    await advance(9000);
-    await progress('Writing questions.md');
+    await start('blueprint');
+    await advance(21_000);
+    await progress('Checking the ratio KPI');
     const labels = steps().map((li) => li.querySelector('span:not(.sr-only)')?.textContent);
-    expect(labels[1]).toBe('Writing questions.md');
-    expect(labels[0]).toBe('Reading the data profile');
+    expect(labels[1]).toBe('Checking the ratio KPI');
+    expect(labels[0]).toBe('Choosing a chart per question');
   });
 
-  it('sits in time order: a message arriving after a finished plan card renders after it', async () => {
+  it('sits in time order: a message arriving after a finished blueprint card renders after it', async () => {
     const { start, finish, fire } = await setup();
-    await start('plan');
+    await start('blueprint');
     await advance(400);
     // A message during the live run goes below the card; the card never moves.
-    await fire({ name: 'message.done', data: { message: { id: 'm_live', role: 'system', text: 'Plan started', node: 'plan', created_at: '2026-10-19T09:00:00Z' } } });
-    await finish('plan');
+    await fire({ name: 'message.done', data: { message: { id: 'm_live', role: 'system', text: 'Blueprint started', node: 'blueprint', created_at: '2026-10-19T09:00:00Z' } } });
+    await finish('blueprint');
     await advance(60_000);
-    await fire({ name: 'message.done', data: { message: { id: 'm_later', role: 'assistant', text: 'A later question', node: 'interview', created_at: '2026-10-19T09:05:00Z' } } });
+    await fire({ name: 'message.done', data: { message: { id: 'm_later', role: 'assistant', text: 'A later explanation', node: 'blueprint', created_at: '2026-10-19T09:05:00Z' } } });
     const order = Array.from(screen.getByRole('log').querySelectorAll<HTMLElement>('[data-run-card], [data-bubble]'));
     const at = (el: Element | null) => order.indexOf(el as HTMLElement);
-    const later = screen.getByText('A later question').closest('[data-bubble]');
-    const live = screen.getByText('Plan started').closest('[data-bubble]');
+    const later = screen.getByText('A later explanation').closest('[data-bubble]');
+    const live = screen.getByText('Blueprint started').closest('[data-bubble]');
     expect(at(card())).toBeGreaterThan(0);
     expect(at(live)).toBe(at(card()) + 1);
     expect(at(later)).toBe(order.length - 1);
-    // The interview's earlier messages stay above the card.
+    // The context run's earlier notes stay above the card.
     expect(order.slice(0, at(card())).every((el) => el.hasAttribute('data-bubble'))).toBe(true);
   });
 
-  it('a run that starts before the chat loads sits after the loaded history', async () => {
-    const created = await call(api.createBuild({ archetype: 'executive', mode: 'data' }));
-    await call(api.startInterview(created.id));
+  it('a run that starts before the log loads sits after the loaded history', async () => {
+    const created = await contextBuild();
     const build = await call(api.getBuild(created.id));
     const { open, fire } = fakeStream();
     render(<Holder initial={build} open={open} />);
     // The run starts while the first message load is still in flight.
     await fire({ name: 'ready', data: { build_id: build.id } });
-    await fire({ name: 'run.started', data: { run_id: 'r_early', node: 'plan' } });
+    await fire({ name: 'run.started', data: { run_id: 'r_early', node: 'blueprint' } });
     await advance(400);
     const order = Array.from(screen.getByRole('log').querySelectorAll<HTMLElement>('[data-run-card], [data-bubble]'));
     expect(order.length).toBeGreaterThan(1);
@@ -294,10 +297,11 @@ describe('Run checklist card', () => {
 describe('Mock mode', () => {
   it('every mocked run emits growing run.usage before run.finished', async () => {
     const build = await call(api.createBuild({ archetype: 'executive', mode: 'data' }));
+    await call(api.uploadSources(build.id, [new File(['a'], 'sales.csv', { type: 'text/csv' })]));
     const events: BuildEvent[] = [];
     const close = openMockBuildEvents(build.id, { onEvent: (e) => events.push(e) });
-    await call(api.startInterview(build.id));
-    await call(api.generatePlan(build.id));
+    await call(api.draftContext(build.id));
+    await call(api.confirmContext(build.id));
     close();
     const runs = new Set(events.flatMap((e) => (e.name === 'run.started' ? [e.data.run_id] : [])));
     expect(runs.size).toBeGreaterThanOrEqual(2);

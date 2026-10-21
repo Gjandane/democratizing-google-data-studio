@@ -1,20 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api } from '../../../api/client';
-import { useBuildEvents, type OpenBuildEvents, type StreamStatus } from '../../../api/events';
-import { ApiError, type Build, type BuildEvent, type Message } from '../../../api/types';
-import { reduceActivity, type Activity } from '../../activity/activity';
-import { publishWorkspace } from '../stretch';
-import { idleRun, reduceBuildRun, type BuildRun } from '../build/buildRun';
+import { api } from '../../api/client';
+import { useBuildEvents, type OpenBuildEvents, type StreamStatus } from '../../api/events';
+import { ApiError, ARTIFACTS, type ArtifactName, type Build, type BuildEvent, type Message } from '../../api/types';
+import { reduceActivity, type Activity } from './activity';
+import { publishWorkspace } from '../workspace/stretch';
+import { idleRun, reduceBuildRun, type BuildRun } from '../workspace/build/buildRun';
 
 export interface Draft {
   id: string;
-  text: string;
-}
-
-/** One `node.progress` status line of the current run, e.g. "Writing questions.md". */
-export interface ProgressLine {
-  key: number;
-  node: string;
   text: string;
 }
 
@@ -30,15 +23,21 @@ export type StretchRuns = Partial<Record<StretchNode, NodeRun>>;
 const STRETCH_NODES: readonly string[] = ['style_extract', 'research', 'ux_audit'];
 const isStretchNode = (node: string): node is StretchNode => STRETCH_NODES.includes(node);
 
-/** The chat-side runs whose failure the user sees: plan and spec on the Interview stage, interview in the chat. */
-export type RunErrorNode = 'plan' | 'interview' | 'spec';
+/** The staged runs whose failure their stage area shows (api.md 2.0 `node` values). */
+export type RunErrorNode = 'context' | 'outline_propose' | 'outline_other' | 'outline_suggest' | 'blueprint' | 'prototype';
 export type RunErrors = Partial<Record<RunErrorNode, string>>;
 /** Shown when `run.finished` errors with `error: null`. */
 export const RUN_ERROR_FALLBACK: Readonly<Record<RunErrorNode, string>> = {
-  plan: 'The plan didn\'t finish. Try "Generate plan" again.',
-  spec: 'The spec didn\'t finish. Try "Generate plan" again.',
-  interview: "The assistant didn't reply. Send your answer again.",
+  context: "The context draft didn't finish. Draft it again.",
+  outline_propose: "The questions weren't proposed. Try again.",
+  outline_other: "Your question wasn't added. Send it again.",
+  outline_suggest: "No questions were suggested. Try again.",
+  blueprint: "The blueprint didn't finish. Regenerate it.",
+  prototype: "The prototype wasn't rendered. Accept the blueprint again.",
 };
+/** Per artifact, a counter bumped by each `artifact.updated` and by every (re)connect: a stage area refetches when its own changes. */
+export type ArtifactSeq = Readonly<Record<ArtifactName, number>>;
+const NO_ARTIFACT_CHANGES: ArtifactSeq = { context: 0, outline: 0, design: 0, blueprint: 0 };
 const isRunErrorNode = (node: string): node is RunErrorNode => node in RUN_ERROR_FALLBACK;
 
 export interface BuildStream {
@@ -51,32 +50,27 @@ export interface BuildStream {
   loadError: string | null;
   /** Assistant messages still being streamed, in arrival order. */
   drafts: Draft[];
-  /** Status lines of the latest run, in arrival order; a new run starts the list over. */
-  progress: ProgressLine[];
-  /** A `plan` run has started and not finished. */
-  planning: boolean;
+  /** The node of the newest run still going (the build's action lock is held), or null. */
+  running: string | null;
+  artifactSeq: ArtifactSeq;
   /** A `revise` run (applying comments) has started and not finished. */
   applying: boolean;
   /** Set when a `revise` run ends in error; `seq` changes on every failure, even an identical one. */
   commentsError: { seq: number; text: string } | null;
-  /** The error of the latest failed plan, spec or interview run; cleared when that node runs again. */
+  /** The error of the latest failed staged run per node; cleared when that node runs again. */
   runErrors: RunErrors;
   /** The engine run of the build stage, folded from build.* and run.* events. */
   buildRun: BuildRun;
   status: StreamStatus;
   reload: () => void;
-  /** Resolves true when the server accepted the message; the optimistic bubble shows at once. */
-  send: (text: string) => Promise<boolean>;
-  sendError: string | null;
 }
 
-const LOCAL = 'local-';
 const NO_RUNS: Activity = [];
 
 const errorText = (error: unknown, fallback: string) => (error instanceof ApiError ? error.message : fallback);
 
 /**
- * The one event stream of the open build, with its chat: messages, streamed drafts and sending.
+ * The one event stream of the open build, with its activity log: messages, streamed drafts and runs.
  * On every `ready` (first connect and each reconnect) it re-reads the build and the messages.
  */
 export function useBuildStream(build: Build, onBuildChange: (build: Build) => void, open?: OpenBuildEvents): BuildStream {
@@ -84,9 +78,7 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
   const [runErrors, setRunErrors] = useState<RunErrors>({});
   const [loadError, setLoadError] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Draft[]>([]);
-  const [sendError, setSendError] = useState<string | null>(null);
-  const [progress, setProgress] = useState<ProgressLine[]>([]);
-  const [planning, setPlanning] = useState(false);
+  const [artifactSeq, setArtifactSeq] = useState<ArtifactSeq>(NO_ARTIFACT_CHANGES);
   const [applying, setApplying] = useState(false);
   const [commentsError, setCommentsError] = useState<{ seq: number; text: string } | null>(null);
   const [buildRun, setBuildRun] = useState<BuildRun>(idleRun);
@@ -98,8 +90,6 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
   const fetchSeq = useRef(0);
   /** Bumped on every build event, so a refetch never undoes an event that arrived meanwhile. */
   const buildSeq = useRef(0);
-  const localSeq = useRef(0);
-  const progressSeq = useRef(0);
   const errorSeq = useRef(0);
   const mounted = useRef(true);
   /** The list as of the last update, read synchronously when a run starts (state may not have rendered yet). */
@@ -145,7 +135,7 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
       },
       (error: unknown) => {
         if (!mounted.current || seq !== fetchSeq.current) return;
-        setLoadError(errorText(error, "Couldn't load the chat. Try again."));
+        setLoadError(errorText(error, "Couldn't load the activity. Try again."));
       },
     );
   }, [buildId]);
@@ -171,8 +161,15 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
           const kept = Object.entries(runs).filter(([, run]) => run.status !== 'running');
           return kept.length === Object.keys(runs).length ? runs : (Object.fromEntries(kept) as StretchRuns);
         });
+        // A write missed while disconnected: every stage area refetches its artifact.
+        setArtifactSeq((seq) => Object.fromEntries(ARTIFACTS.map((name) => [name, seq[name] + 1])) as Record<ArtifactName, number>);
         load();
         break;
+      case 'artifact.updated': {
+        const { artifact } = event.data;
+        setArtifactSeq((seq) => ({ ...seq, [artifact]: seq[artifact] + 1 }));
+        break;
+      }
       case 'message.delta': {
         const { message_id, text } = event.data;
         setDrafts((current) =>
@@ -210,33 +207,24 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
         setBuild({ ...latest.current, spec_version: event.data.spec_version });
         break;
       case 'run.started':
-        setProgress([]);
         if (isStretchNode(event.data.node)) {
           const { node, run_id } = event.data;
           setStretchRuns((runs) => ({ ...runs, [node]: { run_id, status: 'running', error: null } }));
         }
         if (isRunErrorNode(event.data.node)) {
           const { node } = event.data;
-          // "Generate plan" retries the spec too and moves on from the interview, so it clears those errors as well.
-          const cleared: RunErrorNode[] = node === 'plan' ? ['plan', 'spec', 'interview'] : [node];
           setRunErrors((errors) => {
-            if (!cleared.some((n) => n in errors)) return errors;
+            if (!(node in errors)) return errors;
             const rest = { ...errors };
-            for (const n of cleared) delete rest[n];
+            delete rest[node];
             return rest;
           });
         }
-        if (event.data.node === 'plan') setPlanning(true);
         if (event.data.node === 'revise') {
           setApplying(true);
           setCommentsError(null);
         }
         break;
-      case 'node.progress': {
-        const { node, text } = event.data;
-        setProgress((current) => [...current, { key: ++progressSeq.current, node, text }]);
-        break;
-      }
       case 'run.finished':
         if (isStretchNode(event.data.node)) {
           const { node, run_id, status, error } = event.data;
@@ -246,7 +234,6 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
           const { node, error } = event.data;
           setRunErrors((errors) => ({ ...errors, [node]: error ?? RUN_ERROR_FALLBACK[node] }));
         }
-        if (event.data.node === 'plan') setPlanning(false);
         if (event.data.node === 'revise') {
           setApplying(false);
           if (event.data.status === 'error') {
@@ -265,32 +252,7 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
   // Another build's runs never show here.
   const activity = activityOf.buildId === buildId ? activityOf.runs : NO_RUNS;
 
-  const send = async (raw: string): Promise<boolean> => {
-    const text = raw.trim();
-    if (!text) return false;
-    const tempId = `${LOCAL}${++localSeq.current}`;
-    const bubble: Message = { id: tempId, role: 'user', text, node: null, created_at: new Date().toISOString() };
-    setSendError(null);
-    setMessages((current) => [...(current ?? []), bubble]);
-    try {
-      const { message_id } = await api.sendMessage(buildId, text);
-      if (!mounted.current) return true;
-      setMessages((current) => {
-        const list = current ?? [];
-        // A refetch may already have brought the server's copy: keep one bubble.
-        return list.some((m) => m.id === message_id)
-          ? list.filter((m) => m.id !== tempId)
-          : list.map((m) => (m.id === tempId ? { ...m, id: message_id } : m));
-      });
-      return true;
-    } catch (error) {
-      if (mounted.current) {
-        setMessages((current) => (current ?? []).filter((m) => m.id !== tempId));
-        setSendError(errorText(error, "Couldn't send your message. Try again."));
-      }
-      return false;
-    }
-  };
+  const running = [...activity].reverse().find((run) => run.status === 'running')?.node ?? null;
 
-  return { activity, messages, loadError, drafts, progress, planning, applying, commentsError, runErrors, buildRun, stretchRuns, status, reload: load, send, sendError };
+  return { activity, messages, loadError, drafts, running, artifactSeq, applying, commentsError, runErrors, buildRun, stretchRuns, status, reload: load };
 }

@@ -5,7 +5,7 @@ import { ApiError, type Assessment, type Build } from '../../../api/types';
 import { Button } from '../../../components/Button';
 import { EmptyState } from '../../../components/EmptyState';
 import { Spinner } from '../../../components/Spinner';
-import type { BuildStream, StretchRuns } from '../chat/useBuildStream';
+import type { BuildStream, StretchRuns } from '../../activity/useBuildStream';
 import { useRefocusAfter, useStretchAction } from '../stretch';
 import { PendingList } from './PendingList';
 import { ReferencePanel } from '../ReferencePanel';
@@ -129,7 +129,7 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
 
   return (
     <div className="mt-6 flex flex-col gap-4">
-      {/* Collapsed so the canvas top shows above the fold; chat's Attach reference opens it. */}
+      {/* Collapsed so the canvas top shows above the fold; the header toggle opens it. */}
       <ReferencePanel buildId={build.id} version={build.current_version} disabled={busy} defaultOpen={false} onReadyChange={onReferenceReadyChange} />
       {!audit.hidden && (
         <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
@@ -143,7 +143,7 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
             {audit.state === 'ok' && (
               <span className="inline-flex items-center gap-2 text-success">
                 <CircleCheck aria-hidden="true" className="size-4 shrink-0" />
-                Audit done. The findings are in the chat.
+                Audit done. The findings are in the activity column.
               </span>
             )}
           </div>

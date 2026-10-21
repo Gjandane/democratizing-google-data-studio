@@ -11,14 +11,22 @@ import syntheticSourceJson from '../../../contracts/fixtures/synthetic-data/sour
 // The shared API fixtures, imported in place from ../contracts/fixtures/api/ (never copied)
 // and checked against the contract guards once, so the mock can only serve conforming data.
 import referenceSetJson from '../../../contracts/fixtures/dashboard-intent/reference_set.json';
+import blueprintBlockedJson from '../../../contracts/fixtures/api/blueprint.blocked.json';
+import blueprintJson from '../../../contracts/fixtures/api/blueprint.json';
 import buildDoneJson from '../../../contracts/fixtures/api/build.done.json';
 import buildJson from '../../../contracts/fixtures/api/build.json';
 import buildsJson from '../../../contracts/fixtures/api/builds.json';
+import contextJson from '../../../contracts/fixtures/api/context.json';
+import designJson from '../../../contracts/fixtures/api/design.json';
+import designPresetsJson from '../../../contracts/fixtures/api/design_presets.json';
 import engineStatusJson from '../../../contracts/fixtures/api/engine_status.json';
 import engineStatusLocalJson from '../../../contracts/fixtures/api/engine_status.local.json';
 import errorJson from '../../../contracts/fixtures/api/error.json';
 import eventsSse from '../../../contracts/fixtures/api/events.sse?raw';
+import eventsUsageSse from '../../../contracts/fixtures/api/events.usage.sse?raw';
 import messagesJson from '../../../contracts/fixtures/api/messages.json';
+import outlineJson from '../../../contracts/fixtures/api/outline.json';
+import prototypeMultipageHtml from '../../../contracts/fixtures/api/prototype.multipage.html?raw';
 import prototypeHtml from '../../../contracts/fixtures/api/prototype.sample.html?raw';
 import recipeJson from '../../../contracts/fixtures/api/recipe.json';
 import runAcceptedJson from '../../../contracts/fixtures/api/run_accepted.json';
@@ -29,12 +37,16 @@ import {
   arrayOf,
   isAssessment,
   isApiErrorBody,
+  isBlueprint,
   isBuild,
   isBuildSummary,
+  isContext,
+  isDesign,
   isEngineStatus,
   isGenerationRequest,
   isGenerationStatus,
   isMessage,
+  isOutline,
   isProposal,
   isRecipe,
   isReferenceSet,
@@ -43,6 +55,7 @@ import {
   isSettings,
   isSource,
   isSyntheticDataset,
+  isThemePreset,
   isTrace,
   problemsOf,
   toBuildEvent,
@@ -57,11 +70,11 @@ function checked<T>(guard: Guard<T>, value: unknown, file: string): T {
   return value as T;
 }
 
-function checkedEvents(body: string): BuildEvent[] {
+function checkedEvents(body: string, file: string): BuildEvent[] {
   return parseSse(body).map(({ event, data }, i) => {
     const problems: string[] = [];
     const parsed = toBuildEvent(event, JSON.parse(data), problems);
-    if (!parsed) throw new Error(`Fixture events.sse #${i + 1} doesn't match the API contract:\n${problems.join('\n')}`);
+    if (!parsed) throw new Error(`Fixture ${file} #${i + 1} doesn't match the API contract:\n${problems.join('\n')}`);
     return parsed;
   });
 }
@@ -87,9 +100,22 @@ export const fixtures = /* @__PURE__ */ (() => ({
   /** Local mode: what the mock engine reports unless a test changes it. */
   engineStatusLocal: checked(isEngineStatus, engineStatusLocalJson, 'engine_status.local.json'),
   error: checked(isApiErrorBody, errorJson, 'error.json'),
-  events: checkedEvents(eventsSse),
+  events: checkedEvents(eventsSse, 'events.sse'),
+  /** A blueprint run with live token counts. */
+  eventsUsage: checkedEvents(eventsUsageSse, 'events.usage.sse'),
   messages: checked(arrayOf(isMessage), messagesJson, 'messages.json'),
   prototypeHtml,
+  /** Two page sections (data-page, data-page-name). */
+  prototypeMultipageHtml,
+  // Staged workflow artifacts (api.md 2.0).
+  context: checked(isContext, contextJson, 'context.json'),
+  outline: checked(isOutline, outlineJson, 'outline.json'),
+  design: checked(isDesign, designJson, 'design.json'),
+  designPresets: checked(arrayOf(isThemePreset), designPresetsJson, 'design_presets.json'),
+  /** Every row ok. */
+  blueprint: checked(isBlueprint, blueprintJson, 'blueprint.json'),
+  /** The ratio row (q2) blocked. */
+  blueprintBlocked: checked(isBlueprint, blueprintBlockedJson, 'blueprint.blocked.json'),
   recipe: checked(isRecipe, recipeJson, 'recipe.json'),
   runAccepted: checked(isRunAccepted, runAcceptedJson, 'run_accepted.json'),
   session: checked(isSession, sessionJson, 'session.json'),

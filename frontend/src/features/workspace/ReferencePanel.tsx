@@ -20,10 +20,10 @@ const referenceError = (error: unknown) => {
   return "Couldn't save the references. Try again.";
 };
 
-/** One retained reference set. Chat opens this same stage panel; it has no second SSE connection. */
+/** One retained reference set. Sample data opens this same stage panel; it has no second SSE connection. */
 export function ReferencePanel({ buildId, version = 1, readOnly = false, disabled = false, defaultOpen = true, onReadyChange, onSavedChange }: {
   buildId: string; version?: number; readOnly?: boolean; disabled?: boolean; onReadyChange?: (ready: boolean) => void;
-  /** Starts collapsed when false (Prototype); Attach reference still opens it. */
+  /** Starts collapsed when false (Prototype); sample data's Attach reference still opens it. */
   defaultOpen?: boolean;
   /** The saved set once loaded (null: none); undefined while loading or after a failed load. */
   onSavedChange?: (saved: ReferenceSet | null | undefined) => void;

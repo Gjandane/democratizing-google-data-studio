@@ -6,7 +6,7 @@ import type { OpenBuildEvents, StreamHandlers } from '../src/api/events';
 import { ApiError, type Build, type BuildEvent } from '../src/api/types';
 import { BuildStage } from '../src/features/workspace/build/BuildStage';
 import { idleRun, reduceBuildRun } from '../src/features/workspace/build/buildRun';
-import { useBuildStream } from '../src/features/workspace/chat/useBuildStream';
+import { useBuildStream } from '../src/features/activity/useBuildStream';
 import { ConnectStage } from '../src/features/workspace/connect/ConnectStage';
 import { PrototypeStage } from '../src/features/workspace/prototype/PrototypeStage';
 import { resetStretchAvailability } from '../src/features/workspace/stretch';
@@ -119,7 +119,7 @@ describe('UX audit', () => {
     expect(off(screen.getByRole('button', { name: 'Run UX audit' }))).toBe(true);
     await fire(started('ux_audit', 'r_aud'));
     await fire(done('ux_audit', 'r_aud'));
-    await screen.findByText('Audit done. The findings are in the chat.');
+    await screen.findByText('Audit done. The findings are in the activity column.');
     expect(off(screen.getByRole('button', { name: 'Run UX audit' }))).toBe(false);
   });
 
@@ -133,7 +133,7 @@ describe('UX audit', () => {
     await screen.findByText('Auditing…');
     await fire(started('ux_audit', 'r_other'));
     await fire(done('ux_audit', 'r_other'));
-    await screen.findByText('Audit done. The findings are in the chat.');
+    await screen.findByText('Audit done. The findings are in the activity column.');
     expect(off(screen.getByRole('button', { name: 'Run UX audit' }))).toBe(false);
   });
 
@@ -147,7 +147,7 @@ describe('UX audit', () => {
     button.blur();
     await fire(started('ux_audit', 'r_aud'));
     await fire(done('ux_audit', 'r_aud'));
-    await screen.findByText('Audit done. The findings are in the chat.');
+    await screen.findByText('Audit done. The findings are in the activity column.');
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Run UX audit' }));
   });
 
