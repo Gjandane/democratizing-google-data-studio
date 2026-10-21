@@ -13,9 +13,7 @@ src/mocks/       mock API + fake event stream; data comes from ../contracts/fixt
 src/styles/      tokens.css (all colors, type, spacing, radius as CSS variables)
 src/components/  base components (Button, Input, Panel, Stepper, Pin, Popover, Toast, Spinner, EmptyState, ErrorState, Modal, Table)
 src/features/    history/, activity/ (strip, run cards, node presets), access/, workspace/ (shell, connect/,
-                 context/, outline/, design/, blueprint/, prototype/, build/), settings/, trace/
-                 (workspace chat/ and plan/ removed 2026-10-21)
-tests/           vitest specs; contract.test.ts checks ../contracts/fixtures/api/ against types.ts guards
+                 context/, outline/, design/, blueprint/, prototype/, build/), settings/, trace/tests/           vitest specs; contract.test.ts checks ../contracts/fixtures/api/ against types.ts guards
 screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
 ```
 
@@ -29,6 +27,7 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
   jsdom geometry is stubbed; verify real geometry at both UI viewports.
 - Use contract node names; run-card anchor is message count at start. Clock stays in strip/card.
   Use layout effects for async focus; action guards update synchronously. Truncate focusable text.
+- Artifact editors save per control, serialized; a pending or failed save blocks Confirm.
 
 ## Never do
 - Never call anything but the backend's `/api` (one exception, kept by the user at 1.2: the

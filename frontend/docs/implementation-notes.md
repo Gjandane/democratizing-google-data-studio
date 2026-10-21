@@ -35,7 +35,22 @@
 - Workspace panels (references, feasibility, synthetic) share the build's one EventSource through
   stretch.ts `subscribeWorkspace`/`publishWorkspace`; WorkspaceShell owns the feasibility gates
   (planReady/buildReady); a panel drops a response older than its latest request or assessment id.
-- Run `node` values are the api.md 1.5 names; StretchRoute `'audit'` is a route, not a node.
+- Run `node` values are the api.md 2.0 names; StretchRoute `'audit'` is a route, not a node.
+- Artifact editors (context/, outline/, design/; hosted by ArtifactStage): selects, radios,
+  ticks, add/remove PUT at once, text and hex on blur; PUTs serialized by edit counters, and a
+  response never overwrites newer typing; saving never disables inputs. `onSavingChange` (a PUT
+  in flight or failed) blocks Confirm and the redraft actions. ArtifactStage drops a load with a
+  lower revision. Issues land on the deepest rendered JSON-pointer path. Invalid hex/number text
+  stays only while focused and is never sent.
+- After a `202` for an artifact run (Suggest more, Other), controls stay off until that `run_id`
+  shows in the stream's activity (fallback 30 s): a fast run can start and finish before React
+  renders the lock.
+- Blueprint feasibility issues render under their row through blueprint/issueSlots (one
+  FeasibilityPanel, portals); after a saved decision the blueprint refetches, since the backend
+  rewrites rows without `artifact.updated`. Prototype page tabs show one `data-page-name` section
+  and keep the page by position across versions.
+- jsdom: controls in a disabled `<fieldset>` keep `.disabled === false`, still receive clicks, and
+  `activeElement` can stay on one; assert `el.matches(':disabled')`.
 - New actions (reference, feasibility, synthetic) match their run by the `run_id` from the `202`,
   never by node, and refetch their resource on that run's `run.finished`. The stretch 404-hide
   (stretch.ts) never applies to the required reference, feasibility or synthetic routes.

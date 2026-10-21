@@ -47,7 +47,6 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Never `git stash` (not even to compare with baseline): it stashes the whole program repo, other parts and concurrent sessions included, and `pop` rewrites LF files as CRLF (core.autocrlf=true). Rerun a suspect test alone instead.
 - Headless Chrome driven by separate CDP scripts: `Emulation.setDeviceMetricsOverride` resets when the client disconnects; size the window with `Browser.setWindowBounds` instead (headless adds 26x100 px: 1306x900 gives a 1280x800 viewport).
 - Bash heredocs with non-ASCII (`·`, `…`) fail with "unexpected EOF while looking for matching `''": write Python patch scripts with the Write tool (scratchpad) and run them.
-- Controls inside a disabled `<fieldset>` keep `.disabled === false` in jsdom (and `activeElement` stays on a disabled input): assert `el.matches(':disabled')`.
 - A Python patch passed through a Bash heredoc can turn a regex's `\b` into a backspace byte (0x08): write regex edits with the Edit tool, then check the file for `\x08`.
 - Live walkthrough: the browser pane has no file upload; upload the CSV with `curl -F files=@../samples/ecommerce_sales.csv localhost:5173/api/builds/<id>/sources/upload`, then drive the UI. Pane `computer` clicks can fail "not on screen": a `javascript_tool` `button.click()` still drives the flow.
 - Live preview: `preview_start` config `frontend-live` (.claude/launch.json) runs plain `npm run dev` against the backend on 8000.
