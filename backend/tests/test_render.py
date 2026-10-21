@@ -13,6 +13,8 @@ from dss.render import background
 from dss.render.prototype import aggregate_data, aggregate_sql, chart_option, render
 from dss.spec.layout import box
 from dss.spec.models import DashboardSpec, Sort
+from test_blueprint import blueprint_api  # noqa: F401  (fixture)
+from test_context_node import context_api  # noqa: F401  (fixture)
 
 
 @pytest.fixture
@@ -57,6 +59,226 @@ class ContractParser(HTMLParser):
     def handle_endtag(self, tag):
         if self.stack:
             self.stack.pop()
+
+
+FIXTURE = Path('../contracts/fixtures/api/prototype.multipage.html')
+EVIDENCE = Path('.blueprint/qa/task-15.9')
+PAGE_NAMES = ('Overview', 'Where revenue comes from', 'Order mix')
+
+
+def three_pages(per_page=8):
+    """A validated 3-page spec: band header kit per page, then 4 scorecards, 2 bars, a pie, a table."""
+    from dss.render.kits import content_row, decorations
+    from dss.spec.models import Cell, Component, DataField, Metric, Page
+    from dss.spec.validate import validate_spec
+    spec = DashboardSpec.model_validate_json(Path('tests/data/thin_spec.json').read_text())
+    spec.datasource.fields.append(DataField(name='category', type='STRING', label='Category', role='dimension'))
+    spec.pages = []
+    for n, name in enumerate(PAGE_NAMES, 1):
+        top = content_row('band_header', name)
+        cells = [(col, top, 3, 5, 'scorecard') for col in (1, 4, 7, 10)] + [
+            (1, top + 5, 6, 14, 'bar'), (7, top + 5, 6, 14, 'bar'), (1, top + 19, 6, 14, 'pie'), (7, top + 19, 6, 14, 'table')]
+        components = [Component(id=f'p{n}_{kind}_{i}', type=kind, label=f'{kind.title()} {i} on page {n}',
+                                grid=Cell(col=col, row=row, w=w, h=h), metrics=[Metric(field='revenue', agg='sum')],
+                                dimensions=[] if kind == 'scorecard' else ['category' if i % 2 else 'region'])
+                      for i, (col, row, w, h, kind) in enumerate(cells[:per_page])]
+        bottom = max(box(spec.canvas, spec.grid, c.grid, height=10 ** 5)['y'] + c.grid.h * 20 - 16 for c in components)
+        spec.pages.append(Page(index=n, name=name, height=bottom + 24, components=components,
+                               decorations=decorations('band_header', spec.theme, name, page=n)))
+    spec.canvas.height = spec.pages[0].height
+    assert validate_spec(spec) == []
+    return spec
+
+
+class PageParser(HTMLParser):
+    """Each data-cid element's ancestors (tag, id, data-page) and the page sections in order."""
+    def __init__(self, html):
+        super().__init__()
+        self.stack, self.items, self.sections, self.canvas = [], {}, [], []
+        self.feed(html)
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if attrs.get('id') == 'dss-canvas':
+            self.canvas.append(attrs)
+        if tag == 'section':
+            self.sections.append((attrs.get('data-page'), attrs.get('data-page-name'), attrs.get('style', '')))
+        if 'data-cid' in attrs:
+            chain = [(t, a.get('id'), a.get('data-page')) for t, a in self.stack if 'data-cid' not in a and (a.get('id') == 'dss-canvas' or t == 'section')]
+            assert not any('data-cid' in a for _, a in self.stack), 'Nested data-cid'
+            assert attrs['data-cid'] not in self.items, 'Duplicate data-cid'
+            self.items[attrs['data-cid']] = {**attrs, 'chain': chain}
+        if tag not in ('meta', 'img', 'input', 'br', 'link'):
+            self.stack.append((tag, attrs))
+
+    def handle_endtag(self, tag):
+        if self.stack:
+            self.stack.pop()
+
+
+def test_multipage_html_matches_contract_fixture():
+    spec = three_pages()
+    expected, parsed = PageParser(FIXTURE.read_text(encoding='utf-8')), PageParser(render(spec))
+    for page in (expected, parsed):
+        assert len(page.canvas) == 1 and page.sections
+        # Every item sits directly in its page section, which sits in the one canvas.
+        assert {tuple((t, i) for t, i, _ in a['chain']) for a in page.items.values()} == {(('div', 'dss-canvas'), ('section', None))}
+        assert all(a['chain'][1][2] == a['data-cid'][1:a['data-cid'].index('_')] for a in page.items.values())
+        assert {a['data-kind'] for a in page.items.values()} == {'component', 'decoration'}
+    assert [(n, name) for n, name, _ in parsed.sections] == [(str(p.index), p.name) for p in spec.pages]
+    assert all(f'height:{p.height}px' in style for p, (_, _, style) in zip(spec.pages, parsed.sections))
+    assert f'height:{sum(p.height for p in spec.pages)}px' in parsed.canvas[0]['style']
+    items = [(p, i) for p in spec.pages for i in p.decorations + p.components]
+    assert len(parsed.items) == len(items) == 3 * (8 + 2)
+    for page, item in items:
+        attrs = parsed.items[item.id]
+        assert attrs['chain'][1][2] == str(page.index) and attrs['data-label']
+        b = box(spec.canvas, spec.grid, item.grid, height=page.height)
+        assert all(f'{prop}:{b[key]}px' in attrs['style'] for prop, key in [('left','x'),('top','y'),('width','w'),('height','h')])
+
+
+def test_decoration_layer_hides_components_on_every_page():
+    spec = three_pages()
+    parsed = PageParser(render(spec, layer='decoration'))
+    assert len(parsed.items) == 30
+    for attrs in parsed.items.values():
+        assert ('display:none' in attrs['style']) == (attrs['data-kind'] == 'component')
+    single = PageParser(render(spec, layer='decoration', page=2))
+    assert [s[0] for s in single.sections] == ['2'] and set(single.items) == {i.id for i in spec.pages[1].decorations + spec.pages[1].components}
+    assert f'height:{spec.pages[1].height}px' in single.canvas[0]['style']
+    with pytest.raises(ValueError):
+        render(spec, page=4)
+
+
+def test_artifacts_capture_one_background_per_page(tmp_path, monkeypatch):
+    spec = three_pages()
+    captured = []
+    def fake_capture(html, path, width, height):
+        parsed = PageParser(html)
+        assert len(parsed.sections) == 1 and all('display:none' in a['style'] for a in parsed.items.values() if a['data-kind'] == 'component')
+        captured.append((parsed.sections[0][0], path.name, width, height))
+        path.write_bytes(b'PNG ' + parsed.sections[0][0].encode())
+    monkeypatch.setattr(background, 'capture', fake_capture)
+    artifacts(spec, FakeBigQuery(), tmp_path)
+    assert background.names(spec) == ['background_p1.png', 'background_p2.png', 'background_p3.png']
+    assert captured == [(str(p.index), f'background_p{p.index}.tmp.png', 1200, p.height) for p in spec.pages]
+    assert [(tmp_path / f'background_p{n}.png').read_bytes() for n in (1, 2, 3)] == [b'PNG 1', b'PNG 2', b'PNG 3']
+    assert not list(tmp_path.glob('*.tmp.png'))
+
+
+def test_three_pages_render_and_backgrounds_within_budget(tmp_path):
+    """Real Chromium: 3 pages x 8 components, every background at canvas size, <= 30 s."""
+    spec = three_pages()
+    service = FakeBigQuery(.1)
+    start = time.monotonic()
+    artifacts(spec, service, tmp_path)
+    elapsed = time.monotonic() - start
+    print(f'3 pages x 8 components with Chromium backgrounds: {elapsed:.2f}s')
+    assert elapsed <= 30
+    images = [(tmp_path / name).read_bytes() for name in background.names(spec)]
+    assert [struct.unpack('>II', png[16:24]) for png in images] == [(1200, p.height) for p in spec.pages]
+    assert len(set(images)) == 3  # each page's own header text
+    EVIDENCE.mkdir(parents=True, exist_ok=True)
+    for name, png in zip(background.names(spec), images):
+        (EVIDENCE / name).write_bytes(png)
+
+
+def test_prototype_png_per_page_saved_for_visual_check(tmp_path):
+    from playwright.sync_api import sync_playwright
+    spec = three_pages()
+    html = render(spec, data=aggregate_data(spec, FakeBigQuery(), tmp_path))
+    EVIDENCE.mkdir(parents=True, exist_ok=True)
+    (EVIDENCE / 'prototype.html').write_text(html, encoding='utf-8')
+    total = sum(p.height for p in spec.pages)
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        try:
+            page = browser.new_page(viewport={'width': 1200, 'height': total})
+            page.set_content(html, wait_until='load', timeout=20000)
+            page.wait_for_function('window.dssChartsReady === true', timeout=20000)
+            for p in spec.pages:
+                section = page.locator(f'section[data-page="{p.index}"]')
+                bounds = section.bounding_box()
+                assert (bounds['width'], bounds['height']) == (1200, p.height)
+                path = EVIDENCE / f'prototype_p{p.index}.png'
+                section.screenshot(path=str(path), animations='disabled')
+                assert struct.unpack('>II', path.read_bytes()[16:24]) == (1200, p.height)
+        finally:
+            browser.close()
+
+
+async def test_blueprint_accept_publishes_multipage_prototype(blueprint_flow):
+    client, app, bid, folder, bq, run_id = blueprint_flow
+    build = client.get(f'/api/builds/{bid}').json()
+    assert build['stage'] == 'prototype' and build['artifacts']['blueprint'] == 'confirmed'
+    spec = DashboardSpec.model_validate_json((folder / 'spec.json').read_text(encoding='utf-8'))
+    table = spec.datasource.table
+    assert table.endswith(f'dash_{bid}_v1_{run_id}') and bq.created == [table] and not bq.deleted
+    assert [p.name for p in spec.pages] == ['Revenue snapshot', 'Where revenue comes from']
+    assert [(folder / n).read_bytes() for n in background.names(spec)] == [b'PNG', b'PNG']
+    sections = PageParser(client.get(f'/api/builds/{bid}/prototype').text).sections
+    assert [(n, name) for n, name, _ in sections] == [('1', 'Revenue snapshot'), ('2', 'Where revenue comes from')]
+    import yaml
+    docs = yaml.safe_load((folder / 'docs/derived-fields.md').read_text(encoding='utf-8').split('---', 2)[1])
+    assert docs['view'] == table and client.get(f'/api/builds/{bid}/blueprint').json()['view_table'] == table
+    recipe = client.post(f'/api/builds/{bid}/recipe')
+    assert recipe.status_code == 200, recipe.text
+    assert [o['line'].split()[1] for o in recipe.json()['ops']].count('add-page') == 1
+    with app.state.db.connect() as conn:
+        trace = conn.execute('SELECT * FROM traces WHERE run_id=?', (run_id,)).fetchone()
+        kinds = [r[0] for r in conn.execute('SELECT kind FROM events WHERE run_id=? ORDER BY rowid', (run_id,))]
+    assert trace['status'] == 'ok' and trace['node'] == 'prototype'
+    assert kinds.index('prototype.updated') < kinds.index('stage.changed') < kinds.index('run.finished')
+
+
+@pytest.mark.parametrize('blueprint_flow', [{'fail': 'create_view'}, {'fail': 'render'}, {'fail': 'commit'}], indirect=True)
+async def test_failed_accept_keeps_blueprint_stage_and_cleans_candidate(blueprint_flow):
+    client, app, bid, folder, bq, run_id = blueprint_flow
+    build = client.get(f'/api/builds/{bid}').json()
+    assert build['stage'] == 'blueprint' and build['artifacts']['blueprint'] != 'confirmed'
+    assert not (folder / 'spec.json').exists() and not (folder / 'background_p1.png').exists()
+    # Only the run-owned candidate name is deleted, also after a failed (possibly late) CREATE.
+    assert [t.rsplit('.', 1)[-1] for t in bq.deleted] == [f'dash_{bid}_v1_{run_id}']
+    with app.state.db.connect() as conn:
+        trace = conn.execute('SELECT * FROM traces WHERE run_id=?', (run_id,)).fetchone()
+        finished = json.loads(conn.execute("SELECT payload_json FROM events WHERE run_id=? AND kind='run.finished'", (run_id,)).fetchone()[0])
+    assert trace['status'] == 'error' and finished['status'] == 'error' and finished['error']
+
+
+@pytest.fixture
+def blueprint_flow(request, blueprint_api, monkeypatch):
+    """Design confirm -> blueprint (ratio choice) -> accept, with fake BigQuery views and capture."""
+    from test_blueprint import choose, confirm
+    from test_context_node import wait
+    client, app, bid, sid, folder, bq, llm, value = blueprint_api
+    fail = getattr(request, 'param', {}).get('fail')
+    bq.created, bq.deleted = [], []
+    def create_view(table, sql):
+        if fail == 'create_view':
+            raise RuntimeError('sensitive provider text')
+        bq.created.append(table)
+    def delete_view(table):
+        bq.deleted.append(table)
+        return True
+    bq.create_view, bq.delete_view = create_view, delete_view
+    bq.aggregate = lambda sql: [{'region': 'West', 'product_category': 'A', 'm0': 10, 'm1': 2}]
+    def capture(html, path, width, height):
+        if fail == 'render':
+            raise RuntimeError('chromium failed')
+        path.write_bytes(b'PNG')
+    monkeypatch.setattr(background, 'capture', capture)
+    if fail == 'commit':
+        # After the confirmation is saved, before the durable commit: both roll back.
+        from dss.spec.publication import Candidate
+        monkeypatch.setattr(Candidate, 'commit', lambda *a: (_ for _ in ()).throw(OSError('commit')))
+    confirm(client, app, bid)
+    assessment = client.get(f'/api/builds/{bid}/feasibility').json()
+    ratio = next(i for i in assessment['issues'] if i['requirement'] == 'q2')
+    assert choose(client, bid, assessment, ratio, 'numerator_denominator').status_code == 200
+    accepted = client.post(f'/api/builds/{bid}/blueprint/accept')
+    assert accepted.status_code == 202, accepted.text
+    wait(app)
+    return client, app, bid, folder, bq, accepted.json()['run_id']
 
 
 def test_html_contract_geometry_layers(dashboard):

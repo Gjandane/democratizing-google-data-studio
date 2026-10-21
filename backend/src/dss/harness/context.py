@@ -329,10 +329,9 @@ def revise_context(document, comments, allowed, config=None, *, folder=None):
     system.body += '\nDecoration text layout:\n' + TEXT_LAYOUT_GUIDANCE
     targets = {c["component_id"] for c in comments}
     visible = neighbours(document, targets)
-    page = document["pages"][0]
-    selected = [{"path": f"/pages/0/{group}/{i}", "item": item}
+    selected = [{"path": f"/pages/{p}/{group}/{i}", "item": item} for p, page in enumerate(document["pages"])
         for group in ("components", "decorations") for i, item in enumerate(page[group]) if item["id"] in visible]
-    components = {item["id"]: item for item in page["components"]}
+    components = {item["id"]: item for page in document["pages"] for item in page["components"]}
     types = dict.fromkeys(components[c["component_id"]]["type"] for c in comments if c["component_id"] in components)
     navigator = _navigator(config)
     return assemble("revise", [

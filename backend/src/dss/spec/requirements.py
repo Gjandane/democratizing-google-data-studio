@@ -724,8 +724,24 @@ def _normalize_presentation(ledger, snapshot):
             # Only a real spec item is a binding; a cited requirement id is not one
             # and would make the request unfulfillable by any candidate.
             r.component_ids = [cid for cid in r.component_ids if cid in known]
+        if removal(r):
+            continue  # Normalized once, while its component still existed.
         target = next((c for p in (snapshot['spec'] or {}).get('pages', []) for c in p.get('components', [])
                        if c['id'] == r.source.component_id), None)
+        decoration = next((d for p in (snapshot['spec'] or {}).get('pages', []) for d in p.get('decorations', [])
+                           if d['id'] == r.source.component_id), None)
+        if (target and r.source.kind == 'comment' and not r.mappings and not r.properties
+                and all(n == _SENTINEL for n in r.needs)
+                and re.fullmatch(r'(?:please\s+)?(?:remove|delete)\s+(?:this|the|that)\s+'
+                                 r'(?:chart|component|table|graph|visual|scorecard|control|item)(?:\s+please)?',
+                                 r.text.strip(' .;!'), re.I)
+                and r.text.strip(' .;!').lower() in r.source.text.lower()):
+            # Code evidence: the commented component itself is to be deleted.
+            r.needs, r.component_ids = [], []
+            r.mapping_origins['remove'] = target['id']
+            # Kept so coverage can retire earlier unscoped rows this chart alone fulfilled.
+            r.mapping_origins['removed_item'] = json.dumps(target, sort_keys=True)
+            continue
         if target and re.search(r'preserve\s+its\s+position\s+and\s+data', r.source.text, re.I):
             r.mapping_origins.setdefault('preserve', digest({k: v for k, v in target.items() if k != 'colors'}))
         text = r.text.strip(' .;')
@@ -751,6 +767,14 @@ def _normalize_presentation(ledger, snapshot):
         if any(n.capability not in {'unknown.unclassified', 'style.colors'} for n in r.needs):
             continue
         color = '#172554' if match['dark'] else '#1E40AF'
+        if decoration:
+            # Decorations are flattened into the page background: the accent is
+            # that decoration's own kit style key, proven like other properties.
+            from dss.render.kits import accent_key
+            r.needs = [capabilities.Need(capability='layout.background_image')]
+            r.properties = [Property(path='style.' + accent_key(decoration['kind']), value=color)]
+            r.component_ids = [decoration['id']]
+            continue
         r.needs = [capabilities.Need(capability='style.colors', value=[color])]
         if r.source.component_id:
             r.component_ids = [r.source.component_id]
@@ -772,6 +796,11 @@ def _redundant_inputs(ledger):
             extra = {k for k, v in need.fields.items() if k not in names and v in bound}
             if extra:
                 r.needs[i] = need.model_copy(update={'fields': {k: v for k, v in need.fields.items() if k not in extra}})
+
+
+def removal(requirement):
+    """The component id a code-normalized removal comment deletes, else None."""
+    return requirement.mapping_origins.get('remove')
 
 
 def _preserves_comment(component, requirement, snapshot):
@@ -948,7 +977,7 @@ def _requirement_issues(snapshot, ledger, checker):
     for r in ledger.requirements:
         context = audience_requirement(r, ledger)
         verdicts = [] if context else [(f"need:{i}", checker.need(n, fields)) for i, n in enumerate(r.needs) if f'need:{i}' not in r.superseded]
-        if not r.needs and not context:
+        if not r.needs and not context and not removal(r):
             verdicts.append(("unknown", capabilities.Verdict("unknown", "No registered capability covers this requirement")))
         verdicts += [(f"mapping:{i}", v) for i, m in enumerate(r.mappings) if (v := mapping_verdict(m, r, fields))]
         verdicts += [(f'mapping:{i}', capabilities.Verdict('needs_clarification', reason))
@@ -1080,9 +1109,18 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None):
     from dss.recipe.compiler import compile_recipe
     from dss.spec.models import DashboardSpec
     ops = [json.loads(line) for line in compile_recipe(DashboardSpec.model_validate(snapshot['spec']), 1).split('\n')[1:-1]]
+    present = {c['id'] for c in components}
+    removed = {cid for r in ledger.requirements if (cid := removal(r))}
     for r in ledger.requirements:
         if audience_requirement(r, ledger):
             continue
+        if removal(r):
+            if removal(r) in present:
+                errors.append({"path": "requirements." + r.id, "message": "Candidate spec does not fulfill requirement: "
+                               + r.text + f" (remove component {removal(r)})"})
+            continue
+        if r.component_ids and set(r.component_ids) <= removed:
+            continue  # A later removal comment retired every item this row styled.
         choice = _choice(r, 'unknown', snapshot, ledger, checker)
         if choice and choice['action'] == 'drop':
             continue
@@ -1127,6 +1165,11 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None):
         if (not r.component_ids or decoration_proven) and not r.mappings and needs and all(
                 n.capability.startswith('layout.') and _recipe_fulfills(n, checker, ops) for n in needs):
             continue
+        if not matches and not r.component_ids and any(
+                removal(row) and 'removed_item' in row.mapping_origins
+                and _component_fulfills(json.loads(row.mapping_origins['removed_item']), active, needs, checker, snapshot)
+                for row in ledger.requirements):
+            continue  # The user explicitly removed the chart that fulfilled this row.
         if not matches or (r.component_ids and {c["id"] for c in matches} != set(r.component_ids)):
             # Code-normalized style values are not in the user's words; name them for repair.
             colors = [n.value for n in needs if n.capability == 'style.colors' and n.value is not None]

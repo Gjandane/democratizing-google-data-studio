@@ -18,7 +18,7 @@ def synthetic_participation(db, build_id, folder):
     if not path.is_file():
         return any(s['kind'] == 'synthetic' for s in sources)
     derived = parse_concept(path.name, path.read_text(encoding='utf-8')).metadata
-    joined = {j['table'] for j in derived.get('joins', [])}
+    joined = {j['table'] for j in derived.get('joins', []) + derived.get('union', [])}
     selected = sources[:1] + [s for s in sources[1:] if s['bq_table'] in joined]
     return any(s['kind'] == 'synthetic' for s in selected)
 

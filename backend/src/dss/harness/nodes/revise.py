@@ -19,6 +19,7 @@ from dss.db import now
 from dss.harness.context import fit_request, revise_context
 from dss.harness.guardrails import RunError, check_reply
 from dss.harness.nodes.render import artifacts
+from dss.render import background
 from dss.spec.models import DashboardSpec
 from dss.spec.patch import apply_scoped, items, PatchError
 from dss.spec.validate import allowed_types, catalog, high_questions, validate_spec
@@ -84,8 +85,11 @@ def revised(document, comments, batch, allowed):
         requested = target.get('type') if target else None
         if requested and requested not in allowed:
             raise PatchError('The complete batch must use supported types')
+        record = {'comment': comment, 'change': patch or 'no change needed'}
+        if target is None:
+            record['removed'] = comment['component_id']
         candidate = updated
-        records.append({'comment': comment, 'change': patch or 'no change needed'})
+        records.append(record)
     errors = validate_spec(candidate, allowed=allowed)
     if errors:
         raise PatchError(json.dumps(errors))
@@ -118,7 +122,7 @@ def persist(harness, build_id, version, folder, candidate, records, changed, ser
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(source, target)
             artifacts(spec, service(), staging)
-            updates.update({folder / name: (staging / name).read_bytes() for name in ('prototype.html','background_p1.png','aggregate-cache.json')})
+            updates.update({folder / name: (staging / name).read_bytes() for name in ('prototype.html', *background.names(spec), 'aggregate-cache.json')})
             updates[folder / 'spec.json'] = spec.model_dump_json(indent=2).encode('utf-8')
         decisions = folder / 'docs/decisions.md'
         text = decisions.read_text(encoding='utf-8') if decisions.exists() else '---\ntype: Design Decisions\ntitle: Design decisions\n---\n\n# Design decisions\n'

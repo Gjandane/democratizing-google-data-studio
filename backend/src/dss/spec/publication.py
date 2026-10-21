@@ -141,7 +141,8 @@ class Candidate:
         if spec.datasource.table != row['table_name']:
             raise ValueError('Spec must bind the owned candidate view')
         files = sorted(str(p.relative_to(self.folder).as_posix()) for p in (self.folder / 'docs').glob('*.md'))
-        files += ['spec.json', 'aggregate-cache.json', 'background_p1.png', 'prototype.html']
+        from dss.render.background import names
+        files += ['spec.json', 'aggregate-cache.json', *names(spec), 'prototype.html']
         if (self.folder / 'requirements.json').is_file():
             files.append('requirements.json')
         for name in files:
@@ -239,6 +240,9 @@ class Candidate:
             conn.execute(f"INSERT OR IGNORE INTO builds ({','.join(build)}) VALUES ({','.join('?' for _ in build)})", tuple(build.values()))
             conn.execute('UPDATE builds SET stage=?,updated_at=? WHERE id=?',
                          (previous['stage'], previous['updated_at'], row['build_id']))
+            if 'artifacts_json' in build:
+                # A blueprint confirmation saved before an uncommitted publish rolls back too.
+                conn.execute('UPDATE builds SET artifacts_json=? WHERE id=?', (build['artifacts_json'], row['build_id']))
             version = previous['version']
             if version:
                 conn.execute(f"INSERT OR REPLACE INTO versions ({','.join(version)}) VALUES ({','.join('?' for _ in version)})", tuple(version.values()))

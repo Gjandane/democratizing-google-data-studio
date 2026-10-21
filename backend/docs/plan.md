@@ -456,7 +456,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_layout_auto.py tests/test_spec_validate.py` passes: golden blueprint + design -> byte-identical golden spec; property test (fixed seed, 200 cases) of valid blueprints (1-12 rows per page, 1-5 pages, both densities, pages whose rows were all dropped) all give validator-valid specs with no overlaps, catalog minimum sizes and no empty page; the validator accepts 1-5 pages and rejects 6; the question_ref coverage rule applies to the layout output and not to revise patches; synthetic footer reserved when a synthetic source participates; `uv run pytest` passes.
   - Review focus: deterministic; reuses Layout and text fitting; no model call.
-- [ ] 15.9 Multi-page render, backgrounds, compile and decoration comments
+- [x] 15.9 Multi-page render, backgrounds, compile and decoration comments
   - Goal: blueprint accept renders every page and its background, compiles add_page per page, and revise accepts color comments on decorations and chart removals.
   - Spec: docs/architecture.md#Prototype renderer; docs/architecture.md#Recipe compiler; docs/architecture.md#Revise; docs/architecture.md#Plan publication
   - Files: src/dss/render/prototype.py, src/dss/render/background.py, src/dss/render/kits.py, src/dss/recipe/compiler.py, src/dss/harness/nodes/render.py, src/dss/harness/nodes/revise.py, src/dss/harness/nodes/publish.py, src/dss/harness/graph.py, src/dss/api/workflow.py, tests/test_render.py, tests/test_compiler.py, tests/test_revise.py

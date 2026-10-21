@@ -301,11 +301,12 @@ async def accept_blueprint(build_id: str, request: Request):
     with stages.action(state, build_id, ('blueprint',)) as build:
         folder, _ = design_inputs(state, build)
         draft = blueprint_node.preflight(state.db, build_id, folder)
-        stages.confirmed(build, 'blueprint')
-        # The prototype branch owns layout/publication (15.8/15.9), including
-        # confirmation only after success. A rejected run preserves this stage.
+        transition = stages.confirmed(build, 'blueprint')
+        # The prototype branch owns layout/publication and saves this confirmation
+        # only after its prototype commits. A rejected run preserves this stage.
         accepted = enqueue(state, build_id, 'prototype', {'build': build, 'folder': folder,
-            'blueprint': draft, 'config': state.settings.get(), 'factory': state.bigquery_factory})
+            'blueprint': draft, 'transition': transition, 'config': state.settings.get(),
+            'factory': state.bigquery_factory})
     state.harness.active_builds.add(build_id)
     return accepted
 

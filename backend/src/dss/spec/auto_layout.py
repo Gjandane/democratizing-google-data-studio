@@ -154,6 +154,10 @@ def _component(prefix, row, cell, used):
     if c.type == 'dropdown' and len(c.dimensions) == 1:
         # Blueprint has no field slot: its single dropdown dimension is add_control.field.
         value['field'], value['dimensions'] = c.dimensions[0], []
+    if c.type == 'pivot_table' and not c.dimensions:
+        # Feasibility counts pivot row/column options as its dimensions; the
+        # spec and the prototype's grouping need them too (recipe options win).
+        value['dimensions'] = list(dict.fromkeys(c.options.get('row_dimensions', []) + c.options.get('column_dimensions', [])))
     if c.type == 'text':
         value['text'] = c.label
     return value

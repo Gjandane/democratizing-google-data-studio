@@ -148,8 +148,7 @@ async def new_version(build_id: str, request: Request):
                 from dss.render import background
                 from dss.render.prototype import render
                 (destination / 'spec.json').write_text(document.model_dump_json(indent=2), encoding='utf-8')
-                background.capture(render(document, layer='decoration', folder=destination),
-                                   destination / 'background_p1.png', document.canvas.width, document.pages[0].height)
+                background.write_pages(document, destination)
                 cache = destination / 'aggregate-cache.json'
                 from dss.render.prototype import aggregate_sql
                 from hashlib import sha256

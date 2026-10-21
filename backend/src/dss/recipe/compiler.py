@@ -57,8 +57,9 @@ def compile_recipe(spec: DashboardSpec, version: int) -> str:
                     optional["sort"] = c.sort.model_dump()
                 op("add_chart", chart_type=c.type, dimensions=c.dimensions, metrics=[m.model_dump() for m in c.metrics], title=c.label, options=c.options, **optional, **args)
                 op("set_style", component_id=c.id, style=dict(colors=c.colors if c.colors is not None else spec.theme.palette))
-        if spec.datasource.synthetic:
-            label = next(d for d in page.decorations if d.id == SYNTHETIC_LABEL_ID)
+        # The reserved label lives on page 1 only (require_synthetic_label checks it).
+        label = next((d for d in page.decorations if d.id == SYNTHETIC_LABEL_ID), None)
+        if spec.datasource.synthetic and label is not None:
             bounds = box(spec.canvas, spec.grid, label.grid, height=page.height)
             # Native text also makes provenance visible in recipe preview and editable reports.
             op('add_text', component_id=label.id, text=SYNTHETIC_LABEL, x=bounds['x']+16,

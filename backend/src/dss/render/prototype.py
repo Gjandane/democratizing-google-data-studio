@@ -221,7 +221,8 @@ def chart_option(item, rows, theme, width):
     return base
 
 
-def render(spec, *, layer=None, data=None, folder=None):
+def render(spec, *, layer=None, data=None, folder=None, page=None):
+    """`page` (1-based index) renders that page's section alone, for its background capture."""
     from dss.spec.layout import require_synthetic_label
     require_synthetic_label(spec)
     text_errors = decoration_text_errors(spec)
@@ -234,8 +235,13 @@ def render(spec, *, layer=None, data=None, folder=None):
     parts = [f'<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{escape(spec.title)}</title>',
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
         '<style>body{margin:0}*{box-sizing:border-box}.item{position:absolute;overflow:hidden;padding:16px}.component{display:flex;flex-direction:column;gap:4px;padding:8px}.label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:600;flex:none}.chart{flex:1;min-height:0}.value{font-size:36px;font-weight:700}.component.scorecard{padding:6px 12px;gap:0}.scorecard .label{font-size:12px;line-height:12px}.scorecard .value{font-size:clamp(16px,calc(var(--box-height) - 28px),36px);line-height:1.1}.empty{margin:auto}.data-summary{overflow:auto;font-size:12px}table{border-collapse:collapse}th,td{text-align:left;padding:6px}select,input{font:inherit;min-height:24px;max-width:100%}.component.text{padding:8px;font-size:14px;line-height:20px}.component.date_range,.component.dropdown{padding:0;flex-direction:row;align-items:center;gap:4px}.date_range label{display:flex;align-items:center;gap:4px;font-size:12px}.date_range input{width:100px}.dropdown select{width:100%}img{width:100%;height:100%;object-fit:contain}.title{font-size:28px;font-weight:700}.subtitle{font-size:18px}.decoration{white-space:pre-wrap}</style></head><body>']
-    for page in spec.pages:
-        parts.append(f'<div id="dss-canvas" data-page="{page.index}" style="position:relative;width:{spec.canvas.width}px;height:{page.height}px;background:{css_value(theme.background)};color:{css_value(theme.text)};font-family:{css_value(theme.font_family)}">')
+    pages = [p for p in spec.pages if page is None or p.index == page]
+    if not pages:
+        raise ValueError('Unknown page')
+    # Contract 2.0: one canvas, its page sections stacked with no gap.
+    parts.append(f'<div id="dss-canvas" style="position:relative;width:{spec.canvas.width}px;height:{sum(p.height for p in pages)}px;background:{css_value(theme.background)};color:{css_value(theme.text)};font-family:{css_value(theme.font_family)}">')
+    for page in pages:
+        parts.append(f'<section data-page="{page.index}" data-page-name="{escape(page.name, quote=True)}" style="position:relative;width:{spec.canvas.width}px;height:{page.height}px">')
         for kind, items in (('decoration', page.decorations), ('component', page.components)):
             for item in items:
                 if kind == 'component' and item.type not in known:
@@ -299,7 +305,8 @@ def render(spec, *, layer=None, data=None, folder=None):
                         parts.append(''.join('<tr>' + ''.join(f'<td title="{escape(str(r.get(k, "")), quote=True)}">{escape(str(r.get(k, "")))}</td>' for k in keys) + '</tr>' for r in rows) + '</tbody></table></details>')
                         charts.append({'id': chart_id, 'geo': item.type == 'geo_map', 'option': chart_option(item, rows, theme, b['w'])})
                 parts.append('</div>')
-        parts.append('</div>')
+        parts.append('</section>')
+    parts.append('</div>')
     if charts:
         parts.append('<script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js"></script><script>')
         parts.append('const charts=' + script_json(charts) + ';')

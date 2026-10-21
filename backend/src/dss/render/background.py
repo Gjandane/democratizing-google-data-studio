@@ -2,6 +2,20 @@
 from playwright.sync_api import sync_playwright
 
 
+def names(spec):
+    return [f'background_p{page.index}.png' for page in spec.pages]
+
+
+def write_pages(spec, folder):
+    """background_p<n>.png at canvas size per page; each file replaces atomically."""
+    from dss.render.prototype import render
+    for page, name in zip(spec.pages, names(spec)):
+        temporary = folder / name.replace('.png', '.tmp.png')
+        capture(render(spec, layer='decoration', folder=folder, page=page.index), temporary,
+                spec.canvas.width, page.height)
+        temporary.replace(folder / name)
+
+
 def capture(html, path, width, height):
     # Recipe compilation is also called synchronously by async API handlers.
     import asyncio

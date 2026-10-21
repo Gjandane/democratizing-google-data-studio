@@ -9,6 +9,13 @@ from dss.artifacts.design import on_color
 from dss.spec.models import Cell, Decoration
 
 KITS = ('band_header', 'panel_grid', 'side_rail', 'ruled_header', 'title_block')
+# Surfaces carry their accent as a fill, text decorations as their text color.
+SURFACES = ('band', 'panel', 'divider')
+
+
+def accent_key(kind):
+    """The kit style key an accent/color comment on a decoration of this kind sets."""
+    return 'background_color' if kind in SURFACES else 'color'
 
 
 def _rows(text, size, width):

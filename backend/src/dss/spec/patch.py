@@ -8,28 +8,38 @@ class PatchError(ValueError):
     pass
 
 
+GROUPS = ('components', 'decorations')
+
+
 def items(document):
-    return {item['id']: item for group in ('components', 'decorations') for item in document['pages'][0][group]}
+    return {item['id']: item for page in document['pages'] for group in GROUPS for item in page[group]}
+
+
+def pages(document):
+    """Item id -> its page position; boxes and collisions never cross pages."""
+    return {item['id']: p for p, page in enumerate(document['pages']) for group in GROUPS for item in page[group]}
 
 
 def overlaps(a, b):
     return a['x'] < b['x']+b['w'] and b['x'] < a['x']+a['w'] and a['y'] < b['y']+b['h'] and b['y'] < a['y']+a['h']
 
 
-def item_box(document, item):
+def item_box(document, item, page=0):
     from dss.spec.models import Canvas, Grid, Cell
     return box(Canvas.model_validate(document['canvas']), Grid.model_validate(document['grid']),
-               Cell.model_validate(item['grid']), height=document['pages'][0]['height'])
+               Cell.model_validate(item['grid']), height=document['pages'][page]['height'])
 
 
 def neighbours(document, targets):
     """Direct grid neighbours only; no unrelated spec or data rows enter working memory."""
-    all_items = items(document)
-    target_boxes = [item_box(document, all_items[cid]) for cid in targets]
+    all_items, page_of = items(document), pages(document)
+    target_boxes = [(page_of[cid], item_box(document, all_items[cid], page_of[cid])) for cid in targets]
     result = set(targets)
     for cid, item in all_items.items():
-        b = item_box(document, item)
-        for a in target_boxes:
+        b = item_box(document, item, page_of[cid])
+        for page, a in target_boxes:
+            if page != page_of[cid]:
+                continue
             horizontal_gap = max(a['x']-b['x']-b['w'], b['x']-a['x']-a['w'], 0)
             vertical_gap = max(a['y']-b['y']-b['h'], b['y']-a['y']-a['h'], 0)
             if (horizontal_gap <= 17 and vertical_gap == 0) or (vertical_gap <= 17 and horizontal_gap == 0):
@@ -40,13 +50,13 @@ def neighbours(document, targets):
 def pointer(document, path):
     # Canonical paths prevent index-shift and JSON pointer aliases bypassing scope checks.
     tokens = path.split('/')
-    if len(tokens) < 5 or tokens[0:3] != ['', 'pages', '0'] or tokens[3] not in ('components', 'decorations'):
+    if len(tokens) < 5 or tokens[0:2] != ['', 'pages'] or tokens[3] not in GROUPS:
         raise PatchError('Patches must address a component or decoration')
-    index = tokens[4]
-    if not index.isascii() or not index.isdigit() or str(int(index)) != index:
+    page, index = tokens[2], tokens[4]
+    if any(not t.isascii() or not t.isdigit() or str(int(t)) != t for t in (page, index)):
         raise PatchError('An existing item index is required')
     try:
-        item = document['pages'][0][tokens[3]][int(index)]
+        item = document['pages'][int(page)][tokens[3]][int(index)]
     except (IndexError, KeyError, TypeError):
         raise PatchError('Patch item does not exist') from None
     return item['id'], tokens[3], tokens[5:]
@@ -81,7 +91,7 @@ def apply_scoped(document, operations, target):
             raise PatchError('Patch operation could not be applied') from None
         try:
             current = items(candidate)
-            if len(current) != sum(len(candidate['pages'][0][g]) for g in ('components','decorations')):
+            if len(current) != sum(len(page[g]) for page in candidate['pages'] for g in GROUPS):
                 raise PatchError('Item identities must be unique')
             if not current.keys() <= original.keys() or (original.keys()-current.keys()) - {target}:
                 raise PatchError('Item identities cannot change')
@@ -93,7 +103,10 @@ def apply_scoped(document, operations, target):
             raise PatchError('Patch must preserve item objects and identities') from None
     final = items(candidate)
     others = touched - {target}
-    components = {i['id'] for i in document['pages'][0]['components']}
+    components = {i['id'] for page in document['pages'] for i in page['components']}
+    before_pages, after_pages = pages(document), pages(candidate)
+    if any(before_pages[cid] != page for cid, page in after_pages.items()):
+        raise PatchError('Items cannot change page')
     for cid in others:
         before, after = deepcopy(original[cid]), deepcopy(final[cid])
         for key in ('col', 'row'):
@@ -106,7 +119,9 @@ def apply_scoped(document, operations, target):
     justified = {target} & components & final.keys()
     pending = set(others)
     while pending:
-        found = {cid for cid in pending if any(overlaps(item_box(candidate, final[moved]), item_box(document, original[cid])) for moved in justified)}
+        found = {cid for cid in pending if any(before_pages[moved] == before_pages[cid] and overlaps(
+            item_box(candidate, final[moved], before_pages[moved]), item_box(document, original[cid], before_pages[cid]))
+            for moved in justified)}
         if not found:
             raise PatchError('Patch touches an unrelated item')
         pending -= found

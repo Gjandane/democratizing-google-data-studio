@@ -62,7 +62,7 @@ class AgentHarness:
                 trace.span("router")
                 if action == 'blueprint':
                     return Event(actions=EventActions(route=action))
-                return Event(actions=EventActions(route=action if action in ("context", "outline_propose", "outline_suggest", "outline_other", "hello", "revise", "ux_audit", "reference_extract", "synthetic_schema", "capability_check", "research", "intake", "create_build", "load_spec", "recipe", "execute", "versions", "reference_delete", "engine_login", "synthetic_generate") else "unknown"))
+                return Event(actions=EventActions(route=action if action in ("context", "outline_propose", "outline_suggest", "outline_other", "hello", "revise", "ux_audit", "reference_extract", "synthetic_schema", "capability_check", "research", "intake", "create_build", "load_spec", "recipe", "execute", "versions", "reference_delete", "engine_login", "synthetic_generate", "prototype") else "unknown"))
 
             async def code_node(node_input):
                 nonlocal code_error
@@ -72,6 +72,9 @@ class AgentHarness:
                         return await payload(run_id)
                     if action == "create_build":
                         return "Build created"
+                    if action == "prototype":
+                        from dss.harness.nodes.render import accept
+                        return await accept(self, build_id, run_id, payload, trace)
                     from dss.harness.nodes.intake import perform
                     sources = await asyncio.to_thread(perform, self.db, build_id, payload)
                     return json.dumps(sources)
@@ -209,7 +212,7 @@ class AgentHarness:
                 extra_agent, extra_finish, extra_state = extra_branch(self, build_id, run_id, payload, model, trace, model_error)
                 workflow = Workflow(name="dss_run", edges=[
                     ("START", router), (router, {action: extra_agent}), (extra_agent, extra_finish), (extra_finish, guardrail)])
-            elif action in ("intake", "create_build", "load_spec", "recipe", "execute", "versions", "reference_delete", "engine_login", "synthetic_generate"):
+            elif action in ("intake", "create_build", "load_spec", "recipe", "execute", "versions", "reference_delete", "engine_login", "synthetic_generate", "prototype"):
                 workflow = Workflow(name="dss_run", edges=[
                     ("START", router), (router, {action: code_node}), (code_node, guardrail)])
             else:
@@ -247,7 +250,7 @@ class AgentHarness:
                 raise extra_state['failure']
             if reference_before is not None and reference_before != requirements.digest(references.load(reference_folder)):
                 requirements.reference_changed(reference_folder)
-            if action in ('blueprint', 'context', 'outline_propose', 'outline_suggest', 'outline_other', 'revise', 'ux_audit', 'reference_extract', 'capability_check', 'research', 'synthetic_schema'):
+            if action in ('blueprint', 'prototype', 'context', 'outline_propose', 'outline_suggest', 'outline_other', 'revise', 'ux_audit', 'reference_extract', 'capability_check', 'research', 'synthetic_schema'):
                 from dss.memory import episodic
                 message = episodic.save(self.db, build_id, 'assistant', reply, action)
                 await self.emit(build_id, run_id, 'message.done', {'message':message})
@@ -263,7 +266,7 @@ class AgentHarness:
                 from dss.memory import episodic
                 message = episodic.save(self.db, build_id, 'assistant', exc.message, action)
                 await self.emit(build_id, run_id, 'message.done', {'message': message})
-            if action in ('blueprint', 'context', 'outline_propose', 'outline_suggest', 'outline_other', "revise", "ux_audit", "reference_extract", "capability_check", "research", "synthetic_schema"):
+            if action in ('blueprint', 'prototype', 'context', 'outline_propose', 'outline_suggest', 'outline_other', "revise", "ux_audit", "reference_extract", "capability_check", "research", "synthetic_schema"):
                 error_message = exc.message
             raise
         except asyncio.CancelledError:

@@ -730,3 +730,144 @@ def test_later_comment_property_overrides_preserve_provenance_and_abandon_restor
     assert not ledger.requirements[1].superseded
     from dss.spec.capabilities import Checker, load_registry
     assert not req.coverage_errors(req.inputs(app.state.db, bid, folder), ledger, Checker(load_registry()))
+
+
+def multipage(setup):
+    """Replace the seeded prototype with a 3-page spec (band header kit on every page)."""
+    from test_render import three_pages
+    app, bid, folder, _, service, _ = setup
+    spec = three_pages()
+    spec.build_id = bid
+    (folder / 'spec.json').write_text(spec.model_dump_json(), encoding='utf-8')
+    for page in spec.pages[1:]:
+        (folder / f'background_p{page.index}.png').write_bytes(b'previous background')
+    aggregate_data(spec, service, folder)
+    service.queries.clear()
+    return spec
+
+
+@pytest.mark.parametrize('index,key', [(0, 'background_color'), (1, 'color')])
+def test_decoration_dark_blue_accent_patches_only_that_decoration(setup, client, monkeypatch, index, key):
+    """Release 2.2 P1: a color comment on a header decoration is fulfilled, never invalid_request."""
+    from dss.spec import requirements as req
+    app, bid, folder, _, service, captured = setup
+    original = multipage(setup)
+    target = original.pages[1].decorations[index]
+    assert (target.id, target.kind) == (('p2_header_band', 'band'), ('p2_report_title', 'title'))[index]
+    comment = 'Use a dark blue accent for this component'
+    fake = CommentFlow(needs_by_text={comment: [{'capability': 'style.colors', 'value': ['#172554']}]},
+        response=response([op(f'/pages/1/decorations/{index}/style/{key}', '#172554')]))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
+    assessment = post_batch(client, app, bid, [{'component_id': target.id, 'text': comment}])
+    assert assessment['state'] == 'ready' and assessment['pending_comments'] is None, assessment
+    assert fake.extractions == fake.revisions == 1
+    revised = DashboardSpec.model_validate_json((folder / 'spec.json').read_text())
+    expected = original.model_dump()
+    expected['spec_version'] = original.spec_version + 1
+    expected['pages'][1]['decorations'][index]['style'][key] = '#172554'
+    assert revised.model_dump() == expected
+    row = req.load(folder).requirements[0]
+    assert row.component_ids == [target.id] and [p.model_dump() for p in row.properties] == [
+        {'path': f'style.{key}', 'value': '#172554'}]
+    # The decoration is flattened into page 2's re-rendered background only.
+    page_two = next(html for html in captured if 'data-page="2"' in html)
+    assert '#172554' in page_two and all('#172554' not in html for html in captured if html is not page_two)
+    assert (folder / 'background_p2.png').read_bytes() == b'new background'
+    assert comment in (folder / 'docs/decisions.md').read_text(encoding='utf-8')
+    assert not service.queries
+
+
+def test_decoration_accent_with_wrong_color_is_not_fulfilled(setup, client, monkeypatch):
+    app, bid, folder, *_ = setup
+    multipage(setup)
+    before = (folder / 'spec.json').read_bytes()
+    comment = 'Use a dark blue accent for this component'
+    fake = CommentFlow(needs_by_text={comment: [{'capability': 'style.colors', 'value': ['#172554']}]},
+        response=response([op('/pages/1/decorations/0/style/background_color', '#1E40AF')]))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
+    assessment = post_batch(client, app, bid, [{'component_id': 'p2_header_band', 'text': comment}])
+    assert assessment['pending_comments'] and fake.revisions == 2
+    assert (folder / 'spec.json').read_bytes() == before
+
+
+@pytest.mark.parametrize('extracted', [[], [{'capability': 'unknown.unclassified'}]])
+def test_remove_this_chart_deletes_component_and_records_decision(setup, client, monkeypatch, extracted):
+    from dss.spec import requirements as req
+    app, bid, folder, *_ = setup
+    original = multipage(setup)
+    target = original.pages[1].components[4]
+    assert target.id == 'p2_bar_4'
+    fake = CommentFlow(needs_by_text={'Remove this chart': extracted},
+                       response=response([{'op': 'remove', 'path': '/pages/1/components/4'}]))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
+    assessment = post_batch(client, app, bid, [{'component_id': target.id, 'text': 'Remove this chart'}])
+    assert assessment['state'] == 'ready' and assessment['pending_comments'] is None, assessment
+    revised = DashboardSpec.model_validate_json((folder / 'spec.json').read_text())
+    expected = original.model_dump()
+    expected['spec_version'] = original.spec_version + 1
+    del expected['pages'][1]['components'][4]
+    assert revised.model_dump() == expected
+    assert req.removal(req.load(folder).requirements[0]) == target.id
+    decisions = (folder / 'docs/decisions.md').read_text(encoding='utf-8')
+    assert 'Remove this chart' in decisions and f'"removed": "{target.id}"' in decisions
+    assert f'data-cid="{target.id}"' not in (folder / 'prototype.html').read_text(encoding='utf-8')
+    assert ('prototype.updated', {'spec_version': revised.spec_version}) in events(app, bid)
+
+
+def test_removal_retires_earlier_comment_rows_and_must_actually_remove(setup, client, monkeypatch):
+    app, bid, folder, *_ = setup
+    multipage(setup)
+    fake = CommentFlow(needs_by_text={'Compact numbers': [{'capability': 'option.scorecard.compact_numbers', 'value': True}],
+                                      'Remove this chart': []},
+                       response=response([op('/pages/1/components/0/options/compact_numbers', True, 'add')]))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
+    assert post_batch(client, app, bid, [{'component_id': 'p2_scorecard_0', 'text': 'Compact numbers'}])['pending_comments'] is None
+    # An empty patch does not fulfill a removal: one repair, then the batch stays pending.
+    fake.response = response([])
+    before = (folder / 'spec.json').read_bytes()
+    pending = post_batch(client, app, bid, [{'component_id': 'p2_scorecard_0', 'text': 'Remove this chart'}])
+    assert pending['pending_comments'] and (folder / 'spec.json').read_bytes() == before
+    client.delete(f'/api/builds/{bid}/feasibility/pending-comments', params={'assessment_id': pending['id']})
+    fake.response = response([{'op': 'remove', 'path': '/pages/1/components/0'}])
+    done = post_batch(client, app, bid, [{'component_id': 'p2_scorecard_0', 'text': 'Remove this chart'}])
+    assert done['state'] == 'ready' and done['pending_comments'] is None, done
+    assert 'p2_scorecard_0' not in (folder / 'spec.json').read_text()
+
+
+@pytest.mark.parametrize('orientation', ['horizontal', 'vertical'])
+def test_removal_retires_unscoped_row_only_the_removed_chart_fulfilled(setup, client, monkeypatch, orientation):
+    """An unscoped (message) row retires with its only fulfilling chart; one another chart misses still blocks."""
+    from dss.memory import episodic
+    app, bid, folder, *_ = setup
+    spec = multipage(setup)
+    spec.pages[1].components[4].options = {'orientation': orientation}
+    (folder / 'spec.json').write_text(spec.model_dump_json(), encoding='utf-8')
+    request = 'Show a horizontal bar chart'
+    episodic.save(app.state.db, bid, 'user', request)
+    fake = CommentFlow(needs_by_text={request: [{'capability': 'option.bar.orientation', 'value': 'horizontal'}],
+                                      'Remove this chart': []},
+                       response=response([{'op': 'remove', 'path': '/pages/1/components/4'}]))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
+    before = (folder / 'spec.json').read_bytes()
+    result = post_batch(client, app, bid, [{'component_id': 'p2_bar_4', 'text': 'Remove this chart'}])
+    if orientation == 'horizontal':
+        assert result['state'] == 'ready' and result['pending_comments'] is None, result
+        assert 'p2_bar_4' not in (folder / 'spec.json').read_text()
+    else:
+        # The row was never fulfilled by the removed chart: removal cannot launder it.
+        assert result['pending_comments'] or result['state'] != 'ready'
+        assert (folder / 'spec.json').read_bytes() == before
+
+
+def test_patch_scope_spans_pages_but_not_across_them():
+    from test_render import three_pages
+    document = three_pages().model_dump()
+    renamed = apply_scoped(document, [op('/pages/2/components/0/label', 'Renamed')], 'p3_scorecard_0')
+    assert renamed['pages'][2]['components'][0]['label'] == 'Renamed'
+    # Page 1's item in the same grid cells is not a collision neighbour of a page 3 item.
+    with pytest.raises(PatchError):
+        apply_scoped(document, [op('/pages/2/components/0/grid/w', 6), op('/pages/0/components/1/grid/col', 7)], 'p3_scorecard_0')
+    with pytest.raises(PatchError):
+        apply_scoped(document, [op('/pages/1/components/0/label', 'x')], 'p3_scorecard_0')
+    with pytest.raises(PatchError):
+        apply_scoped(document, [op('/pages/01/components/0/label', 'x')], 'p2_scorecard_0')

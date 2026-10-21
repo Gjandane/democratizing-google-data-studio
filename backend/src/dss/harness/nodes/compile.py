@@ -12,11 +12,7 @@ def perform(spec: DashboardSpec, version: int, folder: Path) -> str:
         if spec.datasource.synthetic:
             # Rebuild the code-owned background for legacy copies, never trust stale pixels.
             from dss.render import background
-            from dss.render.prototype import render
-            temporary_image = folder / 'background_p1.tmp.png'
-            background.capture(render(spec, layer='decoration', folder=folder), temporary_image,
-                               spec.canvas.width, spec.pages[0].height)
-            temporary_image.replace(folder / 'background_p1.png')
+            background.write_pages(spec, folder)
     except ValueError:
         raise RunError("invalid_recipe", "Spec could not be compiled into a recipe", 422) from None
     target = folder / "recipe.jsonl"
