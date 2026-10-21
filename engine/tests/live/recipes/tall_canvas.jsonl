@@ -1,0 +1,11 @@
+{"recipe_version":"1.0","build_id":"b_000000000002","version":1,"report_name":"Engine tall canvas","canvas":{"width":1200,"height":900},"datasource":{"connector":"bigQuery","project_id":"bigquery-public-data","dataset_id":"thelook_ecommerce","table_id":"order_items"}}
+{"id":"s001","op":"open_report"}
+{"id":"s002","op":"add_page","name":"Tall canvas"}
+{"id":"s003","op":"set_canvas","width":1200,"height":1492}
+{"id":"s004","op":"set_background_image","path":"background_tall.png","x":0,"y":0,"w":1200,"h":1492}
+{"id":"s005","op":"add_chart","component_id":"p2_status_detail","chart_type":"table","x":24,"y":884,"w":1152,"h":304,"dimensions":["status"],"metrics":[{"field":"sale_price","agg":"sum"},{"field":"order_id","agg":"count_distinct"}],"sort":{"field":"sale_price","order":"desc"},"title":"Sales Detail by Status","options":{"rows_per_page":10}}
+{"id":"s006","op":"add_chart","component_id":"p2_sales_by_status","chart_type":"bar","x":24,"y":1204,"w":568,"h":264,"dimensions":["status"],"metrics":[{"field":"sale_price","agg":"sum"}],"sort":{"field":"sale_price","order":"desc"},"title":"Sales by Status","options":{"orientation":"horizontal","stacked":false}}
+{"id":"s007","op":"add_control","component_id":"p2_status_filter","control_type":"dropdown","field":"status","x":608,"y":1220,"w":276,"h":44}
+{"id":"s008","op":"add_text","component_id":"p2_note","text":"Below the fold","x":608,"y":1300,"w":568,"h":60}
+{"id":"s009","op":"save_report"}
+{"id":"s010","op":"get_link"}

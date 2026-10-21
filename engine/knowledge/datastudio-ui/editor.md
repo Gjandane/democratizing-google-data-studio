@@ -40,6 +40,8 @@ selectors:
   field_picker: '.cdk-overlay-pane:has(ng2-selector-dialog), .cdk-overlay-pane:has-text("No results")'
   chart_gallery: '.cdk-overlay-pane:has-text("Scorecard"):has-text("Table")'
   overlay_pane: '.cdk-overlay-pane'
+  open_menu: 'role=menu'
+  dropdown_option: 'role=option'
   metric_chips: '.common-chip.metric'
   metric_aggregation_button: '.left-half'
   field_remove_button: 'button.remove-chip-button'
@@ -164,6 +166,29 @@ initial 10 px movement before moving to the destination. Image movement starts
 at its center. A direct large movement on an image sometimes selected browser
 text instead. Both chart and image measured 0 px error in exploratory readback.
 The chart target is [24,120,560,300]; image target [0,0,1200,900].
+
+## Tall canvases (task 9.1)
+
+The canvas scrolls inside its nearest scrollable ancestor (`.mainBlock` on
+2026-10-21: viewport y 162-1200, x 0-1440 with the right panels open; canvas top
+22 px below its scroll origin). A 1200 x 1492 canvas does not fit. Mouse input
+outside that window misses: a press there hits nothing, so a drag that starts
+there does nothing, while a press inside can still move outside. Selecting a
+component also scrolls the window, so a fixed `canvas + (24, 24)` insertion
+click can land on the filter bar and open a "Choose a field" chip. Scroll the
+region into view first (code finds the scroller by computed overflow, no
+selector), keep points 40 px inside the window, and split drags longer than the
+window into steps. `offsetLeft/Top` stay canvas coordinates at any scroll.
+An uploaded image appears mid-canvas at a reduced, ratio-kept size (e.g. 400,394
+at 201 x 250 for a 1200 x 1492 PNG). Resizing it in place to the full canvas
+puts the handle beyond the canvas, so move it to where the resized box fits
+first. After Send to back the image stays selected and the closing menu absorbs
+the first workspace click: repeat Escape (`open_menu`) or the workspace click
+until neither `open_menu` nor `selected_component` is visible.
+Smart guides snap insertion and drops: with a table ending at y 1188 and a
+control at 1220-1264 (gap 32), a text box drawn at y 1300 landed at 1296 (equal
+32 px gap), and a 4 px corrective drag snapped back. Expect up to that offset
+near stacked components; readback stays within the ±4 px tolerance there.
 
 ## Image and order
 

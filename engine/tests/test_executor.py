@@ -38,6 +38,10 @@ class FakeCanvas:
     def bounding_box(self, *, timeout=None):
         return {"x": 200, "y": 100, "width": 1200, "height": 900}
 
+    def evaluate(self, expression, box, *, timeout=None):
+        # charts._reveal: the whole canvas is already in view.
+        return {"x": 200, "y": 100, "view": {"left": 0, "top": 0, "right": 1920, "bottom": 1200}}
+
 
 class FakePage:
     def __init__(self, calls):
@@ -550,11 +554,34 @@ class ImagePage:
                       ImageHandle("control"), ImageHandle("chart")]
         self.uploads = 0
         self.selected = None
+        self.menu_open = False
+        self.closing = False
         self.raise_after_upload = False
+        self.keyboard = self
+        self.mouse = self
+
+    def press(self, key):
+        if key == "Escape" and not self.closing:
+            self.menu_open = False
+
+    def click(self, x, y):
+        # The empty workspace left of the canvas deselects, unless a closing
+        # menu absorbs the click (live 2026-10-21, right after Send to back).
+        if self.menu_open:
+            self.menu_open = False
+        else:
+            self.selected = None
+
+    def wait_for_timeout(self, timeout):
+        if self.closing:
+            self.menu_open = self.closing = False
 
     def locator(self, selector):
         if selector in {"components", "chart_components"}:
             return ImageCollection(self, charts=selector == "chart_components")
+        if selector in {"selected_component", "open_menu"}:
+            shown = self.selected is not None if selector == "selected_component" else self.menu_open
+            return SelectionState(shown)
         assert selector in {"image", "upload_image", "arrange", "order", "send_back"}
         return ImageAction(self, selector)
 
@@ -571,11 +598,28 @@ class ImagePage:
             raise RuntimeError("transient file chooser failure after upload")
 
 
+class SelectionState:
+    def __init__(self, shown):
+        self.shown = shown
+
+    def count(self):
+        return int(self.shown)
+
+    def nth(self, index):
+        return self
+
+    def is_visible(self):
+        return self.shown
+
+
 class ImageAction:
     def __init__(self, page, key):
         self.page, self.key = page, key
 
     def click(self, *, timeout):
+        # Send to back's menu is still closing (visible) when the click returns.
+        self.page.menu_open = self.key in {"arrange", "send_back"}
+        self.page.closing = self.key == "send_back"
         if self.key == "send_back":
             self.page.items.remove(self.page.selected)
             self.page.items.insert(0, self.page.selected)
@@ -604,7 +648,8 @@ def background_driver(tmp_path, monkeypatch):
     (tmp_path / "background.png").write_bytes(b"fixture")
     ctx = OpContext(recipe, {key: key for key in (
         "components", "chart_components", "image", "upload_image", "arrange", "order",
-        "send_back", "image_content", "canvas")}, EventWriter(io.StringIO()), tmp_path,
+        "send_back", "image_content", "canvas", "selected_component", "open_menu")},
+        EventWriter(io.StringIO()), tmp_path,
         time.monotonic() + 60, op_deadline=time.monotonic() + 20)
     ctx.state = {"s001": {"component_index": 0, "target": (0, 0, 1200, 900)},
                  "s002": {"component_index": 1, "target": (0, 0, 1200, 900)},
@@ -616,11 +661,11 @@ def background_driver(tmp_path, monkeypatch):
     monkeypatch.setattr(pages, "switch", lambda _page, _ctx, index: None)
     monkeypatch.setattr(report, "_prepare_image", lambda _page, component, _ctx:
                         setattr(_page, "selected", component))
-    monkeypatch.setattr(report, "_place_component", lambda _page, component, canvas, box:
+    monkeypatch.setattr(report, "_place_component", lambda _page, _ctx, component, canvas, box:
                         setattr(component, "box", box))
     original_locator = report._locator
     monkeypatch.setattr(report, "_locator", lambda p, c, key:
-                        object() if key == "canvas" else original_locator(p, c, key))
+                        FakeCanvas() if key == "canvas" else original_locator(p, c, key))
     return page, ctx
 
 
@@ -735,7 +780,7 @@ def test_background_reordering_leaves_other_pages_registry_untouched(background_
 
 def test_image_is_resized_before_moving_to_clamped_canvas_edge(tmp_path, monkeypatch):
     from types import SimpleNamespace
-    from dsengine.ops import report
+    from dsengine.ops import charts, report
 
     calls, drags = [], []
     component = ImageHandle("background", (0, 0, 333, 250))
@@ -752,11 +797,137 @@ def test_image_is_resized_before_moving_to_clamped_canvas_edge(tmp_path, monkeyp
         else:
             component.box = (x + end[0] - start[0], y + end[1] - start[1], w, h)
 
-    monkeypatch.setattr(report, "_drag", drag)
+    monkeypatch.setattr(charts, "_drag", drag)
     page = SimpleNamespace(mouse=FakeMouse(calls))
-    report._place_component(page, component, canvas, (1100, 800, 100, 100))
+    report._place_component(page, cleanup_context(tmp_path), component, canvas, (1100, 800, 100, 100))
     assert drags == [((533, 350), (300, 200)), ((250, 150), (1350, 950))]
     assert component.box == (1100, 800, 100, 100)
+
+
+class ScrollingCanvas:
+    """A tall canvas in the live editor's scroll window at 1920 x 1200 (2026-10-21).
+
+    The window spans viewport y 162-1200 and x 0-1440; the canvas top sits 22 px
+    below the scroll origin, at x 116. Revealing aligns the box's top 40 px inside.
+    """
+
+    def __init__(self, height):
+        self.height, self.scroll = height, 0
+
+    def origin(self):
+        return 116, 184 - self.scroll
+
+    def bounding_box(self, *, timeout=None):
+        x, y = self.origin()
+        return {"x": x, "y": y, "width": 1200, "height": self.height}
+
+    def evaluate(self, expression, box, *, timeout=None):
+        _left, top, _right, bottom, edge = box
+        y = self.origin()[1]
+        if y + top < 162 + edge or y + bottom > 1200 - edge:
+            self.scroll = max(0, min(self.height + 48 - 1038, top + 22 - edge))
+        x, y = self.origin()
+        return {"x": x, "y": y, "view": {"left": 0, "top": 162, "right": 1440, "bottom": 1200}}
+
+
+class Placed:
+    def __init__(self, canvas, box):
+        self.canvas, self.box = canvas, box
+
+    def evaluate(self, expression):
+        assert "offsetLeft" in expression
+        return self.box
+
+    def bounding_box(self):
+        x, y = self.canvas.origin()
+        return {"x": x + self.box[0], "y": y + self.box[1], "width": self.box[2], "height": self.box[3]}
+
+
+def _in_view(point):
+    return 0 <= point[0] <= 1440 and 162 <= point[1] <= 1200
+
+
+def _scrolling_editor(monkeypatch, canvas, component):
+    """Mouse input reaches the editor only inside its scroll window (live 2026-10-21)."""
+    from types import SimpleNamespace
+    from dsengine.ops import charts
+
+    events = []
+
+    def drag(page, start, end):
+        events.append(("drag", start, end))
+        assert all(_in_view(p) for p in (start, (start[0] + 10, start[1] + 10), end)), events
+        ox, oy = canvas.origin()
+        x, y, w, h = component.box
+        dx, dy = end[0] - start[0], end[1] - start[1]
+        if (start[0] - ox, start[1] - oy) == (x + w, y + h):
+            assert x + w + dx <= 1200 and y + h + dy <= canvas.height, "handle left the canvas"
+            component.box = (x, y, w + dx, h + dy)
+        else:
+            assert x <= start[0] - ox <= x + w and y <= start[1] - oy <= y + h, "drag missed"
+            component.box = (x + dx, y + dy, w, h)
+
+    def click(x, y):
+        events.append(("click", x, y))
+        assert _in_view((x, y)), events
+
+    monkeypatch.setattr(charts, "_drag", drag)
+    return SimpleNamespace(mouse=SimpleNamespace(click=click),
+                           keyboard=FakeKeyboard(events)), events
+
+
+def test_full_canvas_background_is_placed_with_every_drag_in_view(tmp_path, monkeypatch):
+    # Release b_b2ac19ea6696 page 3: background_p3.png (1200 x 1492) was uploaded
+    # at 400,394 at a reduced size; the move started at the resized image's
+    # center below the window, missed, and the op timed out at its upload box.
+    from dsengine.ops import report
+
+    canvas = ScrollingCanvas(1492)
+    image = Placed(canvas, (400, 394, 201, 250))
+    page, events = _scrolling_editor(monkeypatch, canvas, image)
+    ctx = cleanup_context(tmp_path)
+    ctx.canvas_dimensions = (1200, 1492)
+    report._place_component(page, ctx, image, canvas, (0, 0, 1200, 1492))
+    assert image.box == (0, 0, 1200, 1492)
+    assert sum(event[0] == "drag" for event in events) == 3  # move, then two resize steps
+
+
+@pytest.mark.parametrize("target", [(24, 884, 1152, 304), (24, 1204, 568, 264)])
+def test_chart_below_the_fold_is_placed_with_every_drag_in_view(tmp_path, monkeypatch, target):
+    # Release page 3: the table's resize handle started below the window (drawn
+    # ~400 px wide) and the bar at y 1204 timed out; insertion clicks at 24,24
+    # after the canvas had scrolled opened a "Choose a field" filter chip.
+    from dsengine.ops import charts
+
+    canvas = ScrollingCanvas(1492)
+    canvas.scroll = 300
+    chart = Placed(canvas, (24, 24, 400, 230))
+    page, events = _scrolling_editor(monkeypatch, canvas, chart)
+    ctx = cleanup_context(tmp_path)
+    charts._click_canvas(page, ctx, canvas, 24, 24)
+    assert events[0] == ("click", 140, 202)  # inside the canvas, not the filter bar
+    charts._place_chart(page, ctx, chart, canvas, target)
+    assert chart.box == target
+
+
+def test_background_ends_with_no_menu_open_and_nothing_selected(background_driver):
+    # Release page 3: Image properties and the Arrange > Order menu stayed open;
+    # the next add_chart left the image selected and opened a filter chip.
+    from dsengine.ops import OperationError, report
+
+    page, ctx = background_driver
+    op = ctx.recipe.ops[4]
+    report.run(page, op, ctx)
+    assert page.selected is None and not page.menu_open
+    report.verify(page, op, ctx)
+
+    ctx.op_deadline = 0
+    page.menu_open = True
+    with pytest.raises(OperationError, match="did not verify"):
+        report.verify(page, op, ctx)
+    page.menu_open, page.selected = False, page.items[0]
+    with pytest.raises(OperationError, match="did not verify"):
+        report.verify(page, op, ctx)
 
 
 def test_open_report_retains_fields_when_image_selection_clears_data_panel(tmp_path, monkeypatch):
@@ -1126,3 +1297,69 @@ def test_canvas_size_options_match_exact_text_not_page_names():
     selectors = load_selectors()
     assert selectors["canvas_size_custom"] == 'text="Custom"'
     assert selectors["canvas_size_auto"] == 'text="Auto"'
+
+
+def test_rows_per_page_waits_for_the_option_list_not_any_overlay(tmp_path):
+    # Release b_b2ac19ea6696 replay, s034: a pane reading "Autogenerate" was
+    # already the last visible overlay when Rows per page opened, so option 10
+    # was looked up in it and the op failed "Data Studio option 10 is unavailable".
+    from dsengine.ops import charts
+
+    class Node:
+        def __init__(self, page, texts=(), clicks=None):
+            self.page, self.texts, self.clicks = page, list(texts), clicks
+
+        def count(self):
+            return len(self.texts)
+
+        def nth(self, index):
+            return Node(self.page, [self.texts[index]], self.clicks)
+
+        @property
+        def first(self):
+            return self.nth(0) if self.texts else Node(self.page)
+
+        @property
+        def last(self):
+            return self.nth(-1)
+
+        def is_visible(self):
+            return bool(self.texts)
+
+        def wait_for(self, *, state, timeout):
+            assert state == "visible"
+
+        def click(self, *, timeout):
+            self.page.clicks.append(self.texts)
+            self.page.listbox = self.page.listbox or self.clicks == "control"
+
+        def locator(self, selector):
+            assert selector == "dropdown_option"
+            return Node(self.page, self.page.pane() if self.page.attached else [])
+
+        def get_by_text(self, value, *, exact):
+            return Node(self.page, [t for t in self.page.pane() if t == value])
+
+    class Page:
+        def __init__(self):
+            self.clicks, self.listbox, self.attached = [], False, False
+
+        def pane(self):
+            return ["5", "10", "100"] if self.attached else ["Autogenerate"]
+
+        def wait_for_timeout(self, timeout):
+            self.attached = self.listbox  # the list attaches after the click returns
+
+        def locator(self, selector):
+            if selector == "rows_per_page_control":
+                return Node(self, ["Rows per page"], "control")
+            assert selector == "last_overlay"
+            return Node(self, ["pane"])
+
+    ctx = cleanup_context(tmp_path)
+    ctx.selectors = {key: key for key in ("rows_per_page_control", "last_overlay", "dropdown_option")}
+    ctx.op_deadline = executor.time.monotonic() + 5
+    ctx.run_deadline = ctx.op_deadline
+    page = Page()
+    charts._set_dropdown(page, ctx, "rows_per_page_control", "10", "rows per page")
+    assert page.clicks == [["Rows per page"], ["10"]]

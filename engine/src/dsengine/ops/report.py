@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from dsengine.ops import OpContext, OpResult, OperationError
+from dsengine.ops.charts import _click_canvas, _click_workspace, _drag_to
 
 HANDLED_OPS = {"open_report", "set_canvas", "set_background_image", "save_report", "get_link"}
 _VIEWPORT = (1920, 1200)
@@ -182,40 +183,26 @@ def _geometry(component: Any) -> tuple[int, int, int, int]:
     return tuple(component.evaluate("e => [e.offsetLeft, e.offsetTop, e.offsetWidth, e.offsetHeight]"))
 
 
-def _drag(page: Any, start: tuple[float, float], end: tuple[float, float]) -> None:
-    page.mouse.move(*start)
-    page.mouse.down()
-    # Cross the CDK drag activation threshold before moving to the destination.
-    page.mouse.move(start[0] + 10, start[1] + 10, steps=2)
-    page.mouse.move(*end, steps=12)
-    page.mouse.up()
-
-
-def _place_component(page: Any, component: Any, canvas: Any,
+def _place_component(page: Any, ctx: OpContext, component: Any, canvas: Any,
                      target: tuple[int, int, int, int]) -> None:
     x, y, width, height = _geometry(component)
-    bounds = component.bounding_box()
-    canvas_bounds = canvas.bounding_box()
-    if bounds is None or canvas_bounds is None:
+    if component.bounding_box() is None or canvas.bounding_box() is None:
         raise OperationError("image component or canvas is not visible")
 
-    # Resize while the newly uploaded image is still inside the canvas. Moving
-    # first can put its resize handle outside the canvas (edge-clamped boxes).
+    # Resize where the resized box stays on the canvas, so its handle never
+    # leaves it: in place when it fits (edge-clamped boxes, where moving first
+    # would hide the handle), else from the nearest fitting position (large
+    # boxes such as a full-canvas background, uploaded smaller mid-canvas).
     if (width, height) != target[2:]:
-        page.mouse.click(bounds["x"] + bounds["width"] / 2,
-                         bounds["y"] + bounds["height"] / 2)
-        resize_start = (bounds["x"] + bounds["width"], bounds["y"] + bounds["height"])
-        resize_end = (bounds["x"] + target[2], bounds["y"] + target[3])
-        _drag(page, resize_start, resize_end)
-    x, y, _, _ = _geometry(component)
-    if (x, y) != target[:2]:
-        bounds = component.bounding_box()
-        if bounds is None:
-            raise OperationError("image component disappeared while placing it")
-        start = (bounds["x"] + bounds["width"] / 2,
-                 bounds["y"] + bounds["height"] / 2)
-        destination = (start[0] + target[0] - x, start[1] + target[1] - y)
-        _drag(page, start, destination)
+        canvas_width, canvas_height = ctx.canvas_dimensions or (
+            ctx.recipe.header.canvas.width, ctx.recipe.header.canvas.height)
+        fit = (min(x, canvas_width - target[2]), min(y, canvas_height - target[3]))
+        if fit != (x, y):
+            _drag_to(page, ctx, canvas, component, (*fit, width, height), handle="center")
+        x, y, _, _ = _geometry(component)
+        _click_canvas(page, ctx, canvas, x + width / 2, y + height / 2)
+        _drag_to(page, ctx, canvas, component, target, handle="resize")
+    _drag_to(page, ctx, canvas, component, target, handle="center")
 
 
 def _background_box(op: Any, dimensions: tuple[int, int]) -> tuple[tuple[int, int, int, int], bool]:
@@ -233,10 +220,7 @@ def _background_box(op: Any, dimensions: tuple[int, int]) -> tuple[tuple[int, in
 def _prepare_image(page: Any, component: Any, ctx: OpContext) -> None:
     """Select this image's Setup panel and allow arbitrary recipe rectangles."""
     _locator(page, ctx, "selection_mode").click(timeout=ctx.timeout_ms())
-    bounds = _locator(page, ctx, "canvas").bounding_box(timeout=ctx.timeout_ms())
-    if bounds is None:
-        raise OperationError("report canvas is not visible")
-    page.mouse.click(max(1, bounds["x"] - 12), bounds["y"] + 40)
+    _click_workspace(page, ctx, _locator(page, ctx, "canvas"))
     component.click(position={"x": 10, "y": 10}, timeout=ctx.timeout_ms())
     setup = _locator(page, ctx, "setup_tab")
     setup.wait_for(state="visible", timeout=ctx.timeout_ms())
@@ -320,14 +304,37 @@ def _run_set_background_image(page: Any, op: Any, ctx: OpContext) -> OpResult:
                                         state="visible", timeout=ctx.timeout_ms())
     _poll(page, ctx, lambda: image.evaluate("e => e.naturalWidth") > 0,
           "background image did not finish loading")
-    if (state.get("placed") and _geometry(component) == target
+    if not (state.get("placed") and _geometry(component) == target
             and _component_index(components, component) == 0):
-        return OpResult()
-    _prepare_image(page, component, ctx)
-    _place_component(page, component, _locator(page, ctx, "canvas"), target)
-    state["placed"] = True
-    _send_background_back(page, component, ctx)
+        _prepare_image(page, component, ctx)
+        _place_component(page, ctx, component, _locator(page, ctx, "canvas"), target)
+        state["placed"] = True
+        _send_background_back(page, component, ctx)
+    _settle(page, ctx)
     return OpResult()
+
+
+def _clean(page: Any, ctx: OpContext) -> bool:
+    return not (_visible(_locator(page, ctx, "open_menu"))
+                or _visible(_locator(page, ctx, "selected_component")))
+
+
+def _settle(page: Any, ctx: OpContext) -> None:
+    """Close menus and deselect the background, so the next op starts clean."""
+    canvas = _locator(page, ctx, "canvas")
+
+    # A workspace click while Send to back's menu is still closing only closes
+    # it (live 2026-10-21), so act again on whatever is still open each poll.
+    def settled() -> bool:
+        if _visible(_locator(page, ctx, "open_menu")):
+            page.keyboard.press("Escape")
+        elif _visible(_locator(page, ctx, "selected_component")):
+            _click_workspace(page, ctx, canvas)
+        else:
+            return True
+        return False
+
+    _poll(page, ctx, settled, "background left a menu open or a component selected")
 
 
 def _verify_set_background_image(page: Any, op: Any, ctx: OpContext) -> None:
@@ -343,6 +350,7 @@ def _verify_set_background_image(page: Any, op: Any, ctx: OpContext) -> None:
         and _component_index(components, component) == 0
         and image.evaluate("e => e.naturalWidth") > 0
         and components.count() == state["before"] + 1
+        and _clean(page, ctx)
     ), "background image placement did not verify")
 
 

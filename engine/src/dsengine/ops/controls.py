@@ -4,7 +4,7 @@ from typing import Any
 
 from dsengine.ops import OpContext, OpResult, OperationError
 from dsengine.ops.charts import (
-    _chart_box, _field_names, _geometry, _locator, _matches_field,
+    _chart_box, _click_canvas, _field_names, _geometry, _locator, _matches_field,
     _place_chart, _poll, _require_source_field, _set_fields, _source_fields, _wait_visible,
 )
 
@@ -34,14 +34,13 @@ def run(page: Any, op: Any, ctx: OpContext) -> OpResult:
         menuitem.click(timeout=ctx.timeout_ms())
         menuitem.wait_for(state="hidden", timeout=ctx.timeout_ms())
         _wait_visible(_locator(page, ctx, "drawing"), ctx, "control drawing mode did not open")
-        bounds = canvas.bounding_box()
-        if bounds is None:
+        if canvas.bounding_box() is None:
             raise OperationError("report canvas is not visible")
-        page.mouse.click(bounds["x"] + 24, bounds["y"] + 24)
+        _click_canvas(page, ctx, canvas, 24, 24)
         _poll(page, ctx, lambda: components.count() == before + 1,
               "control insertion did not add exactly one component")
     component = components.nth(before)
-    _place_chart(page, component, canvas, target, dismiss_popup=True)
+    _place_chart(page, ctx, component, canvas, target, dismiss_popup=True)
     page.keyboard.press("Escape")
     _locator(page, ctx, "setup_tab").click(timeout=ctx.timeout_ms())
     if field:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from dsengine.ops import OpContext, OpResult, OperationError
@@ -286,8 +287,11 @@ def _set_dropdown(page: Any, ctx: OpContext, control_key: str, value: str,
     control = _locator(page, ctx, control_key)
     _wait_visible(control, ctx, f"Data Studio option {option} is unavailable")
     control.click(timeout=ctx.timeout_ms())
+    # Another pane can already be visible (one reading "Autogenerate" on the
+    # release table, 2026-10-21), so wait until the last pane is the option list.
     pane = _locator(page, ctx, "last_overlay")
-    _wait_visible(pane, ctx, f"Data Studio option {option} menu did not open")
+    _poll(page, ctx, lambda: _visible(pane.locator(ctx.selectors["dropdown_option"]).first),
+          f"Data Studio option {option} menu did not open")
     choices = pane.get_by_text(value, exact=True)
     if not _visible(choices):
         raise OperationError(f"Data Studio option {value} is unavailable")
@@ -343,27 +347,101 @@ def _geometry(component: Any) -> tuple[int, int, int, int]:
     return tuple(component.evaluate("e => [e.offsetLeft, e.offsetTop, e.offsetWidth, e.offsetHeight]"))
 
 
-def _place_chart(page: Any, component: Any, canvas: Any,
+# Canvases can be taller than the editor's scroll window (per_section pages). Mouse
+# input outside the window misses its target, so every point is revealed first.
+_EDGE = 40  # px kept clear of the scroll window's edges
+_THRESHOLD = 10  # px of the initial move in _drag
+
+_REVEAL = """(canvas, [left, top, right, bottom, edge]) => {
+    let scroller = canvas.parentElement;
+    for (; scroller && scroller !== document.scrollingElement; scroller = scroller.parentElement) {
+        const style = getComputedStyle(scroller);
+        if (/(auto|scroll)/.test(style.overflowY + style.overflowX)
+                && (scroller.scrollHeight > scroller.clientHeight
+                    || scroller.scrollWidth > scroller.clientWidth)) break;
+    }
+    scroller = scroller || document.scrollingElement;
+    const area = () => {
+        if (scroller === document.scrollingElement)
+            return {left: 0, top: 0, right: innerWidth, bottom: innerHeight};
+        const r = scroller.getBoundingClientRect();
+        const x = r.left + scroller.clientLeft, y = r.top + scroller.clientTop;
+        return {left: Math.max(0, x), top: Math.max(0, y),
+                right: Math.min(innerWidth, x + scroller.clientWidth),
+                bottom: Math.min(innerHeight, y + scroller.clientHeight)};
+    };
+    const shift = (low, high, start, end) =>
+        high - low > end - start - 2 * edge || low < start + edge ? low - start - edge
+            : high > end - edge ? high - end + edge : 0;
+    let box = canvas.getBoundingClientRect(), view = area();
+    scroller.scrollBy({left: shift(box.left + left, box.left + right, view.left, view.right),
+                       top: shift(box.top + top, box.top + bottom, view.top, view.bottom),
+                       behavior: 'instant'});
+    box = canvas.getBoundingClientRect();
+    return {x: box.left, y: box.top, view: area()};
+}"""
+
+
+def _reveal(canvas: Any, ctx: OpContext, left: float, top: float,
+            right: float | None = None, bottom: float | None = None) -> dict:
+    """Scroll this canvas box into the editor's view; return the canvas origin and the view."""
+    box = [left, top, left if right is None else right, top if bottom is None else bottom, _EDGE]
+    return canvas.evaluate(_REVEAL, box, timeout=ctx.timeout_ms())
+
+
+def _click_canvas(page: Any, ctx: OpContext, canvas: Any, x: float, y: float) -> None:
+    origin = _reveal(canvas, ctx, x, y)
+    page.mouse.click(origin["x"] + x, origin["y"] + y)
+
+
+def _click_workspace(page: Any, ctx: OpContext, canvas: Any) -> None:
+    """Deselect by clicking the empty workspace left of the canvas top."""
+    origin = _reveal(canvas, ctx, 0, 40)
+    page.mouse.click(max(1, origin["x"] - 12), origin["y"] + 40)
+
+
+def _drag_to(page: Any, ctx: OpContext, canvas: Any, component: Any,
+             target: tuple[int, int, int, int], *, handle: str) -> None:
+    """Drag a component until its box reaches target, in steps whose ends are in view.
+
+    handle: "move" (10 px inside the top-left), "center", or "resize" (bottom-right).
+    """
+    def where() -> tuple[tuple[float, float], tuple[int, int]]:
+        x, y, width, height = _geometry(component)
+        if handle == "resize":
+            return (x + width, y + height), (target[2] - width, target[3] - height)
+        offset = (width / 2, height / 2) if handle == "center" else (10, 10)
+        return (x + offset[0], y + offset[1]), (target[0] - x, target[1] - y)
+
+    point, delta = where()
+    if not (delta[0] or delta[1]):
+        return
+    view = _reveal(canvas, ctx, *point)["view"]
+    reach = (view["right"] - view["left"] - 2 * _EDGE - _THRESHOLD,
+             view["bottom"] - view["top"] - 2 * _EDGE - _THRESHOLD)
+    if min(reach) < _THRESHOLD:
+        raise OperationError("editor view is too small to place components")
+    for _ in range(math.ceil(max(abs(delta[0]) / reach[0], abs(delta[1]) / reach[1]))):
+        (x, y), (dx, dy) = where()
+        if not (dx or dy):
+            return
+        dx, dy = (max(-reach[0], min(reach[0], dx)), max(-reach[1], min(reach[1], dy)))
+        origin = _reveal(canvas, ctx, min(x, x + dx), min(y, y + dy),
+                         max(x, x + dx) + _THRESHOLD, max(y, y + dy) + _THRESHOLD)
+        start = (origin["x"] + x, origin["y"] + y)
+        _drag(page, start, (start[0] + dx, start[1] + dy))
+
+
+def _place_chart(page: Any, ctx: OpContext, component: Any, canvas: Any,
                  target: tuple[int, int, int, int], *, dismiss_popup: bool = False) -> None:
-    x, y, width, height = _geometry(component)
-    bounds = component.bounding_box()
-    canvas_bounds = canvas.bounding_box()
-    if bounds is None or canvas_bounds is None:
+    if component.bounding_box() is None or canvas.bounding_box() is None:
         raise OperationError("chart or canvas is not visible")
-    start = (bounds["x"] + 10, bounds["y"] + 10)
-    page.mouse.click(*start)
+    x, y, _, _ = _geometry(component)
+    _click_canvas(page, ctx, canvas, x + 10, y + 10)
     if dismiss_popup:
         page.keyboard.press("Escape")
-    if (x, y) != target[:2]:
-        _drag(page, start, (start[0] + target[0] - x, start[1] + target[1] - y))
-    if (width, height) != target[2:]:
-        bounds = component.bounding_box()
-        if bounds is None:
-            raise OperationError("chart disappeared while placing it")
-        resize_start = (bounds["x"] + bounds["width"], bounds["y"] + bounds["height"])
-        resize_end = (canvas_bounds["x"] + target[0] + target[2],
-                      canvas_bounds["y"] + target[1] + target[3])
-        _drag(page, resize_start, resize_end)
+    _drag_to(page, ctx, canvas, component, target, handle="move")
+    _drag_to(page, ctx, canvas, component, target, handle="resize")
 
 
 def _run_add_chart(page: Any, op: Any, ctx: OpContext) -> OpResult:
@@ -406,8 +484,7 @@ def _run_add_chart(page: Any, op: Any, ctx: OpContext) -> OpResult:
     previous = ctx.state.get(op.id, {})
     before = previous.get("chart_index", charts.count())
     canvas = _locator(page, ctx, "canvas")
-    canvas_box = canvas.bounding_box()
-    if canvas_box is None:
+    if canvas.bounding_box() is None:
         raise OperationError("report canvas is not visible")
     if not previous:
         ctx.state[op.id] = {"chart_index": before}
@@ -424,7 +501,7 @@ def _run_add_chart(page: Any, op: Any, ctx: OpContext) -> OpResult:
         _wait_visible(gallery, ctx, "chart type gallery did not open")
         gallery.locator(ctx.selectors[key]).click(timeout=ctx.timeout_ms())
         _locator(page, ctx, "drawing").wait_for(state="visible", timeout=ctx.timeout_ms())
-        page.mouse.click(canvas_box["x"] + 24, canvas_box["y"] + 24)
+        _click_canvas(page, ctx, canvas, 24, 24)
         _poll(page, ctx, lambda: charts.count() == before + 1,
               "chart insertion did not add exactly one chart")
     component = charts.nth(before)
@@ -432,7 +509,7 @@ def _run_add_chart(page: Any, op: Any, ctx: OpContext) -> OpResult:
     consent = _locator(page, ctx, "consent_dialog")
     if _visible(consent):
         _locator(page, ctx, "consent_allow").click(timeout=ctx.timeout_ms())
-    _place_chart(page, component, canvas, target)
+    _place_chart(page, ctx, component, canvas, target)
     _locator(page, ctx, "setup_tab").click(timeout=ctx.timeout_ms())
 
     if dimensions or op.chart_type == "pivot_table":

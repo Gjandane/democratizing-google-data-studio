@@ -152,7 +152,7 @@ tasks and require a separately specified scope/contract revision. Task statuses 
   - Review focus: contracts/recipe.md 1.0 (no new op or argument); selectors only from knowledge/datastudio-ui; no fixed sleeps over 1 s; existing budgets unchanged; the replay asserts on read-back fields, not on op status alone.
 
 ## Phase 9: Tall canvas (change 2026-10-21)
-- [ ] 9.1 Placement on a canvas taller than the viewport
+- [x] 9.1 Placement on a canvas taller than the viewport
   - Goal: a backend-compiled recipe whose page canvas is taller than the 1920 x 1200 viewport (per_section pages) runs live with every op `ok`: the background image lands at its recipe box behind everything, and charts, controls and text below the fold land at their boxes. Release 2.3 is blocked on this: its live run b_b2ac19ea6696 ended `partial`, ok 36, failed 3, all on page 3 (canvas 1200 x 1492); pages 1-2 passed with 8.1's fix.
   - Spec: docs/architecture.md#Live editor conventions
   - Files: src/dsengine/ops/report.py, src/dsengine/ops/charts.py, src/dsengine/ops/controls.py, src/dsengine/ops/text.py, knowledge/datastudio-ui/editor.md, knowledge/datastudio-ui/log.md, tests/test_executor.py, tests/live/test_recipe_replay.py, tests/live/recipes/*.jsonl

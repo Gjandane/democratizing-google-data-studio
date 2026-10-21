@@ -6,6 +6,14 @@ timestamp: 2026-10-18
 selectors: {}
 ---
 
+- 2026-10-21 task 9.1: added `open_menu` (`role=menu`; none visible at editor
+  readiness, the Arrange > Order menu while open). Background placement now
+  requires neither `open_menu` nor `selected_component` (misc.md) visible.
+  Recorded the tall-canvas scroll window in editor.md (no selector: code finds
+  the scroller by computed overflow). Added `dropdown_option` (`role=option`,
+  16 in the Rows per page listbox): a pane reading "Autogenerate" can already be
+  visible before the list attaches, so `last_overlay` being visible proved
+  nothing; Rows per page then failed "option 10 is unavailable" in 2 of ~16 runs.
 - 2026-10-21 task 8.1: `canvas_size_auto`/`canvas_size_custom` are exact
   (`text="Custom"`): the substring form also matched the page-name tooltip
   "Customer Segment Analysis" (strict-mode violation on page 4 of the release

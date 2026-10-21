@@ -4,7 +4,8 @@ from typing import Any
 
 from dsengine.ops import OpContext, OpResult, OperationError
 from dsengine.ops.charts import (
-    _chart_box, _geometry, _locator, _place_chart, _poll, _source_fields,
+    _EDGE, _chart_box, _click_workspace, _geometry, _locator, _place_chart, _poll, _reveal,
+    _source_fields,
 )
 from dsengine.ops.report import _place_component, _prepare_image
 
@@ -79,9 +80,7 @@ def _format(page: Any, component: Any, op: Any, ctx: OpContext) -> None:
             _locator(page, ctx, f"text_align_{value}").click(timeout=ctx.timeout_ms())
     page.keyboard.press("Escape")
     _locator(page, ctx, "selection_mode").click(timeout=ctx.timeout_ms())
-    bounds = _locator(page, ctx, "canvas").bounding_box()
-    if bounds:
-        page.mouse.click(max(1, bounds["x"] - 12), bounds["y"] + 40)
+    _click_workspace(page, ctx, _locator(page, ctx, "canvas"))
 
 
 def run(page: Any, op: Any, ctx: OpContext) -> OpResult:
@@ -105,13 +104,16 @@ def run(page: Any, op: Any, ctx: OpContext) -> OpResult:
         else:
             _locator(page, ctx, "text_button").click(timeout=ctx.timeout_ms())
             _locator(page, ctx, "drawing").wait_for(state="visible", timeout=ctx.timeout_ms())
-            bounds = canvas.bounding_box()
-            if bounds is None:
+            if canvas.bounding_box() is None:
                 raise OperationError("report canvas is not visible")
-            page.mouse.move(bounds["x"] + target[0], bounds["y"] + target[1])
+            # Draw the part of the box that fits in view; placement below resizes the rest.
+            origin = _reveal(canvas, ctx, target[0], target[1],
+                             target[0] + target[2], target[1] + target[3])
+            start = (origin["x"] + target[0], origin["y"] + target[1])
+            page.mouse.move(*start)
             page.mouse.down()
-            page.mouse.move(bounds["x"] + target[0] + target[2],
-                            bounds["y"] + target[1] + target[3], steps=10)
+            page.mouse.move(min(start[0] + target[2], origin["view"]["right"] - _EDGE),
+                            min(start[1] + target[3], origin["view"]["bottom"] - _EDGE), steps=10)
             page.mouse.up()
         _poll(page, ctx, lambda: components.count() == before + 1,
               "insertion did not add exactly one component")
@@ -122,15 +124,14 @@ def run(page: Any, op: Any, ctx: OpContext) -> OpResult:
         _poll(page, ctx, lambda: image.evaluate("e => e.naturalWidth") > 0,
               "image did not finish loading")
         _prepare_image(page, component, ctx)
-        _place_component(page, component, canvas, target)
+        _place_component(page, ctx, component, canvas, target)
     else:
         editor = _select_text(page, component, ctx)
         editor.fill(op.text, timeout=ctx.timeout_ms())
         _format(page, component, op, ctx)
-        _place_chart(page, component, canvas, target)
+        _place_chart(page, ctx, component, canvas, target)
         _locator(page, ctx, "selection_mode").click(timeout=ctx.timeout_ms())
-        bounds = canvas.bounding_box()
-        page.mouse.click(max(1, bounds["x"] - 12), bounds["y"] + 40)
+        _click_workspace(page, ctx, canvas)
     state["target"] = target
     return OpResult()
 
