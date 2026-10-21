@@ -418,3 +418,8 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: smart guides snapped the tall test's text box to y 1296 (asked 1300, equal 32 px gaps), deterministic and at the ±4 limit (editor.md). Executor `reset_ui` clicks canvas y+40 unrevealed; on a scrolled tall canvas it can hit the toolbar.
 - Left open: P3 text box at the ±4 limit via smart guides - charts.py; P3 architecture.md wording "Resize before moving" vs pre-move - docs/architecture.md; P3 text drawn in a canvas's last ~40 px gets a degenerate draw drag - text.py; out of Files: unrevealed `reset_ui` click - executor.py.
 - Next: no engine task left. Release 2.3 (root `..`) can rerun its live build; the architect may update the architecture wording and the `reset_ui` reveal.
+
+## 2026-10-22: Change manual acceptance fixes (program)
+- What changed: plan.md Phase 10, task 10.1 (off-screen picker fields, date_range control box, table rows_per_page nearest offered value).
+- Why: release 2.4 blocked: research build b_568901c19819 (3 tables "Data Studio option 15 is unavailable") and BigQuery build b_b17ad783d730 ("field user_id not in data source", date control box mismatch). User chose engine + backend fixes, rerun rows 2-3 only.
+- Affected: engine 10.1 (new); release 2.4 `Needs: engine 10.1`. No contract change (recipe 1.0).

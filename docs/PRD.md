@@ -116,3 +116,5 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
 ## Later
 - Multi-instance Cloud Run with a managed database (change 2026-10-19).
 - CI running every part's tests (program, next version).
+- Every report: page 1 named from the recipe instead of "Untitled Page" (needs a recipe contract change), and scorecard values sized to their box (engine `set_style font_size`); seen in release 2.4, accepted by the user on rows 1 and 4 (change 2026-10-22).
+- Connect stage: a GCS source added with 201 shows in the list without a reload (frontend; release 2.4 P2, change 2026-10-22).

@@ -61,14 +61,15 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: frontend 6.1 and backend 10.1 are done -> the UI walkthrough also checks that the activity strip shows a phrase, the elapsed time and a growing token count during the blueprint run, and its checklist ends all ticked; otherwise skip this (it is first in the cut order).
   - If: the live engine run fails again with `report_url: null` -> diagnose it with the screencast gotcha (AGENTS.md) and block naming the part (engine or backend), the op and the last frame; never retry past one rerun.
   - Review focus: contracts/api.md 2.0 staged endpoints; the driver never edits a part's files.
-- [!] 2.4 Manual acceptance: CSV, research, BigQuery and GCS
+- [ ] 2.4 Manual acceptance: CSV, research, BigQuery and GCS
   - Goal: before anything is published, the user builds one real dashboard per data source through the local UI; the builder prepares the inputs, starts the app and records each result.
   - Files: docs/acceptance.md, docs/img/*.png
   - Depends on: 2.3
   - Size: L
+  - Needs: engine 10.1; backend 17.1
   - Done when: with `./start.sh` running and the signed-in Chrome profile, docs/acceptance.md has one row per source, in this order: CSV upload (samples/ecommerce_sales.csv), research mode (the prompt written in the row before the run), BigQuery table (`bigquery-public-data.thelook_ecommerce.order_items` or the table the user names), CSV in GCS (samples/ecommerce_sales.csv copied to `gs://$GCS_BUCKET/samples/`); each row has the date, the input, the build id, the last stage reached, the `https://datastudio.google.com/` link, what was checked and the user's verdict; checked per row: the link opens a dashboard whose charts read the source's data (one scorecard value matches a query or a spreadsheet sum of the source), the research row names its sources file, the BigQuery and GCS rows were picked in the Connect stage (not uploaded); every row PASS; docs/img/ holds one screenshot per source (prototype or finished dashboard), cropped so no account email, avatar, access code or token shows; `uv run --project integration python integration/check_contracts.py` passes.
   - STOP: the user clicks through (or watches) each source and confirms each row's verdict on a card; never mark a row PASS from the builder's view alone.
-  - If: a row fails inside a part -> block this task naming the part, the source, the step and the API error body (the fix is a task in that part through the change flow); after the fix rerun only the failed rows.
+  - If: a row fails inside a part -> block this task naming the part, the source, the step and the API error body (the fix is a task in that part through the change flow); after the fix rerun only the failed rows (change 2026-10-22: rows 2 research and 3 BigQuery, same inputs, after engine 10.1 and backend 17.1; rows 1 and 4 stand).
   - If: `GCS_BUCKET` is empty in .env or the user can't write to it -> ask the user for a bucket on a card; never create one here.
   - If: the public BigQuery table can't be read or isn't in `BQ_LOCATION` -> ask the user for a table of theirs on a card.
 - [ ] 2.5 Reference, refusal and synthetic end-to-end, local

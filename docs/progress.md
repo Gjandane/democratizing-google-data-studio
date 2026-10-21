@@ -350,3 +350,9 @@ context. Task status lives in docs/plan.md, not here.
 - Question: Which part tasks fix row 2 (backend emits table `rows_per_page: 15`, engine: "Data Studio option 15 is unavailable"; scorecard titles quoted as `Total Population (M)','Total Nominal GDP (...`) and row 3 (engine: "field user_id not in data source" though the view has user_id; "control box did not match the requested position and size")?
 - Options: A plan backend (rows_per_page limited to Data Studio's list; title quoting) and engine (field lookup, control placement) fixes, then rerun rows 2-3 only / B accept rows 2-3 as known limits and change 2.4's Done when / Recommend: A, both block a clean demo.
 - Next: after the part fixes, rerun rows 2 and 3 only (same inputs), then a user verdict card.
+
+## 2026-10-22: Change manual acceptance fixes (release/program)
+- What changed: plan.md 2.4 gains `Needs: engine 10.1; backend 17.1` and a rerun note (rows 2 and 3 only, same inputs; rows 1 and 4 stand); program.md roadmap line and decision-log row; PRD Later: page 1 name and scorecard font (P2s). Engine plan 10.1, backend plan 17.1 added.
+- Why: 2.4 blocked (b): row 2 research (`rows_per_page: 15` not in DS menu; list-fragment titles; ASEAN aggregate row summed), row 3 BigQuery (`user_id` below the picker fold; date control drawn at DS default size). Diagnosed from the builds' events.jsonl and failure screenshots.
+- Affected: release 2.4 reopened, waits on engine 10.1 and backend 17.1; 2.5 unchanged (runs live after engine 10.1, shares the Chrome profile).
+- Settled: 2.4's question -> option A (user card): planned as engine 10.1 and backend 17.1. Left open P2s (page 1 "Untitled Page", tiny scorecard values) -> deferred to PRD Later (user card). P2 GCS add-source list refresh (frontend) -> deferred to PRD Later, not a 2.4 blocker (row 4 PASS).

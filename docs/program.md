@@ -182,6 +182,7 @@ phases" below.
   version: report it and let the user decide; never skip 2.4 or 2.6 to reach the deploy. If 2.5 or 2.6 is
   blocked near the deadline, the user decides on a card (change flow) whether to push with the
   screenshot feature tagged "planned"; never silently.
+- Manual acceptance fixes (change 2026-10-22): release 2.4 waits on engine 10.1 and backend 17.1 (`Needs:`), then reruns rows 2-3 only. Engine 10.1 first (it holds the signed-in Chrome); backend 17.1 is offline and can run alongside; release 2.5 (live, Chrome) after engine 10.1.
 
 ## Integration checks
 - `uv run --project integration python integration/check_contracts.py`: the recipe and event
@@ -281,3 +282,4 @@ phases" below.
 | 2026-10-21 | Recorded as a change in place (backend phase 15, frontend phase 14, release 2.3-2.6 rewritten), not a new version | archive v1 and plan v2 per part | starts building sooner; obsolete sections replaced in place | change staged workflow (user choice) |
 | 2026-10-21 | Live chart/control field setting fixed in engine (8.1) before release 2.3; the user's screenshot is a capability test of the current version (release 2.6), gaps recorded not built | pin a template; extend recipe 1.0 with area, list/slider controls, chart filters | smallest fix to the blocker; contract extensions don't fit the deadline | change live chart fields (user choice) |
 | 2026-10-21 | Placement below the viewport fold on tall per_section canvases fixed in engine (9.1) before release 2.3 | backend caps page height at the viewport; accept `partial` and defer | keeps the staged per_section design; must-survive live build needs `failed: 0` | change tall canvas (user choice) |
+| 2026-10-22 | Release 2.4 rows 2 (research) and 3 (BigQuery) fixed in the parts: engine 10.1 (off-screen picker fields, date control size, nearest rows-per-page value), backend 17.1 (clean labels, research aggregate rows); rerun rows 2-3 only | engine only; accept as known limits and relax 2.4 | both rows block a clean demo; no contract change; P2s (page 1 name, scorecard font) to Later | change manual acceptance fixes (user choice) |

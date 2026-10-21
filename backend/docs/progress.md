@@ -1102,3 +1102,8 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none
 - Left open: P3 Extracted.component_ids >24 untested and not live-checked against Gemini schema - src/dss/spec/requirements.py; P3 staged 13-row/6-page negatives stop at evaluate, no staged accept-rejection view-write test - tests/test_feasibility.py
 - Next: backend re-audit (architect), then release integration from the program root.
+
+## 2026-10-22: Change manual acceptance fixes (program)
+- What changed: plan.md Phase 17, task 17.1 (clean blueprint labels; research aggregate rows left out and listed in sources.md; numeric cells with footnote markers).
+- Why: release 2.4 blocked: research build b_568901c19819 loaded Wikipedia's "ASEAN" aggregate row as a 12th country and wrote list-fragment scorecard titles. User chose engine + backend fixes, rerun rows 2-3 only.
+- Affected: backend 17.1 (new); release 2.4 `Needs: backend 17.1`. No contract change.
