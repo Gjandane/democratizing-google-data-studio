@@ -116,7 +116,7 @@ tasks and require a separately specified scope/contract revision. Task statuses 
   - If: the underlying source cannot be queried with the existing account/configuration -> stop with safe error evidence and the exact prerequisite the user must repair; never automate sign-in, expose secrets or provision a replacement source silently.
 
 ## Phase 6: Live UI drift
-- [ ] 6.1 Accept data-access review dialogs without the risk checkbox
+- [x] 6.1 Accept data-access review dialogs without the risk checkbox
   - Goal: open_report and save_report get past Data Studio's "Review data access" dialogs whether or not they show the "I understand and accept the risk." checkbox, so a live run reaches a saved report link again. Release 2.3 is blocked on this.
   - Spec: docs/architecture.md#Live editor conventions
   - Files: src/dsengine/ops/report.py, knowledge/datastudio-ui/linking.md, knowledge/datastudio-ui/editor.md, tests/test_executor.py, spikes/spike_one_chart.py

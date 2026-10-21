@@ -42,15 +42,21 @@ def _poll(page: Any, ctx: OpContext, predicate, failure: str) -> None:
         page.wait_for_timeout(min(250, max(1, int(remaining * 1000))))
 
 
-def _dismiss_access_review(page: Any, ctx: OpContext) -> bool:
-    accept = _locator(page, ctx, "review_accept")
-    if not _visible(accept):
-        return False
-    if not accept.is_checked():
+def _accept_access_review(dialog: Any, ctx: OpContext, button_key: str) -> None:
+    # Data Studio dropped the risk checkbox by 2026-10-21; older dialogs still
+    # require it. Controls are scoped to the dialog so no other button matches.
+    accept = _locator(dialog, ctx, "review_accept")
+    if _visible(accept) and not accept.is_checked():
         accept.check(timeout=ctx.timeout_ms())
-    acknowledge = _locator(page, ctx, "review_acknowledge")
-    acknowledge.click(timeout=ctx.timeout_ms())
-    acknowledge.wait_for(state="hidden", timeout=ctx.timeout_ms())
+    _locator(dialog, ctx, button_key).click(timeout=ctx.timeout_ms())
+    dialog.wait_for(state="hidden", timeout=ctx.timeout_ms())
+
+
+def _dismiss_access_review(page: Any, ctx: OpContext) -> bool:
+    dialog = _locator(page, ctx, "review_dialog")
+    if not _visible(dialog):
+        return False
+    _accept_access_review(dialog, ctx, "review_acknowledge")
     return True
 
 
@@ -318,12 +324,7 @@ def _run_save_report(page: Any, op: Any, ctx: OpContext) -> OpResult:
     _locator(page, ctx, "save_share").click(timeout=ctx.timeout_ms())
     review = _locator(page, ctx, "review_save_dialog")
     _wait_visible(review, ctx)
-    accept = _locator(page, ctx, "review_accept")
-    if not accept.is_checked():
-        accept.check(timeout=ctx.timeout_ms())
-    acknowledge = _locator(page, ctx, "acknowledge_save")
-    acknowledge.click(timeout=ctx.timeout_ms())
-    acknowledge.wait_for(state="hidden", timeout=ctx.timeout_ms())
+    _accept_access_review(review, ctx, "acknowledge_save")
     page.wait_for_url(_SAVED_REPORT, timeout=ctx.timeout_ms())
 
     current = page.url

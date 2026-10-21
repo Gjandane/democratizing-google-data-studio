@@ -813,3 +813,137 @@ def test_title_font_verification_waits_for_option_list_to_disappear(tmp_path, mo
     ctx.op_deadline = 100
     with pytest.raises(OperationError, match="title font_size did not verify"):
         style.verify(page, op, ctx)
+
+
+class ReviewControl:
+    def __init__(self, dialog, key, present=True):
+        self.dialog, self.key, self.present = dialog, key, present
+
+    def count(self):
+        return int(self.present)
+
+    def nth(self, index):
+        return self
+
+    def is_visible(self):
+        return self.present and self.dialog.open
+
+    def is_checked(self):
+        return self.dialog.checked
+
+    def check(self, *, timeout):
+        assert self.present and self.dialog.open
+        self.dialog.calls.append(("check", self.dialog.name))
+        self.dialog.checked = True
+
+    def click(self, *, timeout):
+        assert self.dialog.open
+        self.dialog.calls.append(("click", self.key))
+        # The old variant keeps its button disabled until the risk is accepted.
+        assert self.dialog.checked or not self.dialog.checkbox, "risk checkbox left unticked"
+        self.dialog.open = False
+
+
+class ReviewDialog:
+    def __init__(self, calls, name, button, *, checkbox):
+        self.calls, self.name, self.button, self.checkbox = calls, name, button, checkbox
+        self.open, self.checked = True, False
+
+    def count(self):
+        return 1
+
+    def nth(self, index):
+        return self
+
+    def is_visible(self):
+        return self.open
+
+    def locator(self, selector):
+        # Only the dialog's own checkbox and button exist in this scope (no Close).
+        if selector == "review_accept":
+            return ReviewControl(self, selector, self.checkbox)
+        assert selector == self.button, f"unexpected control in review dialog: {selector}"
+        return ReviewControl(self, selector)
+
+    def wait_for(self, *, state, timeout):
+        assert self.open == (state == "visible")
+
+
+class ReadyWhenClosed:
+    def __init__(self, dialog):
+        self.dialog = dialog
+
+    def count(self):
+        return 1
+
+    def nth(self, index):
+        return self
+
+    def is_visible(self):
+        return self.dialog is not None and not self.dialog.open
+
+
+def review_context(tmp_path, monkeypatch, *keys):
+    monkeypatch.setattr(executor.time, "monotonic", lambda: 100)
+    ctx = cleanup_context(tmp_path)
+    ctx.selectors = {key: key for key in ("review_accept", *keys)}
+    return ctx
+
+
+@pytest.mark.parametrize("checkbox", [True, False])
+def test_create_review_dialog_is_accepted_with_or_without_checkbox(tmp_path, monkeypatch, checkbox):
+    from types import SimpleNamespace
+    from dsengine.ops import report
+
+    calls = []
+    dialog = ReviewDialog(calls, "create", "review_acknowledge", checkbox=checkbox)
+    controls = {"review_dialog": dialog, "add_chart": ReadyWhenClosed(dialog),
+                "first_field": ReadyWhenClosed(dialog), "linking_error": ReadyWhenClosed(None)}
+    def wait_for_timeout(ms):
+        # The clock is frozen, so fail fast instead of polling forever.
+        calls.append(("wait", ms))
+        assert len(calls) < 20, "editor never became ready"
+
+    page = SimpleNamespace(locator=lambda selector: controls[selector],
+                           wait_for_timeout=wait_for_timeout)
+    ctx = review_context(tmp_path, monkeypatch, *controls, "review_acknowledge")
+    report._wait_for_editor(page, ctx)
+    clicks = [call for call in calls if call[0] in {"click", "check"}]
+    assert clicks == ([("check", "create")] if checkbox else []) + [("click", "review_acknowledge")]
+
+
+@pytest.mark.parametrize("checkbox", [True, False])
+def test_save_review_dialog_is_accepted_with_or_without_checkbox(tmp_path, monkeypatch, checkbox):
+    from types import SimpleNamespace
+    from dsengine.ops import report
+
+    calls = []
+    dialog = ReviewDialog(calls, "save", "acknowledge_save", checkbox=checkbox)
+
+    def wait_for_url(pattern, *, timeout):
+        assert not dialog.open, "report saved while the review dialog was open"
+        page.url = "https://datastudio.google.com/reporting/abc123/page/p_1/edit"
+        assert pattern.fullmatch(page.url)
+
+    save_share = SimpleNamespace(click=lambda *, timeout: calls.append(("click", "save_share")))
+    controls = {"save_share": save_share, "review_save_dialog": dialog}
+    page = SimpleNamespace(url="https://datastudio.google.com/reporting/create",
+                           locator=lambda selector: controls[selector], wait_for_url=wait_for_url)
+    ctx = review_context(tmp_path, monkeypatch, *controls, "acknowledge_save")
+    op = Operation(id="s002", op="save_report")
+    report.run(page, op, ctx)
+    report.verify(page, op, ctx)
+    assert ctx.report_url == "https://datastudio.google.com/reporting/abc123/page/p_1"
+    assert calls == [("click", "save_share")] + (
+        [("check", "save")] if checkbox else []) + [("click", "acknowledge_save")]
+
+
+def test_review_dialog_selectors_match_exact_names():
+    from dsengine.selectors import load_selectors
+
+    selectors = load_selectors()
+    # Role names match case-insensitive substrings unless suffixed with "s":
+    # "Review data access" would also match "Review data access before saving".
+    assert selectors["review_dialog"] == 'role=dialog[name="Review data access"s]'
+    assert selectors["review_save_dialog"] == 'role=dialog[name="Review data access before saving"s]'
+    assert selectors["review_acknowledge"] == 'role=button[name="Acknowledge"s]'

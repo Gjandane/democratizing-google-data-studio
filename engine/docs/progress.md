@@ -320,3 +320,15 @@ context. Task status lives in docs/plan.md, not here.
 - Why: release 2.3 blocked. Live run b_ae7f4bdaab30 v1 failed `open_report` (timeout, `open_report_failed`); last screencast frame shows the dialog with Close and Acknowledge only, while `_dismiss_access_review` (ops/report.py:45-54) returns False when `review_accept` is not visible, so the editor never becomes ready. The save path (ops/report.py:321) requires the checkbox too.
 - Ruling: user chose the engine fix over pinning a template/URL that avoids the dialog (no known one; linking.md says the dialog appears on every create).
 - Tasks affected: engine 6.1 new; release 2.3 now `Needs: engine 6.1`. Engine final audit (2026-10-20) stays ACCEPTED for 1.1-5.4; 6.1 gets the builder's own review.
+
+## 2026-10-21: Task 6.1 Accept data-access review dialogs without the risk checkbox
+- Status: done
+- Plan check: off
+- What changed: report.py `_accept_access_review(dialog, ctx, button_key)` shared by open_report and save_report: detect dialog by exact name, tick risk checkbox only if visible, click the dialog-scoped button, wait for dialog hidden. Selectors (linking.md, editor.md, log.md), spike and 5 fake-page regressions.
+- Checks: `uv run pytest tests/test_executor.py` PASS (51; the 5 new fail on HEAD code); live `uv run pytest -m live tests/live/test_golden.py -k budget` PASS (1, elapsed 53.2 s, 10/10 ok, median op 3.2 s, saved screenshot shows rendered scorecard/line/bar/donut/table); Test (all) `uv run pytest` PASS (124, 11 deselected). Variant seen live (probe in engine tab): create dialog has no checkbox, buttons Close + Acknowledge; save dialog matched exact name and saved.
+- Decisions: If-branch taken: exact role names via `"..."s` for `review_dialog`, `review_acknowledge`, `review_save_dialog` (create name is a prefix of save name). Checkbox/button looked up inside the dialog. log.md edited outside Files (essentials require a log line per selector change).
+- Digest: report.py `_accept_access_review(dialog, ctx, button_key)`; selectors `review_dialog` (new, exact), `review_acknowledge`/`review_save_dialog` exact, `review_accept` optional and dialog-scoped. Live golden budget 53 s.
+- Tried and failed: none
+- Gotchas: none
+- Left open: P3 late-rendering checkbox in old variant would time out the click (retry recovers) - src/dsengine/ops/report.py; P3 exact-selector test compares strings only (live run covers syntax) - tests/test_executor.py
+- Next: release 2.3 can resume on the backend/release side; no engine task left in plan.

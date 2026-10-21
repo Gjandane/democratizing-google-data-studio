@@ -101,13 +101,21 @@ def main():
         page.set_default_timeout(20000)
         page.set_viewport_size({"width": 1920, "height": 1200})
         locate = lambda key: page.locator(selectors[key])
+
+        def accept_review(dialog, button_key):
+            # The risk checkbox is optional since 2026-10-21; never click Close.
+            accept = dialog.locator(selectors["review_accept"])
+            if accept.count() and accept.is_visible() and not accept.is_checked():
+                accept.check()
+            dialog.locator(selectors[button_key]).click()
+            dialog.wait_for(state="hidden")
         try:
             with step("open_report"):
                 evidence["signed_in_at_start"] = _has_google_session(context)
                 page.goto(url, wait_until="domcontentloaded", timeout=20000)
-                locate("review_accept").check()
-                locate("review_acknowledge").click()
-                locate("review_acknowledge").wait_for(state="hidden")
+                review = locate("review_dialog")
+                review.wait_for()
+                accept_review(review, "review_acknowledge")
                 locate("add_chart").wait_for()
                 locate("status_field").wait_for()
                 assert not locate("linking_error").is_visible(), "Linking API creation failed"
@@ -156,9 +164,9 @@ def main():
                 evidence["background_first_in_paint_order"] = True
             with step("save_report"):
                 locate("save_share").click()
-                locate("review_save_dialog").wait_for()
-                locate("review_accept").check()
-                locate("acknowledge_save").click()
+                review = locate("review_save_dialog")
+                review.wait_for()
+                accept_review(review, "acknowledge_save")
                 page.wait_for_url(re.compile(r"https://(?:data|looker)studio\.google\.com/reporting/(?!create)[^/]+/.*"), timeout=20000)
                 locate("view").wait_for()
                 evidence["explicit_save_required"] = True

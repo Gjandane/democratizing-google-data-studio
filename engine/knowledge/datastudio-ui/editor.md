@@ -60,7 +60,7 @@ selectors:
   count_field: 'role=button[name="Record Count"]'
   first_field: '.all-chips-panel [role="button"]'
   consent_dialog: 'role=dialog[name="Grant consent"]'
-  review_save_dialog: 'role=dialog[name="Review data access before saving"]'
+  review_save_dialog: 'role=dialog[name="Review data access before saving"s]'
   view: 'role=button[name="View"] >> nth=0'
   acknowledge_save: 'role=button[name="Acknowledge and save"]'
   send_back: 'role=menuitem[name=/^Send to back/]'
@@ -170,8 +170,9 @@ alone does not establish persistence: check the saved view too.
 
 ## Saving
 
-The initial editor requires Save and share, then the data-access risk checkbox
-and Acknowledge and save. Wait for a concrete `/reporting/<id>/page/<id>/edit`
+The initial editor requires Save and share, then the data-access review dialog:
+tick its risk checkbox only when present (dropped by 2026-10-21), then click
+the dialog's own Acknowledge and save. Wait for a concrete `/reporting/<id>/page/<id>/edit`
 URL and the View button. Remove `/edit` for the view URL. The View selector
 chooses the first matching button: the editor's View menu has the same name.
 View stays in the same owned tab; check both component boxes after it loads.

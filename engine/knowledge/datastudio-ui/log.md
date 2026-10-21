@@ -6,6 +6,10 @@ timestamp: 2026-10-18
 selectors: {}
 ---
 
+- 2026-10-21 task 6.1: review-data-access dialogs may omit the risk checkbox.
+  Added exact `review_dialog`; made `review_acknowledge` and `review_save_dialog`
+  exact (the create name is a prefix of the save name); checkbox and buttons are
+  scoped inside their dialog.
 - 2026-10-19: title-size readback briefly includes the closing dropdown's options;
   documented exact-value polling in misc.md after live 8px/24px verification.
 - 2026-10-19: repeated golden acceptance observed an empty Data panel while an
