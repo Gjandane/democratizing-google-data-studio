@@ -448,7 +448,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_blueprint.py tests/test_feasibility.py tests/test_api_contract.py` passes per the Blueprint oracle: ratio KPI row blocked with numerator/denominator and drop alternatives (shapes = blueprint.blocked.json); time_series without a date -> one repair then an issue; a KPI used with another aggregation rejected; a page with 13 rows gives the too-many-components issue; the GPS-style fixture's two sources without a join give one-source and union options; decisions update rows with no model call; `blueprint/accept` with a blocked row -> `409 feasibility_blocked`, with zero ok rows -> `409 artifact_invalid`; Assessment/Issue shapes still match the dashboard-intent fixtures; required oracle cases 1-6 of dashboard-intent.md still pass; `uv run pytest` passes.
   - Review focus: ../contracts/dashboard-intent.md 1.2; rows are requirements without extraction; no support granted without registry evidence; issues never disappear silently.
-- [ ] 15.8 Code layout: blueprint and design to a multi-page spec
+- [x] 15.8 Code layout: blueprint and design to a multi-page spec
   - Goal: the spec built by code (no spec model node), 1-5 pages, validated.
   - Spec: docs/architecture.md#Spec layout; docs/architecture.md#Dashboard Spec; docs/architecture.md#Layout
   - Files: src/dss/spec/auto_layout.py, src/dss/spec/validate.py, src/dss/spec/models.py, tests/test_layout_auto.py, tests/test_spec_validate.py, tests/data/golden_blueprint.json, tests/data/golden_design.json, tests/data/golden_spec.json

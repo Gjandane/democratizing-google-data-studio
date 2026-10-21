@@ -1032,3 +1032,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: see AGENTS.md for BigQuery dry-run schema validation.
 - Left open: none.
 - Next: 15.8 Code layout: blueprint and design to a multi-page spec.
+
+## 2026-10-21: Task 15.8 Code layout: blueprint and design to a multi-page spec
+- Status: done
+- Plan check: off
+- What changed: New spec/auto_layout.py lays out an accepted Blueprint + Design into a validated 1-5 page spec with no model call. Validator and model accept 1-5 pages (per-page index, prefix, height, overlaps) and a layout-only question_ref coverage rule.
+- Checks: `uv run pytest tests/test_layout_auto.py tests/test_spec_validate.py` PASS (173); Test (all) `uv run pytest` PASS (1329, 10 live deselected). Review: no P0/P1.
+- Decisions: Layout golden is tests/data/golden_layout_spec.json (golden_spec.json stays the recipe golden). Canvas height = page 1; later pages own height; height fits content. Synthetic footer page 1 only. Section heading = subtitle decoration, per_section only. text component text = label; dropdown dimension -> field. Heights: controls 3, scorecards 5/4 (<=4 per row, balanced), charts per type x density, half width 6. IDs p<n>_<label slug>. AGENTS.md gotcha added.
+- Digest: spec/auto_layout.py: layout(blueprint, design, outline, fields[{name,type,role}], *, build_id, archetype, spec_version=1, synthetic=False, allowed=None) -> DashboardSpec; raises LayoutError(.errors). validate_spec(..., question_refs=()) for layout only.
+- Tried and failed: Soft-wrapped headings failed the Chromium fit check (hanging space); explicit breaks fixed it.
+- Gotchas: Property test batches text checks: monkeypatch layout._text_fits, then measure all cases once.
+- Left open: P2 compiler expects synthetic label on every page - src/dss/recipe/compiler.py; P2 render/compile write only background_p1.png - harness/nodes/render.py, compile.py (15.9); P2 ok image rows always fail layout (no image_path in Blueprint) - feasibility/catalog_summary; P3 TITLE_WIDTH duplicates kits widths; P3 _wrap breaks early (1.3em); P3 coverage ignores control rows.
+- Next: Task 15.9. Start by wiring layout() into blueprint accept and rendering every page.

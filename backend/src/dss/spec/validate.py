@@ -1,6 +1,7 @@
 """Catalog-backed validation. Errors contain paths and messages, never input values."""
 import os
 import re
+from collections import Counter
 from dotenv import dotenv_values
 from pydantic import ValidationError
 from dss.config import BACKEND_DIR
@@ -39,7 +40,9 @@ def high_questions(text):
     return [m[1] for m in blocks if re.search(r"\(priority:\s*high\)\s*$", m[2])]
 
 
-def validate_spec(value, *, allowed=None, high_priority=(), catalog_root=None):
+def validate_spec(value, *, allowed=None, high_priority=(), question_refs=(), catalog_root=None):
+    """`question_refs`: one entry per ok blueprint row, checked on the code layout output only;
+    a revise patch may remove a component, so revise never passes them."""
     try:
         # Revalidate mutable model instances too; assignment/list mutation bypasses Pydantic.
         spec = DashboardSpec.model_validate(value.model_dump(warnings=False) if isinstance(value, DashboardSpec) else value)
@@ -57,26 +60,41 @@ def validate_spec(value, *, allowed=None, high_priority=(), catalog_root=None):
         if field.name in fields:
             error(f"datasource.fields.{i}.name", "Field names must be unique")
         fields[field.name] = field
-    ids, refs = set(), set()
+    ids, refs = set(), Counter()
     for path, image in image_paths(spec):
         if reference_image(image):
             error(path, "Reference screenshots are evidence, never dashboard images or backgrounds")
-    page = spec.pages[0]
-    if page.index != 1:
-        error("pages.0.index", "The single page must have index 1")
-    if page.height != spec.canvas.height:
+    for p, page in enumerate(spec.pages):
+        _validate_page(spec, p, page, rules, allowed, fields, ids, refs, error)
+    for ref in high_priority:
+        if ref not in refs:
+            error("pages.0.components", f"High-priority question {ref} must be referenced")
+    needed = Counter(question_refs)
+    for ref in needed:
+        if refs[ref] < needed[ref]:
+            error("pages", f"Blueprint question {ref} needs {needed[ref]} component(s) with question_ref {ref}")
+    return errors
+
+
+def _validate_page(spec, p, page, rules, allowed, fields, ids, refs, error):
+    if page.index != p + 1:
+        error(f"pages.{p}.index", "Page indexes must be 1..n in order")
+    if p == 0 and page.height != spec.canvas.height:
         error("pages.0.height", "Page height must equal canvas height")
+    # Page 1 is the report canvas; later pages carry their own canvas height.
+    height = min(page.height, spec.canvas.height) if p == 0 else page.height
+    prefix = f"p{p + 1}_"
     boxes = []
     for group in ("decorations", "components"):
         for i, item in enumerate(getattr(page, group)):
-            path = f"pages.0.{group}.{i}"
+            path = f"pages.{p}.{group}.{i}"
             if item.id in ids:
                 error(path + ".id", "IDs must be unique")
             ids.add(item.id)
-            if not item.id.startswith("p1_"):
-                error(path + ".id", "ID must use the page prefix p1_")
+            if not item.id.startswith(prefix):
+                error(path + ".id", f"ID must use the page prefix {prefix}")
             try:
-                b = box(spec.canvas, spec.grid, item.grid, height=min(page.height, spec.canvas.height))
+                b = box(spec.canvas, spec.grid, item.grid, height=height)
                 if group == "components":
                     for other in boxes:
                         if b['x'] < other['x'] + other['w'] and other['x'] < b['x'] + b['w'] and b['y'] < other['y'] + other['h'] and other['y'] < b['y'] + b['h']:
@@ -88,7 +106,7 @@ def validate_spec(value, *, allowed=None, high_priority=(), catalog_root=None):
             if group != "components":
                 continue
             if item.question_ref:
-                refs.add(item.question_ref)
+                refs[item.question_ref] += 1
             rule = rules.get(item.type)
             if rule is None or item.type not in allowed:
                 error(path + ".type", "Component type is not allowed by the catalog and DSS_ALLOWED_TYPES")
@@ -128,7 +146,3 @@ def validate_spec(value, *, allowed=None, high_priority=(), catalog_root=None):
                         error(fp, "Geo map requires a geographic field")
             if item.sort and item.sort.field not in fields:
                 error(path + ".sort.field", "Unknown datasource field")
-    for ref in high_priority:
-        if ref not in refs:
-            error("pages.0.components", f"High-priority question {ref} must be referenced")
-    return errors

@@ -213,3 +213,67 @@ def test_invalid_decoration_font_is_a_validation_diagnostic(style):
     spec = sample()
     spec['pages'][0]['decorations'][0]['style'] = style
     assert [e['path'] for e in validate_spec(spec)] == ['pages.0.decorations.0.style']
+
+
+def multipage(count):
+    """thin_spec plus copies of its page; later pages carry only components (one text check)."""
+    spec = sample()
+    for index in range(2, count + 1):
+        page = copy.deepcopy(spec['pages'][0])
+        page.update(index=index, name=f'Section {index}', decorations=[])
+        for c in page['components']:
+            c['id'] = c['id'].replace('p1_', f'p{index}_', 1)
+        spec['pages'].append(page)
+    return spec
+
+
+@pytest.mark.parametrize('count', [1, 2, 3, 4, 5])
+def test_one_to_five_pages_are_valid(count):
+    assert validate_spec(multipage(count), allowed=catalog()) == []
+
+
+def test_six_pages_are_rejected():
+    assert validate_spec(multipage(6), allowed=catalog()) == [
+        {'path': 'pages', 'message': 'List should have at most 5 items after validation, not 6'}]
+
+
+@pytest.mark.parametrize('mutation,expected', [
+    ('index', [{'path': 'pages.2.index', 'message': 'Page indexes must be 1..n in order'}]),
+    ('prefix', [{'path': 'pages.1.components.0.id', 'message': 'ID must use the page prefix p2_'}]),
+    ('duplicate', [{'path': 'pages.1.components.1.id', 'message': 'IDs must be unique'}]),
+    ('overlap', [{'path': 'pages.1.components.1.grid', 'message': 'Components must not overlap'}]),
+    ('short', [{'path': 'pages.2.components.2.grid', 'message': 'Grid box is outside the canvas or has no area'}]),
+    ('tall', []),
+])
+def test_page_rules_apply_to_every_page(mutation, expected):
+    spec = multipage(3)
+    second, third = spec['pages'][1], spec['pages'][2]
+    if mutation == 'index':
+        third['index'] = 2
+    elif mutation == 'prefix':
+        second['components'][0]['id'] = 'p1_revenue_copy'
+    elif mutation == 'duplicate':
+        second['components'][1]['id'] = 'p2_revenue'
+    elif mutation == 'overlap':
+        second['components'][1]['grid']['col'] = 1
+    elif mutation == 'short':
+        third['height'] = 500  # the note ends at 508 px; later pages own their height
+    else:
+        third['height'] = 2000
+        third['components'][2]['grid']['row'] = 80  # below the 900 px canvas, inside page 3
+    assert validate_spec(spec, allowed=catalog()) == expected
+
+
+def test_question_ref_coverage_applies_to_layout_output_not_revise_patches():
+    golden = Path('tests/data/golden_layout_spec.json').read_text(encoding='utf-8')
+    rows = json.loads(Path('tests/data/golden_blueprint.json').read_text(encoding='utf-8'))['rows']
+    refs = [r['question_id'] for r in rows if r['status'] == 'ok' and r['question_id']]
+    assert validate_spec(json.loads(golden), allowed=catalog(), question_refs=refs) == []
+    for page, index, ref, count in ((1, 3, 'q8', 1), (0, 2, 'q1', 3)):
+        spec = json.loads(golden)
+        removed = spec['pages'][page]['components'].pop(index)  # "Remove this chart"
+        assert removed['question_ref'] == ref
+        # Revise validates a patch without question_refs: a removal is allowed (decisions.md records it).
+        assert validate_spec(spec, allowed=catalog()) == []
+        assert validate_spec(spec, allowed=catalog(), question_refs=refs) == [
+            {'path': 'pages', 'message': f'Blueprint question {ref} needs {count} component(s) with question_ref {ref}'}]

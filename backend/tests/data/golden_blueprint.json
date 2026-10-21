@@ -1,0 +1,351 @@
+{
+  "revision": 2,
+  "view_sources": {
+    "base": "s_a1b2c3d4e5f6",
+    "joins": [],
+    "union": []
+  },
+  "derived_fields": [
+    {
+      "name": "order_size_band",
+      "expression": "CASE WHEN `units` >= 3 THEN 'Bulk' ELSE 'Single' END",
+      "type": "string",
+      "description": "Bulk when an order line has 3 or more units."
+    }
+  ],
+  "rows": [
+    {
+      "question_id": null,
+      "section_id": "s1",
+      "page": 1,
+      "component": {
+        "type": "date_range",
+        "label": "Order dates",
+        "dimensions": [],
+        "metrics": [],
+        "date_dimension": "order_date",
+        "breakdown": null,
+        "sort": null,
+        "options": {}
+      },
+      "note": "Supporting control for the page.",
+      "status": "ok",
+      "issue_ids": []
+    },
+    {
+      "question_id": null,
+      "section_id": "s1",
+      "page": 1,
+      "component": {
+        "type": "dropdown",
+        "label": "Region",
+        "dimensions": [
+          "region"
+        ],
+        "metrics": [],
+        "date_dimension": null,
+        "breakdown": null,
+        "sort": null,
+        "options": {}
+      },
+      "note": "Supporting control for the page.",
+      "status": "ok",
+      "issue_ids": []
+    },
+    {
+      "question_id": "q1",
+      "section_id": "s1",
+      "page": 1,
+      "component": {
+        "type": "scorecard",
+        "label": "Net revenue",
+        "dimensions": [],
+        "metrics": [
+          {
+            "field": "revenue",
+            "agg": "sum"
+          }
+        ],
+        "date_dimension": null,
+        "breakdown": null,
+        "sort": null,
+        "options": {
+          "compact_numbers": true
+        }
+      },
+      "note": "",
+      "status": "ok",
+      "issue_ids": []
+    },
+    {
+      "question_id": "q1",
+      "section_id": "s1",
+      "page": 1,
+      "component": {
+        "type": "scorecard",
+        "label": "Orders",
+        "dimensions": [],
+        "metrics": [
+          {
+            "field": "order_id",
+            "agg": "count_distinct"
+          }
+        ],
+        "date_dimension": null,
+        "breakdown": null,
+        "sort": null,
+        "options": {}
+      },
+      "note": "",
+      "status": "ok",
+      "issue_ids": []
+    },
+    {
+      "question_id": "q1",
+      "section_id": "s1",
+      "page": 1,
+      "component": {
+        "type": "scorecard",
+        "label": "Units sold",
+        "dimensions": [],
+        "metrics": [
+          {
+            "field": "units",
+            "agg": "sum"
+          }
+        ],
+        "date_dimension": null,
+        "breakdown": null,
+        "sort": null,
+        "options": {}
+      },
+      "note": "",
+      "status": "ok",
+      "issue_ids": []
+    },
+    {
+      "question_id": "q3",
+      "section_id": "s1",
+      "page": 1,
+      "component": {
+        "type": "time_series",
+        "label": "Net revenue by month",
+        "dimensions": [],
+        "metrics": [
+          {
+            "field": "revenue",
+            "agg": "sum"
+          }
+        ],
+        "date_dimension": "order_date",
+        "breakdown": null,
+        "sort": null,
+        "options": {}
+      },
+      "note": "Monthly grain set in Data Studio.",
+      "status": "ok",
+      "issue_ids": []
+    },
+    {
+      "question_id": "q5",
+      "section_id": "s3",
+      "page": 3,
+      "component": {
+        "type": "bar",
+        "label": "Net revenue by region",
+        "dimensions": [
+          "region"
+        ],
+        "metrics": [
+          {
+            "field": "revenue",
+            "agg": "sum"
+          }
+        ],
+        "date_dimension": null,
+        "breakdown": null,
+        "sort": {
+          "field": "revenue",
+          "order": "desc"
+        },
+        "options": {
+          "orientation": "horizontal"
+        }
+      },
+      "note": "",
+      "status": "ok",
+      "issue_ids": []
+    },
+    {
+      "question_id": "q6",
+      "section_id": "s3",
+      "page": 3,
+      "component": {
+        "type": "pie",
+        "label": "Category share",
+        "dimensions": [
+          "category"
+        ],
+        "metrics": [
+          {
+            "field": "revenue",
+            "agg": "sum"
+          }
+        ],
+        "date_dimension": null,
+        "breakdown": null,
+        "sort": null,
+        "options": {
+          "donut": true
+        }
+      },
+      "note": "",
+      "status": "ok",
+      "issue_ids": []
+    },
+    {
+      "question_id": "q7",
+      "section_id": "s3",
+      "page": 3,
+      "component": {
+        "type": "table",
+        "label": "Top products",
+        "dimensions": [
+          "product",
+          "category"
+        ],
+        "metrics": [
+          {
+            "field": "revenue",
+            "agg": "sum"
+          },
+          {
+            "field": "units",
+            "agg": "sum"
+          }
+        ],
+        "date_dimension": null,
+        "breakdown": null,
+        "sort": {
+          "field": "revenue",
+          "order": "desc"
+        },
+        "options": {
+          "rows_per_page": 10
+        }
+      },
+      "note": "",
+      "status": "ok",
+      "issue_ids": []
+    },
+    {
+      "question_id": "q8",
+      "section_id": "s3",
+      "page": 3,
+      "component": {
+        "type": "geo_map",
+        "label": "Net revenue by country",
+        "dimensions": [
+          "country"
+        ],
+        "metrics": [
+          {
+            "field": "revenue",
+            "agg": "sum"
+          }
+        ],
+        "date_dimension": null,
+        "breakdown": null,
+        "sort": null,
+        "options": {
+          "geo_type": "country"
+        }
+      },
+      "note": "",
+      "status": "ok",
+      "issue_ids": []
+    },
+    {
+      "question_id": "q9",
+      "section_id": "s4",
+      "page": 4,
+      "component": {
+        "type": "scatter",
+        "label": "Revenue and units by category",
+        "dimensions": [
+          "category"
+        ],
+        "metrics": [
+          {
+            "field": "revenue",
+            "agg": "sum"
+          },
+          {
+            "field": "units",
+            "agg": "sum"
+          }
+        ],
+        "date_dimension": null,
+        "breakdown": null,
+        "sort": null,
+        "options": {}
+      },
+      "note": "",
+      "status": "ok",
+      "issue_ids": []
+    },
+    {
+      "question_id": "q9",
+      "section_id": "s4",
+      "page": 4,
+      "component": {
+        "type": "text",
+        "label": "Bulk orders have 3 or more units.",
+        "dimensions": [],
+        "metrics": [],
+        "date_dimension": null,
+        "breakdown": null,
+        "sort": null,
+        "options": {}
+      },
+      "note": "",
+      "status": "ok",
+      "issue_ids": []
+    },
+    {
+      "question_id": "q10",
+      "section_id": "s4",
+      "page": 4,
+      "component": {
+        "type": "pivot_table",
+        "label": "Order size by region",
+        "dimensions": [
+          "region",
+          "order_size_band"
+        ],
+        "metrics": [
+          {
+            "field": "order_id",
+            "agg": "count_distinct"
+          }
+        ],
+        "date_dimension": null,
+        "breakdown": null,
+        "sort": null,
+        "options": {
+          "row_dimensions": [
+            "region"
+          ],
+          "column_dimensions": [
+            "order_size_band"
+          ]
+        }
+      },
+      "note": "",
+      "status": "ok",
+      "issue_ids": []
+    }
+  ],
+  "view_table": "demo-project.dss_b_123456789abc.view_r2",
+  "assessment_id": null
+}

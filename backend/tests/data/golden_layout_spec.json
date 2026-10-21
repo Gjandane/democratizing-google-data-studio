@@ -1,0 +1,687 @@
+{
+  "spec_version": 1,
+  "build_id": "b_123456789abc",
+  "title": "Sales Performance Overview",
+  "archetype": "executive",
+  "canvas": {
+    "width": 1200,
+    "height": 712
+  },
+  "grid": {
+    "columns": 12,
+    "row_height": 20,
+    "gutter": 16,
+    "margin": 24
+  },
+  "theme": {
+    "background": "#F0F4F8",
+    "surface": "#FFFFFF",
+    "text": "#152B42",
+    "muted": "#4B6074",
+    "accent": "#2456A6",
+    "palette": [
+      "#2456A6",
+      "#C27D00",
+      "#22B9C7",
+      "#993878"
+    ],
+    "font_family": "Arial",
+    "radius": 8
+  },
+  "datasource": {
+    "table": "demo-project.dss_b_123456789abc.view_r2",
+    "fields": [
+      {
+        "name": "order_date",
+        "type": "DATE",
+        "label": "Order Date",
+        "role": "dimension",
+        "default_agg": "none"
+      },
+      {
+        "name": "region",
+        "type": "STRING",
+        "label": "Region",
+        "role": "dimension",
+        "default_agg": "none"
+      },
+      {
+        "name": "category",
+        "type": "STRING",
+        "label": "Category",
+        "role": "dimension",
+        "default_agg": "none"
+      },
+      {
+        "name": "product",
+        "type": "STRING",
+        "label": "Product",
+        "role": "dimension",
+        "default_agg": "none"
+      },
+      {
+        "name": "country",
+        "type": "GEOGRAPHY",
+        "label": "Country",
+        "role": "dimension",
+        "default_agg": "none"
+      },
+      {
+        "name": "order_id",
+        "type": "STRING",
+        "label": "Order Id",
+        "role": "dimension",
+        "default_agg": "none"
+      },
+      {
+        "name": "revenue",
+        "type": "FLOAT64",
+        "label": "Revenue",
+        "role": "metric",
+        "default_agg": "sum"
+      },
+      {
+        "name": "units",
+        "type": "INT64",
+        "label": "Units",
+        "role": "metric",
+        "default_agg": "sum"
+      },
+      {
+        "name": "order_size_band",
+        "type": "STRING",
+        "label": "Order Size Band",
+        "role": "dimension",
+        "default_agg": "none"
+      }
+    ],
+    "synthetic": false
+  },
+  "pages": [
+    {
+      "index": 1,
+      "name": "Revenue snapshot",
+      "height": 712,
+      "decorations": [
+        {
+          "id": "p1_header_band",
+          "kind": "band",
+          "grid": {
+            "col": 1,
+            "row": 1,
+            "w": 12,
+            "h": 8
+          },
+          "text": null,
+          "style": {
+            "background_color": "#2456A6",
+            "border_radius": 0
+          }
+        },
+        {
+          "id": "p1_report_title",
+          "kind": "title",
+          "grid": {
+            "col": 1,
+            "row": 2,
+            "w": 12,
+            "h": 3
+          },
+          "text": "Sales Performance Overview",
+          "style": {
+            "color": "#FFFFFF"
+          }
+        },
+        {
+          "id": "p1_report_subtitle",
+          "kind": "subtitle",
+          "grid": {
+            "col": 1,
+            "row": 5,
+            "w": 12,
+            "h": 3
+          },
+          "text": "Web shop, Jan-Sep 2026",
+          "style": {
+            "color": "#FFFFFF"
+          }
+        },
+        {
+          "id": "p1_section_heading",
+          "kind": "subtitle",
+          "grid": {
+            "col": 1,
+            "row": 10,
+            "w": 12,
+            "h": 3
+          },
+          "text": "Revenue snapshot",
+          "style": {
+            "color": "#152B42",
+            "font_size": 20,
+            "font_weight": 700
+          }
+        }
+      ],
+      "components": [
+        {
+          "id": "p1_order_dates",
+          "type": "date_range",
+          "label": "Order dates",
+          "grid": {
+            "col": 1,
+            "row": 13,
+            "w": 3,
+            "h": 3
+          },
+          "dimensions": [],
+          "metrics": [],
+          "date_dimension": "order_date",
+          "breakdown": null,
+          "sort": null,
+          "options": {},
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": null,
+          "question_ref": null
+        },
+        {
+          "id": "p1_region",
+          "type": "dropdown",
+          "label": "Region",
+          "grid": {
+            "col": 4,
+            "row": 13,
+            "w": 3,
+            "h": 3
+          },
+          "dimensions": [],
+          "metrics": [],
+          "date_dimension": null,
+          "breakdown": null,
+          "sort": null,
+          "options": {},
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": "region",
+          "question_ref": null
+        },
+        {
+          "id": "p1_net_revenue",
+          "type": "scorecard",
+          "label": "Net revenue",
+          "grid": {
+            "col": 1,
+            "row": 16,
+            "w": 4,
+            "h": 5
+          },
+          "dimensions": [],
+          "metrics": [
+            {
+              "field": "revenue",
+              "agg": "sum"
+            }
+          ],
+          "date_dimension": null,
+          "breakdown": null,
+          "sort": null,
+          "options": {
+            "compact_numbers": true
+          },
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": null,
+          "question_ref": "q1"
+        },
+        {
+          "id": "p1_orders",
+          "type": "scorecard",
+          "label": "Orders",
+          "grid": {
+            "col": 5,
+            "row": 16,
+            "w": 4,
+            "h": 5
+          },
+          "dimensions": [],
+          "metrics": [
+            {
+              "field": "order_id",
+              "agg": "count_distinct"
+            }
+          ],
+          "date_dimension": null,
+          "breakdown": null,
+          "sort": null,
+          "options": {},
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": null,
+          "question_ref": "q1"
+        },
+        {
+          "id": "p1_units_sold",
+          "type": "scorecard",
+          "label": "Units sold",
+          "grid": {
+            "col": 9,
+            "row": 16,
+            "w": 4,
+            "h": 5
+          },
+          "dimensions": [],
+          "metrics": [
+            {
+              "field": "units",
+              "agg": "sum"
+            }
+          ],
+          "date_dimension": null,
+          "breakdown": null,
+          "sort": null,
+          "options": {},
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": null,
+          "question_ref": "q1"
+        },
+        {
+          "id": "p1_net_revenue_by_month",
+          "type": "time_series",
+          "label": "Net revenue by month",
+          "grid": {
+            "col": 1,
+            "row": 21,
+            "w": 12,
+            "h": 14
+          },
+          "dimensions": [],
+          "metrics": [
+            {
+              "field": "revenue",
+              "agg": "sum"
+            }
+          ],
+          "date_dimension": "order_date",
+          "breakdown": null,
+          "sort": null,
+          "options": {},
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": null,
+          "question_ref": "q3"
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "name": "Where revenue comes from",
+      "height": 1192,
+      "decorations": [
+        {
+          "id": "p2_header_band",
+          "kind": "band",
+          "grid": {
+            "col": 1,
+            "row": 1,
+            "w": 12,
+            "h": 8
+          },
+          "text": null,
+          "style": {
+            "background_color": "#2456A6",
+            "border_radius": 0
+          }
+        },
+        {
+          "id": "p2_report_title",
+          "kind": "title",
+          "grid": {
+            "col": 1,
+            "row": 2,
+            "w": 12,
+            "h": 3
+          },
+          "text": "Sales Performance Overview",
+          "style": {
+            "color": "#FFFFFF"
+          }
+        },
+        {
+          "id": "p2_report_subtitle",
+          "kind": "subtitle",
+          "grid": {
+            "col": 1,
+            "row": 5,
+            "w": 12,
+            "h": 3
+          },
+          "text": "Web shop, Jan-Sep 2026",
+          "style": {
+            "color": "#FFFFFF"
+          }
+        },
+        {
+          "id": "p2_section_heading",
+          "kind": "subtitle",
+          "grid": {
+            "col": 1,
+            "row": 10,
+            "w": 12,
+            "h": 3
+          },
+          "text": "Where revenue comes from",
+          "style": {
+            "color": "#152B42",
+            "font_size": 20,
+            "font_weight": 700
+          }
+        }
+      ],
+      "components": [
+        {
+          "id": "p2_net_revenue_by_region",
+          "type": "bar",
+          "label": "Net revenue by region",
+          "grid": {
+            "col": 1,
+            "row": 13,
+            "w": 6,
+            "h": 14
+          },
+          "dimensions": [
+            "region"
+          ],
+          "metrics": [
+            {
+              "field": "revenue",
+              "agg": "sum"
+            }
+          ],
+          "date_dimension": null,
+          "breakdown": null,
+          "sort": {
+            "field": "revenue",
+            "order": "desc"
+          },
+          "options": {
+            "orientation": "horizontal"
+          },
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": null,
+          "question_ref": "q5"
+        },
+        {
+          "id": "p2_category_share",
+          "type": "pie",
+          "label": "Category share",
+          "grid": {
+            "col": 7,
+            "row": 13,
+            "w": 6,
+            "h": 14
+          },
+          "dimensions": [
+            "category"
+          ],
+          "metrics": [
+            {
+              "field": "revenue",
+              "agg": "sum"
+            }
+          ],
+          "date_dimension": null,
+          "breakdown": null,
+          "sort": null,
+          "options": {
+            "donut": true
+          },
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": null,
+          "question_ref": "q6"
+        },
+        {
+          "id": "p2_top_products",
+          "type": "table",
+          "label": "Top products",
+          "grid": {
+            "col": 1,
+            "row": 27,
+            "w": 12,
+            "h": 16
+          },
+          "dimensions": [
+            "product",
+            "category"
+          ],
+          "metrics": [
+            {
+              "field": "revenue",
+              "agg": "sum"
+            },
+            {
+              "field": "units",
+              "agg": "sum"
+            }
+          ],
+          "date_dimension": null,
+          "breakdown": null,
+          "sort": {
+            "field": "revenue",
+            "order": "desc"
+          },
+          "options": {
+            "rows_per_page": 10
+          },
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": null,
+          "question_ref": "q7"
+        },
+        {
+          "id": "p2_net_revenue_by_country",
+          "type": "geo_map",
+          "label": "Net revenue by country",
+          "grid": {
+            "col": 1,
+            "row": 43,
+            "w": 6,
+            "h": 16
+          },
+          "dimensions": [
+            "country"
+          ],
+          "metrics": [
+            {
+              "field": "revenue",
+              "agg": "sum"
+            }
+          ],
+          "date_dimension": null,
+          "breakdown": null,
+          "sort": null,
+          "options": {
+            "geo_type": "country"
+          },
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": null,
+          "question_ref": "q8"
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "name": "Order mix",
+      "height": 872,
+      "decorations": [
+        {
+          "id": "p3_header_band",
+          "kind": "band",
+          "grid": {
+            "col": 1,
+            "row": 1,
+            "w": 12,
+            "h": 8
+          },
+          "text": null,
+          "style": {
+            "background_color": "#2456A6",
+            "border_radius": 0
+          }
+        },
+        {
+          "id": "p3_report_title",
+          "kind": "title",
+          "grid": {
+            "col": 1,
+            "row": 2,
+            "w": 12,
+            "h": 3
+          },
+          "text": "Sales Performance Overview",
+          "style": {
+            "color": "#FFFFFF"
+          }
+        },
+        {
+          "id": "p3_report_subtitle",
+          "kind": "subtitle",
+          "grid": {
+            "col": 1,
+            "row": 5,
+            "w": 12,
+            "h": 3
+          },
+          "text": "Web shop, Jan-Sep 2026",
+          "style": {
+            "color": "#FFFFFF"
+          }
+        },
+        {
+          "id": "p3_section_heading",
+          "kind": "subtitle",
+          "grid": {
+            "col": 1,
+            "row": 10,
+            "w": 12,
+            "h": 3
+          },
+          "text": "Order mix",
+          "style": {
+            "color": "#152B42",
+            "font_size": 20,
+            "font_weight": 700
+          }
+        }
+      ],
+      "components": [
+        {
+          "id": "p3_revenue_and_units_by_category",
+          "type": "scatter",
+          "label": "Revenue and units by category",
+          "grid": {
+            "col": 1,
+            "row": 13,
+            "w": 6,
+            "h": 14
+          },
+          "dimensions": [
+            "category"
+          ],
+          "metrics": [
+            {
+              "field": "revenue",
+              "agg": "sum"
+            },
+            {
+              "field": "units",
+              "agg": "sum"
+            }
+          ],
+          "date_dimension": null,
+          "breakdown": null,
+          "sort": null,
+          "options": {},
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": null,
+          "question_ref": "q9"
+        },
+        {
+          "id": "p3_bulk_orders_have_3_or_more_units",
+          "type": "text",
+          "label": "Bulk orders have 3 or more units.",
+          "grid": {
+            "col": 7,
+            "row": 13,
+            "w": 6,
+            "h": 14
+          },
+          "dimensions": [],
+          "metrics": [],
+          "date_dimension": null,
+          "breakdown": null,
+          "sort": null,
+          "options": {},
+          "colors": null,
+          "text": "Bulk orders have 3 or more units.",
+          "image_path": null,
+          "field": null,
+          "question_ref": "q9"
+        },
+        {
+          "id": "p3_order_size_by_region",
+          "type": "pivot_table",
+          "label": "Order size by region",
+          "grid": {
+            "col": 1,
+            "row": 27,
+            "w": 12,
+            "h": 16
+          },
+          "dimensions": [
+            "region",
+            "order_size_band"
+          ],
+          "metrics": [
+            {
+              "field": "order_id",
+              "agg": "count_distinct"
+            }
+          ],
+          "date_dimension": null,
+          "breakdown": null,
+          "sort": null,
+          "options": {
+            "row_dimensions": [
+              "region"
+            ],
+            "column_dimensions": [
+              "order_size_band"
+            ]
+          },
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": null,
+          "question_ref": "q10"
+        }
+      ]
+    }
+  ]
+}

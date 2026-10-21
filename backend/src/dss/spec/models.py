@@ -119,4 +119,4 @@ class DashboardSpec(Model):
     grid: Grid = Field(default_factory=Grid)
     theme: Theme = Field(default_factory=Theme)
     datasource: Datasource
-    pages: list[Page] = Field(min_length=1, max_length=1)
+    pages: list[Page] = Field(min_length=1, max_length=5)
