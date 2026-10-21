@@ -63,6 +63,11 @@ engine replays a compiled recipe of UI ops deterministically, with no LLM in the
 - none (the spike, task 1.3, answers the UI unknowns and stops for the user)
 
 ## Later
+- Intermittent editor insertion/verification timeouts remain: one 20-op audit run timed out
+  inserting page-2 text (18/20 ok), while its focused repeat and final full suite passed; the
+  final screencast reported a table timeout despite all five saved charts rendering (9/10 ok,
+  within the golden criterion). Causes remain unconfirmed; retain failed evidence alongside
+  passing reruns (audit 2026-10-21, task 7.1 re-audit).
 - The exact-dialog selector regression checks selector strings rather than accessible-name
   behavior; live acceptance remains the semantic check (audit 2026-10-21).
 - Headless mode with a stored session for Cloud Run (program, next version).
