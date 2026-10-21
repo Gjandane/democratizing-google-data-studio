@@ -244,6 +244,19 @@ def _aggregation(page: Any, ctx: OpContext, group: Any, index: int,
         raise OperationError(f"metric aggregation {label} did not verify (found {actual})")
 
 
+def _inherent_sort(op: Any, dimensions: list[str]) -> bool:
+    # Time series Setup has no Sort section (live 2026-10-21): the editor
+    # always orders by the date dimension ascending. Only that sort is possible.
+    sort = getattr(op, "sort", None)
+    if op.chart_type != "time_series" or not sort:
+        return False
+    field = str(_value(sort, "field", ""))
+    order = str(_value(sort, "order", "desc")).lower()
+    if not dimensions or field != dimensions[0] or order != "asc":
+        raise OperationError("time_series sorts only by its date dimension, ascending")
+    return True
+
+
 def _set_sort(page: Any, ctx: OpContext, sort: Any) -> None:
     if not sort:
         return
@@ -376,6 +389,7 @@ def _run_add_chart(page: Any, op: Any, ctx: OpContext) -> OpResult:
         geo_type = (getattr(op, "options", {}) or {}).get("geo_type")
         if geo_type is not None and (not isinstance(geo_type, str) or geo_type not in _GEO_TYPES):
             raise OperationError("geo_type must be country, region or city")
+    inherent_sort = _inherent_sort(op, dimensions)
     target, clamped = _chart_box(op, ctx)
     if clamped:
         ctx.warn(f"{op.id}: chart box was clamped to the canvas")
@@ -462,7 +476,8 @@ def _run_add_chart(page: Any, op: Any, ctx: OpContext) -> OpResult:
         _wait_visible(date_group, ctx, "chart date dimension Setup group is unavailable")
         _set_fields(page, ctx, date_group, [date_dimension])
 
-    _set_sort(page, ctx, getattr(op, "sort", None))
+    sort = None if inherent_sort else getattr(op, "sort", None)
+    _set_sort(page, ctx, sort)
     _set_title_and_options(page, ctx, op)
     ctx.state[op.id] = {
         "target": target,
@@ -472,8 +487,8 @@ def _run_add_chart(page: Any, op: Any, ctx: OpContext) -> OpResult:
         "metrics": [(str(_value(metric, "field", "")), str(_value(metric, "agg", "none")))
                     for metric in metrics],
         "date_dimension": date_dimension if op.chart_type != "time_series" else None,
-        "sort": ((_value(op.sort, "field"), _value(op.sort, "order"))
-                 if getattr(op, "sort", None) else None),
+        # The verified first dimension already proves an inherent date sort.
+        "sort": (_value(sort, "field"), _value(sort, "order")) if sort else None,
         "title": getattr(op, "title", None),
         "breakdown": breakdown,
     }

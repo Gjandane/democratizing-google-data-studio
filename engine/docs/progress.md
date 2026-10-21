@@ -388,3 +388,15 @@ context. Task status lives in docs/plan.md, not here.
 - Why: release 2.3 live run b_31ee6bedd325 ended `partial` (ok 19, failed 25): add_chart scorecard after a date control, time_series, bar, pie, table and every dropdown add_control timed out with the default Record Count inserted and the Setup panel not shown; s006_failed.png shows the editor drawn in the top-left quarter of a 3840 x 2400 capture. Evidence: ../data/builds/b_31ee6bedd325/v1/ (recipe.jsonl, events.jsonl, screens/).
 - Ruling: user chose an engine fix (release never edits parts). No contract change: recipe 1.0 stays the interface.
 - Tasks affected: 8.1 only; release 2.3 waits on it.
+
+## 2026-10-21: Task 8.1 Chart and control fields on a real compiled recipe
+- Status: done
+- Plan check: off
+- What changed: report.py `_check_layout` fails open_report unless innerWidth/innerHeight are 1920 x 1200; charts.py `_inherent_sort` accepts only date-asc time_series sort (no UI); editor.md `field_picker` keyed on `ng2-selector-dialog`, canvas Auto/Custom exact; new live test_recipe_replay.py + recipe; 5 offline regressions.
+- Checks: diagnosis `dsengine run --screencast` on b_31ee6bedd325 (frame .blueprint/8.1/s005_frame.jpg: editor at 3840 x 2400 CSS px, picker without "Chart fields"). Measured 3840x2400 DPR 0.5 (50% zoom), 2400x1500 DPR 0.8 after Ctrl+0, 1920x1200 DPR 1 after Settings 100%. Release replay after fix: run_finished ok, 44 ok, failed 0. test_recipe_replay: pre-fix FAIL (s006), after PASS. Live recipe_replay+charts_a+charts_b+golden: 8 passed, 1 failed (charts_a saved-table render timeout, all ops ok); charts_a rerun PASS. `uv run pytest` PASS 141 passed, 12 deselected.
+- Decisions: four causes. Zoom: CDP cannot reset Chrome page zoom, so detect and fail with the measured size (Ctrl+0 + Settings > Appearance hint). Time series has no Sort section: date-asc sort is inherent; other time_series sorts fail before insertion. "Chart fields" is only a used-fields group; key the picker on its component. `text=Custom` matched page tooltip "Customer Segment Analysis". AGENTS.md gained a zoom gotcha.
+- Digest: open_report fails "editor laid out at W x H CSS px ..." unless 1920x1200 (report._check_layout). time_series sort must be {date_dimension, asc} (charts._inherent_sort), else rejected pre-insert. field_picker = .cdk-overlay-pane:has(ng2-selector-dialog).
+- Tried and failed: none beyond the diagnosis iterations above.
+- Gotchas: set_style `colors` logs "unsupported style key colors" for scorecard/time series/bar/pie/table on the release recipe (outside Files). charts_a saved-table render can exceed 20 s once.
+- Left open: P3 picker regression asserts the selector string only - tests/test_executor.py; P3 zoom detected not corrected, and open_report retries the deterministic failure - src/dsengine/ops/report.py; P3 canvas size selectors still page-wide (page named exactly "Custom"/"Auto") - knowledge/datastudio-ui/editor.md.
+- Next: release 2.3 live run from the program root; engine has no task left.

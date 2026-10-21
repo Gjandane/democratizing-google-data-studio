@@ -12,6 +12,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from dsengine.ops import OpContext, OpResult, OperationError
 
 HANDLED_OPS = {"open_report", "set_canvas", "set_background_image", "save_report", "get_link"}
+_VIEWPORT = (1920, 1200)
 _SAVED_REPORT = re.compile(
     r"https://(?:data|looker)studio\.google\.com/reporting/(?!create/)[^/]+/.+"
 )
@@ -88,6 +89,20 @@ def _wait_for_editor(page: Any, ctx: OpContext) -> None:
         page.wait_for_timeout(min(250, max(1, int(remaining * 1000))))
 
 
+def _check_layout(page: Any) -> None:
+    # Viewport emulation absorbs the Windows display scale, but not Chrome's
+    # per-site zoom, which the profile persists and CDP cannot reset. At 50%
+    # zoom the editor lays out at 3840 x 2400 CSS px and its pickers differ.
+    width, height, ratio = page.evaluate("[innerWidth, innerHeight, devicePixelRatio]")
+    if abs(width - _VIEWPORT[0]) > 1 or abs(height - _VIEWPORT[1]) > 1:
+        raise OperationError(
+            f"editor laid out at {width} x {height} CSS px (devicePixelRatio {ratio:g}), "
+            f"not {_VIEWPORT[0]} x {_VIEWPORT[1]}; set Chrome zoom to 100% in the dedicated "
+            "Chrome window (Ctrl+0 resets to the default, Settings > Appearance > Page zoom) "
+            "and retry"
+        )
+
+
 def _run_open_report(page: Any, op: Any, ctx: OpContext) -> OpResult:
     from dsengine.ops.charts import _source_fields
 
@@ -95,8 +110,9 @@ def _run_open_report(page: Any, op: Any, ctx: OpContext) -> OpResult:
         raise OperationError("report creation URL was not prepared")
     page.goto(ctx.open_url, wait_until="domcontentloaded",
               timeout=ctx.timeout_ms())
-    page.set_viewport_size({"width": 1920, "height": 1200})
+    page.set_viewport_size({"width": _VIEWPORT[0], "height": _VIEWPORT[1]})
     _wait_for_editor(page, ctx)
+    _check_layout(page)
     # Images and source-less controls can clear the Data panel. Capture the
     # report's immutable source while editor readiness guarantees field chips.
     _source_fields(page, ctx)

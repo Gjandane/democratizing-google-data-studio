@@ -20,8 +20,8 @@ selectors:
   current_page_settings: 'role=menuitem[name="Current page settings"]'
   page_style_tab: 'role=tab[name=/style/i]'
   canvas_size: 'text=/^(Auto|Custom)$/i'
-  canvas_size_auto: 'text=Auto'
-  canvas_size_custom: 'text=Custom'
+  canvas_size_auto: 'text="Auto"'
+  canvas_size_custom: 'text="Custom"'
   canvas_width: 'role=spinbutton[name="Width (px)"]'
   canvas_height: 'role=spinbutton[name="Height (px)"]'
   drawing: 'region-drawing-handler'
@@ -37,7 +37,7 @@ selectors:
   sort_descending: 'role=radio[name=/Descending/]'
   field_buttons: '.all-chips-panel [role="button"]'
   field_chips: '[role="button"][aria-label]'
-  field_picker: '.cdk-overlay-pane:has-text("Chart fields"), .cdk-overlay-pane:has-text("No results")'
+  field_picker: '.cdk-overlay-pane:has(ng2-selector-dialog), .cdk-overlay-pane:has-text("No results")'
   chart_gallery: '.cdk-overlay-pane:has-text("Scorecard"):has-text("Table")'
   overlay_pane: '.cdk-overlay-pane'
   metric_chips: '.common-chip.metric'
@@ -128,6 +128,16 @@ shape; it is not the future generic field-selection implementation.
 The first query can open `consent_dialog`; `consent_allow` grants viewer audit
 logging for the report's configured source. Never automate Google sign-in.
 
+Field pickers are `ng2-selector-dialog` overlays. "Chart fields" is only a group
+of fields that charts on the page already use, listed above "Default group";
+the first charts on a fresh page show "Default group" alone. Never detect the
+picker by that heading.
+
+Time series Setup has no Sort section (cell keys observed 2026-10-21:
+datasource, actionConceptList, metrics, filters, dateRangeDimension,
+dateRangeSetting, ...; no `sortConcept`). It always orders by its date
+dimension ascending, so `sort_group` never appears for it.
+
 Selecting an image can also empty the Data panel before the first chart exists.
 An empty `field_buttons` result in that state does not establish that a source
 field is missing. Retain source-field names while the panel is populated, before
@@ -135,7 +145,12 @@ selecting an image, just as for a date control.
 
 ## Geometry
 
-Set a 1920 x 1200 viewport and choose `zoom_menu` -> `zoom_100`. The canvas
+Set a 1920 x 1200 viewport and choose `zoom_menu` -> `zoom_100`. Chrome's own
+per-site page zoom (persisted in the profile; CDP cannot reset it) must also be
+100%: viewport emulation absorbs the Windows display scale, not that zoom. At
+50% the editor laid out at 3840 x 2400 CSS px (devicePixelRatio 0.5); at 80% (the profile's default
+after Ctrl+0) 2400 x 1500. `open_report` reads `innerWidth`/`innerHeight` at
+readiness and fails unless they are 1920 x 1200. The canvas
 has logical dimensions 1200 x 900 and a matching CSS bounding box at this zoom.
 Use the canvas top-left as the coordinate origin, not the viewport top-left.
 `components` exposes offsetLeft/Top/Width/Height for independent readback.

@@ -138,7 +138,7 @@ tasks and require a separately specified scope/contract revision. Task statuses 
   - Review focus: P1 final re-audit 2026-10-21 at report.py:48-51 and spike_one_chart.py:108-111. The probe in .blueprint/audit-20261021/probe-observations.json observes checkbox count 0 before acknowledgement and 1/unchecked after timeout. Both attempts share one deadline (executor.py:178-185); retry cannot recover from spending it all. Fix readiness in report and spike without changing executor budgets, sign-in, unrelated tabs, credentials, or contracts.
 
 ## Phase 8: Live recipe drift (change 2026-10-21)
-- [ ] 8.1 Chart and control fields on a real compiled recipe
+- [x] 8.1 Chart and control fields on a real compiled recipe
   - Goal: a recipe compiled by the backend runs live with every `add_chart` and `add_control` setting its fields, so the charts land on the background as specified. Release 2.3 is blocked on this: its live run (build b_31ee6bedd325) ended `partial`, ok 19, failed 25, while this part's own live suite passed at 20:02 the same day.
   - Spec: docs/architecture.md#Live editor conventions
   - Files: src/dsengine/ops/charts.py, src/dsengine/ops/controls.py, src/dsengine/ops/report.py, src/dsengine/executor.py, src/dsengine/chrome.py, knowledge/datastudio-ui/editor.md, knowledge/datastudio-ui/log.md, tests/test_executor.py, tests/live/test_recipe_replay.py, tests/live/recipes/*.jsonl

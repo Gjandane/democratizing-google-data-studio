@@ -6,6 +6,18 @@ timestamp: 2026-10-18
 selectors: {}
 ---
 
+- 2026-10-21 task 8.1: `canvas_size_auto`/`canvas_size_custom` are exact
+  (`text="Custom"`): the substring form also matched the page-name tooltip
+  "Customer Segment Analysis" (strict-mode violation on page 4 of the release
+  recipe).
+- 2026-10-21 task 8.1: `field_picker` now keys on the picker's
+  `ng2-selector-dialog` component. "Chart fields" is only a group listing fields
+  that charts on the page already use; the first charts of a fresh compiled
+  recipe get a picker headed "Default group" alone (release source
+  dash_b_31ee6bedd325_v1, at 100% zoom), so the old text selector timed out.
+  Also documented: persisted Chrome page zoom (50%: 3840 x 2400 CSS px) and
+  time series Setup lacking `sort_group`, under editor.md Geometry and
+  Readiness and fields.
 - 2026-10-21 task 7.1: dialog visibility precedes risk-checkbox rendering on
   create and save (spike observed first visibility after 1 and 3 readiness polls).
   Keep exact scoped selectors; poll checkbox readiness and button enabling inside

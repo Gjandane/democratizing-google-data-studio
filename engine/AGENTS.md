@@ -36,5 +36,6 @@ Run from this folder (`engine/`) in bash.
 Environment quirks stay here; editor/code conventions live in
 `docs/architecture.md#Live editor conventions` and the essentials.
 - Git Bash is at `C:/Program Files/Git/bin/bash.exe` (outside PATH); use PowerShell for the blueprint script if the shell wrapper misquotes its absolute Windows path.
+- The dedicated profile persists Chrome page zoom per site, and Ctrl+0 resets only to the profile default (`chrome://settings/appearance` Page zoom), which was 80% here. Live runs need 100%: `open_report` fails with the measured CSS size otherwise.
 - Live Data Studio can display Data Set Configuration Error even after field metadata loads; diagnose the underlying source separately from geometry/selector failures.
 <!-- blueprint-solution:end -->

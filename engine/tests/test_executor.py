@@ -775,6 +775,7 @@ def test_open_report_retains_fields_when_image_selection_clears_data_panel(tmp_p
     }
     page = SimpleNamespace(
         goto=lambda *args, **kwargs: None, set_viewport_size=lambda size: None,
+        evaluate=lambda expression: [1920, 1200, 2],
         locator=lambda selector: controls[selector],
         url="https://datastudio.google.com/reporting/create",
     )
@@ -788,6 +789,57 @@ def test_open_report_retains_fields_when_image_selection_clears_data_panel(tmp_p
     charts._require_source_field(page, ctx, "created_at")
     with pytest.raises(OperationError, match="field __missing__ not in data source"):
         charts._require_source_field(page, ctx, "__missing__")
+
+
+@pytest.mark.parametrize("layout", [[3840, 2400, 0.5], [1440, 810, 1], [1920, 1100, 1]])
+def test_open_report_fails_clearly_when_chrome_zoom_shrinks_the_editor(tmp_path, monkeypatch, layout):
+    # Live 2026-10-21: a persisted 50% Chrome zoom laid the editor out at
+    # 3840 x 2400 CSS px; every chart field picker then lacked "Chart fields".
+    from types import SimpleNamespace
+    from dsengine.ops import OperationError, report
+
+    ctx = cleanup_context(tmp_path)
+    ctx.open_url = "https://datastudio.google.com/reporting/create"
+    sizes = []
+    zoom = []
+    page = SimpleNamespace(
+        goto=lambda *args, **kwargs: None, set_viewport_size=sizes.append,
+        evaluate=lambda expression: list(layout),
+        locator=lambda selector: SimpleNamespace(click=lambda **kwargs: zoom.append(selector)),
+    )
+    ctx.selectors = {key: key for key in ("field_buttons", "zoom_menu", "zoom_100", "canvas")}
+    monkeypatch.setattr(report, "_wait_for_editor", lambda page, ctx: None)
+    monkeypatch.setattr(executor.time, "monotonic", lambda: 100)
+    expected = f"editor laid out at {layout[0]} x {layout[1]} CSS px .*Ctrl\\+0"
+    with pytest.raises(OperationError, match=expected):
+        report.run(page, Operation(id="s001", op="open_report"), ctx)
+    assert sizes == [{"width": 1920, "height": 1200}]
+    assert zoom == []  # No editor interaction on a mis-sized layout.
+
+
+def test_zoomed_layout_aborts_the_run_with_its_message(fake_driver, monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from dsengine.ops import report
+
+    _page, calls, events, stream = fake_driver
+    handler = install_handler(monkeypatch, calls)
+
+    def zoomed(page, op, ctx):
+        calls.append(("run", op.op, op.id))
+        report._check_layout(SimpleNamespace(evaluate=lambda expression: [3840, 2400, 0.5]))
+
+    handler.run = zoomed
+    recipe = make_recipe(tmp_path, "open_report", "set_canvas", "save_report", "get_link")
+
+    assert executor.run_recipe(recipe, events) == 1
+
+    records = read_events(stream)
+    opened = next(r for r in records if r["event"] == "op_finished" and r["op_id"] == "s001")
+    assert opened["status"] == "failed"
+    assert opened["message"].startswith("editor laid out at 3840 x 2400 CSS px (devicePixelRatio 0.5)")
+    assert "Ctrl+0" in opened["message"]
+    assert records[-1]["error_code"] == "open_report_failed"
+    assert ("run", "set_canvas", "s002") not in calls
 
 
 def test_title_font_verification_waits_for_option_list_to_disappear(tmp_path, monkeypatch):
@@ -1018,3 +1070,59 @@ def test_review_controls_become_ready_within_shared_budget(tmp_path, monkeypatch
         assert actions == ([("click", "save_share")] if stage == "save" else []) + (
             [("check", stage)] if checkbox else []) + [("click", button)]
     assert (ctx.op_deadline, ctx.run_deadline) == deadlines
+
+
+def _time_series(sort, **extra):
+    return Operation(id="s011", op="add_chart", component_id="p1_trend", chart_type="time_series",
+                     x=24, y=424, w=1152, h=264, dimensions=[], date_dimension="order_date",
+                     metrics=[{"field": "quantity", "agg": "sum"},
+                              {"field": "order_id", "agg": "count_distinct"}],
+                     sort=sort, **extra)
+
+
+def test_time_series_date_sort_is_inherent_not_a_setup_control():
+    # Live 2026-10-21: time series Setup has no Sort section, so the release
+    # recipe's {order_date, asc} sort waited 20 s for sort controls.
+    from dsengine.ops import charts
+
+    op = _time_series({"field": "order_date", "order": "asc"})
+    assert charts._inherent_sort(op, charts._dimensions(op)[0]) is True
+    bar = Operation(id="s019", op="add_chart", chart_type="bar", dimensions=["region"],
+                    metrics=[{"field": "revenue", "agg": "sum"}],
+                    sort={"field": "revenue", "order": "desc"})
+    assert charts._inherent_sort(bar, ["region"]) is False
+    assert charts._inherent_sort(_time_series(None), ["order_date"]) is False
+
+
+@pytest.mark.parametrize("sort", [{"field": "order_date", "order": "desc"},
+                                  {"field": "quantity", "order": "asc"}])
+def test_impossible_time_series_sort_fails_before_inserting_a_chart(tmp_path, sort):
+    from dsengine.ops import OperationError, charts
+
+    class Untouchable:
+        def __getattr__(self, name):
+            raise AssertionError(f"page.{name} used before sort validation")
+
+    ctx = cleanup_context(tmp_path)
+    with pytest.raises(OperationError, match="time_series sorts only by its date dimension, ascending"):
+        charts.run(Untouchable(), _time_series(sort), ctx)
+
+
+def test_field_picker_is_found_by_component_not_chart_fields_heading():
+    # Live 2026-10-21: the first charts of a compiled recipe open a picker
+    # headed "Default group" only; "Chart fields" lists fields already used.
+    from dsengine.selectors import load_selectors
+
+    picker = load_selectors()["field_picker"]
+    assert ".cdk-overlay-pane:has(ng2-selector-dialog)" in [part.strip() for part in picker.split(",")]
+    assert "Chart fields" not in picker
+
+
+def test_canvas_size_options_match_exact_text_not_page_names():
+    # Live 2026-10-21: text=Custom also matched the page tooltip
+    # "Customer Segment Analysis" and set_canvas failed in strict mode.
+    from dsengine.selectors import load_selectors
+
+    selectors = load_selectors()
+    assert selectors["canvas_size_custom"] == 'text="Custom"'
+    assert selectors["canvas_size_auto"] == 'text="Auto"'
