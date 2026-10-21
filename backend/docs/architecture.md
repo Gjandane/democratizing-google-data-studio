@@ -621,6 +621,70 @@ Final-audit corrections (2026-10-19):
   No schema migration of old view names: accept existing table identities, use unique names only
   for new attempts. This is superseding behavior for old create-or-replace SQL golden tests.
 
+### Replan freshness recovery
+- Problem: release 2.5 build b_24747c71b7e3 remained ready but prototype_stale after reference
+  deletion and successful regeneration/acceptance; recipe returned 409 feasibility_blocked
+  with no issues. A repaired artifact must become executable without weakening the old-artifact gate.
+- Inputs: current intent, reference set, confirmed staged artifacts, connected schema, effective
+  registry/allowlist, active ledger and candidate spec/prototype/view. Output: one published
+  bundle with its matching assessment, digest, verification and artifact-freshness state.
+- A successful explicit replan may clear the old artifact's stale flag only after candidate
+  support and coverage validation under the existing build lock. Publish the new proof and fresh
+  state with the candidate bundle. Revalidate preserved decisions against current prerequisites.
+  GET, an unchanged feasibility check, a restored allowlist or merely resolving an issue never
+  authorize the old artifact. Pending comments retain their separate reapply/abandon lifecycle;
+  replanning must not silently apply, clear or authorize them.
+- Replacement/deletion of a reference, changed outline requirements and an allowlist narrowing
+  can each invalidate a built artifact. All use the same recovery rule. An intent change during
+  generation, unsupported candidate or failed render/publication preserves the previous published
+  artifacts and applicable stale/blocked state; candidate cleanup cannot delete a published view.
+- Budget: deterministic work within the existing feasibility budget, with no added model calls
+  or repair attempts. Keep API and event shapes, legacy builds and version isolation unchanged.
+- Oracle: staged API tests begin with an accepted prototype, invalidate it through each trigger,
+  prove recipe/run blocked, then explicitly regenerate and accept a valid candidate and prove
+  ready/non-stale, recipe success and fake-engine completion. Reload preserves the outcome;
+  publication failure and changed intent preserve the old bundle and execution block. Pending
+  comments still require their existing explicit action. Tests live in test_feasibility.py,
+  test_render.py and test_publication.py. Release 2.5 owns the real-model/engine replay.
+
+### Recreate definition reconciliation
+- Problem: release 2.5 b_b4319fb6113d retained needs_clarification for screenshot metrics even
+  with explicit definitions; dropping the observations made the test cease to prove recreation.
+- Inputs: active image observations with reference/image/item provenance, user reference
+  instructions, confirmed Context KPIs and their artifact state, connected schema, blueprint
+  rows and current decisions. Output: reconciled mappings and coverage proof, or actionable
+  clarification/data issues. Every active observation remains accounted for.
+- Reuse a confirmed Context KPI for an unambiguously matching observation metric label/id,
+  preserving its field, aggregation and any supplied unit/date-grain semantics. Do not require
+  a repeated conversational definition. Read confirmed Context independently of whether a
+  Blueprint exists; draft/unconfirmed edits cannot authorize a mapping. Confirmation changes,
+  removed definitions or schema/reference changes invalidate the associated proof.
+- User-entered reference instructions are definition evidence, unlike model guesses or text
+  inside image bytes. Honor explicit formula clauses already within the definition surface,
+  including `Revenue = SUM(revenue) in USD`, and coordinated definitions for distinct labels.
+  Retain source provenance when an instruction clarifies an image item. Recompute from active
+  evidence so removal/replacement cannot leave an orphaned instruction binding behind.
+- A matching field name alone does not define a metric. Gross/net, sum/avg, count/distinct count,
+  unit and date-grain conflicts stay unresolved until explicitly clarified; conflicting active
+  instructions and confirmed KPIs must not silently override one another. A later confirmed
+  KPI edit replaces its prior artifact definition but must still satisfy the current image
+  request and schema. Missing fields remain needs_data. Ratios and unsupported capabilities
+  retain their existing refusal/alternative path. Never bind two metrics merely because they
+  share a field, and never drop an image observation to make acceptance pass.
+- Carry the reconciled meaning through preflight, candidate coverage, publication, deterministic
+  checks, recipe/run and version copy. Successful publication binds each supported observation
+  to actual component ids; decoration-only flattening cannot satisfy a live-chart requirement.
+  Style-only images still introduce no chart/data requirements. Legacy message/comment behavior
+  is preserved; this does not restore the removed interview flow or create a new parser API.
+- Budget: existing extraction/model/repair limits and <=100 ms recomputation oracle unchanged;
+  definition reuse and revalidation add no model call. No new dependency or contract shape.
+- Oracle: offline staged API fixtures with supported image observations and a connected schema
+  cover confirmed KPIs and explicit instructions separately and together, before/after Blueprint
+  creation; acceptance retains all observations, publishes real component bindings, compiles a
+  recipe and reaches fake-engine done. Negatives cover ambiguous/conflicting definitions,
+  unconfirmed edits, missing fields, unsupported observations, instruction removal and changed
+  KPIs/schema; reload and version copy preserve valid evidence but not invalid authorization.
+
 ### Build docs
 - Problem: the durable design brief (OKF bundle per version), written by code (change 2026-10-21).
 - Rules (change staged workflow 2026-10-21): `data/builds/<id>/v<n>/docs/` holds `index.md`,
@@ -884,3 +948,4 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-21 | Spec laid out by code from blueprint + design, 1-5 pages; ratio KPIs and unjoinable sources become feasibility issues with code-built alternatives | spec model node; Data Studio calculated fields | determinism and no extra model call; calculated fields stay a non-goal | change staged workflow |
 | 2026-10-21 | Fold staged artifact, aggregate-profile, raw-expression, dry-run-schema, layout, background and revision decisions into conventions | leave them only in task logs | preserve tasks 15.1-15.11 decisions for future sessions | final re-audit |
 | 2026-10-21 | Record the user-approved outline_other fail-open behavior as a POC limitation and contract gap | claim complete original-behavior preservation | task 15.11 explicitly approved empty extraction and skipped clarification/coverage; contracts remain root-owned | task 15.11; final re-audit |
+| 2026-10-22 | Recover freshness only with validated candidate publication; reconcile recreate observations with active user instructions and confirmed Context KPI definitions | clear staleness on check; accept dropped image observations | user chose both release 2.5 blocker fixes; preserve acceptance and existing contracts | change reference recovery (program root) |

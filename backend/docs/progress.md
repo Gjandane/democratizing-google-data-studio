@@ -1107,3 +1107,11 @@ context. Task status lives in docs/plan.md, not here.
 - What changed: plan.md Phase 17, task 17.1 (clean blueprint labels; research aggregate rows left out and listed in sources.md; numeric cells with footnote markers).
 - Why: release 2.4 blocked: research build b_568901c19819 loaded Wikipedia's "ASEAN" aggregate row as a 12th country and wrote list-fragment scorecard titles. User chose engine + backend fixes, rerun rows 2-3 only.
 - Affected: backend 17.1 (new); release 2.4 `Needs: backend 17.1`. No contract change.
+
+## 2026-10-22: Change reference recovery (program)
+- What changed: architecture.md adds Replan freshness recovery and Recreate definition reconciliation plus a decision row; essentials summarize them. Plan adds 18.1 (M, valid candidate publication clears artifact staleness) and 18.2 (M, confirmed KPI/reference instruction evidence resolves matching image observations), after 17.1. No product code, dependency, contract or API shape changed.
+- Why: release 2.5 reports ready-but-stale after reference deletion/replan (b_24747c71b7e3) and unresolved image metrics despite explicit definitions (b_b4319fb6113d). User chose both fixes over weakening recreation acceptance. They repair required behavior before the 2026-10-23 01:05 MPST deadline.
+- Decisions: publication must retain rollback and pending-comment safeguards; mapping reconciliation preserves all observations, active provenance and ambiguity checks. Deterministic offline staged API regressions prove both positive and negative paths; release 2.5 owns the full real-model/engine replay. No new model call or repair budget. POC change: no separate delta audit required.
+- Affected: 17.1 remains first; 18.1 -> 18.2 follow. Release 2.5 is reopened with Needs on both fixes; hosted 4.3 keeps its existing dependency/acceptance. Existing deferred hardening and other limitations are not promoted into this change.
+- Checks: backend stamp and lint, release lint/program and root contract check recorded in the matching root Change entry. Product tests are the builders' Done-when checks, not claimed as run here.
+- Next: backend builder 17.1, then 18.1 and 18.2 in fresh sessions; release reruns 2.5 after both fixes land.

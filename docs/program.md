@@ -183,6 +183,7 @@ phases" below.
   blocked near the deadline, the user decides on a card (change flow) whether to push with the
   screenshot feature tagged "planned"; never silently.
 - Manual acceptance fixes (change 2026-10-22): release 2.4 waits on engine 10.1 and backend 17.1 (`Needs:`), then reruns rows 2-3 only. Engine 10.1 first (it holds the signed-in Chrome); backend 17.1 is offline and can run alongside; release 2.5 (live, Chrome) after engine 10.1.
+- Reference recovery (change 2026-10-22, user chose both fixes): backend 17.1 -> 18.1 (validated replan freshness) -> 18.2 (recreate definition reconciliation), then release 2.5 reruns all five live cases, restart persistence and its comparison STOP. Release 2.5 waits on both tasks; release 4.3 retains the same hosted acceptance via its existing dependency on 2.5. No observation drops or relaxed recreation claim; no interface change. Release 2.6 remains independently ready after 2.3.
 
 ## Integration checks
 - `uv run --project integration python integration/check_contracts.py`: the recipe and event
@@ -283,3 +284,4 @@ phases" below.
 | 2026-10-21 | Live chart/control field setting fixed in engine (8.1) before release 2.3; the user's screenshot is a capability test of the current version (release 2.6), gaps recorded not built | pin a template; extend recipe 1.0 with area, list/slider controls, chart filters | smallest fix to the blocker; contract extensions don't fit the deadline | change live chart fields (user choice) |
 | 2026-10-21 | Placement below the viewport fold on tall per_section canvases fixed in engine (9.1) before release 2.3 | backend caps page height at the viewport; accept `partial` and defer | keeps the staged per_section design; must-survive live build needs `failed: 0` | change tall canvas (user choice) |
 | 2026-10-22 | Release 2.4 rows 2 (research) and 3 (BigQuery) fixed in the parts: engine 10.1 (off-screen picker fields, date control size, nearest rows-per-page value), backend 17.1 (clean labels, research aggregate rows); rerun rows 2-3 only | engine only; accept as known limits and relax 2.4 | both rows block a clean demo; no contract change; P2s (page 1 name, scorecard font) to Later | change manual acceptance fixes (user choice) |
+| 2026-10-22 | Fix both release 2.5 blockers in backend 18.1 and 18.2, then repeat full acceptance | stale-state fix only and accept dropped recreate observations | user chose both; existing required recreation/feasibility behavior is broken, no new feature or contract shape | change reference recovery (user choice) |

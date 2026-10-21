@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:22f215fcf06d (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:1f0c268d959a (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 Read every build session. docs/architecture.md wins if they disagree.
 
@@ -37,10 +37,12 @@ tests/          offline fakes; tests/live/ explicitly marked live
   current spec; flat job assets. Dev routes require DSS_DEV=1.
 - Blueprint accept publishes its owned candidate view/spec/artifacts atomically; never clean a
   published view. Backgrounds: background.write_pages, render(page=n), never the stacked canvas.
-  Explicit heading wraps; shared Chromium text fitting (architecture.md#Implementation conventions).
+  Heading wraps/text fitting: architecture.md#Implementation conventions.
 - Feasibility: structured Blueprint rows; extraction only for Other, comments, references.
   Images are not data. User-approved Other fail-open limitation and contract gap: PRD Later;
   emitted unsupported requirements still block (architecture.md#Outline).
+- Replans publish freshness with proof; comments need explicit recovery. Recreate reuses confirmed
+  KPIs/user instructions with provenance; conflicts block.
 - Synthetic: opt-in schema/count/seed -> stdlib CSV -> typed BQ intake; protected page-1 footer.
 - Tests offline unless marked live; fixture keys/types exact. Research <=20 fetches, no retries.
 
