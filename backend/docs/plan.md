@@ -415,7 +415,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_context_node.py tests/test_api_contract.py` passes with FakeLLM and FakeBigQuery per the Context oracle (valid draft -> context.md, each invalid case gives its issue path, at most one repair, PUT revalidates without a model call, confirm with issues -> `409 artifact_invalid`, shapes = context.json); the assembled prompt sections hold no data rows and no messages; `uv run pytest` passes; `uv run pytest -m live tests/live/test_staged_flow.py -k context` drafts a Context for the sample CSV with zero issues after at most one repair.
   - Review focus: ../contracts/api.md 2.0 context endpoints; code owns validation; budget 10k/3k.
-- [ ] 15.4 Outline nodes and endpoints
+- [x] 15.4 Outline nodes and endpoints
   - Goal: proposal on first context confirm, revalidation on later confirms, explicit re-propose, selection, other text and suggest-more, confirm.
   - Spec: docs/architecture.md#Outline
   - Files: src/dss/harness/nodes/outline.py, src/dss/harness/graph.py, src/dss/harness/context.py, src/dss/api/workflow.py, src/dss/spec/requirements.py, prompts/v1/outline.md, skills/outline.md, tests/test_outline.py

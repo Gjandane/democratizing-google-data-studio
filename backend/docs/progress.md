@@ -972,3 +972,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: none.
 - Next: Task 15.4 Outline nodes/endpoints; replace confirm's callback with the Outline branch.
+
+## 2026-10-21: Task 15.4 Outline nodes and endpoints
+- Status: done
+- Plan check: off
+- What changed: Outline proposal, code revalidation, selection, suggest, other-text extraction, confirmation, persistence and events.
+- Checks: `uv run pytest tests/test_outline.py tests/test_api_contract.py -q` PASS 62; `uv run pytest` PASS 1229 (10 live deselected); `uv run pytest -m live tests/live/test_staged_flow.py -k outline -s` PASS 1: 3 sections, 9 questions, one generation, valid refs, billed input 1021 <= bound 2147 <= 8000. `git diff --check -- .` PASS. Independent re-review: no findings.
+- Decisions: Build-level counters never recycle IDs. Other publication rolls back its bundle; scope overflow remains blocked. Outside Files: Context-confirm fixture and named live oracle. Design prefill belongs to 15.5. Added AGENTS.md timing gotcha.
+- Digest: nodes/outline.py: load/revalidate/compose/persist; Outline endpoints and one-shot propose/suggest/other. Context re-confirm is code-only. IDs: build-level outline_ids.json. Other refreshes requirements/feasibility; confirm enters design (15.5 adds prefill).
+- Tried and failed: Corrected connect-stage fixture, expanded ledger budgeting, and review's duplicate/overflow cases. Full run timing check failed at 104.9 ms; unchanged isolated and serial full reruns passed.
+- Gotchas: none beyond AGENTS.md.
+- Left open: none.
+- Next: Task 15.5 Theme kit and design endpoints; add prefill/revalidation at Outline confirmation.

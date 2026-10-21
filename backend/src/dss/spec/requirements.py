@@ -177,6 +177,18 @@ def load(folder):
     return Ledger.model_validate_json(path.read_text(encoding="utf-8")) if path.is_file() else Ledger()
 
 
+def outline_other(db, build_id, folder, source, extraction, checker):
+    """Extract only this action's user text, then assess the complete durable ledger."""
+    snapshot, ledger = inputs(db, build_id, folder), load(folder)
+    incoming = [s for s in snapshot['incoming'] if s['id'] == source['id']]
+    if incoming != [source]:
+        raise ValueError('Outline source must be a saved user message')
+    candidate = merge(ledger, {**snapshot, 'incoming': incoming}, extraction)
+    candidate = revalidate_decisions(snapshot, candidate, checker)
+    candidate.verification = verification(snapshot, candidate, checker)
+    return candidate, evaluate(snapshot, candidate, checker, check_components=False)
+
+
 def _json(folder, name):
     path = folder / name
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None

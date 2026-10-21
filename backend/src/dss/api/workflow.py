@@ -2,7 +2,7 @@
 import asyncio
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 
 from dss.api.builds import build_response
 from dss.api.prototype import current
@@ -11,6 +11,7 @@ from dss.artifacts.models import Context
 from dss.db import new_id, now
 from dss.harness.guardrails import RunError
 from dss.harness.nodes import context as node
+from dss.harness.nodes import outline as outline_node
 
 router = APIRouter(prefix='/api/builds')
 
@@ -91,15 +92,128 @@ async def confirm_context(build_id: str, request: Request):
         _, folder = current(state, build_id)
         draft = node.load(folder)
         issues = [i.model_dump() for i in draft.issues] if draft else [{'path': '', 'message': 'Draft Context first'}]
-        transition = stages.confirmed(build, 'context', issues)
-
-        async def finish(run_id):
-            stages.save(state.db, build_id, transition)
-            await state.harness.emit(build_id, run_id, 'stage.changed', {'stage': 'outline'})
-            await state.harness.emit(build_id, run_id, 'build.updated', {
-                'build': build_response(state.db, state.settings.get(), build_id)})
-            return 'Context confirmed. Continue with the dashboard outline.'
-        # Task 15.4 adds the Outline model branch to this accepted action.
-        accepted = enqueue(state, build_id, 'outline_propose', finish)
+        stages.confirmed(build, 'context', issues)
+        existing = outline_node.load(folder)
+        if existing is not None:
+            async def revalidate(run_id):
+                await outline_node.persist(state.harness, build, folder, run_id,
+                    outline_node.revalidate(existing, draft), confirm_context=True)
+                return 'Outline revalidated. Your questions and selections were kept.'
+            accepted = enqueue(state, build_id, 'outline_propose', revalidate)
+        else:
+            accepted = enqueue(state, build_id, 'outline_propose', {'action': 'outline_propose',
+                'build': build, 'config': state.settings.get(), 'folder': folder, 'confirm_context': True})
     state.harness.active_builds.add(build_id)
     return accepted
+
+
+class SelectionItem(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    id: str = Field(min_length=1)
+    selected: StrictBool
+
+
+class Selection(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    questions: list[SelectionItem] = Field(min_length=1, max_length=100)
+
+
+class OtherText(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    section_id: str | None
+    text: str = Field(min_length=1, max_length=1000)
+
+
+class Suggest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    section_id: str
+
+
+def outline_inputs(state, build, *, section_id=None, require_section=False):
+    from dss.api.synthetic_data import invalid_request
+    _, folder = current(state, build['id'])
+    draft = outline_node.load(folder)
+    if not draft or stages.states(build)['context'] != 'confirmed':
+        raise stages.wrong_stage(build)
+    if (require_section or section_id is not None) and not any(s.id == section_id for s in draft.sections):
+        raise invalid_request()
+    return folder, draft
+
+
+@router.get('/{build_id}/outline')
+async def get_outline(build_id: str, request: Request):
+    _, folder = current(request.app.state, build_id)
+    return outline_node.load(folder)
+
+
+@router.post('/{build_id}/outline/propose', status_code=202)
+async def propose_outline(build_id: str, request: Request):
+    state = request.app.state
+    with stages.action(state, build_id, ('outline',)) as build:
+        folder, _ = outline_inputs(state, build)
+        accepted = enqueue(state, build_id, 'outline_propose', {'action': 'outline_propose',
+            'build': build, 'config': state.settings.get(), 'folder': folder})
+    state.harness.active_builds.add(build_id)
+    return accepted
+
+
+@router.put('/{build_id}/outline/selection')
+async def select_outline(build_id: str, request: Request, body: Selection):
+    from dss.api.synthetic_data import invalid_request
+    state = request.app.state
+    with stages.action(state, build_id) as build:
+        stages.require_edit(build, 'outline')
+        folder, draft = outline_inputs(state, build)
+        choices = {q.id: q.selected for q in body.questions}
+        known = {q.id for s in draft.sections for q in s.questions}
+        if len(choices) != len(body.questions) or not choices.keys() <= known:
+            raise invalid_request()
+        for section in draft.sections:
+            for question in section.questions:
+                question.selected = choices.get(question.id, question.selected)
+        return await outline_node.persist(state.harness, build, folder, None, draft)
+
+
+async def extend_outline(state, build_id, body, action):
+    from dss.api.synthetic_data import invalid_request
+    from dss.memory import episodic
+    with stages.action(state, build_id) as build:
+        stages.require_edit(build, 'outline')
+        folder, _ = outline_inputs(state, build, section_id=body.section_id, require_section=action == 'outline_suggest')
+        payload = {'action': action, 'build': build, 'config': state.settings.get(),
+                   'folder': folder, 'section_id': body.section_id}
+        if action == 'outline_other':
+            if not body.text.strip():
+                raise invalid_request()
+            message = episodic.save(state.db, build_id, 'user', body.text, action)
+            payload['source'] = {'id': message['id'], 'kind': 'message', 'text': message['text'],
+                'reference_id': None, 'image_id': None, 'item_id': None, 'component_id': None, 'batch_id': None}
+            await state.harness.emit(build_id, None, 'message.done', {'message': message})
+        accepted = enqueue(state, build_id, action, payload)
+    state.harness.active_builds.add(build_id)
+    return accepted
+
+
+@router.post('/{build_id}/outline/other', status_code=202)
+async def other_outline(build_id: str, request: Request, body: OtherText):
+    return await extend_outline(request.app.state, build_id, body, 'outline_other')
+
+
+@router.post('/{build_id}/outline/suggest', status_code=202)
+async def suggest_outline(build_id: str, request: Request, body: Suggest):
+    return await extend_outline(request.app.state, build_id, body, 'outline_suggest')
+
+
+@router.post('/{build_id}/outline/confirm')
+async def confirm_outline(build_id: str, request: Request):
+    state = request.app.state
+    with stages.action(state, build_id, ('outline',)) as build:
+        _, draft = outline_inputs(state, build)
+        selected = sum(q.selected for s in draft.sections for q in s.questions)
+        issues = [] if 1 <= selected <= 24 else [{'path': '/sections', 'message': 'Select 1-24 questions'}]
+        stages.save(state.db, build_id, stages.confirmed(build, 'outline', issues))
+        # Task 15.5 supplies Design prefill/revalidation at this transition.
+        await state.harness.emit(build_id, None, 'stage.changed', {'stage': 'design'})
+        built = build_response(state.db, state.settings.get(), build_id)
+        await state.harness.emit(build_id, None, 'build.updated', {'build': built})
+        return built

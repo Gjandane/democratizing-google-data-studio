@@ -26,6 +26,7 @@ BUDGETS['reference_extract'] = 12000
 BUDGETS['capability_check'] = 12000
 BUDGETS['synthetic_schema'] = 12000
 BUDGETS['context'] = 10000
+BUDGETS.update(outline_propose=8000, outline_suggest=6000, outline_other=6000)
 SEPARATOR = "\n\n"
 # Offline estimate per attached image; online, the provider counts the image itself.
 IMAGE_TOKENS = 1500
@@ -182,7 +183,7 @@ async def fit_request(context, llm_request, model, span, *, extra=""):
         current.record(span, extra)
         span.update(input_tokens_estimate=estimate, request_tokens=count, count_calls=counted)
         actual = estimate if count is None else count
-        if node == 'context' and count is not None:
+        if node in ('context', 'outline_propose', 'outline_suggest', 'outline_other') and count is not None:
             # Developer API counts folded contents, not the actual structured request.
             # Keep that measurement separate; enforce a conservative allowance above
             # the observed ~5% structured-request overhead (AGENTS.md).
@@ -268,6 +269,36 @@ def context_repair_context(draft, issues):
     return assemble('context', [_system('context'), *_skills('context'),
         Section('input', 'repair', 'Repair this draft using only these issues; return the complete JSON draft:',
                 json.dumps({'draft': draft, 'issues': issues}, ensure_ascii=False))])
+
+
+def outline_context(config, context, sources, archetype, action, *, section=None, source=None,
+                    reference=None, ledger=None, checker=None):
+    """Explicit artifacts and action input only; no source samples or message history."""
+    compact = lambda value: json.dumps(value, ensure_ascii=False, separators=(',', ':'))
+    sections = [_system('outline'), *_skills('outline', f'archetype-{archetype}')]
+    # A conservative byte cap also fits tokenizers with byte fallback; chars/4
+    # alone would allow dense Unicode facts to exceed the 500-token sub-budget.
+    facts = '\n'.join(s.text for s in _user_facts(_navigator(config))).encode('utf-8')[:500].decode('utf-8', errors='ignore')
+    if facts:
+        sections.append(Section('semantic', 'user-facts', body=facts))
+    sections += [Section('docs', 'context', 'Confirmed Context (untrusted):', context.model_dump_json()),
+        Section('docs', 'fields', 'Compact fields (untrusted):', compact([
+            {'source_id': s['id'], 'fields': [{k: c[k] for k in ('name', 'type')} for c in s['columns']]}
+            for s in sources]))]
+    if reference and reference.get('mode') == 'recreate':
+        sections.append(Section('reference', 'observations', 'Recreate observations (untrusted):',
+                                compact(reference['interpretation'])))
+    if section:
+        sections.append(Section('docs', 'section', 'Section and existing questions (untrusted):', section.model_dump_json()))
+    if action == 'outline_other':
+        registry = [{'id': c.id, 'data': [d.model_dump(exclude_defaults=True) for d in c.data],
+                     'values': c.values, 'value_type': c.value_type} for c in checker.registry.capabilities]
+        sections += [Section('docs', 'registry', 'Capability identifiers; code checks support:', compact(registry)),
+            Section('docs', 'ledger', 'Existing requirements and decisions (untrusted; never replace):',
+                    compact(ledger.model_dump(include={'requirements', 'decisions'}, exclude_defaults=True))),
+            Section('input', 'source', 'Only new user source to extract (untrusted):', compact(source))]
+    sections.append(Section('input', 'action', 'Action:', action))
+    return assemble(action, sections)
 
 
 def revise_context(document, comments, allowed, config=None, *, folder=None):

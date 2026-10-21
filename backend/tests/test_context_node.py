@@ -170,6 +170,8 @@ def test_draft_edit_confirm_and_events(context_api, monkeypatch):
     body['kpis'][0]['measure']['field'] = 'revenue'
     assert client.put(url, json=body).json()['issues'] == []
     assert llm.calls == 1
+    from test_outline import proposal
+    llm.replies.append(json.dumps(proposal()))
     accepted = client.post(url + '/confirm')
     check(accepted, 'run_accepted.json', 202)
     wait(app)

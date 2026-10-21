@@ -54,3 +54,4 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - SQLite's connection context manager does not close the handle: use `contextlib.closing` when inspecting backup snapshots, or Windows can block temporary-file cleanup.
 - Windows system Python defaults text I/O to cp1252: pass `encoding="utf-8"` when reading and writing source/tests, or Unicode fixtures become mojibake.
 - A successful BigQuery dry run proves SQL resolves, not that declared derived types are correct: compare its returned schema before accepting numeric KPI or threshold uses.
+- The 100 ms feasibility timing oracle hit 104.9 ms in a full run, then passed unchanged in isolation and a serial full rerun; avoid overlapping check runs before diagnosing a timing failure.

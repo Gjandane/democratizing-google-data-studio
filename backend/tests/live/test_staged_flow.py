@@ -19,6 +19,48 @@ from .test_synthetic_flow import wait
 
 
 @pytest.mark.live
+def test_outline_sample_csv(tmp_path):
+    app, config, project = live_app(tmp_path)
+    tables = []
+    with TestClient(app) as client:
+        assert client.put('/api/settings', json={'gcp_project_id': project}).status_code == 200
+        service = BigQuery(app.state.settings.get())
+        bid = client.post('/api/builds', json={'archetype': 'executive', 'mode': 'data', 'title': 'Sales outline'}).json()['id']
+        url = f'/api/builds/{bid}'
+        try:
+            content = (Path(__file__).parents[1] / 'data/interview_sales.csv').read_bytes()
+            response = client.post(url + '/sources/upload', files=[('files', ('sales.csv', content, 'text/csv'))])
+            assert response.status_code == 201, response.text
+            tables.extend(s['bq_table'] for s in response.json()['sources'])
+            response = client.post(url + '/context', json={'notes': 'The sales director reviews net revenue weekly by region. '
+                'Revenue is net of discounts; sum revenue and quantity; count distinct order_id for orders.'})
+            assert response.status_code == 202
+            wait(app, seconds=150)
+            assert trace(app, response.json()['run_id'])['status'] == 'ok'
+            context = client.get(url + '/context').json()
+            assert context['issues'] == [], context['issues']
+            accepted = client.post(url + '/context/confirm')
+            assert accepted.status_code == 202, accepted.text
+            wait(app, seconds=100)
+            result = trace(app, accepted.json()['run_id'])
+            assert result['status'] == 'ok', {k: result[k] for k in ('status', 'error')}
+            outline = client.get(url + '/outline').json()
+            assert 3 <= len(outline['sections']) <= 5
+            kpis = {k['id'] for k in context['kpis']}
+            questions = [q for s in outline['sections'] for q in s['questions']]
+            assert all(set(q['kpi_refs']) <= kpis for q in questions)
+            assert any(q['kpi_refs'] for q in questions)
+            spans = [s for s in json.loads(result['spans_json']) if s['node'] == 'outline_propose' and 'sections' in s]
+            assert len(spans) == 1 and spans[0]['enforced_input_bound'] <= 8000
+            assert result['input_tokens'] <= spans[0]['enforced_input_bound']
+            print(f'Outline live: sections={len(outline["sections"])}, questions={len(questions)}, generations=1, '
+                  f'billed_input={result["input_tokens"]}, bound={spans[0]["enforced_input_bound"]}')
+        finally:
+            for table in tables:
+                service.client.delete_table(table, not_found_ok=True)
+
+
+@pytest.mark.live
 def test_context_sample_csv(tmp_path):
     app, config, project = live_app(tmp_path)
     tables = []
