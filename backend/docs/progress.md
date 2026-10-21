@@ -1020,3 +1020,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: see AGENTS.md.
 - Left open: none.
 - Next: Task 15.7; extend row_errors and Assessment with full feasibility, alternatives and decisions.
+
+## 2026-10-21: Task 15.7 Blueprint feasibility, repair, issues and decisions
+- Status: done
+- Plan check: off
+- What changed: Structured row/KPI/source/page checks, one row repair, code-built alternatives and decisions, atomic artifact writes, and acceptance preflight. Assessment/Issue transport is unchanged.
+- Checks: `uv run pytest tests/test_blueprint.py tests/test_feasibility.py tests/test_api_contract.py -q -x` PASS (207); Test (all) `uv run pytest -q` PASS (1312, 10 live deselected); `git diff --check` PASS. Read-only review: no remaining findings.
+- Decisions: Rows stay structured; choices retain resolved issues and recheck evidence. Acceptance requires current intent/proof; derived types require BigQuery schema. Publication remains 15.9. Oracle bindings use actual CSV columns; removed derivations require repair. No dependencies or outside-Files edits.
+- Digest: spec/feasibility.py: diagnostics, issue_rows, decide; Ledger.blueprint_decisions; nodes/blueprint.preflight(db, build_id, folder) gates before view writes. req.inputs includes artifacts. Task 15.9 must wire the prototype dispatch to candidate publication.
+- Tried and failed: Canonicalized issue IDs; fixed and rechecked all review findings.
+- Gotchas: see AGENTS.md for BigQuery dry-run schema validation.
+- Left open: none.
+- Next: 15.8 Code layout: blueprint and design to a multi-page spec.

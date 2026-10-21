@@ -440,7 +440,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `uv run pytest tests/test_blueprint.py tests/test_view_sql.py` passes with FakeLLM and FakeBigQuery: the ecommerce fixture gives rows for every selected question (shapes = blueprint.json); a fake that omits a selected question gets one row repair, then an issue for that question; page numbers follow the page plan; on a redraft after one question changes, only that question goes to the model and the other rows are kept; join and union SQL are golden strings (union NULL-pads missing columns, adds `dataset_name`, quotes reserved words); a view dry-run error triggers exactly one SQL repair; the prompt holds the catalog summary, never rows or messages; the two GPS-style fixture CSVs (schemas of activity_summary/route_speeding_events, <= 50 rows each) exist; `uv run pytest` passes.
   - Review focus: one generation; budget 14k/6k; filtering only through derived fields.
-- [ ] 15.7 Blueprint feasibility, repair, issues and decisions
+- [x] 15.7 Blueprint feasibility, repair, issues and decisions
   - Goal: code checks every row, repairs failing rows once, turns the rest into Assessment issues with code-built alternatives, applies decisions in code; accept is gated.
   - Spec: docs/architecture.md#Blueprint; ../contracts/dashboard-intent.md#Enforcement
   - Files: src/dss/spec/feasibility.py, src/dss/spec/requirements.py, src/dss/spec/capabilities.py, src/dss/harness/nodes/blueprint.py, src/dss/api/feasibility.py, src/dss/api/workflow.py, tests/test_blueprint.py, tests/test_feasibility.py

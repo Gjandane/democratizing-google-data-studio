@@ -1,5 +1,6 @@
 """Feasibility recovery action; GET never starts model work."""
 import asyncio
+import json
 from contextlib import contextmanager
 
 from fastapi import APIRouter, Request, Query
@@ -7,7 +8,11 @@ from fastapi import APIRouter, Request, Query
 from dss.api.prototype import current, read_spec
 from dss.db import new_id
 from dss.harness.guardrails import RunError
+from dss.artifacts.models import Design
+from dss.artifacts.okf import write_artifact, atomic_write
+from dss.harness.nodes import blueprint as blueprint_node
 from dss.spec import requirements as req
+from dss.spec import feasibility as blueprint_feasibility
 from dss.spec.capabilities import Checker, load_registry
 
 router = APIRouter(prefix="/api/builds")
@@ -29,6 +34,29 @@ def action(state, build_id):
 @router.post("/{build_id}/feasibility/decisions")
 async def decisions(build_id: str, body: req.Decisions, request: Request):
     with action(request.app.state, build_id) as (folder, snapshot, ledger, checker):
+        if snapshot.get('blueprint') and any(d.issue_id.startswith('bp_') for d in body.decisions):
+            updated, assessment, draft, fresh = blueprint_feasibility.decide(snapshot, ledger, checker, body)
+            targets = [folder / 'requirements.json', blueprint_node.inputs_path(folder),
+                *[folder / 'docs' / n for n in ('blueprint.md', 'design.md', 'feasibility.md', 'index.md', 'log.md')]]
+            backup = {p: p.read_bytes() if p.is_file() else None for p in targets}
+            async def quiet(*args):
+                pass
+            try:
+                await write_artifact(folder / 'docs/blueprint.md', draft, emit=quiet)
+                if fresh['design'] != snapshot['design']:
+                    await write_artifact(folder / 'docs/design.md', Design.model_validate(fresh['design']), emit=quiet)
+                recorded = blueprint_node.previous_inputs(folder)
+                recorded['errors'] = fresh.get('blueprint_errors', [])
+                atomic_write(blueprint_node.inputs_path(folder), json.dumps(recorded, ensure_ascii=False))
+                req.save(folder, updated, assessment)
+            except BaseException:
+                for path, content in backup.items():
+                    if content is None:
+                        path.unlink(missing_ok=True)
+                    else:
+                        path.write_bytes(content)
+                raise
+            return assessment.model_dump()
         updated, assessment = req.decide(snapshot, ledger, checker, body)
         req.save(folder, updated, assessment)
         return assessment.model_dump()

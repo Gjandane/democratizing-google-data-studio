@@ -166,6 +166,7 @@ class Ledger(Strict):
     verification: dict[str, list[dict]] = Field(default_factory=dict)
     pending_comments: PendingComments | None = None
     retired_sources: list[str] = Field(default_factory=list)
+    blueprint_decisions: list[dict] = Field(default_factory=list)
 
 
 def digest(value):
@@ -229,13 +230,28 @@ def inputs(db, build_id, folder):
         path = folder / "docs" / name
         if path.is_file():
             definitions[name] = path.read_text(encoding="utf-8")
-    return {"sources": sources, "incoming": incoming, "reference": reference,
-            "definitions": definitions, "spec": _json(folder, "spec.json")}
+    snapshot = {"sources": sources, "incoming": incoming, "reference": reference,
+                "definitions": definitions, "spec": _json(folder, "spec.json")}
+    from dss.artifacts.okf import read_artifact
+    from dss.artifacts.models import Blueprint, Context, Outline, Design
+    if (folder / 'docs/blueprint.md').is_file():
+        for name, model in [('blueprint', Blueprint), ('context', Context), ('outline', Outline), ('design', Design)]:
+            snapshot[name] = read_artifact(folder / f'docs/{name}.md', model).model_dump()
+        recorded = _json(folder, 'blueprint-inputs.json') or {}
+        snapshot['blueprint_errors'] = recorded.get('errors', [])
+    return snapshot
 
 
 def input_digest(snapshot, ledger, checker):
+    if snapshot.get('blueprint'):
+        # Assessment links and row verdicts are output, never input to their own proof.
+        bp = snapshot['blueprint']
+        snapshot = {**snapshot, 'blueprint': {k: v for k, v in bp.items() if k != 'assessment_id'}}
+        snapshot['blueprint']['rows'] = [{k: v for k, v in r.items() if k not in ('status', 'issue_ids')}
+                                          for r in bp['rows']]
     return digest({"inputs": snapshot, "requirements": [r.model_dump() for r in ledger.requirements],
                    "decisions": ledger.decisions, "scope_error": ledger.scope_error,
+                   "blueprint_decisions": ledger.blueprint_decisions,
                    "pending_comments": ledger.pending_comments.model_dump() if ledger.pending_comments else None,
                    "retired_sources": ledger.retired_sources, "registry_allowed": checker.digest()})
 
@@ -961,6 +977,12 @@ def evaluate(snapshot, ledger, checker, *, check_components=True):
     """Pure bounded recomputation; does not call a model, write SQL or publish artifacts."""
     fields = schema(snapshot)
     found = [row[0] for row in _requirement_issues(snapshot, ledger, checker)]
+    if snapshot.get('blueprint'):
+        from dss.spec.feasibility import issue_rows
+        found.extend(issue for issue, _ in issue_rows(snapshot, ledger, checker))
+        for source in new_sources(snapshot, ledger):
+            found.append(Issue(id='bp_intent_' + digest(source)[:20], requirement=source['text'], status='unknown',
+                reason='New intent has not been assessed; run Check feasibility before accepting the Blueprint'))
     def add(rid, text, verdict):
         if verdict.ok:
             return

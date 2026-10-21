@@ -295,6 +295,21 @@ async def get_blueprint(build_id: str, request: Request):
     return blueprint_node.load(folder)
 
 
+@router.post('/{build_id}/blueprint/accept', status_code=202)
+async def accept_blueprint(build_id: str, request: Request):
+    state = request.app.state
+    with stages.action(state, build_id, ('blueprint',)) as build:
+        folder, _ = design_inputs(state, build)
+        draft = blueprint_node.preflight(state.db, build_id, folder)
+        stages.confirmed(build, 'blueprint')
+        # The prototype branch owns layout/publication (15.8/15.9), including
+        # confirmation only after success. A rejected run preserves this stage.
+        accepted = enqueue(state, build_id, 'prototype', {'build': build, 'folder': folder,
+            'blueprint': draft, 'config': state.settings.get(), 'factory': state.bigquery_factory})
+    state.harness.active_builds.add(build_id)
+    return accepted
+
+
 @router.post('/{build_id}/blueprint/regenerate', status_code=202)
 async def regenerate_blueprint(build_id: str, request: Request):
     state = request.app.state

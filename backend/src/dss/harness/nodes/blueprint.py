@@ -1,10 +1,5 @@
-"""Bounded Blueprint drafting/redrafting and code-built view dry runs.
-
-The row checker is deliberately an extension point for task 15.7's feasibility rules
-and code-built alternatives. Coverage is already enforced here, including one repair.
-"""
+"""Bounded Blueprint drafting, full row feasibility and code-built view dry runs."""
 import asyncio
-from collections import Counter
 import json
 
 from google.adk import Event
@@ -22,6 +17,7 @@ from dss.harness.guardrails import RunError, check_reply
 from dss.harness.nodes import context as context_node, outline as outline_node, view
 from dss.harness.nodes.style_extract import provider_schema
 from dss.spec import requirements as req
+from dss.spec import feasibility
 from dss.spec.capabilities import Checker, load_registry
 from dss.spec.validate import allowed_types, catalog
 
@@ -113,13 +109,6 @@ def normalize_rows(rows, selected, pages):
     return result
 
 
-def row_errors(rows, selected):
-    """Coverage diagnostics; full catalog/KPI feasibility is added by task 15.7."""
-    counts = Counter(r.question_id for r in rows if r.question_id is not None)
-    return [{'question_id': qid, 'message': 'Each selected question needs 1-3 rows'}
-            for qid in selected if not 1 <= counts[qid] <= 3]
-
-
 def inputs_path(folder):
     return folder / 'blueprint-inputs.json'
 
@@ -135,33 +124,11 @@ async def persist(harness, build, folder, run_id, draft, fingerprints, errors, c
     ledger = req.load(folder)
     checker = Checker(load_registry())
     snapshot = req.inputs(harness.db, build['id'], folder)
-    # Keep pre-existing intent issues and decisions. Task 15.7 extends this assessment
-    # with all row feasibility checks and alternatives; this task only establishes coverage.
+    snapshot.update(blueprint=draft.model_dump(), context=context_node.load(folder).model_dump(),
+        outline=outline_node.load(folder).model_dump(), design=design_node.load(folder).model_dump(),
+        blueprint_errors=errors)
     assessment = req.evaluate(snapshot, ledger, checker, check_components=False)
-    for error in errors:
-        qid = error.get('question_id')
-        issue = req.Issue(id='bp_' + req.digest(error)[:16], requirement=qid or 'Blueprint view',
-                          status='needs_data' if qid is None else 'unknown', reason=error['message'])
-        assessment.issues.append(issue)
-        for row in draft.rows:
-            if qid is None or row.question_id == qid:
-                row.status = 'blocked'
-                row.issue_ids.append(issue.id)
-    if errors:
-        assessment.state = 'blocked'
-    elif assessment.state == 'ready':
-        # Coverage and a SQL dry run alone are not full Blueprint feasibility.
-        assessment.state = 'unchecked'
-    if len(assessment.issues) > req.MAX_ISSUES:
-        # The public assessment is bounded, while full diagnostics remain durable.
-        assessment.issues = [req.Issue(id='bp_scope_' + req.digest(errors)[:16],
-            requirement='Blueprint coverage', status='needs_clarification',
-            reason='More than 20 issues; reduce the request scope. Affected questions: ' +
-                   ', '.join(e['question_id'] or 'view' for e in errors))]
-        assessment.state = 'blocked'
-        for row in draft.rows:
-            row.status, row.issue_ids = 'blocked', [assessment.issues[0].id]
-    draft.assessment_id = assessment.id
+    draft = feasibility.mark(snapshot, ledger, checker, assessment)
     targets = [folder / 'requirements.json', inputs_path(folder), *[folder / 'docs' / name for name in
                ('blueprint.md', 'feasibility.md', 'index.md', 'log.md')]]
     backup = {p: p.read_bytes() if p.is_file() else None for p in targets}
@@ -183,6 +150,25 @@ async def persist(harness, build, folder, run_id, draft, fingerprints, errors, c
     from dss.api.builds import build_response
     await harness.emit(build['id'], run_id, 'build.updated', {
         'build': build_response(harness.db, harness.models.settings.get(), build['id'])})
+
+
+def preflight(db, build_id, folder):
+    """Acceptance gate; call under the build lock, before any candidate view write."""
+    snapshot, ledger, checker = req.inputs(db, build_id, folder), req.load(folder), Checker(load_registry())
+    if not snapshot.get('blueprint'):
+        raise RunError('artifact_invalid', 'Draft a Blueprint first', 409)
+    current = req.get(snapshot, ledger, checker)
+    assessment = req.evaluate(snapshot, ledger, checker, check_components=False)
+    if assessment.state != 'ready':
+        req.save(folder, ledger, assessment)
+        raise req.blocked(assessment)
+    if current.state != 'ready':
+        raise req.blocked(current)
+    req.save(folder, ledger, assessment)
+    draft = feasibility.mark(snapshot, ledger, checker, assessment)
+    if not draft.rows or not any(r.status == 'ok' for r in draft.rows):
+        raise RunError('artifact_invalid', 'Blueprint acceptance needs at least one ok row', 409)
+    return draft
 
 
 def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
@@ -219,10 +205,11 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         repair = None
         schema = Draft
         if phase == 'row_repair':
-            ids = {e['question_id'] for e in state['errors']}
-            request_questions = {qid: selected[qid] for qid in ids}
+            ids = repair_ids()
+            request_questions = {qid: selected[qid] for qid in ids if qid in selected}
+            indices = {i for e in state['errors'] if e['repairable'] for i in e['indices']}
             repair = {'kind': 'rows', 'errors': state['errors'],
-                      'rows': [r.model_dump() for r in state['rows'] if r.question_id in ids]}
+                      'rows': [r.model_dump() for i, r in enumerate(state['rows']) if i in indices]}
             schema = RowRepair
         elif phase == 'sql_repair':
             request_questions = {}
@@ -267,16 +254,26 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                     state['rows'] += normalize_rows([r for r in draft.rows if r.question_id not in kept_ids], pending, pages)
                 elif state['phase'] == 'row_repair':
                     repaired = RowRepair.model_validate_json(state['raw'])
-                    ids = {e['question_id'] for e in state['errors']}
-                    state['rows'] = [r for r in state['rows'] if r.question_id not in ids] + normalize_rows(
-                        [r for r in repaired.rows if r.question_id in ids], selected, pages)
-                state['errors'] = row_errors(state['rows'], selected)
+                    ids = repair_ids()
+                    indices = {i for e in state['errors'] if e['repairable'] for i in e['indices']
+                               if state['rows'][i].question_id is None}
+                    state['rows'] = [r for i, r in enumerate(state['rows']) if r.question_id not in ids and i not in indices] + normalize_rows(
+                        [r for r in repaired.rows if r.question_id in ids or (indices and r.question_id is None)], selected, pages)
+                snapshot = req.inputs(harness.db, build_id, folder)
+                snapshot.update(blueprint=Blueprint(revision=1, **state['view'].model_dump(), rows=state['rows'],
+                    view_table=None, assessment_id=None).model_dump(), context=context.model_dump(),
+                    outline=outline.model_dump(), design=design.model_dump(), blueprint_errors=[])
+                state['errors'] = feasibility.diagnostics(snapshot, req.load(folder), Checker(load_registry()))
             except (ValueError, ValidationError):
                 state['failure'] = RunError('llm_unavailable', 'The model returned an invalid Blueprint structure; draft again', 503)
-        if state['errors'] and not state['row_repaired'] and not state['failure']:
+        if any(e['repairable'] for e in state['errors']) and not state['row_repaired'] and not state['failure']:
             state['row_repaired'], state['phase'] = True, 'row_repair'
             return Event(actions=EventActions(route='repair'))
         return Event(actions=EventActions(route='view'))
+
+    def repair_ids():
+        return {qid for e in state['errors'] if e['repairable']
+                for qid in (e['qids'] + [state['rows'][i].question_id for i in e['indices']]) if qid is not None}
 
     async def check_view(node_input):
         trace.span('validate_blueprint_view')
@@ -290,7 +287,14 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
             sql = view.blueprint_sql(connected, state['view'].view_sources, state['view'].derived_fields,
                                      context_fields=[f.name for f in context.derived_fields])
             service = payload['factory'](config)
-            await asyncio.to_thread(service.dry_run, sql)
+            schema = await asyncio.to_thread(service.dry_run, sql)
+            actual = {f.name: ('string' if f.mode == 'REPEATED' else
+                'number' if f.field_type in context_node.NUMBERS else 'date' if f.field_type == 'DATE' else
+                'datetime' if f.field_type in context_node.DATES else 'boolean' if f.field_type in ('BOOL', 'BOOLEAN') else
+                'geo' if f.field_type == 'GEOGRAPHY' else 'string') for f in schema or []}
+            for field in state['view'].derived_fields:
+                if actual.get(field.name) != field.type:
+                    raise ValueError('Derived field ' + field.name + ' does not have its declared type')
             state['view_table'] = view.view_table(config, build_id, build['current_version'], run_id)
         except Exception as exc:
             # Dry-run errors are metadata; bound and redact before the one SQL repair.
@@ -310,7 +314,8 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
             return 'Blueprint could not be drafted.'
         draft = Blueprint(revision=1, **state['view'].model_dump(), rows=state['rows'],
                           view_table=state.get('view_table'), assessment_id=None)
-        await persist(harness, build, folder, run_id, draft, fingerprints, state['errors'],
+        await persist(harness, build, folder, run_id, draft, fingerprints,
+                      [e for e in state['errors'] if 'question_id' in e],
                       [f.name for f in context.derived_fields])
         return ('Blueprint drafted. Resolve the listed issues before accepting.' if state['errors'] else
                 'Blueprint drafted and its view dry run passed. Review the component rows.')
