@@ -5,7 +5,7 @@ import { ApiError, type Build, type ReferenceSet, type Source, type SourceKind }
 import { Button } from '../../../components/Button';
 import { EmptyState } from '../../../components/EmptyState';
 import { ErrorState } from '../../../components/ErrorState';
-import { Input } from '../../../components/Input';
+import { Input, TextArea } from '../../../components/Input';
 import { focusRing } from '../../../components/focus';
 import { Spinner } from '../../../components/Spinner';
 import { Table, type Column as TableColumn } from '../../../components/Table';
@@ -89,6 +89,9 @@ const sourceColumns = (buildId: string): TableColumn<Source>[] => [
 
 const message = (error: unknown, fallback: string) => (error instanceof ApiError ? error.message : fallback);
 
+/** Most characters of "About this data" a context draft accepts (api.md 2.0, POST context). */
+export const MAX_NOTES = 4000;
+
 interface ConnectStageProps {
   onReferenceReadyChange?: (ready: boolean) => void;
   build: Build;
@@ -126,7 +129,11 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
   const [reference, setReference] = useState<ReferenceSet | null | undefined>(undefined);
   const [sampleBusy, setSampleBusy] = useState(false);
   const [notice, setNotice] = useState('');
+  const [notes, setNotes] = useState(build.notes ?? '');
   const startButton = useRef<HTMLButtonElement>(null);
+  const notesOver = notes.length > MAX_NOTES;
+  const notesRef = useRef(notes);
+  notesRef.current = notes;
 
   const isBusy = busy !== null;
   const hasSources = build.sources.length > 0;
@@ -232,11 +239,13 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
   };
 
   const draftContext = async () => {
-    if (latest.current.sources.length === 0 || busyRef.current) return;
+    if (latest.current.sources.length === 0 || busyRef.current || notesRef.current.length > MAX_NOTES) return;
     const id = latest.current.id;
+    const text = notesRef.current;
     begin({ kind: 'start' });
     try {
-      await api.draftContext(id);
+      // Empty notes clear saved ones; with none saved, nothing is sent.
+      await (text === '' && !latest.current.notes ? api.draftContext(id) : api.draftContext(id, text));
     } catch (e) {
       finish();
       setFailure({
@@ -454,16 +463,39 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
         )}
       </section>
 
+      <section aria-labelledby={`${uriId}-notes`} className="flex flex-col gap-2 rounded-panel border border-border bg-surface p-4">
+        <div>
+          <h3 id={`${uriId}-notes`} className="text-title font-semibold text-text">About this data</h3>
+          <p className="mt-0.5 text-body text-text-muted">What the columns can't say: what a value means, what to leave out, who reads the dashboard. The context draft uses it.</p>
+        </div>
+        <TextArea
+          label="Notes about this data"
+          hideLabel
+          rows={4}
+          value={notes}
+          readOnly={isBusy}
+          placeholder="Revenue is already net of discounts. The sales director reviews it monthly."
+          hint={`${notes.length.toLocaleString('en-US')} / ${MAX_NOTES.toLocaleString('en-US')} characters`}
+          error={
+            notesOver
+              ? `${notes.length.toLocaleString('en-US')} / ${MAX_NOTES.toLocaleString('en-US')} characters. Remove ${(notes.length - MAX_NOTES).toLocaleString('en-US')} to draft the context.`
+              : null
+          }
+          onChange={(e) => setNotes(e.target.value)}
+        />
+      </section>
+
       <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
         <p role="status" className="sr-only">
           {notice}
         </p>
         {!hasSources && <p className="text-body text-text-muted">Add at least one source to start.</p>}
+        {hasSources && notesOver && <p className="text-body text-text-muted">Shorten the notes to 4,000 characters to start.</p>}
         <Button
           ref={startButton}
           variant="primary"
           loading={busy?.kind === 'start'}
-          disabled={!hasSources || isBusy}
+          disabled={!hasSources || isBusy || notesOver}
           onClick={() => void draftContext()}
         >
           Draft context

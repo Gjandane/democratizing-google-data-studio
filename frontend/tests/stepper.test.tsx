@@ -142,7 +142,10 @@ describe('Workspace with the staged stepper', () => {
     await waitFor(() => expect(stageHeading()).toBe('Context'));
     const main = screen.getByRole('main');
     await within(main).findByText('1 open issue');
-    expect(within(main).getByRole('list', { name: 'Open issues' }).textContent).toContain('/thresholds/0/field');
+    // The issue sits inline on the field it names (task 14.2 editor).
+    const field = within(main).getByRole('combobox', { name: 'Field of Bulk order line' });
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect(document.getElementById(field.getAttribute('aria-describedby')!)?.textContent).toContain('Unknown field weight');
     expect((within(main).getByRole('button', { name: 'Confirm context' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

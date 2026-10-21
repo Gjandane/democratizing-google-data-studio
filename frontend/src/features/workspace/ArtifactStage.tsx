@@ -1,6 +1,6 @@
 // The four artifact stages (context, outline, design, blueprint) in one frame: load, refetch on
 // `artifact.updated`, a read-only summary, and the stage's confirm and secondary actions.
-// Tasks 14.2-14.5 replace each summary with its editor; the frame, states and actions stay.
+// The context has its editor (14.2); tasks 14.3-14.5 replace the other summaries the same way.
 import { Check, Circle, FileQuestion } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../../api/client';
@@ -23,6 +23,7 @@ import { ErrorState } from '../../components/ErrorState';
 import { LoadingState } from '../../components/Spinner';
 import { presetFor } from '../activity/presets';
 import type { BuildStream, RunErrorNode } from '../activity/useBuildStream';
+import { ContextEditor } from './context/ContextEditor';
 import { StageFrame } from './StageFrame';
 import { STAGE_LABELS, staleCause } from './Stepper';
 
@@ -92,6 +93,12 @@ const COPY: Record<ArtifactName, StageCopy> = {
   },
 };
 
+/** A late refetch (from an earlier artifact.updated) never replaces a newer revision. */
+function newer<T extends { revision: number }>(current: Load<T>, value: T | null): Load<T> {
+  if (current.status === 'ready' && current.value && value && value.revision < current.value.revision) return current;
+  return { status: 'ready', value };
+}
+
 const errorText = (error: unknown, fallback: string) => (error instanceof ApiError ? error.message : fallback);
 const mono = 'font-mono text-label text-text-muted';
 const sectionTitle = 'mt-5 mb-2 text-title font-semibold text-text';
@@ -106,44 +113,6 @@ function Issues({ issues }: { issues: ValidationIssue[] }) {
         </li>
       ))}
     </ul>
-  );
-}
-
-function ContextSummary({ context }: { context: Context }) {
-  return (
-    <>
-      <dl className="mt-4 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1 text-body">
-        <dt className="text-text-muted">Title</dt>
-        <dd className="text-text">{context.title}</dd>
-        <dt className="text-text-muted">Goal</dt>
-        <dd className="text-text">{context.goal}</dd>
-        <dt className="text-text-muted">Audience</dt>
-        <dd className="text-text">{context.audience ?? 'Not set'}</dd>
-      </dl>
-      <h3 className={sectionTitle}>Datasets</h3>
-      <ul className="space-y-1 text-body text-text">
-        {context.datasets.map((d) => (
-          <li key={d.source_id}>
-            <code className={mono}>{d.source_id}</code> {d.summary}
-          </li>
-        ))}
-      </ul>
-      <h3 className={sectionTitle}>KPIs</h3>
-      <ul className="space-y-1 text-body text-text">
-        {context.kpis.map((kpi) => (
-          <li key={kpi.id}>
-            <span className="font-medium">{kpi.name}</span>{' '}
-            <code className={mono}>
-              {kpi.measure ? `${kpi.measure.agg.toUpperCase()}(${kpi.measure.field})` : kpi.ratio ? `${kpi.ratio.numerator} / ${kpi.ratio.denominator}` : 'no definition'}
-            </code>
-          </li>
-        ))}
-      </ul>
-      <p className="mt-4 text-body text-text-muted">
-        {context.derived_fields.length} derived fields · {context.thresholds.length} thresholds · {context.glossary.length} glossary terms
-      </p>
-      <Issues issues={context.issues} />
-    </>
   );
 }
 
@@ -237,7 +206,6 @@ function BlueprintSummary({ blueprint }: { blueprint: Blueprint }) {
 }
 
 function Summary({ name, value }: { name: ArtifactName; value: Values[ArtifactName] }) {
-  if (name === 'context') return <ContextSummary context={value as Context} />;
   if (name === 'outline') return <OutlineSummary outline={value as Outline} />;
   if (name === 'design') return <DesignSummary design={value as Design} />;
   return <BlueprintSummary blueprint={value as Blueprint} />;
@@ -270,6 +238,9 @@ export function ArtifactStage({
   const [pending, setPending] = useState<'primary' | 'secondary' | null>(null);
   const [actionError, setActionError] = useState<{ message: string; issues: ValidationIssue[] } | null>(null);
   const busy = useRef(false);
+  // An editor's PUT is on its way: confirming now would confirm the version before it.
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const mounted = useRef(true);
   const seq = build.id + name + stream.artifactSeq[name];
 
@@ -285,7 +256,7 @@ export function ArtifactStage({
     let active = true;
     FETCH[name](build.id).then(
       (value) => {
-        if (active) setLoad({ status: 'ready', value });
+        if (active) setLoad((current) => newer(current, value));
       },
       (error: unknown) => {
         if (active) setLoad((current) => (current.status === 'ready' ? current : { status: 'error', message: errorText(error, `Couldn't load the ${name}. Try again.`) }));
@@ -338,8 +309,24 @@ export function ArtifactStage({
     return api.regenerateBlueprint(build.id);
   };
 
+  const onSavingChange = (next: boolean) => {
+    savingRef.current = next;
+    setSaving(next);
+  };
+  const onSaved = async (saved: Values[ArtifactName]) => {
+    setLoad((current) => newer(current, saved));
+    // An edit in a later stage moved the build back here: read it in case stage.changed was missed.
+    if (build.stage === name) return;
+    try {
+      const next = await api.getBuild(build.id);
+      if (mounted.current) onBuildChange(next);
+    } catch {
+      // The stream's next event or reconnect brings it.
+    }
+  };
+
   const act = async (kind: 'primary' | 'secondary') => {
-    if (busy.current) return;
+    if (busy.current || savingRef.current) return;
     busy.current = true;
     setPending(kind);
     setActionError(null);
@@ -372,6 +359,8 @@ export function ArtifactStage({
   else if (load.status === 'error')
     body = <ErrorState className="mt-4" title={`Couldn't load the ${name}`} message={load.message} onRetry={() => { setLoad({ status: 'loading' }); setAttempt((n) => n + 1); }} />;
   else if (value === null) body = <EmptyState framed className="mt-4" icon={<FileQuestion />} title={`No ${name} yet`} description={copy.empty} headingLevel={3} />;
+  else if (name === 'context')
+    body = <ContextEditor build={build} context={value as Context} disabled={locked} onSaved={(saved) => void onSaved(saved)} onSavingChange={onSavingChange} />;
   else body = <Summary name={name} value={value} />;
 
   return (
@@ -383,12 +372,12 @@ export function ArtifactStage({
       revision={value?.revision ?? null}
       status={status}
       secondary={
-        <Button disabled={locked || !copy.secondaryIn.includes(build.stage)} loading={pending === 'secondary'} onClick={() => void act('secondary')}>
+        <Button disabled={locked || saving || !copy.secondaryIn.includes(build.stage)} loading={pending === 'secondary'} onClick={() => void act('secondary')}>
           {copy.secondary}
         </Button>
       }
       primary={
-        <Button variant="primary" disabled={locked || !here || !valid} loading={pending === 'primary'} onClick={() => void act('primary')}>
+        <Button variant="primary" disabled={locked || saving || !here || !valid} loading={pending === 'primary'} onClick={() => void act('primary')}>
           {copy.confirm}
         </Button>
       }

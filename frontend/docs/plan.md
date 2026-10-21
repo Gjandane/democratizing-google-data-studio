@@ -208,7 +208,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: `npm test` and `npm run typecheck` pass: contract guards accept every fixture in ../contracts/fixtures/api/ (build, context, outline, design, design_presets, blueprint, events*.sse) and reject a Build with `ready_for_plan` or an unknown stage; mock mode walks every stage; the stepper shows draft/confirmed/stale and reopens a confirmed step; src/features/activity/presets.ts has entries for context, outline_propose, outline_other, outline_suggest, blueprint and prototype and none for interview or plan; no code calls interview/start, POST messages or POST plan; screenshots/14.1-workspace-{1280,1440}.png show the stepper and the activity column with no input, checked against docs/staged-ui.md and the UI design section.
   - Review focus: ../contracts/api.md 2.0 (exact guards); one EventSource; tokens only.
-- [ ] 14.2 Notes box and context review
+- [x] 14.2 Notes box and context review
   - Goal: Connect gets "About this data" notes and "Draft context"; the Context stage edits KPI cards, derived fields, thresholds and glossary in place, shows issues inline and confirms.
   - Spec: docs/staged-ui.md
   - Files: src/features/workspace/connect/*, src/features/workspace/context/*, src/mocks/*.ts, tests/context.test.tsx
