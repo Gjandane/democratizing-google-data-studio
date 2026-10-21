@@ -326,7 +326,10 @@ def test_clipped_heading_cannot_be_rendered(dashboard):
 async def test_render_node_events_and_api(client, app, build_id, dashboard, tmp_path, monkeypatch):
     from dss.harness.tracing import Trace
     from dss.db import new_id
-    from test_plan import events
+    def events(app, build_id):
+        with app.state.db.connect() as conn:
+            return [(row[0], json.loads(row[1])) for row in conn.execute(
+                "SELECT kind,payload_json FROM events WHERE build_id=? ORDER BY rowid", (build_id,))]
     config = app.state.settings.get()
     folder = config.data_dir / 'builds' / build_id / 'v1'
     folder.mkdir(parents=True)
@@ -343,23 +346,6 @@ async def test_render_node_events_and_api(client, app, build_id, dashboard, tmp_
     assert all('display:none' in a['style'] for a in ContractParser(client.get(f'/api/builds/{build_id}/prototype?layer=decoration').text).items.values() if a['data-kind'] == 'component')
 
 
-async def test_render_failure_does_not_publish_or_log_secrets(client, app, build_id, monkeypatch, caplog):
-    from test_plan import seed, PLAN, FakeLLM, FakeBigQuery, events
-    from dss.harness.guardrails import RunError
-    docs = seed(app, build_id)
-    def fail(*args):
-        raise RuntimeError('test-key private-provider-diagnostic')
-    monkeypatch.setattr(background, 'capture', fail)
-    with pytest.raises(RunError, match='Prototype rendering failed'):
-        await app.state.harness.run('plan', build_id,
-            {'config':app.state.settings.get(), 'factory':lambda c:FakeBigQuery()}, llm=FakeLLM(response=json.dumps(PLAN)))
-    assert not any(k == 'prototype.updated' for k, _ in events(app, build_id))
-    assert client.get(f'/api/builds/{build_id}').json()['stage'] == 'interview'
-    assert not (docs.parent / 'prototype.html').exists()
-    assert 'private-provider-diagnostic' not in caplog.text
-    with app.state.db.connect() as conn:
-        traces = conn.execute('SELECT status FROM traces').fetchall()
-    assert len(traces) == 1 and traces[0][0] == 'error'
 
 
 @pytest.mark.live

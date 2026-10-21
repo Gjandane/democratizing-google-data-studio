@@ -76,7 +76,7 @@ def assert_shape(value, fixture):
     if isinstance(fixture, dict):
         assert value.keys() == fixture.keys()
         for key in fixture:
-            if key in ("spec_version", "report_url"):
+            if key in ("spec_version", "report_url", "notes"):
                 assert value[key] is None or isinstance(value[key], int if key == "spec_version" else str)
             else:
                 assert_shape(value[key], fixture[key])
@@ -92,7 +92,8 @@ def test_create_list_get_and_shapes(setup):
     client, app, fake = setup
     first = create(client)
     assert first["stage"] == "connect" and first["current_version"] == 1
-    assert first["ready_for_plan"] is False and first["spec_version"] is None
+    assert first["notes"] is None and first["spec_version"] is None
+    assert set(first["artifacts"].values()) == {"missing"} and "ready_for_plan" not in first
     assert first["sources"] == first["docs"] == []
     assert first["versions"][0]["status"] == "draft"
     second = create(client, title="Second")

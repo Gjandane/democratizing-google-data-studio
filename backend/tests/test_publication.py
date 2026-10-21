@@ -11,8 +11,22 @@ from dss.db import Database, new_id, now
 from dss.harness.guardrails import RunError
 from dss.harness.nodes.intake import write_doc
 from dss.spec.models import DashboardSpec
-from dss.spec.publication import Candidate, build_lock, recover
-from test_plan import PLAN, FakeLLM, seed
+from dss.spec.publication import Candidate, build_lock, finish, recover, worker
+
+
+def seed(app, build_id):
+    app.state.settings.update({'gcp_project_id': 'project'})
+    source = {'bq_table': 'project.data.sales', 'columns': [
+        {'name': 'date', 'type': 'date', 'bq_type': 'DATE', 'sample': []},
+        {'name': 'region', 'type': 'string', 'bq_type': 'STRING', 'sample': []},
+        {'name': 'revenue', 'type': 'number', 'bq_type': 'FLOAT', 'sample': []}]}
+    with app.state.db.connect() as conn:
+        conn.execute('INSERT INTO sources VALUES(?,?,?,?,?,?,?)',
+                     (new_id('s'), build_id, 'bigquery', 'sales', source['bq_table'], 2, json.dumps(source['columns'])))
+    docs = app.state.settings.get().data_dir / 'builds' / build_id / 'v1/docs'
+    docs.mkdir(parents=True)
+    write_doc(docs / 'data-profile.md', {'type': 'BigQuery Table', 'sources': [source]}, '# Profile')
+    return docs
 
 
 class Views:
@@ -80,22 +94,50 @@ def offline_capture(monkeypatch):
     monkeypatch.setattr('dss.render.background.capture', lambda html, path, w, h: path.write_bytes(b'new PNG'))
 
 
-async def run_plan(app, build_id, service):
-    return await app.state.harness.run('plan', build_id,
-        {'config': app.state.settings.get(), 'factory': lambda c: service}, llm=FakeLLM(response=json.dumps(PLAN)))
+async def run_publication(app, build_id, service):
+    """Exercise publication ownership and rendering without a model planner."""
+    from dss.harness.nodes.render import perform
+    from dss.harness.tracing import Trace
+
+    harness = app.state.harness
+    payload = {'config': app.state.settings.get(), 'factory': lambda c: service}
+
+    async def publish(run_id):
+        try:
+            with harness.db.connect() as conn:
+                version = conn.execute('SELECT current_version FROM builds WHERE id=?', (build_id,)).fetchone()[0]
+            candidate = Candidate.begin(harness.db, payload['config'], build_id, version, run_id, payload)
+            sql = 'SELECT date, region, revenue FROM `project.data.sales`'
+            await worker(service.dry_run, sql)
+            await worker(service.create_view, candidate.creating(), sql)
+            document = json.loads((candidate.folder / 'spec.json').read_text(encoding='utf-8'))
+            document['build_id'] = build_id
+            document['spec_version'] += 1
+            document['datasource']['table'] = candidate.record()['table_name']
+            spec = DashboardSpec.model_validate(document)
+            write_doc(candidate.folder / 'docs/derived-fields.md',
+                      {'type': 'Derived Fields', 'view': spec.datasource.table}, 'New fields')
+            (candidate.folder / 'spec.json').write_text(spec.model_dump_json(), encoding='utf-8')
+            return await perform(harness, build_id, run_id, payload, Trace(harness.db, run_id, build_id, 'load_spec'))
+        except RunError:
+            raise
+        except Exception:
+            raise RunError('invalid_source', 'Publication failed', 422) from None
+        finally:
+            if candidate := payload.get('_publication'):
+                await finish(candidate, payload['factory'])
+
+    return await harness.run('load_spec', build_id, publish)
 
 
-@pytest.mark.parametrize('point', ['before_create', 'after_create', 'docs', 'spec', 'render',
+@pytest.mark.parametrize('point', ['before_create', 'after_create', 'docs', 'render',
                                   'after_render', 'during_publication', 'before_commit', 'after_commit'])
 async def test_failed_attempt_preserves_complete_bundle(client, app, build_id, monkeypatch, point):
     folder, service = baseline(app, build_id)
     before, rows = snapshot(folder), metadata(app.state.db, build_id)
     service.fail = point
     if point == 'docs':
-        monkeypatch.setattr('dss.harness.nodes.plan.write_doc', lambda *a: (_ for _ in ()).throw(OSError('docs')))
-    if point == 'spec':
-        monkeypatch.setattr('dss.harness.nodes.spec.DashboardSpec.model_validate',
-                            lambda *a: (_ for _ in ()).throw(ValueError('invalid spec')))
+        monkeypatch.setattr(__name__ + '.write_doc', lambda *a: (_ for _ in ()).throw(OSError('docs')))
     if point == 'render':
         monkeypatch.setattr('dss.render.background.capture', lambda *a: (_ for _ in ()).throw(RuntimeError('render')))
     if point == 'after_render':
@@ -115,7 +157,7 @@ async def test_failed_attempt_preserves_complete_bundle(client, app, build_id, m
             raise OSError(point)
         monkeypatch.setattr(Candidate, 'commit', commit)
     with pytest.raises(RunError):
-        await run_plan(app, build_id, service)
+        await run_publication(app, build_id, service)
     if point == 'after_commit':
         assert_published(app, build_id, folder, service)
         assert not service.deleted
@@ -154,14 +196,14 @@ async def test_success_legacy_identity_and_new_version_reuse(client, app, build_
     folder, service = baseline(app, build_id)
     # The old identity is accepted without migration before any replan.
     assert client.get(f'/api/builds/{build_id}/spec').json()['datasource']['table'] == 'project.data.legacy_view'
-    await run_plan(app, build_id, service)
+    await run_publication(app, build_id, service)
     spec = assert_published(app, build_id, folder, service)
     assert not service.deleted
     result = client.post(f'/api/builds/{build_id}/versions')
     assert result.status_code == 201
     assert client.get(f'/api/builds/{build_id}/spec').json()['datasource']['table'] == spec.datasource.table
     assert not list((folder.parent / 'v2').glob('.publications*'))
-    await run_plan(app, build_id, service)
+    await run_publication(app, build_id, service)
     assert len(service.live) == 3  # legacy, v1 and v2 all keep their own SQL.
     assert client.get(f'/api/builds/{build_id}/spec').json()['datasource']['table'] != spec.datasource.table
     assert not service.deleted
@@ -169,11 +211,11 @@ async def test_success_legacy_identity_and_new_version_reuse(client, app, build_
 
 async def test_failed_replan_keeps_previously_published_run_view(client, app, build_id):
     folder, service = baseline(app, build_id)
-    await run_plan(app, build_id, service)
+    await run_publication(app, build_id, service)
     before, catalog = snapshot(folder), dict(service.live)
     service.fail = 'after_create'
     with pytest.raises(RunError):
-        await run_plan(app, build_id, service)
+        await run_publication(app, build_id, service)
     assert snapshot(folder) == before and service.live == catalog
     assert all(table not in catalog for table in service.deleted)
 
@@ -194,7 +236,7 @@ def staged(app, build_id, service):
     write_doc(candidate.folder / 'docs/derived-fields.md', {'type': 'Derived Fields', 'view': spec.datasource.table}, 'New fields')
     (candidate.folder / 'prototype.html').write_text('new prototype')
     with app.state.db.connect() as conn:
-        conn.execute("UPDATE builds SET stage='plan' WHERE id=?", (build_id,))
+        conn.execute("UPDATE builds SET stage='blueprint' WHERE id=?", (build_id,))
     return candidate, spec
 
 
@@ -240,6 +282,28 @@ async def test_restart_recovers_idempotently(client, app, build_id, monkeypatch,
     assert not candidate.root.exists()
 
 
+@pytest.mark.parametrize('old_stage', ['interview', 'plan'])
+@pytest.mark.parametrize('committed', [False, True])
+async def test_old_publication_journals_remain_compatible_after_migration(client, app, build_id, old_stage, committed):
+    folder, service = baseline(app, build_id)
+    candidate, document = staged(app, build_id, service)
+    previous = json.loads(candidate.record()['previous_json'])
+    previous['stage'] = previous['build']['stage'] = old_stage
+    previous['build']['ready_for_plan'] = 1  # Column absent in a freshly created 2.0 DB.
+    candidate.persist(previous_json=json.dumps(previous))
+    if committed:
+        candidate.publish(document)
+        with app.state.db.connect() as conn:
+            conn.execute('UPDATE versions SET spec_version=4 WHERE build_id=?', (build_id,))
+        candidate.reconcile()
+    else:
+        candidate.restore()
+    with app.state.db.connect() as conn:
+        assert conn.execute('SELECT stage FROM builds WHERE id=?', (build_id,)).fetchone()[0] == (
+            'prototype' if committed else 'context')
+    await candidate.cleanup(lambda c: service)
+
+
 async def test_delete_retry_cannot_rollback_later_publication(client, app, build_id):
     folder, service = baseline(app, build_id)
     abandoned, _ = staged(app, build_id, service)
@@ -248,12 +312,49 @@ async def test_delete_retry_cannot_rollback_later_publication(client, app, build
         await abandoned.cleanup(lambda c: service)
     assert abandoned.record()['restored']
     service.fail = None
-    await run_plan(app, build_id, service)
+    await run_publication(app, build_id, service)
     before = snapshot(folder), metadata(app.state.db, build_id), dict(service.live)
     await recover(app.state.db, app.state.settings.get(), lambda c: service)
     assert snapshot(folder) == before[0] and metadata(app.state.db, build_id) == before[1]
     assert len(service.live) == len(before[2]) - 1
     assert 'project.data.legacy_view' in service.live
+
+
+@pytest.mark.parametrize('artifact', ['context', 'outline', 'design', 'blueprint'])
+async def test_delete_retry_cannot_rollback_later_artifact_edit(client, app, build_id, artifact):
+    from dss.artifacts import state
+    folder, service = baseline(app, build_id)
+    abandoned, _ = staged(app, build_id, service)
+    service.fail = 'delete'
+    with pytest.raises(RuntimeError):
+        await abandoned.cleanup(lambda c: service)
+    assert abandoned.record()['restored']
+    with app.state.db.connect() as conn:
+        conn.execute('UPDATE builds SET artifacts_json=? WHERE id=?',
+                     (json.dumps(dict.fromkeys(state.ARTIFACTS, 'confirmed')), build_id))
+    with state.action(app.state, build_id) as current:
+        state.save(app.state.db, build_id, state.edited(current, artifact))
+    before = metadata(app.state.db, build_id), snapshot(folder)
+    service.fail = None
+    await recover(app.state.db, app.state.settings.get(), lambda c: service)
+    assert metadata(app.state.db, build_id) == before[0] and snapshot(folder) == before[1]
+    assert metadata(app.state.db, build_id)[0]['stage'] == artifact
+
+
+async def test_restored_journal_cleanup_survives_backup_predating_build(client, app, build_id, tmp_path):
+    folder, service = baseline(app, build_id)
+    abandoned, _ = staged(app, build_id, service)
+    service.fail = 'delete'
+    with pytest.raises(RuntimeError):
+        await abandoned.cleanup(lambda c: service)
+    assert abandoned.record()['restored']
+    before = snapshot(folder)
+    restarted = Database(tmp_path / 'pre-build.sqlite')
+    restarted.initialize()
+    service.fail = None
+    await recover(restarted, app.state.settings.get(), lambda c: service)
+    assert snapshot(folder) == before and not abandoned.root.exists()
+    assert service.live == {'project.data.legacy_view': 'SELECT old_report_data'}
 
 
 @pytest.mark.parametrize('failure', [False, True])
@@ -286,7 +387,7 @@ async def test_http_readers_and_actions_wait_for_complete_publication(client, ap
                for path in ('spec', 'prototype', 'docs/derived-fields.md', 'files/prototype.html')]
     await asyncio.sleep(.03)
     assert all(not task.done() for task in readers)
-    assert client.post(f'/api/builds/{build_id}/plan').status_code == 409
+    assert client.post(f'/api/builds/{build_id}/plan').status_code == 404
     assert client.post(f'/api/builds/{build_id}/versions').status_code == 409
     release.set()
     await asyncio.to_thread(thread.join, 5)
@@ -309,7 +410,7 @@ async def test_cancel_during_create_waits_then_cleans_only_candidate(client, app
         assert release.wait(5)
         original(table, sql)
     service.create_view = create
-    task = asyncio.create_task(run_plan(app, build_id, service))
+    task = asyncio.create_task(run_publication(app, build_id, service))
     assert await asyncio.to_thread(started.wait, 5)
     task.cancel()
     await asyncio.sleep(.03)
@@ -361,7 +462,7 @@ async def test_staging_copy_failure_preserves_previous_stage(client, app, build_
     with monkeypatch.context() as patch:
         patch.setattr('dss.spec.publication.shutil.copytree', lambda *a, **kw: (_ for _ in ()).throw(OSError('copy failed')))
         with pytest.raises(RunError):
-            await run_plan(app, build_id, service)
+            await run_publication(app, build_id, service)
     assert snapshot(folder) == before and metadata(app.state.db, build_id) == rows
     with app.state.db.connect() as conn:
         records = [dict(r) for r in conn.execute('SELECT * FROM plan_publications')]

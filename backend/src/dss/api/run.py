@@ -28,6 +28,9 @@ def refresh(folder, version, *, db=None, build_id=None):
 
 def gate(state, build_id, folder):
     try:
+        from dss.artifacts.state import require_confirmed
+        build, _ = current(state, build_id)
+        require_confirmed(build, folder)
         read_spec(folder, db=state.db, build_id=build_id)
         execution_preflight(state.db, build_id, folder)
     except RunError:

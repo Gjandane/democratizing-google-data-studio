@@ -166,15 +166,6 @@ def test_old_spec_api_compile_and_versions_restore_label(client, app, build_id, 
     assert len(captures) == 3
 
 
-async def test_spec_model_cannot_suppress_source_provenance(client, app, build_id):
-    from test_spec_node import spec_seed, SpecLLM
-    folder = spec_seed(app, build_id)
-    with app.state.db.connect() as conn:
-        conn.execute("UPDATE sources SET kind='synthetic' WHERE build_id=?", (build_id,))
-    await app.state.harness.run('spec', build_id, {'config': app.state.settings.get()}, llm=SpecLLM())
-    spec = DashboardSpec.model_validate_json((folder / 'spec.json').read_text())
-    assert spec.datasource.synthetic and not validate_spec(spec)
-    assert spec.pages[0].decorations[-1].text == SYNTHETIC_LABEL
 
 
 async def test_legacy_revision_publishes_label_in_all_artifacts(client, app, build_id, monkeypatch):
@@ -202,43 +193,6 @@ async def test_noop_legacy_revision_still_restores_label(client, app, build_id, 
     assert captured and SYNTHETIC_LABEL in captured[-1]
 
 
-@pytest.mark.parametrize('invalid', [1, 3])
-async def test_clipped_heading_uses_existing_bounded_repair(client, app, build_id, invalid):
-    from google.adk.models.llm_response import LlmResponse
-    from google.genai import types
-    from fakes import FakeLLM
-    from test_spec_node import spec_seed, response_for
-    from dss.harness.guardrails import RunError
-    folder = spec_seed(app, build_id)
-    with app.state.db.connect() as conn:
-        conn.execute("UPDATE sources SET kind='synthetic' WHERE build_id=?", (build_id,))
-    previous = {'prototype.html': b'previous prototype', 'background_p1.png': b'previous background'}
-    for name, content in previous.items():
-        (folder / name).write_bytes(content)
-    class Heading(FakeLLM):
-        async def generate_content_async(self, llm_request, stream=False):
-            self.calls += 1
-            assert 'Decoration text layout:' in llm_request.config.system_instruction
-            if self.calls > 1:
-                assert 'Decoration text does not fit' in llm_request.config.system_instruction
-            value = response_for(llm_request)
-            value['pages'][0]['components'][0]['grid']['row'] = 8
-            value['pages'][0]['decorations'] = [dict(id='p1_title', kind='title', text='Sales overview',
-                grid=dict(col=1, row=1, w=12, h=2 if self.calls <= invalid else 3))]
-            yield LlmResponse(content=types.Content(role='model', parts=[types.Part(text=json.dumps(value))]))
-    fake = Heading()
-    if invalid == 3:
-        with pytest.raises(RunError) as exc:
-            await app.state.harness.run('spec', build_id, {'config': app.state.settings.get()}, llm=fake)
-        assert 'Decoration text does not fit' in exc.value.detail['errors'][0]['message']
-        assert not (folder / 'spec.json').exists()
-    else:
-        await app.state.harness.run('spec', build_id, {'config': app.state.settings.get()}, llm=fake)
-        updated = DashboardSpec.model_validate_json((folder / 'spec.json').read_text())
-        assert validate_spec(updated) == []
-        assert updated.datasource.synthetic and updated.pages[0].decorations[-1].text == SYNTHETIC_LABEL
-    assert fake.calls == (3 if invalid == 3 else 2)
-    assert {name: (folder / name).read_bytes() for name in previous} == previous
 
 
 def test_heading_cannot_expand_into_synthetic_footer(sample):

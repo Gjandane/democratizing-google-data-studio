@@ -184,37 +184,6 @@ def test_screenshot_cannot_replace_bound_charts(thin, monkeypatch, slot, path):
     assert not app.state.engine_tasks and not app.state.agent_jobs.jobs
 
 
-def test_interview_extraction_validates_completed_stream_only(thin, monkeypatch):
-    from google.adk.models.llm_response import LlmResponse
-    from google.genai import types
-    client, app, bid, folder = thin
-    class Streamed(FakeLLM):
-        async def generate_content_async(self, request, stream=False):
-            assert stream
-            self.calls += 1
-            if (request.config.response_json_schema or {}).get('title') != 'Extraction':
-                yield LlmResponse(content=types.Content(role='model', parts=[types.Part(text='GPS playback is unsupported.')]))
-                return
-            yield LlmResponse(partial=True, content=types.Content(role='model', parts=[types.Part(text='Thinking', thought=True)]))
-            yield LlmResponse(partial=True, content=types.Content(role='model', parts=[types.Part(text='{"requirements":[')]))
-            yield LlmResponse(content=types.Content(role='model', parts=[types.Part(text=self.response)]))
-    with app.state.db.connect() as conn:
-        conn.execute("UPDATE builds SET stage='interview' WHERE id=?", (bid,))
-    model = Streamed()
-    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: model)
-    sid = user(app, bid, 'Animate GPS points along a route')
-    model.response = json.dumps({'requirements': [extracted(sid, 'animation.temporal_playback')]})
-    async def interview():
-        # 14.1: the blocked assessment continues to the interviewer's explanation.
-        result = await app.state.harness.run('interview', bid, {'config': app.state.settings.get(), 'text': 'Animate GPS points along a route'})
-        assert result['reply'] == 'GPS playback is unsupported.'
-    client.portal.call(interview)
-    assessment = client.get(f'/api/builds/{bid}/feasibility').json()
-    assert assessment['state'] == 'blocked' and assessment['issues'][0]['status'] == 'unsupported_app'
-    assert model.calls == 2 and req.load(folder).requirements[0].source.id == sid
-    assert client.get(f'/api/builds/{bid}').json()['ready_for_plan'] is False
-
-
 def test_confirmed_reapply_compiles_runs_and_carries_to_new_version(thin, monkeypatch):
     from dss.spec.models import DataField
     from test_revise import seed_revision, CommentFlow, response, op, post_batch, reapply_batch
@@ -891,19 +860,16 @@ def test_comment_and_image_item_provenance_and_reference_removal(thin):
     assert len(updated.requirements) == 1 and updated.requirements[0].source.kind == "comment"
 
 
-def test_plan_spec_revise_keep_ledger_as_mandatory_docs(thin, monkeypatch):
-    from dss.harness.context import plan_context, spec_context, revise_context
-    from test_context import spec_inputs
+def test_revise_keeps_ledger_as_mandatory_docs(thin, monkeypatch):
+    from dss.harness.context import revise_context
     client, app, bid, folder = thin
     load(client, bid)
     sid = user(app, bid, "Show bar chart")
     use_model(monkeypatch, app, extracted(sid))
     check(client, app, bid)
-    _, build = spec_inputs(app, bid, "Revenue as a scorecard")
     config = app.state.settings.get()
     document = json.loads((folder / "spec.json").read_text())
-    for context in (plan_context(app.state.db, config, bid), spec_context(config, folder, build, [], {"scorecard"}),
-                    revise_context(document, [{"component_id": "p1_revenue", "text": "Blue"}], {"scorecard"}, config, folder=folder)):
+    for context in (revise_context(document, [{"component_id": "p1_revenue", "text": "Blue"}], {"scorecard"}, config, folder=folder),):
         sections = [s for s in context.sections if s.name == "requirements.json"]
         assert len(sections) == 1 and sections[0].kind == "docs" and sid in sections[0].text
         assert sid in context.refit(lambda text: True)  # Mandatory even when all droppable memory is removed.

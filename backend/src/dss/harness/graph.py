@@ -7,7 +7,7 @@ from google.adk.agents import LlmAgent
 from google.adk.events.event_actions import EventActions
 from google.adk.models.llm_response import LlmResponse
 from google.adk.runners import Runner
-from google.adk.agents.run_config import RunConfig, StreamingMode
+from google.adk.agents.run_config import RunConfig
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
@@ -44,15 +44,10 @@ class AgentHarness:
         status, error, reply = "error", "llm_unavailable", None
         runner = None
         code_error = None
-        readiness = None
-        reply_stream = None
         error_message = None
-        plan_state = None
-        spec_state = None
         revise_state = None
         extra_state = None
         reference_before = None
-        publication_safe = True
         blocked_saved = False
         try:
             if action in ("reference_extract", "reference_delete"):
@@ -65,7 +60,7 @@ class AgentHarness:
 
             async def router(node_input):
                 trace.span("router")
-                return Event(actions=EventActions(route=action if action in ("hello", "interview", "plan", "spec", "revise", "ux_audit", "reference_extract", "synthetic_schema", "capability_check", "research", "intake", "create_build", "load_spec", "recipe", "execute", "versions", "reference_delete", "engine_login", "synthetic_generate") else "unknown"))
+                return Event(actions=EventActions(route=action if action in ("hello", "revise", "ux_audit", "reference_extract", "synthetic_schema", "capability_check", "research", "intake", "create_build", "load_spec", "recipe", "execute", "versions", "reference_delete", "engine_login", "synthetic_generate") else "unknown"))
 
             async def code_node(node_input):
                 nonlocal code_error
@@ -105,16 +100,18 @@ class AgentHarness:
                 return check_reply(node_input, (key,))
 
             async def reject(node_input):
+                nonlocal code_error
                 trace.span("guardrail")
-                raise RunError("wrong_stage", "Unknown action", 409)
+                code_error = RunError("wrong_stage", "Unknown action", 409)
+                return 'Action unavailable'
 
-            if action in ('interview', 'plan', 'revise'):
+            if action == 'revise':
                 from dss.harness.nodes.capability_check import make_branch as intent_branch
                 from dss.spec import requirements as req
                 from dss.spec.capabilities import Checker, load_registry
                 intent_model = llm if llm is not None else self.models.llm_for('capability_check')
                 payload['_intent_only'] = True
-                payload['_defer_assessment'] = action == 'plan'
+                payload['_defer_assessment'] = False
                 payload['_comment_preflight'] = action == 'revise'
                 if action == 'revise' and payload.get('_reapply'):
                     with self.db.connect() as conn:
@@ -131,11 +128,7 @@ class AgentHarness:
                     folder = payload['config'].data_dir / 'builds' / build_id / f'v{version}'
                     assessment = extra_state.get('assessment') or req.get(
                         req.inputs(self.db, build_id, folder), req.load(folder), Checker(load_registry()))
-                    # A blocked assessment is the interviewer's next question, not an
-                    # ended turn: its issues are saved and fed to the interview context,
-                    # while readiness and every downstream action stay gated. Extraction,
-                    # provider and staleness failures still fail the run.
-                    if not extra_state['failure'] and assessment.state != 'ready' and action != 'interview':
+                    if not extra_state['failure'] and assessment.state != 'ready':
                         extra_state['failure'] = req.blocked(assessment)
                     return Event(actions=EventActions(route='blocked' if extra_state['failure'] else 'continue'))
 
@@ -152,43 +145,6 @@ class AgentHarness:
                 workflow = Workflow(name="dss_run", edges=[
                     ("START", router), (router, {"hello": hello_function, "unknown": reject}),
                     (hello_function, agent, guardrail)])
-            elif action == "interview":
-                from dss.harness.nodes.interview import make_agent, ReplyStream
-                model = llm if llm is not None else self.models.llm_for("interview")
-                trace.model = model.model
-                agent, readiness = make_agent(self, build_id, payload, model, trace, model_error)
-                reply_stream = ReplyStream(self, build_id, run_id)
-                workflow = Workflow(name="dss_run", edges=[
-                    ("START", router), (router, {"interview": intent_agent}), (intent_agent, assess_intent),
-                    (assess_intent, {'continue': agent, 'blocked': intent_blocked}),
-                    (intent_blocked, guardrail), (agent, guardrail)])
-            elif action == "plan":
-                from dss.harness.nodes.plan import make_branch
-                model = llm if llm is not None else self.models.llm_for("plan")
-                trace.model = model.model
-                planner, repair, view, complete, plan_state = make_branch(self, build_id, run_id, payload, model, trace, model_error)
-                from dss.harness.nodes.spec import make_branch as spec_branch
-                spec_model = llm if llm is not None else self.models.llm_for("spec")
-                spec_agent, spec_repair, validate, spec_state = spec_branch(self, build_id, run_id, payload, spec_model, trace, model_error)
-                async def after_view(node_input):
-                    return Event(actions=EventActions(route="failed" if plan_state["failure"] else "spec"))
-                async def render_prototype(node_input):
-                    nonlocal code_error
-                    if not spec_state['failure']:
-                        from dss.harness.nodes.render import perform
-                        try:
-                            return await perform(self, build_id, run_id, payload, trace)
-                        except RunError as exc:
-                            code_error = exc
-                    return 'Prototype rendering did not finish.'
-                workflow = Workflow(name="dss_run", edges=[
-                    ("START", router), (router, {"plan": intent_agent}), (intent_agent, assess_intent),
-                    (assess_intent, {'continue': planner, 'blocked': intent_blocked}),
-                    (intent_blocked, guardrail), (planner, view),
-                    (view, {"repair": repair, "success": after_view}), (repair, view),
-                    (after_view, {"failed": complete, "spec": spec_agent}), (spec_agent, validate),
-                    (validate, {"repair": spec_repair, "success": render_prototype}), (spec_repair, validate),
-                    (render_prototype, guardrail), (complete, guardrail)])
             elif action == "revise":
                 from dss.harness.nodes.revise import make_branch as revise_branch
                 model = llm if llm is not None else self.models.llm_for('revise')
@@ -222,28 +178,17 @@ class AgentHarness:
                 extra_agent, extra_finish, extra_state = extra_branch(self, build_id, run_id, payload, model, trace, model_error)
                 workflow = Workflow(name="dss_run", edges=[
                     ("START", router), (router, {action: extra_agent}), (extra_agent, extra_finish), (extra_finish, guardrail)])
-            elif action == "spec":
-                from dss.harness.nodes.spec import make_branch as spec_branch
-                model = llm if llm is not None else self.models.llm_for("spec")
-                trace.model = model.model
-                spec_agent, spec_repair, validate, spec_state = spec_branch(self, build_id, run_id, payload, model, trace, model_error)
-                async def complete_spec(node_input):
-                    return "Dashboard Spec validation finished."
-                workflow = Workflow(name="dss_run", edges=[
-                    ("START", router), (router, {"spec": spec_agent}), (spec_agent, validate),
-                    (validate, {"repair": spec_repair, "success": complete_spec}), (spec_repair, validate), (complete_spec, guardrail)])
             elif action in ("intake", "create_build", "load_spec", "recipe", "execute", "versions", "reference_delete", "engine_login", "synthetic_generate"):
                 workflow = Workflow(name="dss_run", edges=[
                     ("START", router), (router, {action: code_node}), (code_node, guardrail)])
             else:
-                workflow = Workflow(name="dss_run", edges=[("START", router), (router, {"unknown": reject})])
+                workflow = Workflow(name="dss_run", edges=[("START", router), (router, {"unknown": reject}), (reject, guardrail)])
             sessions = InMemorySessionService()
             await sessions.create_session(app_name="dss", user_id="local", session_id=run_id)
             runner = Runner(app_name="dss", node=workflow, session_service=sessions)
             async for event in runner.run_async(user_id="local", session_id=run_id,
                     new_message=types.Content(role="user", parts=[types.Part(text=action)]),
-                    run_config=RunConfig(max_llm_calls=6 if action == "plan" else (3 if action in ('spec', 'revise') else 2 if action == 'research' else 1 if action in ('reference_extract', 'capability_check', 'synthetic_schema') else 5 if action == 'interview' else 4),
-                        streaming_mode=StreamingMode.SSE if action == "interview" else StreamingMode.NONE)):
+                    run_config=RunConfig(max_llm_calls=3 if action == "revise" else 2 if action == "research" else 1 if action in ("reference_extract", "capability_check", "synthetic_schema") else 4)):
                 if event.error_code:
                     raise RunError("llm_unavailable", "The model call failed; check Settings", 503)
                 # Streamed chunks repeat usage; only the final response of a model call counts.
@@ -254,33 +199,19 @@ class AgentHarness:
                         await self.emit(build_id, run_id, "run.usage", {
                             "run_id": run_id, "node": action,
                             "input_tokens": trace.input_tokens, "output_tokens": trace.output_tokens})
-                if reply_stream and event.partial and event.content and event.node_info.path.split('/')[-1].split('@')[0] == 'interview':
-                    for part in event.content.parts or []:
-                        if part.text and not part.thought:
-                            await reply_stream.append(part.text)
                 if event.node_info.path.split("/")[-1].split("@")[0] == "guardrail" and isinstance(event.output, str):
                     reply = event.output
             if reply is None:
                 raise RunError("llm_unavailable", "The workflow produced no guarded reply", 503)
             if code_error is not None:
                 raise code_error
-            if plan_state and plan_state["failure"]:
-                raise plan_state["failure"]
-            if spec_state and spec_state["failure"]:
-                raise spec_state["failure"]
             if revise_state and revise_state['failure']:
                 raise revise_state['failure']
             if extra_state and extra_state['failure']:
                 if extra_state['failure'].code == 'feasibility_blocked':
                     from dss.memory import episodic
-                    from dss.api.builds import build_response
                     message = episodic.save(self.db, build_id, 'assistant', reply, action)
                     await self.emit(build_id, run_id, 'message.done', {'message': message})
-                    if action != 'revise':
-                        with self.db.connect() as conn:
-                            conn.execute("UPDATE builds SET stage='interview',ready_for_plan=0,updated_at=? WHERE id=?", (now(), build_id))
-                        await self.emit(build_id, run_id, 'stage.changed', {'stage': 'interview'})
-                        await self.emit(build_id, run_id, 'build.updated', {'build': build_response(self.db, payload['config'], build_id)})
                     blocked_saved = True
                 raise extra_state['failure']
             if reference_before is not None and reference_before != requirements.digest(references.load(reference_folder)):
@@ -293,25 +224,6 @@ class AgentHarness:
                 with self.db.connect() as connection:
                     connection.execute("INSERT INTO messages VALUES(?,?,?,?,?,?)", (
                         new_id("m"), build_id, "assistant", reply, "hello_llm", now()))
-            if action == "interview":
-                from dss.memory import episodic
-                from dss.api.builds import build_response
-                # Tool effects and client output commit only after the reply passes guardrails.
-                reply = await reply_stream.finish(reply)
-                with self.db.connect() as connection:
-                    version = connection.execute('SELECT current_version FROM builds WHERE id=?', (build_id,)).fetchone()[0]
-                folder = payload['config'].data_dir / 'builds' / build_id / f'v{version}'
-                intent_ready = req.get(req.inputs(self.db, build_id, folder), req.load(folder), Checker(load_registry())).state == 'ready'
-                with self.db.connect() as connection:
-                    connection.execute("UPDATE builds SET stage='interview',ready_for_plan=CASE WHEN ? THEN MAX(ready_for_plan,?) ELSE 0 END,updated_at=? WHERE id=?",
-                                       (intent_ready, int(readiness["ready"]), now(), build_id))
-                if payload.get("start"):
-                    await self.emit(build_id, run_id, "stage.changed", {"stage": "interview"})
-                message = episodic.save(self.db, build_id, "assistant", reply, "interview", reply_stream.message_id)
-                await self.emit(build_id, run_id, "message.done", {"message": message})
-                if readiness["ready"] or not intent_ready:
-                    await self.emit(build_id, run_id, "build.updated", {
-                        "build": build_response(self.db, payload["config"], build_id)})
             status, error = "ok", None
             return {"run_id": run_id, "reply": reply}
         except RunError as exc:
@@ -320,7 +232,7 @@ class AgentHarness:
                 from dss.memory import episodic
                 message = episodic.save(self.db, build_id, 'assistant', exc.message, action)
                 await self.emit(build_id, run_id, 'message.done', {'message': message})
-            if action in ("interview", "plan", "spec", "revise", "ux_audit", "reference_extract", "capability_check", "research", "synthetic_schema"):
+            if action in ("revise", "ux_audit", "reference_extract", "capability_check", "research", "synthetic_schema"):
                 error_message = exc.message
             raise
         except asyncio.CancelledError:
@@ -331,27 +243,12 @@ class AgentHarness:
             raise RunError("llm_unavailable", "The model call failed; check Settings", 503) from None
         finally:
             try:
-                candidate = payload.get('_publication') if action == 'plan' and isinstance(payload, dict) else None
-                if candidate:
-                    from dss.spec.publication import finish
-                    publication_safe = await finish(candidate, payload['factory'])
-                    if status != 'ok':
-                        with self.db.connect() as connection:
-                            if error == 'feasibility_blocked':
-                                connection.execute("UPDATE builds SET stage='interview',ready_for_plan=0,updated_at=? WHERE id=?", (now(), build_id))
-                            stage = connection.execute('SELECT stage FROM builds WHERE id=?', (build_id,)).fetchone()[0]
-                        await self.emit(build_id, run_id, 'stage.changed', {'stage': stage})
-                elif action in ("plan", "spec") and status != "ok":
-                    with self.db.connect() as connection:
-                        connection.execute("UPDATE builds SET stage='interview',updated_at=? WHERE id=?", (now(), build_id))
-                    await self.emit(build_id, run_id, "stage.changed", {"stage": "interview"})
-                trace.tool_calls = readiness["calls"] if readiness else extra_state.get('calls', 0) if extra_state else 0
+                trace.tool_calls = extra_state.get('calls', 0) if extra_state else 0
                 trace.save(status, error)
                 await self.emit(build_id, run_id, "run.finished", {
                     "run_id": run_id, "node": action, "status": status, "error": error_message or error})
             finally:
                 retry_listener.reset(retry_hook)
-                if publication_safe:
-                    self.active_builds.discard(build_id)
+                self.active_builds.discard(build_id)
                 if runner is not None:
                     await runner.close()

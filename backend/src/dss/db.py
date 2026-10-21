@@ -28,7 +28,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS builds (
  id TEXT PRIMARY KEY, title TEXT NOT NULL, archetype TEXT NOT NULL,
  mode TEXT NOT NULL, stage TEXT NOT NULL, current_version INTEGER NOT NULL DEFAULT 1,
- created_at TEXT NOT NULL, updated_at TEXT NOT NULL, ready_for_plan INTEGER NOT NULL DEFAULT 0);
+ created_at TEXT NOT NULL, updated_at TEXT NOT NULL, notes TEXT, artifacts_json TEXT NOT NULL DEFAULT '{}');
 CREATE TABLE IF NOT EXISTS versions (
  build_id TEXT NOT NULL REFERENCES builds(id), n INTEGER NOT NULL, status TEXT NOT NULL,
  spec_version INTEGER, report_url TEXT, created_at TEXT NOT NULL, PRIMARY KEY(build_id,n));
@@ -105,6 +105,12 @@ class Database:
             shutil.copyfile(self.backup_path, self.path)
         with self.connect() as connection:
             connection.executescript(SCHEMA)
+            columns = {row['name'] for row in connection.execute('PRAGMA table_info(builds)')}
+            if 'notes' not in columns:
+                connection.execute('ALTER TABLE builds ADD COLUMN notes TEXT')
+            if 'artifacts_json' not in columns:
+                connection.execute("ALTER TABLE builds ADD COLUMN artifacts_json TEXT NOT NULL DEFAULT '{}'")
+            connection.execute("UPDATE builds SET stage='context' WHERE stage IN ('interview','plan')")
             if 'bq_location' not in {row['name'] for row in connection.execute('PRAGMA table_info(synthetic_generations)')}:
                 connection.execute('ALTER TABLE synthetic_generations ADD COLUMN bq_location TEXT')
 

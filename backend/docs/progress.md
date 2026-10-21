@@ -936,3 +936,15 @@ context. Task status lives in docs/plan.md, not here.
 
 ## 2026-10-21: Audit (delta, staged workflow, program root)
 - 16 findings (1 P1, 10 P2, 5 P3), all accepted and applied; details in ../docs/progress.md (same date).
+
+## 2026-10-21: Task 15.1 Switch to the 2.0 build shape and remove the interview and plan path
+- Status: done
+- Plan check: off
+- What changed: 2.0 Build fields, migration and artifact state machine; removed POST interview/start, messages, plan and their nodes/prompts/skills. Deleted tests/test_interview.py, tests/test_plan.py, tests/test_spec_node.py and obsolete shared/live cases; independent coverage retained.
+- Checks: Done-when and Test (all): uv run pytest PASS, 1167 passed, 6 deselected, 2 warnings (449.82s). Publication: 39 passed. Review: no findings.
+- Decisions: state.py supplies reservations and pure transitions; blueprint stays blueprint until publication. SQL input types moved to view.py. Extra guards/routing/journal/shared-test edits were necessary dependencies. Bounded _affirmative cache (1024) preserves the existing 100ms recompute check. AGENTS.md records UTF-8 I/O.
+- Digest: artifacts/state.py: Stage, ArtifactStates, action, edited/confirmed -> transition, save, require_confirmed. builds.notes/artifacts_json migrate additively; missing+saved-spec exempts recipe/run/versions. Blueprint confirmation awaits publication.
+- Tried and failed: old helper/nullable assertions, Unicode editing, journal test method name; corrected. Uncached recomputation exceeded 100ms; caching passed.
+- Gotchas: none beyond AGENTS.md.
+- Left open: none.
+- Next: Task 15.2 Artifact models, OKF writer and profile script.

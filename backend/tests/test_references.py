@@ -13,7 +13,7 @@ from starlette.requests import Request
 
 from dss.config import Config
 from dss.db import now
-from dss.harness.context import BUDGETS, spec_context
+from dss.harness.context import BUDGETS
 from dss.harness.guardrails import RunError
 from dss.main import create_app
 from dss.memory.episodic import messages
@@ -180,18 +180,6 @@ def test_style_mode_imports_no_chart_or_data_requirements(ref):
     assert [i["mime_type"] for i in record["images"]] == ["image/png", "image/jpeg"]
     assert (folder / record["images"][1]["file"]).read_bytes() == JPEG
     assert "set chart_candidate" in model.requests[0].config.system_instruction
-
-
-@pytest.mark.parametrize("mode, present", [("recreate", True), ("style", False)])
-def test_spec_context_carries_only_a_recreate_interpretation(ref, mode, present):
-    from test_context import spec_inputs
-    client, app, bid, folder, _, _ = ref
-    upload(client, app, bid, [("files", ("a.png", png(), "image/png"))], mode=mode)
-    folder, build = spec_inputs(app, bid, "Revenue: SUM(revenue).")
-    context = spec_context(app.state.settings.get(), folder, build, [], {"bar", "scorecard", "time_series"})
-    names = [s.name for s in context.sections]
-    assert "style.md" in names and ("reference.md" in names) is present
-    assert ('"chart_candidate": "time_series"' in context) is present
 
 
 def test_recreate_needs_exactly_one_and_style_at_most_three(ref):
@@ -413,8 +401,8 @@ def test_remove_keeps_a_style_md_the_reference_set_does_not_own(ref):
     assert (folder / "docs/style.md").is_file()
 
 
-@pytest.mark.parametrize("value", ["plan", "build", "done"])
-def test_mutations_need_connect_interview_or_prototype(ref, value):
+@pytest.mark.parametrize("value", ["build", "done"])
+def test_mutations_need_connect_through_prototype(ref, value):
     client, app, bid, folder, model, _ = ref
     stage(app, bid, value)
     for response in (post(client, bid, [("files", ("a.png", png(), "image/png"))]),

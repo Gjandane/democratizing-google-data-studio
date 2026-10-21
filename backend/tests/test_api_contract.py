@@ -7,7 +7,7 @@ from test_execute import settle
 from test_recipe_contract import agent_client, no_engine, spec
 
 FIXTURES = Path(__file__).resolve().parents[2] / "contracts/fixtures/api"
-NULLABLE = {"spec_version": int, "report_url": str, "node": str, "model": str, "error": str, "build_id": str, "agent_last_seen": str}
+NULLABLE = {"spec_version": int, "report_url": str, "node": str, "model": str, "error": str, "build_id": str, "agent_last_seen": str, "notes": str}
 
 
 def shape(actual, expected, field=""):
@@ -59,6 +59,20 @@ def test_phase4_contract(thin):
     settle(client, app)
     check(client.get("/api/traces"), "traces.json")
     check(client.get(f"/api/traces?build_id={bid}"), "traces.json")
+    # Compare real emitted payloads to both 2.0 SSE fixtures. New staged nodes
+    # acquire their own endpoint tests as the following tasks implement them.
+    examples = {}
+    for name in ('events.sse', 'events.usage.sse'):
+        for block in (FIXTURES / name).read_text().strip().split('\n\n'):
+            lines = block.splitlines()
+            examples.setdefault(lines[0].removeprefix('event: '), json.loads(lines[1].removeprefix('data: ')))
+    with app.state.db.connect() as conn:
+        events = [(r[0], json.loads(r[1])) for r in conn.execute(
+            'SELECT kind,payload_json FROM events WHERE build_id=?', (bid,))]
+    for kind, payload in events:
+        if kind in examples:
+            shape(payload, examples[kind])
+    assert {'run.started', 'run.finished', 'build.updated', 'stage.changed', 'build.finished'} <= {k for k, _ in events}
 
 
 def test_recipe_contract_in_agent_mode_without_engine(agent_client, spec):
@@ -67,6 +81,21 @@ def test_recipe_contract_in_agent_mode_without_engine(agent_client, spec):
     from fakes import ready_fixture
     ready_fixture(app, spec.build_id, folder)
     check(client.post(f"/api/builds/{spec.build_id}/recipe"), "recipe.json")
+
+
+@pytest.mark.parametrize('stored_stage', ['interview', 'plan', 'context'])
+def test_build_2_contract_hides_storage_and_reads_migrated_stages(thin, stored_stage):
+    client, app, bid, _ = thin
+    values = {'context': 'confirmed', 'outline': 'draft', 'design': 'missing', 'blueprint': 'missing'}
+    with app.state.db.connect() as conn:
+        conn.execute('UPDATE builds SET stage=?,notes=?,artifacts_json=? WHERE id=?',
+                     (stored_stage, 'About these orders', json.dumps(values), bid))
+    response = client.get(f'/api/builds/{bid}')
+    check(response, 'build.json')
+    assert response.json()['stage'] == 'context' and response.json()['notes'] == 'About these orders'
+    assert response.json()['artifacts'] == values
+    assert not {'ready_for_plan', 'artifacts_json'} & response.json().keys()
+    assert client.get('/api/builds').json()[0]['stage'] == 'context'
 
 
 @pytest.mark.parametrize('mode', ['local', 'agent'])
@@ -132,16 +161,13 @@ def test_intake_and_action_contracts(thin, monkeypatch):
                 return
             time.sleep(.01)
         raise AssertionError("Action did not finish")
-    check(client.post(f"/api/builds/{bid}/interview/start"), "run_accepted.json", 202)
-    finish()
-    response = client.post(f"/api/builds/{bid}/messages", json={"text":"Compare regional revenue"})
-    assert response.status_code == 202
-    shape(response.json(), {"run_id":"r", "message_id":"m"})
-    finish()
+    for route in ('interview/start', 'messages', 'plan'):
+        removed = client.post(f'/api/builds/{bid}/{route}', json={'text': 'Compare regional revenue'})
+        assert removed.status_code == 404
+        assert removed.json() == {'error': {'code': 'not_found', 'message': 'Request could not be handled', 'detail': {}}}
+    from dss.memory import episodic
+    episodic.save(app.state.db, bid, 'assistant', 'Data connected. Review the context.', 'context')
     check(client.get(f"/api/builds/{bid}/messages"), "messages.json")
-    # Invalid fake planner output still exercises the accepted-action response without a provider.
-    check(client.post(f"/api/builds/{bid}/plan"), "run_accepted.json", 202)
-    finish()
     load(client, bid)
     component = client.get(f"/api/builds/{bid}/spec").json()["pages"][0]["components"][0]["id"]
     check(client.post(f"/api/builds/{bid}/comments", json={"comments":[{"component_id":component,"text":"Make it blue"}]}), "run_accepted.json", 202)

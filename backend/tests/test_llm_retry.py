@@ -170,8 +170,8 @@ async def test_success_makes_one_call_without_retry_span(client, app, build_id):
     assert provider.calls == 1 and 'model_retry' not in trace(app)['spans_json']
 
 
-@pytest.mark.parametrize('node,timeout', [('plan', 120_000), ('spec', 120_000), ('hello', 30_000),
-                                          ('interview', 30_000), ('revise', 30_000)])
+@pytest.mark.parametrize('node,timeout', [('blueprint', 120_000), ('hello', 30_000),
+                                          ('context', 30_000), ('revise', 30_000)])
 def test_timeouts_unchanged(node, timeout):
     model = ModelRouter(Settings()).llm_for(node)
     assert isinstance(model, RetryingGemini)

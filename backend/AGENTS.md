@@ -52,3 +52,4 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - The live extractor may cite requirement ids as component_ids or invent need field names (bar `dimension`); requirements.merge normalizes only provably redundant ones. Live worker calls sometimes hit the 30 s deadline (llm_unavailable): rerun once before diagnosing.
 - The requirements.json context section is mandatory in revise (6000 budget): never repeat source texts per row; requirement regexes run per label x field x message, so keep them cached (100 ms recompute target).
 - SQLite's connection context manager does not close the handle: use `contextlib.closing` when inspecting backup snapshots, or Windows can block temporary-file cleanup.
+- Windows system Python defaults text I/O to cp1252: pass `encoding="utf-8"` when reading and writing source/tests, or Unicode fixtures become mojibake.

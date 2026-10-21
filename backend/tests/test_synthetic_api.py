@@ -405,7 +405,7 @@ def test_rejections(setup):
     assert wrong.status_code == 409 and wrong.json()["error"] == {
         "code": "wrong_stage", "message": wrong.json()["error"]["message"], "detail": {"stage": "prototype"}}
     with app.state.db.connect() as conn:
-        conn.execute("UPDATE builds SET stage='interview' WHERE id=?", (bid,))
+        conn.execute("UPDATE builds SET stage='context' WHERE id=?", (bid,))
         conn.execute("INSERT INTO sources VALUES('s_real',?,'upload','sales.csv','p.d.t',3,'[]')", (bid,))
     real = post(client, bid)
     assert real.status_code == 409 and real.json()["error"]["code"] == "synthetic_requires_empty_build"

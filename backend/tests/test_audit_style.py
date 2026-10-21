@@ -10,13 +10,12 @@ from google.adk.models.llm_response import LlmResponse
 from google.genai import types
 
 from dss.db import now
-from dss.harness.context import BUDGETS, ORDER, assemble, spec_context, ux_audit_context, Section
+from dss.harness.context import BUDGETS, ORDER, assemble, ux_audit_context, Section
 from dss.harness.guardrails import RunError
 from dss.harness.nodes.intake import write_doc
 from dss.memory.episodic import messages
 from dss.spec.models import DashboardSpec
 from fakes import FakeLLM
-from test_context import spec_inputs
 
 
 def png():
@@ -216,18 +215,6 @@ async def test_style_invalid_hex_writes_nothing(setup):
         await app.state.harness.run('reference_extract', bid, style_payload(app), llm=fake)
     assert error.value.code == 'llm_unavailable'
     assert not (folder / 'docs/style.md').exists() and messages(app.state.db, bid) == []
-
-
-def test_spec_context_includes_style_only_when_present(app, build_id):
-    folder, build = spec_inputs(app, build_id, 'Revenue: SUM(revenue).')
-    config = app.state.settings.get()
-    args = (config, folder, build, [], {'bar', 'scorecard', 'time_series'})
-    assert 'style.md' not in [s.name for s in spec_context(*args).sections]
-    write_doc(folder / 'docs/style.md', {'type': 'Style Profile'}, 'Palette: #1E40AF, #0D9488')
-    context = spec_context(*args)
-    names = [s.name for s in context.sections]
-    assert names[-1] == 'style.md'
-    assert '#0D9488' in context and names.index('style.md') > names.index('decisions.md')
 
 
 def test_ux_audit_context_order_and_budget(app, build_id):

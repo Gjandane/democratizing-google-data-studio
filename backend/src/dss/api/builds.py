@@ -10,6 +10,7 @@ from sse_starlette.sse import EventSourceResponse
 from dss.db import new_id, now
 from dss.data import bigquery as bq
 from dss.harness.guardrails import RunError
+from dss.artifacts import state as workflow
 
 router = APIRouter(prefix="/api/builds")
 
@@ -84,7 +85,8 @@ def build_response(db, config, build_id):
             text = path.read_text(encoding="utf-8")
             frontmatter = yaml.safe_load(text.split("---", 2)[1]) if text.startswith("---") else {}
             docs.append({"path": path.name, "title": frontmatter.get("title", path.stem), "type": frontmatter["type"]})
-    return {**build, "ready_for_plan": bool(build["ready_for_plan"]),
+    return {**{key: build[key] for key in ('id', 'title', 'archetype', 'mode', 'created_at', 'updated_at', 'current_version', 'notes')},
+            "stage": workflow.stage(build), "artifacts": workflow.states(build),
             "sources": [bq.public_source({k: source[k] for k in ("id", "kind", "name", "bq_table", "row_count", "columns")}) for source in sources],
             "docs": docs, "versions": versions, "spec_version": version["spec_version"] if version else None,
             "report_url": version["report_url"] if version else None}
@@ -105,7 +107,7 @@ async def create_build(body: BuildCreate, request: Request):
 @router.get("")
 def list_builds(request: Request):
     with request.app.state.db.connect() as connection:
-        return [dict(row) for row in connection.execute(
+        return [{**dict(row), 'stage': workflow.stage(row)} for row in connection.execute(
             "SELECT b.id,b.title,b.archetype,b.stage,b.updated_at,v.report_url FROM builds b "
             "LEFT JOIN versions v ON v.build_id=b.id AND v.n=b.current_version ORDER BY b.updated_at DESC,b.rowid DESC")]
 
@@ -126,6 +128,7 @@ async def new_version(build_id: str, request: Request):
         raise RunError("wrong_stage", "A new version needs an idle prototype or completed build", 409,
                        {"stage": build["stage"]})
     document = read_spec(folder, db=state.db, build_id=build_id)
+    workflow.require_confirmed(build, folder)
     async def perform(run_id):
         from dss.spec.requirements import copy_version
         number = build["current_version"] + 1
@@ -234,9 +237,9 @@ async def research(build_id: str, body: ResearchRequest, request: Request):
     from dss.harness.guardrails import check_reply
     state = request.app.state
     build, _ = current(state, build_id)
-    if (build['mode'] != 'research' or build['stage'] not in ('connect', 'interview') or
+    if (build['mode'] != 'research' or build['stage'] not in ('connect', 'context') or
             build_id in state.harness.active_builds):
-        raise RunError('wrong_stage', 'Research requires an idle research build in connect or interview', 409,
+        raise RunError('wrong_stage', 'Research requires an idle research build in connect or context', 409,
                        {'stage': build['stage']})
     if not body.prompt.strip():
         raise bq.invalid('A research prompt is required')
@@ -266,14 +269,14 @@ async def research(build_id: str, body: ResearchRequest, request: Request):
 # text fields fit well inside this allowance on top of the 15 MiB of image bytes.
 FORM_OVERHEAD = 64 * 1024
 FIELD_BYTES = 4 * 2000 + 64
-REFERENCE_STAGES = ("connect", "interview", "prototype")
+REFERENCE_STAGES = ("connect", "context", "outline", "design", "blueprint", "prototype")
 
 
 def reference_stage(state, build_id):
     from dss.api.prototype import current
     build, folder = current(state, build_id)
     if build["stage"] not in REFERENCE_STAGES or build_id in state.harness.active_builds:
-        raise RunError("wrong_stage", "References change only in connect, interview or prototype with no running action",
+        raise RunError("wrong_stage", "References change only in connect through prototype with no running action",
                        409, {"stage": build["stage"]})
     return build, folder
 

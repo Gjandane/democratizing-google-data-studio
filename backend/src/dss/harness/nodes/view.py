@@ -1,6 +1,22 @@
 """Deterministic per-version view SELECT from validated planning metadata."""
 import re
+from typing import Literal
+from pydantic import BaseModel, ConfigDict, Field
 from dss.data.bigquery import quoted, table_uri, snake_names
+
+
+class DerivedField(BaseModel):
+    """Validated SQL builder input (independent of any model node)."""
+    model_config = ConfigDict(extra='forbid')
+    name: str = Field(pattern=r'^[a-z][a-z0-9_]*$')
+    sql: str = Field(min_length=1, max_length=2000)
+    type: Literal['STRING', 'INTEGER', 'FLOAT', 'NUMERIC', 'DATE', 'TIMESTAMP', 'BOOLEAN']
+
+
+class Join(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    table: str
+    on: str = Field(min_length=1, max_length=2000)
 
 
 def field_name(value):

@@ -10,8 +10,7 @@ from playwright.sync_api import sync_playwright
 from pydantic import SecretStr
 
 from dss.config import BACKEND_DIR, Config
-from dss.harness.context import BUDGETS, DOCS, spec_context
-from dss.harness.nodes.intake import write_doc
+from dss.harness.context import BUDGETS
 from dss.harness.nodes.reference_extract import MAX_OUTPUT_TOKENS
 from dss.main import create_app
 from dss.spec import references
@@ -116,10 +115,3 @@ def test_synthetic_screenshot_yields_bounded_geometry_and_style(tmp_path):
     style = record["style"]
     assert any(near(color, "#1E40AF") or near(color, "#0D9488") for color in style["palette"] + [style["accent"]])
     assert result["summary"].startswith("Recreate reference:")
-    # The interpretation reaches the deterministic spec's context (explicit plan applies it).
-    for name in DOCS:
-        write_doc(folder / "docs" / name, {"type": "Build Document"}, name)
-    build = {"id": build_id, "archetype": "executive", "spec_version": 1, "table": "project.data.view"}
-    context = spec_context(config, folder, build, [], {"scorecard", "time_series", "bar"})
-    assert {"style.md", "reference.md"} <= {s.name for s in context.sections}
-    assert '"grid": {' in context

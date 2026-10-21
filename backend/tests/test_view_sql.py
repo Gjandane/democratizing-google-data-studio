@@ -1,5 +1,5 @@
 import pytest
-from dss.harness.nodes.plan import DerivedField, Join
+from dss.harness.nodes.view import DerivedField, Join
 from dss.harness.nodes.view import select_sql, expression
 
 SOURCE = {"bq_table": "project.data.sales", "columns": [

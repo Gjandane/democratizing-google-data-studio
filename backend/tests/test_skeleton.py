@@ -110,8 +110,7 @@ async def test_planner_fallback_and_refresh(client, app, caplog):
     app.state.models.model_lister = available
     response = client.put("/api/settings", json={"planner_model": "missing-planner"})
     assert response.status_code == 200
-    assert app.state.models.model_for("plan") == "gemini-3.8-flash"
-    assert app.state.models.model_for("spec") == "gemini-3.8-flash"
+    assert app.state.models.model_for("blueprint") == "gemini-3.8-flash"
     assert "Planner model unavailable" in caplog.text
     assert "test-key" not in caplog.text
     assert len(calls) == 1

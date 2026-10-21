@@ -492,6 +492,7 @@ def _compiled_assignment(field, label):
         + r"|" + named + r"\s*(?:means|is|uses|=|:)\s*" + value('value') + r")(?=\s*(?:$|[,.;\n]|\band\b))", re.I)
 
 
+@lru_cache(maxsize=1024)
 def _affirmative(text):
     """Coordinated clauses share polarity. Quoted/conditional examples authorize nothing."""
     # Polite requests ("could you", "I would like") are affirmative, not hypothetical.
@@ -997,20 +998,6 @@ def explanation(assessment):
             text += " Please clarify the requested behavior or definition."
         parts.append(text)
     return "Feasibility needs attention. " + " ".join(parts)
-
-
-def plan_preflight(db, build_id, folder):
-    """Deterministic API gate; new intent is extracted inside the accepted Workflow."""
-    snapshot, ledger, checker = inputs(db, build_id, folder), load(folder), capabilities.Checker(capabilities.load_registry())
-    ledger = revalidate_decisions(snapshot, ledger, checker)
-    assessment = evaluate(snapshot, ledger, checker, check_components=False)
-    if assessment.state == "blocked":
-        current = get(snapshot, ledger, checker)
-        if current.state == 'blocked' and current.issues == assessment.issues:
-            raise blocked(current)
-        ledger.verification = verification(snapshot, ledger, checker)
-        save(folder, ledger, assessment)
-        raise blocked(assessment)
 
 
 def execution_preflight(db, build_id, folder):

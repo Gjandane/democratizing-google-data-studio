@@ -15,7 +15,7 @@ def build(db, title):
     build_id = new_id("b")
     with db.connect() as conn:
         conn.execute("INSERT INTO builds(id,title,archetype,mode,stage,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",
-                     (build_id, title, "executive", "data", "interview", now(), now()))
+                     (build_id, title, "executive", "data", "context", now(), now()))
     return build_id
 
 

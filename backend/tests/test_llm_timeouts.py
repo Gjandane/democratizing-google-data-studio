@@ -15,9 +15,9 @@ class Settings:
 
 
 @pytest.mark.parametrize('node,model,timeout', [
-    ('plan', 'planner-model', 120_000), ('spec', 'planner-model', 120_000),
+    ('blueprint', 'planner-model', 120_000),
     *[(node, 'worker-model', 30_000) for node in (
-        'hello', 'interview', 'revise', 'capability_check', 'reference_extract', 'ux_audit',
+        'hello', 'context', 'outline_propose', 'outline_other', 'outline_suggest', 'revise', 'capability_check', 'reference_extract', 'ux_audit',
         'research', 'consolidate', 'judge')]])
 def test_client_timeout_per_node(node, model, timeout):
     llm = ModelRouter(Settings()).llm_for(node)
@@ -28,6 +28,6 @@ def test_client_timeout_per_node(node, model, timeout):
 def test_planner_fallback_keeps_planner_deadline():
     router = ModelRouter(Settings())
     router.planner_model = router.worker_model
-    llm = router.llm_for('spec')
+    llm = router.llm_for('blueprint')
     assert llm.model == 'worker-model'
     assert llm.api_client._api_client._http_options.timeout == 120_000

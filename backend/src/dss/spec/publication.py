@@ -14,6 +14,7 @@ import shutil
 import threading
 
 from dss.db import now
+from dss.artifacts.state import stage
 from dss.harness.nodes.view import view_table
 
 logger = logging.getLogger(__name__)
@@ -178,8 +179,13 @@ class Candidate:
         if spec['datasource']['table'] != row['table_name']:
             return  # A newer plan/revision owns this version's metadata.
         previous = json.loads(row['previous_json'])
+        # Journals outlive database migrations, including old cloud snapshots.
+        previous['stage'] = stage(previous)
         with self.db.connect() as conn:
             build = previous['build']
+            columns = {r['name'] for r in conn.execute('PRAGMA table_info(builds)')}
+            build = {key: value for key, value in build.items() if key in columns}
+            build['stage'] = stage(build)
             conn.execute(f"INSERT OR IGNORE INTO builds ({','.join(build)}) VALUES ({','.join('?' for _ in build)})", tuple(build.values()))
             conn.execute("INSERT OR IGNORE INTO versions(build_id,n,status,created_at) VALUES(?,?,'draft',?)",
                          (row['build_id'], row['version'], now()))
@@ -197,14 +203,24 @@ class Candidate:
             return
         destination = self.destination
         previous = json.loads(row['previous_json'])
+        previous['stage'] = stage(previous)
         if row['restored']:
             spec_path = destination / 'spec.json'
             spec = json.loads(spec_path.read_text(encoding='utf-8')) if spec_path.exists() else None
             identity = {'table': spec['datasource']['table'], 'spec_version': spec['spec_version']} if spec else None
             if identity == previous['spec']:
                 with self.db.connect() as conn:
-                    conn.execute("UPDATE builds SET stage=?,updated_at=? WHERE id=? AND stage='plan' AND current_version=?",
-                                 (previous['stage'], previous['updated_at'], row['build_id'], row['version']))
+                    current_row = conn.execute('SELECT * FROM builds WHERE id=?', (row['build_id'],)).fetchone()
+                    current = dict(current_row) if current_row is not None else None
+                    from dss.artifacts.state import states
+                    legacy_pending = (current is not None and current['stage'] == 'context' and
+                                      set(states(current).values()) == {'missing'} and
+                                      current['notes'] == previous['build'].get('notes'))
+                    # Only a stale pre-2.0 database backup needs stage repair here.
+                    # A later artifact edit keeps the same spec identity on purpose.
+                    if current is not None and (current['stage'] == 'plan' or legacy_pending):
+                        conn.execute('UPDATE builds SET stage=?,updated_at=? WHERE id=? AND current_version=?',
+                                     (previous['stage'], previous['updated_at'], row['build_id'], row['version']))
             return
         for name in json.loads(row['files_json'] or '[]'):
             target, previous_file = destination / name, self.backup / name
@@ -217,6 +233,9 @@ class Candidate:
             target.with_name(target.name + '.publish-tmp').unlink(missing_ok=True)
         with self.db.connect() as conn:
             build = previous['build']
+            columns = {r['name'] for r in conn.execute('PRAGMA table_info(builds)')}
+            build = {key: value for key, value in build.items() if key in columns}
+            build['stage'] = stage(build)
             conn.execute(f"INSERT OR IGNORE INTO builds ({','.join(build)}) VALUES ({','.join('?' for _ in build)})", tuple(build.values()))
             conn.execute('UPDATE builds SET stage=?,updated_at=? WHERE id=?',
                          (previous['stage'], previous['updated_at'], row['build_id']))

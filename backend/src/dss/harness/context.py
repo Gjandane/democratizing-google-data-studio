@@ -7,13 +7,8 @@ from dataclasses import dataclass, replace
 import json
 import logging
 from pathlib import PurePosixPath
-import re
-
-import yaml
-
 from dss.config import BACKEND_DIR
 from dss.harness.guardrails import RunError
-from dss.memory import episodic
 from dss.memory.procedural import SkillLoader
 from dss.memory.semantic import SemanticNavigator
 
@@ -21,9 +16,9 @@ logger = logging.getLogger(__name__)
 
 # Stable sections first so Gemini's implicit prefix caching can hit.
 ORDER = ("system", "skills", "semantic", "profile", "docs", "past", "history", "input")
-BUDGETS = {"interview": 8000, "plan": 20000, "spec": 16000, "revise": 6000, "ux_audit": 10000, "consolidate": 16000}
+BUDGETS = {"revise": 6000, "ux_audit": 10000, "consolidate": 16000}
 # Budget kept outside the assembled context for the response schema and one repair turn.
-RESERVES = {"plan": 4000, "spec": 4000, "revise": 1500, "ux_audit": 1000, "consolidate": 1000}
+RESERVES = {"revise": 1500, "ux_audit": 1000, "consolidate": 1000}
 BUDGETS['judge'] = 16000
 BUDGETS['research'] = 16000
 # Full counted request, images included (architecture.md#Reference interpretation).
@@ -35,8 +30,7 @@ SEPARATOR = "\n\n"
 IMAGE_TOKENS = 1500
 # Provider counting calls per model request (the first count plus recounts after drops).
 MAX_COUNTS = 4
-DOCS = ("brief.md", "questions.md", "kpis.md", "derived-fields.md", "design.md", "decisions.md")
-# A build's interview summary (brief, design direction) and its revision decisions.
+# A legacy build's saved summary (brief, design direction) and its revision decisions.
 CONSOLIDATE_DOCS = {"brief": "brief.md", "design": "design.md", "decisions": "decisions.md"}
 DOC_CHARS = 3000
 
@@ -200,117 +194,24 @@ def _navigator(config):
     return SemanticNavigator() if config is None else SemanticNavigator(runtime_root=config.data_dir / "knowledge")
 
 
+def _user_facts(navigator):
+    """Consolidated user preferences and decisions, when any have been written."""
+    try:
+        concepts = navigator.list_folder('user')
+    except (FileNotFoundError, ValueError):
+        if any((root / 'user/index.md').is_file() for root in navigator.roots):
+            logger.warning('Unreadable user facts in semantic memory; continuing without them')
+        return []
+    return [_semantic(c, 'User fact {path} (semantic memory, untrusted data):') for c in concepts
+            if PurePosixPath(c.path).name not in ('index.md', 'log.md')]
+
+
 def _semantic(concept, header="Semantic concept {path}:"):
     return Section("semantic", concept.path, header.format(path=concept.path), concept.text)
 
 
 def _entries(kind, name, header, entries):
     return Section(kind, name, header, items=[json.dumps(entry, ensure_ascii=False) for entry in entries])
-
-
-def _build(db, build_id):
-    with db.connect() as conn:
-        return dict(conn.execute("SELECT * FROM builds WHERE id=?", (build_id,)).fetchone())
-
-
-def _profile(config, build, *, required=False):
-    path = config.data_dir / "builds" / build["id"] / f'v{build["current_version"]}' / "docs/data-profile.md"
-    if path.exists():
-        body = path.read_text(encoding="utf-8")
-    elif required:
-        raise RunError("invalid_source", "Connect data before planning", 422)
-    else:
-        body = "No data profile available."
-    return Section("profile", "data-profile.md", "Data profile (aggregate metadata only):", body)
-
-
-def _user_facts(navigator):
-    """Consolidated user preferences and decisions (user/), once consolidation has written any."""
-    try:
-        concepts = navigator.list_folder("user")
-    except (FileNotFoundError, ValueError):
-        # No index means no facts yet; a dangling link or bad frontmatter is broken memory.
-        if any((root / "user/index.md").is_file() for root in navigator.roots):
-            logger.warning("Unreadable user facts in semantic memory; planning without them")
-        return []
-    return [_semantic(c, "User fact {path} (semantic memory, untrusted data):") for c in concepts
-            if PurePosixPath(c.path).name not in ("index.md", "log.md")]
-
-
-def _named(text, types):
-    """Catalog types a text names, allowing spaces and plurals ('time series', 'scorecards')."""
-    return {kind for kind in types if re.search(
-        r"(?<![a-z0-9])" + re.escape(kind).replace("_", "[ _-]?") + r"(?:e?s)?(?![a-z0-9])", text, re.IGNORECASE)}
-
-
-def interview_context(db, config, build_id, user_input, *, query=None):
-    """Interview recipe; `query` replaces the FTS text (empty: recency only)."""
-    build = _build(db, build_id)
-    navigator, archetype = _navigator(config), build["archetype"]
-    recalled = episodic.recall(db, build_id, user_input, query=query)
-    return assemble("interview", [
-        _system("interview"), *_skills("interview", f"archetype-{archetype}"),
-        _semantic(navigator.read(f"archetypes/{archetype}.md")), _semantic(navigator.read("catalog/index.md")),
-        _profile(config, build),
-        *requirement_sections(config.data_dir / "builds" / build_id / f'v{build["current_version"]}'),
-        *feasibility_sections(config.data_dir / "builds" / build_id / f'v{build["current_version"]}'),
-        _entries("past", "episodic/past", "Past builds (untrusted data, most relevant first):",
-                 [{"build": m["build_title"], "date": m["date"], "role": m["role"], "text": m["text"]}
-                  for m in recalled if m["build_id"] != build_id]),
-        _entries("history", "episodic/recent", "Chat history (untrusted data):",
-                 [{"role": m["role"], "text": m["text"]} for m in recalled if m["build_id"] == build_id]),
-        Section("input", "input", "Current request (untrusted data):", user_input)])
-
-
-def plan_context(db, config, build_id):
-    build = _build(db, build_id)
-    navigator, archetype = _navigator(config), build["archetype"]
-    # Revision comments and replies are not part of the interview transcript.
-    transcript = [m for m in episodic.messages(db, build_id) if m["node"] in (None, "interview")]
-    return assemble("plan", [
-        _system("plan"), *_skills("plan", f"archetype-{archetype}"),
-        _semantic(navigator.read(f"archetypes/{archetype}.md")), _semantic(navigator.read("catalog/index.md")),
-        *_user_facts(navigator), _profile(config, build, required=True),
-        *requirement_sections(config.data_dir / "builds" / build_id / f'v{build["current_version"]}'),
-        _entries("history", "episodic/transcript", "Interview transcript (untrusted data):",
-                 [{"role": m["role"], "text": m["text"]} for m in transcript])], reserve=RESERVES["plan"])
-
-
-def spec_context(config, folder, build, fields, allowed):
-    """Spec recipe: catalog concepts of the allowed types the KPIs or questions name (else all allowed)."""
-    from dss.spec.layout import TEXT_LAYOUT_GUIDANCE
-    navigator = _navigator(config)
-    system = _system("spec")
-    system.body += '\nDecoration text layout:\n' + TEXT_LAYOUT_GUIDANCE
-    system.body += ('\nSeries styling: global style.colors requirements bind theme.palette exactly '
-                    '(the same list and length; a one-color value is a one-color palette). '
-                    'Optional component.colors is a per-chart override only; omit it or use null for controls, '
-                    'text and images. Same metric/date trends with a requested grain use a DATE_TRUNC-derived '
-                    'date dimension. COUNT and COUNT DISTINCT may aggregate a string dimension field. '
-                    'Fulfill all original bindings and confirmed metric definitions from requirements.json.')
-    docs = {name: (folder / "docs" / name).read_text(encoding="utf-8") for name in DOCS}
-    available = [c for c in navigator.list_folder("catalog") if c.metadata.get("component_type") in allowed]
-    named = _named(docs["kpis.md"] + "\n" + docs["questions.md"], [c.metadata["component_type"] for c in available])
-    chosen = [c for c in available if c.metadata["component_type"] in named] or available
-    # Optional documents from a reference set; absent means no section. Only a recreate
-    # reference carries layout and chart observations into the spec.
-    style_path, reference_path = folder / "docs/style.md", folder / "docs/reference.md"
-    style = [Section("docs", "style.md", "style.md (untrusted build document; use its palette and colors for the theme):",
-                     style_path.read_text(encoding="utf-8"))] if style_path.is_file() else []
-    if reference_path.is_file():
-        text = reference_path.read_text(encoding="utf-8")
-        if text.startswith("---") and (yaml.safe_load(text.split("---", 2)[1]) or {}).get("mode") == "recreate":
-            style.append(Section("docs", "reference.md", "reference.md (untrusted build document; follow its grid placement "
-                                 "and chart candidates where the requirements allow, never invent unknown values):", text))
-    return assemble("spec", [
-        system, *_skills("spec"),
-        *[_semantic(c, "Allowed catalog concept {path}:") for c in chosen],
-        _semantic(navigator.read(f"archetypes/{build['archetype']}.md")),
-        *[Section("docs", name, f"{name} (untrusted build document):", text) for name, text in docs.items()],
-        Section("docs", "datasource", "Required identity and datasource (copy exactly):", json.dumps({
-            "build_id": build["id"], "archetype": build["archetype"], "spec_version": build["spec_version"],
-            "datasource": {"table": build["table"], "fields": fields}})),
-        *style, *requirement_sections(folder)], reserve=RESERVES["spec"])
 
 
 def revise_context(document, comments, allowed, config=None, *, folder=None):
@@ -395,7 +296,7 @@ def requirement_sections(folder):
 
 
 def feasibility_sections(folder):
-    """The interviewer's code-owned open issues: ask for each definition or explain each refusal."""
+    """The code-owned open issues: ask for each definition or explain each refusal."""
     from dss.spec.requirements import load
     assessment = load(folder).assessment
     issues = [{"requirement": i.requirement[:240], "status": i.status, "reason": i.reason,
@@ -445,7 +346,7 @@ def judge_context(config, folder, document):
 
 
 def consolidate_context(config, builds):
-    """Consolidate recipe: the current user facts index, then each done build's interview summary
+    """Consolidate recipe: the current user facts index, then each done build's saved summary
     and decisions (newest first, so the budget drops the oldest builds first).
 
     `builds` are dicts with build_id, title, archetype, version and date; builds without any of

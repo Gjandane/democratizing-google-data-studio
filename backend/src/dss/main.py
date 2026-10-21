@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 import asyncio
 import logging
 import os
+import re
 from pathlib import Path
 import tempfile
 
@@ -129,6 +130,11 @@ def create_app(config=None, *, model_lister=None, bigquery_factory=None):
 
     @app.exception_handler(HTTPException)
     async def http_error(request, error):
+        # Messages remain readable; the removed chat input must still answer 404,
+        # rather than the router's 405 for a method mismatch on the history URL.
+        if (error.status_code == 405 and request.method == 'POST' and
+                re.fullmatch(r'/api/builds/[^/]+/messages', request.url.path)):
+            error = HTTPException(404)
         return JSONResponse({"error": {"code": "not_found" if error.status_code == 404 else "http_error",
                                       "message": "Request could not be handled", "detail": {}}},
                             status_code=error.status_code)

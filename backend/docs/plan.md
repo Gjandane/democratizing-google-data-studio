@@ -391,7 +391,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: the live run exposes another defect in this same extraction/reconciliation path -> repair within the task; never rewrite the exact regression into hex colors/separate definition sentences or drop issues to pass. A defect outside the listed files follows the normal blocked-task rule.
 
 ## Phase 15: Staged workflow (change 2026-10-21)
-- [ ] 15.1 Switch to the 2.0 build shape and remove the interview and plan path
+- [x] 15.1 Switch to the 2.0 build shape and remove the interview and plan path
   - Goal: Build, Stage and the artifact state machine follow api.md 2.0 (notes, artifacts, Stage rules), stored builds migrate, and the interview, POST messages and plan paths are gone with their nodes, prompts, skills and tests, so the suite is green on the 2.0 fixtures from here on.
   - Spec: docs/architecture.md#Staged workflow
   - Files: src/dss/artifacts/__init__.py, src/dss/artifacts/state.py, src/dss/db.py, src/dss/api/builds.py, src/dss/api/chat.py, src/dss/main.py, src/dss/harness/graph.py, src/dss/harness/context.py, src/dss/harness/nodes/interview.py, src/dss/harness/nodes/plan.py, src/dss/harness/nodes/spec.py, prompts/v1/interview.md, prompts/v1/plan.md, prompts/v1/spec.md, skills/interview.md, skills/plan.md, skills/spec.md, tests/test_interview.py, tests/test_plan.py, tests/test_spec_node.py, tests/test_api_contract.py, tests/test_artifact_state.py, tests/live/test_backend_flow.py
