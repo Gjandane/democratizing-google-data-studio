@@ -1,0 +1,567 @@
+"""Designed pages: allowlist sanitizer, vendored icons and Chromium slot measurement.
+
+The planner writes each page as HTML/CSS around one empty `<div data-slot="<component id>">` per
+component. Code keeps only allowlisted markup and CSS, inlines the vendored Lucide icons, renders the
+page with JavaScript off and every network request aborted, and turns the slots into component boxes
+(architecture.md#Designed pages). Errors are `{path, message}` for the designer's repair turn.
+"""
+from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
+from html import escape
+from html.parser import HTMLParser
+from pathlib import Path
+import re
+from types import SimpleNamespace
+from typing import NamedTuple
+
+from playwright.sync_api import sync_playwright
+
+from dss.config import BACKEND_DIR
+from dss.memory.semantic import parse_concept
+from dss.spec.layout import box, overlaps
+from dss.spec.models import Cell, Grid
+
+ROOT = 'dss-design'  # class of the page root code draws; `dss-design-p<n>` scopes that page's CSS
+MIN_WIDTH, MAX_WIDTH = 1200, 1920
+MAX_HEIGHT = 4000  # px; a designed page taller than this is a measure error
+MIN_FONT = 12  # px
+ICONS = Path(__file__).with_name('icons')
+
+# Markup allowlist. A tag in DROP loses its whole subtree; any other tag outside HTML_TAGS/svg is
+# unwrapped (children kept and sanitized); inside <svg> only SVG_TAGS survive. Attributes outside
+# the per-tag allowlist are removed.
+HTML_TAGS = frozenset('div span section header footer main article aside nav h1 h2 h3 h4 h5 h6 p '
+                      'strong b em i small sup sub br hr ul ol li figure figcaption'.split())
+SVG_TAGS = frozenset('svg g path circle ellipse line polyline polygon rect'.split())
+VOID = frozenset('area base br col embed hr img input keygen link meta param source track wbr'.split())
+DROP = frozenset('script iframe frame frameset object embed applet form input button select option '
+                 'optgroup datalist textarea output template noscript noembed noframes xmp plaintext '
+                 'title base meta link img picture source track video audio canvas map area math '
+                 'dialog portal fencedframe foreignobject use image'.split())
+SVG_ATTRIBUTES = frozenset('viewbox preserveaspectratio width height fill fill-opacity fill-rule '
+                           'clip-rule stroke stroke-width stroke-opacity stroke-linecap stroke-linejoin '
+                           'stroke-dasharray stroke-dashoffset opacity d cx cy r rx ry x y x1 y1 x2 y2 '
+                           'points transform'.split())
+SVG_CASE = {'viewbox': 'viewBox', 'preserveaspectratio': 'preserveAspectRatio'}
+
+# CSS allowlist: properties, functions in values, and position keywords. No at-rule survives
+# (@import, @font-face, @media...), nor url(), escapes, quotes outside font names and grid areas,
+# viewport units or !important (code's own rules win).
+PROPERTIES = frozenset('''
+    display box-sizing position top right bottom left inset z-index visibility opacity
+    width height min-width min-height max-width max-height aspect-ratio overflow overflow-x overflow-y
+    margin margin-top margin-right margin-bottom margin-left
+    padding padding-top padding-right padding-bottom padding-left
+    flex flex-direction flex-wrap flex-flow flex-grow flex-shrink flex-basis order
+    justify-content justify-items justify-self align-content align-items align-self
+    place-content place-items place-self gap row-gap column-gap
+    grid grid-template grid-template-columns grid-template-rows grid-template-areas grid-area
+    grid-column grid-column-start grid-column-end grid-row grid-row-start grid-row-end
+    grid-auto-flow grid-auto-columns grid-auto-rows
+    background background-color background-image background-position background-size
+    background-repeat background-clip background-origin
+    border border-top border-right border-bottom border-left border-width border-style border-color
+    border-top-width border-right-width border-bottom-width border-left-width
+    border-top-style border-right-style border-bottom-style border-left-style
+    border-top-color border-right-color border-bottom-color border-left-color
+    border-radius border-top-left-radius border-top-right-radius border-bottom-right-radius
+    border-bottom-left-radius box-shadow
+    color font-family font-size font-weight font-style font-variant-numeric line-height
+    letter-spacing text-align text-transform text-decoration text-decoration-color text-indent
+    white-space word-break overflow-wrap vertical-align list-style list-style-type
+    fill fill-opacity stroke stroke-width stroke-opacity stroke-linecap stroke-linejoin stroke-dasharray
+'''.split())
+FUNCTIONS = frozenset('rgb rgba hsl hsla hwb lab lch oklab oklch color-mix linear-gradient '
+                      'radial-gradient conic-gradient repeating-linear-gradient repeating-radial-gradient '
+                      'calc min max clamp var repeat minmax fit-content'.split())
+POSITIONS = frozenset(('static', 'relative', 'absolute'))
+GENERIC_FONTS = ('serif', 'sans-serif', 'monospace')
+
+CLASS = re.compile(r'-?[A-Za-z_][\w-]*')
+# Any plausible slot id or icon name survives, so measure can name an unknown one for the repair.
+SLOT = re.compile(r'[A-Za-z0-9_-]{1,80}')
+ICON = re.compile(r'[A-Za-z0-9_-]{1,80}')
+SVG_VALUE = re.compile(r'[\w\s.,#%+-]*')
+TRANSFORM = re.compile(r'(?:\s*(?:matrix|translate|scale|rotate|skewX|skewY)\([\d\s.,+eE-]*\)\s*)*')
+VALUE = re.compile(r'[\w\s.,#%+*/()-]+')
+FUNCTION = re.compile(r'([A-Za-z_-][\w-]*)\s*\(')
+VIEWPORT = re.compile(r'\d(?:[sdl]?v(?:w|h|i|b|min|max)|cq(?:w|h|i|b|min|max))(?![\w-])', re.I)
+AREAS = re.compile(r'(?:\s*"[\w\s.-]*"\s*)+')
+FAMILY = re.compile(r'[A-Za-z0-9 -]+')
+CUSTOM = re.compile(r'--[A-Za-z0-9_-]+')
+IMPORTANT = re.compile(r'!\s*important\s*$', re.I)
+SELECTOR = re.compile(r'[\w\s.#>+~*:()\[\]="\'^$|-]+')
+ROOT_TOKEN = re.compile(r'(?::root|html|body|\.dss-design(?:-p[1-9][0-9]*)?)(?![\w-])', re.I)
+
+# Code-owned rules around every designed page: defaults the designer may override, then the root's
+# position and size and the empty, transparent slots, which it may not.
+BASE_CSS = (f'.{ROOT},.{ROOT} *{{box-sizing:border-box}}'
+            f'.{ROOT} i[data-icon]{{display:inline-flex;font-style:normal;line-height:0}}'
+            f'.{ROOT}{{position:absolute!important;left:0!important;top:0!important;margin:0!important;'
+            'box-sizing:border-box!important;min-width:0!important;max-width:none!important;'
+            'min-height:0!important;max-height:none!important}'
+            f'.{ROOT} [data-slot]{{background:transparent!important;border-color:transparent!important;'
+            'box-shadow:none!important;outline:0!important}')
+
+
+class Measurement(NamedTuple):
+    boxes: dict  # {component id: {x, y, w, h}} in page pixels, for each slot found exactly once
+    height: int  # page height in px, including the synthetic footer when one is reserved
+    errors: list  # [{path, message}]
+    requests: list  # URLs Chromium tried to fetch (each one aborted); empty for sanitized pages
+
+
+def wrap(html, width, height=None, *, page=1):
+    """The page root code draws around sanitize(html, page=page); measure, prototype and
+    background share it, so the measured boxes are the drawn ones."""
+    # Inline beats designer CSS: `body{height:100%}` must not size the page from the viewport.
+    size = f'width:{width}px;height:' + ('auto' if height is None else f'{height}px')
+    return f'<div class="{ROOT} {ROOT}-p{page}" style="{size}"><style>{BASE_CSS}</style>{html}</div>'
+
+
+@lru_cache(maxsize=1)
+def font_names():
+    path = BACKEND_DIR / 'knowledge/datastudio/fonts.md'
+    return tuple(parse_concept(path.name, path.read_text(encoding='utf-8')).metadata['fonts'])
+
+
+@lru_cache(maxsize=1)
+def icons():
+    """{name: inline SVG} for the vendored lucide-static icons, sanitized like model markup."""
+    return {path.stem: sanitize(path.read_text(encoding='utf-8')).strip() for path in sorted(ICONS.glob('*.svg'))}
+
+
+def sanitize(html, *, page=1, fonts=()):
+    """Allowlisted page HTML: one leading <style> scoped to `.dss-design-p<page>`, then the markup.
+    Idempotent, so stored HTML can be sanitized again before every use. `fonts` adds the theme font
+    to fonts.md's list and the generic families."""
+    allowed = {name.casefold(): name for name in (*font_names(), *GENERIC_FONTS)}
+    allowed |= {name.strip().casefold(): name.strip() for extra in fonts for name in extra.split(',')
+                if FAMILY.fullmatch(name.strip())}
+    parser = _Sanitizer(allowed)
+    parser.feed(html)
+    parser.close()
+    body = parser.finish()
+    css = _stylesheet(''.join(parser.css), f'.{ROOT}-p{page}', allowed)
+    return (f'<style>{css}</style>' if css else '') + body
+
+
+class _Sanitizer(HTMLParser):
+    def __init__(self, fonts):
+        super().__init__(convert_charrefs=True)
+        self.fonts, self.out, self.css, self.open = fonts, [], [], []
+        self.skip = None  # [tag, depth, keep its end tag] while a dropped or emptied subtree is read
+        self.style = False
+
+    def handle_starttag(self, tag, attrs):
+        if self.skip:
+            if tag == self.skip[0] and tag not in VOID:
+                self.skip[1] += 1
+            return
+        if tag == 'style':
+            self.style = True  # raw text up to </style>, kept only as sanitized, scoped CSS
+            return
+        svg = 'svg' in self.open
+        if (svg and tag not in SVG_TAGS) or (not svg and tag in DROP):
+            if tag not in VOID:
+                self.skip = [tag, 1, False]
+            return
+        if not svg and tag != 'svg' and tag not in HTML_TAGS:
+            return  # unwrapped: html, body, a, table...; its children are still sanitized
+        attrs = self._attributes(tag, attrs, svg or tag == 'svg')
+        self.out.append(f'<{tag}' + ''.join(f' {SVG_CASE.get(n, n)}="{escape(v)}"' for n, v in attrs) + '>')
+        if tag in VOID:
+            return
+        self.open.append(tag)
+        kept = dict(attrs)
+        if tag == 'div' and 'data-slot' in kept:
+            self.skip = [tag, 1, True]  # slots stay empty: the component is drawn there
+        elif tag == 'i' and kept.get('data-icon') in icons():
+            self.out.append(icons()[kept['data-icon']])
+            self.skip = [tag, 1, True]
+
+    def handle_endtag(self, tag):
+        if self.skip:
+            if tag == self.skip[0]:
+                self.skip[1] -= 1
+                if not self.skip[1]:
+                    keep, self.skip = self.skip[2], None
+                    if keep:
+                        self._close(tag)
+            return
+        if tag == 'style':
+            self.style = False
+        elif tag in self.open:
+            self._close(tag)
+
+    def handle_data(self, data):
+        if self.skip:
+            return
+        if self.style:
+            self.css.append(data)
+        elif 'svg' not in self.open:  # text directly inside <svg> is never drawn
+            self.out.append(escape(data, quote=False))
+
+    def finish(self):
+        while self.open:
+            self._close(self.open[-1])
+        return ''.join(self.out)
+
+    def _close(self, tag):
+        while self.open:
+            top = self.open.pop()
+            self.out.append(f'</{top}>')
+            if top == tag:
+                return
+
+    def _attributes(self, tag, attrs, svg):
+        kept = []
+        for name, value in attrs:
+            value = value or ''
+            if name == 'class':
+                value = ' '.join(t for t in value.split() if CLASS.fullmatch(t) and not t.lower().startswith('dss-'))
+            elif name == 'style':
+                value = _declarations(value, self.fonts)
+            elif svg:
+                if name not in SVG_ATTRIBUTES or not (TRANSFORM if name == 'transform' else SVG_VALUE).fullmatch(value):
+                    continue
+            elif not ((tag, name) == ('div', 'data-slot') and SLOT.fullmatch(value)
+                      or (tag, name) == ('i', 'data-icon') and ICON.fullmatch(value)):
+                continue
+            if value and all(name != n for n, _ in kept):
+                kept.append((name, value))
+        return kept
+
+
+def _top_level(text):
+    """(index, character) for each character outside quotes, () and []."""
+    depth, quote = 0, None
+    for i, ch in enumerate(text):
+        if quote:
+            quote = None if ch == quote else quote
+        elif ch in '"\'':
+            quote = ch
+        elif ch in '([':
+            depth += 1
+        elif ch in ')]':
+            depth = max(depth - 1, 0)
+        elif not depth:
+            yield i, ch
+
+
+def _split(text, separator):
+    cuts = [i for i, ch in _top_level(text) if ch == separator]
+    return [text[a + 1:b] for a, b in zip([-1, *cuts], [*cuts, len(text)])]
+
+
+def _blocks(text):
+    """(prelude, body) per top-level `prelude { body }`; statements such as @import end at `;`
+    and an unterminated block or string drops the rest."""
+    blocks, start, depth, quote, brace = [], 0, 0, None, 0
+    for i, ch in enumerate(text):
+        if quote:
+            quote = None if ch == quote else quote
+        elif ch in '"\'':
+            quote = ch
+        elif ch == '{':
+            brace = i if not depth else brace
+            depth += 1
+        elif ch == '}':
+            if depth == 1:
+                blocks.append((text[start:brace].strip(), text[brace + 1:i]))
+            if depth <= 1:
+                start = i + 1
+            depth = max(depth - 1, 0)
+        elif ch == ';' and not depth:
+            start = i + 1
+    return blocks
+
+
+def _stylesheet(text, root, fonts):
+    text = re.sub(r'/\*.*?(?:\*/|\Z)', ' ', text, flags=re.S)
+    rules = []
+    for prelude, body in _blocks(text):
+        if prelude.startswith('@') or '{' in body:
+            continue  # at-rules and nested rules
+        selectors = [_scope(s, root) for s in _split(prelude, ',')]
+        declarations = _declarations(body, fonts)
+        if declarations and None not in selectors:
+            rules.append(f'{",".join(selectors)}{{{declarations}}}')
+    return ''.join(rules)
+
+
+def _scope(selector, root):
+    """The selector inside the page root, or None. `:root`, `html`, `body` and `.dss-design[-p<n>]`
+    mean the root itself; nothing may reach the root's siblings through `+` or `~`."""
+    selector = ' '.join(selector.split())
+    if not selector or not SELECTOR.fullmatch(selector):
+        return None
+    rest, compound = selector, False
+    while match := ROOT_TOKEN.match(rest):
+        rest = rest[match.end():]
+        if rest[:1] != ' ':
+            compound = rest[:1] not in ('', '>')
+            break
+        rest = rest[1:]
+    if rest[:1] in ('+', '~'):
+        return None
+    if compound:  # e.g. body.dark .x: the root's own compound runs to the first top-level combinator
+        end = next((i for i, ch in _top_level(rest) if ch in ' >+~'), len(rest))
+        return None if rest[end:].lstrip()[:1] in ('+', '~') else root + rest
+    return root + (' ' + rest if rest else '')
+
+
+def _declarations(text, fonts):
+    kept = []
+    for item in _split(text, ';'):
+        name, colon, value = item.partition(':')
+        name, value = name.strip().lower(), ' '.join(IMPORTANT.sub('', value).split())
+        if colon and value and (name in PROPERTIES or CUSTOM.fullmatch(name)):
+            value = _value(name, value, fonts)
+            if value is not None:
+                kept.append(f'{name}:{value}')
+    return ';'.join(kept)
+
+
+def _value(name, value, fonts):
+    if len(value) > 500:
+        return None
+    if name == 'font-family':
+        families = [fonts.get(part.strip().strip('"\'').strip().casefold()) for part in _split(value, ',')]
+        families = list(dict.fromkeys(f for f in families if f))
+        return ', '.join(f'"{f}"' if ' ' in f else f for f in families) or None
+    if name == 'grid-template-areas':
+        return value if AREAS.fullmatch(value) else None
+    if not VALUE.fullmatch(value) or VIEWPORT.search(value):
+        return None
+    if any(f.lower() not in FUNCTIONS for f in FUNCTION.findall(value)):
+        return None
+    if name == 'position' and value.lower() not in POSITIONS:
+        return None
+    return value
+
+
+@lru_cache(maxsize=64)
+def minimum(kind, width):
+    """(w, h) px: the catalog's min_w/min_h grid cells converted by Layout at this canvas width."""
+    from dss.spec.validate import catalog
+    rule = catalog().get(kind)
+    if rule is None:
+        raise ValueError(f'Unknown component type {kind}')
+    cell = Cell(col=1, row=1, w=rule['min_w'], h=rule['min_h'])
+    size = box(SimpleNamespace(width=width, height=10 ** 6), Grid(), cell)
+    return size['w'], size['h']
+
+
+def footer_top(natural):
+    """y of the reserved synthetic footer: the next grid row below the design, as Layout places
+    p1_synthetic_sample_data (validate.with_synthetic_label)."""
+    grid = Grid()
+    row = max(1, (natural - grid.margin + grid.row_height - 1) // grid.row_height + 1)
+    return grid.margin + (row - 1) * grid.row_height
+
+
+def measure(html, slots, width, *, footer=None, fonts=()):
+    """Render sanitize(html) at `width` and measure its slots.
+
+    `slots` is {component id: catalog type} for the page. `footer` (px, 64 on page 1 of a synthetic
+    build) reserves that strip below the design plus the bottom margin; nothing may reach into it.
+    """
+    if isinstance(width, bool) or not isinstance(width, int) or not MIN_WIDTH <= width <= MAX_WIDTH:
+        return Measurement({}, 0, [dict(path='canvas_width', message=
+            f'canvas_width must be an integer from {MIN_WIDTH} to {MAX_WIDTH} px')], [])
+    clean = sanitize(html, fonts=fonts)
+    # Same worker-thread pattern as background.capture: never Playwright sync on an event loop.
+    import asyncio
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        natural, height, geometry, requests = _chromium(clean, width, footer)
+    else:
+        with ThreadPoolExecutor(max_workers=1) as worker:
+            natural, height, geometry, requests = worker.submit(_chromium, clean, width, footer).result()
+    boxes, errors = _rules(geometry, dict(slots), width, height, None if footer is None else footer_top(natural), footer)
+    return Measurement(boxes, height, errors, requests)
+
+
+def _document(html, width, height=None):
+    return ('<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0}</style>'
+            f'</head><body>{wrap(html, width, height)}</body></html>')
+
+
+def _chromium(html, width, footer):
+    """Two passes in one page: the design's natural height, then the root at the final page
+    height, which is the markup the prototype and background draw."""
+    requests = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(timeout=10000)
+        try:
+            context = browser.new_context(java_script_enabled=False, service_workers='block',
+                                          viewport={'width': width, 'height': 900})
+            context.route('**/*', lambda route: route.abort())
+            page = context.new_page()
+            page.on('request', lambda request: requests.append(request.url))
+            page.set_default_timeout(10000)
+            page.set_content(_document(html, width), wait_until='load')
+            page.evaluate('document.fonts.ready.then(() => true)')
+            natural = round(page.evaluate(f'document.querySelector(".{ROOT}").getBoundingClientRect().height'))
+            height = natural if footer is None else footer_top(natural) + footer + Grid().margin
+            page.set_content(_document(html, width, height), wait_until='load')
+            page.evaluate('document.fonts.ready.then(() => true)')
+            geometry = page.evaluate(GEOMETRY, ROOT)
+        finally:
+            browser.close()
+    return natural, height, geometry, requests
+
+
+# Rects are [left, top, right, bottom] relative to the page root. `ancestors` lists the text's
+# nearest box (content box) and each boxed ancestor up to the root (padding boxes).
+GEOMETRY = r'''root => {
+  root = document.querySelector('.' + root);
+  const R = root.getBoundingClientRect();
+  const rel = r => [r.left - R.left, r.top - R.top, r.right - R.left, r.bottom - R.top];
+  const describe = el => {
+    const parts = [];
+    for (let e = el; e && e !== root; e = e.parentElement) {
+      const slot = e.getAttribute('data-slot'), icon = e.getAttribute('data-icon');
+      let part = e.localName;
+      if (slot !== null) part += `[data-slot="${slot}"]`;
+      else if (icon !== null) part += `[data-icon="${icon}"]`;
+      else if (e.classList.length) part += '.' + [...e.classList].join('.');
+      const kin = [...e.parentElement.children].filter(c => c.localName === e.localName);
+      if (slot === null && kin.filter(c => c.getAttribute('class') === e.getAttribute('class')).length > 1)
+        part += `:nth-of-type(${kin.indexOf(e) + 1})`;
+      parts.unshift(part);
+    }
+    return parts.join(' > ') || 'page root';
+  };
+  const edges = (e, content) => {
+    const s = getComputedStyle(e), n = k => parseFloat(s[k]) || 0, [l, t, r, b] = rel(e.getBoundingClientRect());
+    const p = content ? 1 : 0;
+    return [l + n('borderLeftWidth') + p * n('paddingLeft'), t + n('borderTopWidth') + p * n('paddingTop'),
+            r - n('borderRightWidth') - p * n('paddingRight'), b - n('borderBottomWidth') - p * n('paddingBottom')];
+  };
+  const boxed = e => !['inline', 'contents'].includes(getComputedStyle(e).display);
+  const texts = [], walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const el = node.parentElement;
+    if (!node.data.trim() || el.closest('style, svg')) continue;
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const rects = [...range.getClientRects()].filter(r => r.width > 0 && r.height > 0).map(rel);
+    if (!rects.length) continue;
+    let block = el;
+    while (block !== root && !boxed(block)) block = block.parentElement;
+    const ancestors = [];
+    for (let a = block; a; a = a === root ? null : a.parentElement)
+      if (boxed(a)) ancestors.push([describe(a), edges(a, a === block)]);
+    const s = getComputedStyle(el);
+    texts.push({path: describe(el), text: node.data.trim().replace(/\s+/g, ' '), rects, ancestors,
+                font: parseFloat(s.fontSize), line: parseFloat(s.lineHeight) || null});
+  }
+  const all = [...root.querySelectorAll('*')].filter(e => e.localName !== 'style');
+  const index = new Map(all.map((e, i) => [e, i]));
+  return {
+    height: R.height, texts,
+    slots: [...root.querySelectorAll('[data-slot]')].map(e =>
+      ({id: e.getAttribute('data-slot'), rect: rel(e.getBoundingClientRect())})),
+    icons: [...root.querySelectorAll('i[data-icon]')].filter(e => !e.querySelector('svg')).map(e =>
+      ({path: describe(e), name: e.getAttribute('data-icon')})),
+    graphics: [...root.querySelectorAll('svg')].filter(e => !e.parentElement.closest('svg')).map(e =>
+      ({path: describe(e.closest('i[data-icon]') || e), rect: rel(e.getBoundingClientRect())})),
+    elements: all.map(e => ({path: describe(e), rect: rel(e.getBoundingClientRect()),
+                             parent: index.has(e.parentElement) ? index.get(e.parentElement) : -1})),
+  };
+}'''
+
+
+def _hit(a, b, tolerance=0.5):
+    return min(a[2], b[2]) - max(a[0], b[0]) > tolerance and min(a[3], b[3]) - max(a[1], b[1]) > tolerance
+
+
+def _snippet(text):
+    return text if len(text) <= 40 else text[:40] + '...'
+
+
+def _rules(geometry, slots, width, height, footer_y, footer):
+    """Boxes and errors from the page geometry: slot rules first (component order), then elements."""
+    errors, seen = [], set()
+
+    def error(path, message):
+        if (path, message) not in seen:
+            seen.add((path, message))
+            errors.append(dict(path=path, message=message))
+
+    found = {}
+    for slot in geometry['slots']:
+        found.setdefault(slot['id'], []).append(slot['rect'])
+    boxes = {}
+    for cid, kind in slots.items():
+        rects = found.get(cid, [])
+        if not rects:
+            error(f'slots.{cid}', f'component {cid} ({kind}) has no slot: add one empty <div data-slot="{cid}">')
+            continue
+        if len(rects) > 1:
+            error(f'slots.{cid}', f'slot {cid} appears {len(rects)} times: keep exactly one')
+            continue
+        l, t, r, b = rects[0]
+        x, y = round(l), round(t)
+        boxes[cid] = item = dict(x=x, y=y, w=round(r) - x, h=round(b) - y)
+        need_w, need_h = minimum(kind, width)
+        if item['w'] < need_w or item['h'] < need_h:
+            error(f'slots.{cid}', f'slot {cid} is {item["w"]}x{item["h"]} px: a {kind} needs at least '
+                                  f'{need_w}x{need_h} px at width {width}')
+        if x < 0 or y < 0 or x + item['w'] > width or y + item['h'] > height:
+            error(f'slots.{cid}', f'slot {cid} at x={x} y={y} ({item["w"]}x{item["h"]} px) is outside '
+                                  f'the {width}x{height} px page')
+        for other, placed in boxes.items():
+            if other != cid and overlaps(item, placed):
+                error(f'slots.{cid}', f'slot {cid} overlaps slot {other}: slots must not overlap')
+                break
+    for cid in found:
+        if cid not in slots:
+            error(f'slots.{cid}', f'slot {cid} is not a component on this page (components: '
+                                  f'{", ".join(slots) or "none"}): remove it')
+
+    slot_rects = [(slot['id'], slot['rect']) for slot in geometry['slots']]
+    for text in geometry['texts']:
+        quoted = f'text "{_snippet(text["text"])}"'
+        if text['font'] < MIN_FONT - 0.01:
+            error(text['path'], f'{quoted} is {text["font"]:g}px: designed pages use text of at least {MIN_FONT}px')
+        for path, (l, t, r, b) in text['ancestors']:
+            def outside(rect):
+                # Glyph boxes may exceed a tight line-height; that half-difference is not overflow.
+                slack = 1 + max(0.0, (rect[3] - rect[1] - text['line']) / 2) if text['line'] else 1
+                return rect[0] < l - 1 or rect[2] > r + 1 or rect[1] < t - slack or rect[3] > b + slack
+            if any(outside(rect) for rect in text['rects']):
+                need_w = max(rect[2] for rect in text['rects']) - min(rect[0] for rect in text['rects'])
+                need_h = max(rect[3] for rect in text['rects']) - min(rect[1] for rect in text['rects'])
+                error(text['path'], f'{quoted} does not fit {path} ({max(r - l, 0):.0f}x{max(b - t, 0):.0f} px '
+                                    f'inside; the text needs {need_w:.0f}x{need_h:.0f} px): give it more room, '
+                                    'let it wrap or shorten it')
+                break
+        for cid, rect in slot_rects:
+            if any(_hit(line, rect) for line in text['rects']):
+                error(text['path'], f'{quoted} overlaps slot {cid}: move it out of the slot')
+                break
+    for icon in geometry['icons']:
+        error(icon['path'], f'icon "{icon["name"]}" is not vendored: use a listed icon name or draw an '
+                            'inline <svg> inside the <i>')
+    for graphic in geometry['graphics']:
+        for cid, rect in slot_rects:
+            if _hit(graphic['rect'], rect):
+                error(graphic['path'], f'icon or graphic overlaps slot {cid}: move it out of the slot')
+                break
+    if footer_y is not None:
+        band = (0, footer_y, width, footer_y + footer)
+        hits = []
+        for element in geometry['elements']:
+            l, t, r, b = element['rect']
+            hit = r - l > 0 and b - t > 0 and _hit((l, t, r, b), band)
+            if hit and (element['parent'] < 0 or not hits[element['parent']]):
+                error(element['path'], f'{element["path"]} reaches into the synthetic data footer code draws '
+                                       f'at y={footer_y}-{footer_y + footer}: keep every element above y={footer_y}')
+            hits.append(hit)
+    if height > MAX_HEIGHT:
+        error('height', f'the page is {height} px tall: the limit is {MAX_HEIGHT} px')
+    return boxes, errors

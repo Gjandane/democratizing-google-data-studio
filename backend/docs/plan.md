@@ -565,7 +565,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: rejection is per chart type, not a blanket colors ban; the message tells the user what Data Studio offers instead (theme palette or another chart type); provenance and pending/blocked comment persistence unchanged.
 
 ## Phase 20: Designed pages (change 2026-10-22)
-- [ ] 20.1 Sanitize, icons and slot measurement for designed pages
+- [x] 20.1 Sanitize, icons and slot measurement for designed pages
   - Goal: code can safely turn model-written page HTML into component boxes: an allowlist sanitizer, vendored Lucide icons and a Chromium measurement of the empty component slots, with errors a repair turn can read.
   - Spec: docs/architecture.md#Designed pages
   - Files: src/dss/render/design_page.py, src/dss/render/icons/ (vendored SVGs + LICENSE), tests/test_design_page.py, tests/data/designed_page.html

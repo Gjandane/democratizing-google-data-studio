@@ -1224,3 +1224,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none
 - Left open: P3 prototype still renders scorecard colors (dead path, test_revise scorecard_palette test) - src/dss/render/prototype.py:295
 - Next: Task 20.1. Start by reading docs/architecture.md#Designed pages.
+
+## 2026-10-22: Task 20.1 Sanitize, icons and slot measurement for designed pages
+- Status: done
+- Plan check: off
+- What changed: new src/dss/render/design_page.py (stdlib-HTMLParser allowlist sanitizer with page-scoped CSS, Lucide inlining, two-pass Chromium measure with JS off and requests aborted); 40 lucide-static 1.61.0 SVGs + LICENSE (ISC, tarball sha512 matched npm) in render/icons/; tests/test_design_page.py; tests/data/designed_page.html (expected boxes in its leading comment).
+- Checks: `uv run pytest tests/test_design_page.py` PASS (35); Test (all) `uv run pytest` PASS (1483 passed, 12 deselected). Fixture measure ~0.9 s.
+- Decisions: sanitized HTML = one `<style>` prefixed `.dss-design-p<page>` (:root/html/body = root; +/~ from root rejected; all at-rules and viewport units dropped) + markup; idempotent. Code CSS (root absolute at 0,0, border-box, height:auto in pass 1, transparent slots) lives in `wrap()`: 20.2 must draw designs through it. Footer: next 20 px row below the natural height (with_synthetic_label rule), height = footer_y+footer+24. Slot minimum = Layout at the page width. MAX_HEIGHT=4000 (no validator limit existed). Unknown icon/slot names survive sanitize so measure can name them.
+- Digest: render/design_page.py: sanitize(html,*,page=1,fonts=())->str; wrap(html,w,h=None,*,page=1); measure(html,{cid:type},w,*,footer=None,fonts=())->Measurement(boxes{cid:{x,y,w,h}},height,errors[{path,message}],requests); icons(); minimum(type,w); footer_top(h); MAX_HEIGHT
+- Tried and failed: none
+- Gotchas: page.on('request') logs a URL once per measure pass; setuptools won't ship render/icons/*.svg in a non-editable wheel without package-data (editable uv install is fine).
+- Left open: P3 non-slot, non-text elements outside the page give no error - design_page.py; P3 root `display:none/contents` gives 0x0 slot errors without naming the cause - design_page.py; P3 (for 20.2) designer CSS reaches root descendants, so draw components and the footer outside the root - design_page.py
+- Next: Task 20.2. Start by `status`; reuse design_page.wrap/sanitize for the designed prototype root.

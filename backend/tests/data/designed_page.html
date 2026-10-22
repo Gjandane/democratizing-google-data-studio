@@ -1,0 +1,57 @@
+<!-- dss-fixture: hand-written page 1 in the reference look (docs/change-2026-10-22-reference.webp),
+1440 px wide, Arial. Expected measurement, boxes as [x, y, w, h] in page pixels:
+{"width": 1440, "height": 1216, "footer_height": 1312, "slots": {
+  "p1_kpi_revenue": {"type": "scorecard", "box": [104, 120, 240, 56]},
+  "p1_kpi_orders": {"type": "scorecard", "box": [456, 120, 240, 56]},
+  "p1_kpi_customers": {"type": "scorecard", "box": [808, 120, 240, 56]},
+  "p1_kpi_delivery": {"type": "scorecard", "box": [1160, 120, 240, 56]},
+  "p1_bar_sales_by_region": {"type": "bar", "box": [40, 256, 656, 280]},
+  "p1_pie_category_mix": {"type": "pie", "box": [744, 256, 656, 280]},
+  "p1_table_top_products": {"type": "table", "box": [40, 616, 1360, 240]},
+  "p1_table_late_shipments": {"type": "table", "box": [40, 936, 1360, 240]}}}
+Geometry: page padding 24, gaps 16; header 64 tall; KPI cards 336x88 (padding 16, 48 px icon tile,
+16 gap, slot 240x56); chart cards 688 wide (padding 16, 20 px title + 12 gap, slot 280 tall); table
+cards 1392 wide (slot 240 tall). With the 64 px synthetic footer: footer y 1224, page 1312.
+-->
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: #F1F5F9; color: #0F172A; font-family: Arial, sans-serif; }
+  .header { height: 64px; margin-bottom: 16px; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+  .header h1 { margin: 0; font-size: 28px; line-height: 35px; font-weight: 700; }
+  .header p { margin: 0; font-size: 16px; line-height: 20px; color: #64748B; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 336px); gap: 16px; margin-bottom: 16px; }
+  .kpi { height: 88px; padding: 16px; display: flex; gap: 16px; background: #FFFFFF; border-radius: 16px;
+         box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.06); }
+  .tile { flex: none; width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
+  .tile svg { width: 24px; height: 24px; }
+  .tile.indigo { background: #E0E7FF; color: #4F46E5; }
+  .tile.emerald { background: #D1FAE5; color: #059669; }
+  .tile.amber { background: #FEF3C7; color: #D97706; }
+  .tile.rose { background: #FFE4E6; color: #E11D48; }
+  .kpi [data-slot] { flex: none; width: 240px; height: 56px; }
+  .charts { display: grid; grid-template-columns: repeat(2, 688px); gap: 16px; margin-bottom: 16px; }
+  .tables { display: grid; grid-template-columns: 1392px; gap: 16px; }
+  .card { padding: 16px; background: #FFFFFF; border-radius: 16px;
+          box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.06); }
+  .card h2 { margin: 0 0 12px; font-size: 16px; line-height: 20px; font-weight: 700; color: #0F172A; }
+  .charts [data-slot] { height: 280px; }
+  .tables [data-slot] { height: 240px; }
+</style>
+<header class="header">
+  <h1>Sales Operations Overview</h1>
+  <p>Weekly performance across regions, orders and deliveries</p>
+</header>
+<section class="kpis">
+  <div class="kpi"><div class="tile indigo"><i data-icon="dollar-sign"></i></div><div data-slot="p1_kpi_revenue"></div></div>
+  <div class="kpi"><div class="tile emerald"><i data-icon="shopping-cart"></i></div><div data-slot="p1_kpi_orders"></div></div>
+  <div class="kpi"><div class="tile amber"><i data-icon="users"></i></div><div data-slot="p1_kpi_customers"></div></div>
+  <div class="kpi"><div class="tile rose"><i data-icon="truck"></i></div><div data-slot="p1_kpi_delivery"></div></div>
+</section>
+<section class="charts">
+  <div class="card"><h2>Sales by region</h2><div data-slot="p1_bar_sales_by_region"></div></div>
+  <div class="card"><h2>Category mix</h2><div data-slot="p1_pie_category_mix"></div></div>
+</section>
+<section class="tables">
+  <div class="card"><h2>Top products</h2><div data-slot="p1_table_top_products"></div></div>
+  <div class="card"><h2>Late shipments</h2><div data-slot="p1_table_late_shipments"></div></div>
+</section>
