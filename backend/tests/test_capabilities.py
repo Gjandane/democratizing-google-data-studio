@@ -369,3 +369,19 @@ def test_capability_context_compacts_staged_artifacts():
     assert sorted(metadata) == ['context', 'definitions', 'reference', 'sources', 'spec']
     assert metadata['context'] == {'derived_fields': [], 'kpis': [{'id': 'net_revenue'}], 'thresholds': [], 'glossary': []}
     assert not re.search('OUTLINE|DESIGN|BLUEPRINT|ERRORS', str(memory))
+
+
+def test_capability_context_omits_designed_page_html():
+    """Live 20.5: a move comment on a 3-page designed build sent every page's design.html (15.5k > 12k)."""
+    from dss.harness.context import capability_context
+    from dss.spec.requirements import Ledger
+    spec = json.loads((BACKEND_DIR / 'tests/data/designed_spec.json').read_text(encoding='utf-8'))
+    html = next(p['design']['html'] for p in spec['pages'] if p.get('design'))
+    snapshot = {'sources': [], 'reference': None, 'definitions': {}, 'spec': spec, 'incoming': [], 'context': None}
+    memory = capability_context(snapshot, Ledger(), Checker(load_registry()), [])
+    [section] = [s for s in memory.sections if s.name == 'metadata']
+    pages = json.loads(section.body)['spec']['pages']
+    assert [p['index'] for p in pages] == [p['index'] for p in spec['pages']]
+    assert all('design' not in p for p in pages) and html not in str(memory)
+    assert any(d['kind'] == 'design' for p in pages for d in p['decorations'])
+    assert any(p.get('design') for p in spec['pages'])  # the snapshot itself keeps its designs

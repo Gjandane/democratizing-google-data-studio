@@ -599,7 +599,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: M
   - Done when: with FakeLLM, a move or resize comment, a comment on `p1_design`, a heading-text comment and a removal on a designed page each call the designer once for that page with the previous HTML and the comments, re-measure, and save `spec_version + 1` with the new design and boxes; a failed regeneration (two invalid answers) leaves spec.json bytes unchanged and the comments pending with the errors as the reason; a metric, sort or chart-color comment uses the revise patch with no designer call and keeps the design bytes; a type change whose minimum no longer fits its slot regenerates the page; a heading-text or hex-color decoration requirement is verified by its presence in `design.html`; code-laid pages keep today's revise behavior (existing revise tests unchanged); deterministic recomputation stays <= 100 ms; `uv run pytest tests/test_revise.py tests/test_designer.py tests/test_feasibility.py` and `uv run pytest` pass.
   - Review focus: the routing rule is per comment class, not a blanket regenerate; provenance and pending/blocked comment persistence unchanged; one designer call per page per revise run.
-- [ ] 20.5 Live designed dashboard
+- [x] 20.5 Live designed dashboard
   - Goal: a real build's pages look like the reference image in the prototype and in the Data Studio report, with every chart inside its card.
   - Spec: docs/architecture.md#Designed pages
   - Files: prompts/v1/designer.md, skills/dashboard-design.md, tests/live/test_backend_flow.py

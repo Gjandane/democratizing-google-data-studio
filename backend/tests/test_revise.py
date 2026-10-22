@@ -318,6 +318,20 @@ async def test_one_repair_and_budget(setup):
     assert all(s['input_tokens_estimate']<=6000 for s in spans if s['node'] in ('revise','revise_repair'))
 
 
+async def test_gemini_reviser_uses_low_thinking(setup):
+    """Live 20.5: a move comment's default thinking overran the 30 s worker deadline."""
+    configs=[]
+    class Capture(FakeLLM):
+        async def generate_content_async(self,llm_request,stream=False):
+            configs.append(llm_request.config)
+            yield LlmResponse(content=types.Content(role='model',parts=[types.Part(text=response([op('/pages/0/components/0/label','New')]))]))
+    app,build_id,_,_,service,_=setup
+    await app.state.harness.run('revise',build_id,{'config':app.state.settings.get(),'factory':lambda config:service,
+        'comments':[{'component_id':'p1_revenue','text':'make this bigger'}]},
+        llm=RevisionModel(delegate=Capture(),model='gemini-3.8-flash'))
+    assert configs[0].thinking_config.thinking_level==types.ThinkingLevel.LOW
+
+
 async def test_render_failure_rolls_back(setup,monkeypatch,caplog):
     app,bid,folder,original,_,_=setup
     before={p:p.read_bytes() for p in folder.rglob('*') if p.is_file()}

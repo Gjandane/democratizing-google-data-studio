@@ -1272,3 +1272,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: added the observe_revisions signature line to AGENTS.md.
 - Left open: P2 icon/card-color comments on a component (not on p<n>_design) get no redesign route - src/dss/harness/nodes/revise.py; P3 stale keep comment - src/dss/harness/nodes/render.py; P3 revision repair turn carries two HTML copies (budget) - src/dss/harness/context.py
 - Next: Task 20.5. Start by `status`; live designed dashboard (STOP: user approves pages vs the reference).
+
+## 2026-10-23: Task 20.5 Live designed dashboard
+- Status: done
+- Plan check: off
+- What changed: live test_designed_dashboard_sample_csv (tests/live/test_backend_flow.py); designer prompt/skill: canvas_width 1200, no repeated component labels (cards hold the slot only, filters in slim header cards). Outside Files (reasons below): context.capability_context drops pages[].design; capability_check.md geometry-comment rule; revise LOW thinking; tests.
+- Checks: `uv run pytest -m live tests/live/test_backend_flow.py -k designed` runs 10+11 PASS consecutively (1200 wide; no fallback; designer calls 6.5-44.4 s, in <= 3.7k, out <= 1.2k, thinking 0; move comment redesigned page 2, chart y 811->175 / 510->116). Real engine on run 10 recipe: ok 37/0 failed, every set_canvas/set_background_image ok; report 7e88e3a5…, charts inside cards. Crops ../data/report-quality/backend-20.5-{p,report-p}<1-3>.png; user approved look (STOP). Test (all) `uv run pytest` PASS 1544.
+- Decisions: Engine limit: canvases > ~1380 px get editor zoom-to-fit, engine misplaces all components (run 4 at 1560: 23 failed) -> user chose prompt "use 1200" over blocking; test asserts width <= 1380. capability_context omitted design.html (15.5k > 12k blocked every comment). Live extractor gave move comments no need -> capability_check.md rule (target's own capability + existing fields). Reviser default thinking overran the 30 s worker deadline 3/7 runs -> LOW (user chose). Test drops unresolved issues with no alternative.
+- Digest: tests/live/test_backend_flow.py: test_designed_dashboard_sample_csv (DSS_LIVE_KEEP=1 keeps BQ tables), time_designer(monkeypatch, calls), designed_trace(app, run_id), ENGINE_WIDTH=1380. Designer prompt asks canvas_width 1200; capability_context omits pages[].design.
+- Tried and failed: 1440/1560 canvases with the real engine (editor zoom); "no new fields" wording made time_series moves needs_clarification.
+- Gotchas: added engine canvas-width and DSS_LIVE_KEEP lines to AGENTS.md. Run 10's BigQuery source/view kept so the approved report renders.
+- Left open: engine placement on canvases > 1380 px (program root question; architecture still says 1200-1920).
+- Next: none in plan.md (70/70); final audit by the architect.

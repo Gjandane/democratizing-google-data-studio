@@ -456,6 +456,10 @@ def capability_context(snapshot, ledger, checker, incoming):
     metadata = {k: v for k, v in snapshot.items() if k != "incoming" and k not in staged}
     if snapshot.get("context"):
         metadata["context"] = {k: snapshot["context"][k] for k in ("derived_fields", "kpis", "thresholds", "glossary")}
+    if metadata.get("spec"):
+        # A designed page's HTML (inlined icons) overran 12k; its `p<n>_design` decoration stays.
+        metadata["spec"] = {**metadata["spec"], "pages": [{k: v for k, v in p.items() if k != "design"}
+                                                         for p in metadata["spec"].get("pages", [])]}
     return assemble("capability_check", [
         _system("capability_check"), *_skills("capability-check"),
         Section("docs", "registry", "Registry identifiers (code verifies support):", json.dumps(registry)),

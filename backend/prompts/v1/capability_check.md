@@ -54,6 +54,11 @@ means style.colors with value ["#172554"], preserving the supplied component tar
 from other behaviors: GPS animation and unknown features remain separate requirements. Do not
 use unsupported style.background or style.border_color. "Preserve its position and data" is a
 constraint on the target, kept with the accent requirement; it is not a new executable feature.
+Moving, resizing or rearranging an existing component ("move this chart to the top", "make it
+wider") is supported layout of that component, not an unknown behavior: its one need is the
+target's own chart or control capability (chart.time_series for a time series) with the
+fields the target already uses in the candidate spec (a time series keeps its date_field), no
+new mappings, plus grid properties only for explicit numbers.
 "Proceed with these choices" is a closing remark, not a drop or alternative acceptance.
 
 The current ledger is mandatory context. Never rewrite or remove its requirements. Extract

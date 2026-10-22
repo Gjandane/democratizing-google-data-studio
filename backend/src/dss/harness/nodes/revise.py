@@ -313,6 +313,9 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                                              folder=folder), (secret,))
         llm_request.config.response_mime_type = 'application/json'
         llm_request.config.response_json_schema = response_schema()
+        if model.model.startswith(('gemini-3', 'gemini-4')):
+            # Live 20.5: default thinking on a move comment overran the 30 s worker deadline.
+            llm_request.config.thinking_config = types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW)
         llm_request.contents = [types.Content(role='user', parts=[types.Part(text='Return the comment patches in order.')])]
         await fit_request(context, llm_request, model, trace.spans[-1], extra=repair())
 

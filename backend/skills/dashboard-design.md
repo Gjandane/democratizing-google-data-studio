@@ -17,15 +17,19 @@ A calm, light analytics page, data first:
   pastel tint (the accent or a palette color mixed about 12% into white, for example
   `color-mix(in srgb, #4F46E5 12%, white)`), the icon in that full color, then the scorecard slot
   filling the rest of the card. Give each KPI card a different palette tint.
-- Section cards (one per chart, table or map): a title row (the component label, 16 px, weight
-  600, theme `text`), 12 px gap, then the slot filling the card's width.
-- Filters (date range, dropdown): a slim card or a bare slot in the header row, right-aligned.
+- Every component draws its own label: a chart's or table's title, a scorecard's name, a
+  filter's placeholder. Never repeat a label as text, and never add a title row, caption or
+  description inside a card: it would show twice in the report.
+- Section cards (one per chart, table or map): the slot fills the card inside its padding; the
+  component's own title is the card title, at the card's top left like the reference.
+- Filters (date range, dropdown): in the header row, right-aligned, each slot in a slim white
+  card (padding 8-12 px) with no label of its own, like the reference's dropdowns.
 - Text and image components: a plain card around the slot, no title.
 - Layout by importance: KPIs first, then the main trend or comparison wide, then supporting
   charts in two columns, tables full width at the bottom. Align card edges to one column grid
   (CSS grid with `grid-template-columns` works well) and keep the page's sections balanced.
 
-Use sentence case, plain words and the component labels as titles. No all-caps eyebrows, no
+Use sentence case and plain words. No all-caps eyebrows, no
 decorative gradients, no emoji, no numbering unless the content is a sequence. Contrast: text on
 white at least 4.5:1 (theme `text` and `muted` pass).
 
