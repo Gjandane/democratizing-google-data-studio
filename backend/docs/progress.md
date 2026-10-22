@@ -1188,3 +1188,16 @@ context. Task status lives in docs/plan.md, not here.
 - Why: user's HD target >= 1920 x 1080 px under 2 MB (2x page 1 is 2400 x 1064); the "soft" report d4af98f7 used pre-19.1 1x files. No minimum file size: bytes don't add sharpness. Scorecard colors were accepted by feasibility but never sent since 19.2, so comments stayed pending. User chose both on cards; deadline scope gate shown (0 tasks left, both S).
 - Affected: backend 19.3, 19.4 (new; independent, both depend on 19.2). No contract or engine change.
 - Change requests settled: "feasibility rejects style.colors on scorecards" (19.2 entry) -> planned 19.4; "backgrounds still not sharp enough; target >= 1920x1080, ~200 KB-1 MB, under 2 MB" (19.2 entry) -> planned 19.3 (3x scale, < 2 MB cap; the 200 KB-1 MB range is not a target).
+
+## 2026-10-22: Task 19.3 Backgrounds at 3x scale
+- Status: done
+- Plan check: off
+- What changed: background.py `SCALE = 3`: background_p<n>.png is 3x canvas pixels; recipe box and compiler bytes unchanged. Tests: 2x asserts -> 3x (pixel tests at DPR 3), < 2 MiB asserted for the golden spec (every page) and the 12-component budget spec, `SCALE == 3`.
+- Checks: `uv run pytest tests/test_render.py tests/test_compiler.py tests/test_recipe_contract.py` PASS 98; with SCALE=2 the 4 changed offline + 2 live tests FAIL; live budget `-m live -k "real_background_dimensions or twelve_component"` PASS 2 (1.03 s); Test (all) `uv run pytest` PASS 1445. Live b_a8ace098d03b recompile (46 lines, dsengine validate ok): p1 3600x1596 73 KB, p2-p4 84-94 KB. Run 1 failed 22, no save; run 2 partial, failed 9: s004/s014/s035 set_background_image ok, s025 timed out in the s021 cascade (user accepted as engine-side). Report e24616ea… page-1 img naturalWidth 3600, box 1200x532 (19.1's 89ec3c16: 2400). Crop ../data/report-quality/backend-19.3-background.png; user approved 3x (STOP) after seeing 200% and 300% crops.
+- Decisions: Data Studio never stretches the image (box 1200x532, identity transform at 1920/1366 wide); at 1920 wide the canvas sits at x=488.5 (half pixel). AGENTS.md: gotcha on the replay stall.
+- Digest: background.SCALE=3: background_p<n>.png is (3*canvas.width)x(3*page.height) px, < 2 MB; set_background_image box stays x0 y0 canvas width x page height; compiler bytes unchanged.
+- Tried and failed: none
+- Gotchas: none beyond AGENTS.md.
+- Left open: engine s021 time_series timeout cascade (fails s025 set_background_image).
+- Next: Task 19.4 Feasibility rejects colors on scorecards.
+- Change request: background title/text still look softer than Data Studio's own text on a 1x screen because they're raster, shrunk 3:1 (plus a half-pixel canvas offset at 1920 wide); render heading/text decorations as native Data Studio text (vector) instead of baking them into the background (user, 2026-10-22).

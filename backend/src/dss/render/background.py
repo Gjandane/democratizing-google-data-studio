@@ -1,9 +1,9 @@
 """Decoration-only Chromium capture, called from a worker thread on Windows."""
 from playwright.sync_api import sync_playwright
 
-# 2x pixels (2400 x 1064 for a 1200 x 532 page) keep Data Studio's scaled view sharp;
+# 3x pixels (3600 x 1596 for a 1200 x 532 page) keep Data Studio's scaled view sharp;
 # the recipe box stays the canvas size.
-SCALE = 2
+SCALE = 3
 
 
 def names(spec):

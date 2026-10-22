@@ -541,7 +541,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Needs: engine 11.2
   - Done when: `compile_recipe` emits `rename_page` with page 1's name right after `open_report` for every spec (single page and per_section), and no `set_style` for scorecard components (other charts keep one with the palette); the golden recipe and preview are updated and every line validates against ../contracts/recipe.schema.json (1.1) and `uv run dsengine validate` from ../engine; tests fail on the current code and pass after; live: recompile b_a8ace098d03b's spec.json into a scratch copy of its v1 folder and run it from ../engine with `uv run dsengine run` -> `run_finished` `failed: 0`, no "unsupported style key colors" warning for scorecards, and the saved report's Manage pages lists "Executive Summary & Headline KPIs", "Revenue & Volume Trajectory", "Fulfillment Velocity & Order Health", "Exceptions & Return Risk Exposure" in order; `uv run pytest tests/test_compiler.py tests/test_recipe_contract.py` and `uv run pytest` pass.
   - Review focus: deterministic bytes (same spec -> same file); op ids stay sequential; header `recipe_version` stays "1.0"; the synthetic label and page order unchanged.
-- [ ] 19.3 Backgrounds at 3x scale
+- [x] 19.3 Backgrounds at 3x scale
   - Goal: canvas backgrounds meet the user's HD target (>= 1920 x 1080 px, each file < 2 MB). 19.1's 2x gives page 1 of b_a8ace098d03b 2400 x 1064 (42 KB), just under 1080 tall; the report the user judged soft (d4af98f7, 19.2's replay) still carried the pre-19.1 1x files.
   - Spec: docs/architecture.md#Prototype renderer; docs/architecture.md#Recipe compiler
   - Files: src/dss/render/background.py, tests/test_render.py, tests/test_compiler.py

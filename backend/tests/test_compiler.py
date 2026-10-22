@@ -81,7 +81,7 @@ def test_synthetic_compile_rebuilds_one_background_per_page(tmp_path, monkeypatc
 
 
 def test_hd_background_keeps_canvas_box_and_golden_bytes(tmp_path):
-    """19.1: real Chromium backgrounds are 2x pixels; the recipe box and bytes don't change."""
+    """19.3: real Chromium backgrounds are 3x pixels under 2 MB; the recipe box and bytes don't change."""
     import struct
     from dss.render import background
     from dss.spec.models import DashboardSpec
@@ -90,10 +90,12 @@ def test_hd_background_keeps_canvas_box_and_golden_bytes(tmp_path):
     logo = tmp_path / 'images/logo.png'
     logo.parent.mkdir()
     background.capture('<div id="dss-canvas" style="width:8px;height:8px;background:#123456"></div>', logo, 8, 8)
+    assert background.SCALE == 3
     background.write_pages(spec, tmp_path)
     for page in spec.pages:
         png = (tmp_path / f'background_p{page.index}.png').read_bytes()
-        assert struct.unpack('>II', png[16:24]) == (2 * spec.canvas.width, 2 * page.height)
+        assert struct.unpack('>II', png[16:24]) == (3 * spec.canvas.width, 3 * page.height)
+        assert len(png) < 2 * 1024 * 1024
     text = compile_recipe(spec, 3)
     assert text.encode('utf-8') == (data / 'golden_recipe.jsonl').read_bytes()
     boxes = [(o['x'], o['y'], o['w'], o['h']) for o in lines(text)[1:] if o['op'] == 'set_background_image']
