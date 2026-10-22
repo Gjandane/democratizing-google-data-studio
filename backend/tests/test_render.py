@@ -167,7 +167,7 @@ def test_artifacts_capture_one_background_per_page(tmp_path, monkeypatch):
 
 
 def test_three_pages_render_and_backgrounds_within_budget(tmp_path):
-    """Real Chromium: 3 pages x 8 components, every background at canvas size, <= 30 s."""
+    """Real Chromium: 3 pages x 8 components, every background at 2x canvas size, <= 30 s."""
     spec = three_pages()
     service = FakeBigQuery(.1)
     start = time.monotonic()
@@ -176,7 +176,7 @@ def test_three_pages_render_and_backgrounds_within_budget(tmp_path):
     print(f'3 pages x 8 components with Chromium backgrounds: {elapsed:.2f}s')
     assert elapsed <= 30
     images = [(tmp_path / name).read_bytes() for name in background.names(spec)]
-    assert [struct.unpack('>II', png[16:24]) for png in images] == [(1200, p.height) for p in spec.pages]
+    assert [struct.unpack('>II', png[16:24]) for png in images] == [(2400, 2 * p.height) for p in spec.pages]
     assert len(set(images)) == 3  # each page's own header text
     EVIDENCE.mkdir(parents=True, exist_ok=True)
     for name, png in zip(background.names(spec), images):
@@ -866,18 +866,19 @@ def test_synthetic_background_has_visible_label_pixels(dashboard, tmp_path):
     html = render(spec, layer='decoration')
     path = tmp_path / 'background_p1.png'
     background.capture(html, path, spec.canvas.width, spec.canvas.height)
-    assert struct.unpack('>II', path.read_bytes()[16:24]) == (1200, spec.canvas.height)
+    assert struct.unpack('>II', path.read_bytes()[16:24]) == (2400, 2 * spec.canvas.height)
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         try:
-            page = browser.new_page(viewport={'width': 1200, 'height': spec.canvas.height})
+            # At device scale 2 the 2x background maps 1:1 onto the reference pixels.
+            page = browser.new_page(viewport={'width': 1200, 'height': spec.canvas.height}, device_scale_factor=2)
             page.set_content(html)
             label = page.locator(f'[data-cid="{SYNTHETIC_LABEL_ID}"]')
             assert label.inner_text() == 'Synthetic sample data'
             bounds = label.bounding_box()
             expected = label.screenshot()
             encoded = base64.b64encode(path.read_bytes()).decode()
-            page.set_content(f'<body style="margin:0"><img src="data:image/png;base64,{encoded}"></body>')
+            page.set_content(f'<body style="margin:0"><img style="display:block;width:1200px" src="data:image/png;base64,{encoded}"></body>')
             page.locator('img').wait_for()
             assert page.screenshot(clip=bounds) == expected
         finally:
@@ -912,10 +913,11 @@ def test_heading_content_and_background_bounds(dashboard):
     (evidence / 'prototype.html').write_text(html, encoding='utf-8')
     background_path = evidence / 'background_p1.png'
     background.capture(render(spec, layer='decoration'), background_path, 1200, spec.canvas.height)
+    assert struct.unpack('>II', background_path.read_bytes()[16:24]) == (2400, 2 * spec.canvas.height)
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         try:
-            page = browser.new_page(viewport={'width':1200, 'height':spec.canvas.height})
+            page = browser.new_page(viewport={'width':1200, 'height':spec.canvas.height}, device_scale_factor=2)
             page.set_content(html)
             page.screenshot(path=str(evidence / 'prototype.png'), full_page=True)
             for item in spec.pages[0].decorations:
@@ -935,7 +937,7 @@ def test_heading_content_and_background_bounds(dashboard):
                 }''')
             expected_png = page.screenshot()
             encoded = base64.b64encode(background_path.read_bytes()).decode()
-            page.set_content(f'<body style="margin:0"><img src="data:image/png;base64,{encoded}"></body>')
+            page.set_content(f'<body style="margin:0"><img style="display:block;width:1200px" src="data:image/png;base64,{encoded}"></body>')
             page.locator('img').wait_for()
             assert page.screenshot() == expected_png
         finally:
@@ -978,7 +980,7 @@ async def test_render_node_events_and_api(client, app, build_id, dashboard, tmp_
 def test_real_background_dimensions(dashboard, tmp_path):
     path = tmp_path / 'background_p1.png'
     background.capture(render(dashboard, layer='decoration'), path, 1200, 900)
-    assert struct.unpack('>II', path.read_bytes()[16:24]) == (1200, 900)
+    assert struct.unpack('>II', path.read_bytes()[16:24]) == (2400, 1800)
 
 
 @pytest.mark.live

@@ -1115,7 +1115,8 @@
    "label": "Multiple report pages",
    "recipe": [
     "add_page",
-    "go_to_page"
+    "go_to_page",
+    "rename_page"
    ],
    "native_product": {
     "status": "supported",

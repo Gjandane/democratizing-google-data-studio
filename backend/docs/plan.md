@@ -521,7 +521,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: ../contracts/dashboard-intent.md 1.2 Scope, Enforcement and oracle 5-7; confirmed structured definitions and active user instructions are evidence, image/model guesses are not; no orphaned provenance, automatic drops, extra model calls or restored interview flow. Clarification uses existing cards/actions.
 
 ## Phase 19: Report quality (change 2026-10-22)
-- [ ] 19.1 HD background images
+- [x] 19.1 HD background images
   - Goal: the generated canvas backgrounds stay sharp in Data Studio. Today `background_p<n>.png` is captured at device scale 1 (src/dss/render/background.py, `device_scale_factor=1`: 1200 x 532 for b_a8ace098d03b page 1), and the user saw it soft in the report (release 2.4 row 2).
   - Spec: docs/architecture.md#Prototype renderer; docs/architecture.md#Recipe compiler
   - Files: src/dss/render/background.py, tests/test_render.py, tests/test_compiler.py

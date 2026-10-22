@@ -78,6 +78,26 @@ def test_synthetic_compile_rebuilds_one_background_per_page(tmp_path, monkeypatc
     assert sorted(p.name for p in tmp_path.glob('background_p*.png')) == ['background_p1.png', 'background_p2.png', 'background_p3.png']
 
 
+def test_hd_background_keeps_canvas_box_and_golden_bytes(tmp_path):
+    """19.1: real Chromium backgrounds are 2x pixels; the recipe box and bytes don't change."""
+    import struct
+    from dss.render import background
+    from dss.spec.models import DashboardSpec
+    data = Path('tests/data')
+    spec = DashboardSpec.model_validate_json((data / 'golden_spec.json').read_text(encoding='utf-8'))
+    logo = tmp_path / 'images/logo.png'
+    logo.parent.mkdir()
+    background.capture('<div id="dss-canvas" style="width:8px;height:8px;background:#123456"></div>', logo, 8, 8)
+    background.write_pages(spec, tmp_path)
+    for page in spec.pages:
+        png = (tmp_path / f'background_p{page.index}.png').read_bytes()
+        assert struct.unpack('>II', png[16:24]) == (2 * spec.canvas.width, 2 * page.height)
+    text = compile_recipe(spec, 3)
+    assert text.encode('utf-8') == (data / 'golden_recipe.jsonl').read_bytes()
+    boxes = [(o['x'], o['y'], o['w'], o['h']) for o in lines(text)[1:] if o['op'] == 'set_background_image']
+    assert boxes == [(0, 0, spec.canvas.width, page.height) for page in spec.pages]
+
+
 async def test_staged_27_components_compile_and_fake_engine_run_done(staged_flow, monkeypatch):
     """16.1: a published 9+9+9 dashboard compiles every component and its run reaches done."""
     import sys

@@ -1156,3 +1156,15 @@ context. Task status lives in docs/plan.md, not here.
 - What changed: plan.md Phase 19: 19.1 (S, STOP, HD background images at device scale 2), 19.2 (S, `Needs: engine 11.2`, page 1 `rename_page`, no scorecard palette op); architecture.md Prototype renderer, Recipe compiler and decision log; essentials recipe 1.1 and the background line. Contract recipe.md 1.1 and recipe.schema.json changed at the root.
 - Why: user flagged soft backgrounds and scorecard text on release 2.4 row 2; "Untitled Page" on every report; the engine skips every scorecard palette op. User chose all four fixes (card); engine takes 11.1-11.3.
 - Affected: backend 19.1, 19.2 (new). No release gate.
+
+## 2026-10-22: Task 19.1 HD background images
+- Status: done
+- Plan check: off
+- What changed: background.py captures at `SCALE = 2` (device_scale_factor), so background_p<n>.png is 2x canvas pixels; recipe box unchanged. Tests: 2x asserts in test_render (pixel tests now compare at DPR 2, img shown at 1200 CSS px); test_compiler golden-spec 2x + golden bytes + box test. capabilities.json: `rename_page` in layout.multi_page (user-approved, outside Files: recipe 1.1 broke test_capabilities on HEAD).
+- Checks: `uv run pytest tests/test_render.py tests/test_compiler.py tests/test_recipe_contract.py` (+test_capabilities) PASS 131; with SCALE=1 the 4 changed tests FAIL; live budget `-m live -k "real_background_dimensions or twelve_component"` PASS 2; Test (all) `uv run pytest` PASS 1444. Live: replay of b_a8ace098d03b with 2x backgrounds (p1 2400x1064, 42 KB vs 15 KB): every set_background_image ok, `failed: 9` (s025 add_chart p2 timeout, cascade); control run with original 1x copy fails identically at s025, so user accepted it as independent. Report 89ec3c16… page-1 img naturalWidth 2400, box 1200x532 (before 1200). Crop ../data/report-quality/backend-19.1-background.png; user approved sharpness (STOP).
+- Decisions: SCALE module constant in background.py; Done-when `failed: 0` waived by user given the 1x control.
+- Digest: background.SCALE=2: background_p<n>.png is (2*canvas.width)x(2*page.height) px; set_background_image box stays x0 y0 canvas width x page height; compiler bytes unchanged.
+- Tried and failed: none
+- Gotchas: b_a8ace098d03b replay now fails at s025 (p2 time_series "Average Item Sale Price Over Time", y=884; editor shows "Too Many Rows", View menu open) even with original files: 19.2's live check will hit it.
+- Left open: engine/root follow-up for s025 timeout.
+- Next: Task 19.2 (Needs engine 11.2). Expect the s025 replay failure in its live run.
