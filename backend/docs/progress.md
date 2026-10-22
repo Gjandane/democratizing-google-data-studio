@@ -1200,4 +1200,8 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: engine s021 time_series timeout cascade (fails s025 set_background_image).
 - Next: Task 19.4 Feasibility rejects colors on scorecards.
-- Change request: background title/text still look softer than Data Studio's own text on a 1x screen because they're raster, shrunk 3:1 (plus a half-pixel canvas offset at 1920 wide); render heading/text decorations as native Data Studio text (vector) instead of baking them into the background (user, 2026-10-22).
+
+## 2026-10-22: Change request: AI-designed page backgrounds (user, after 19.3)
+- What changed: docs/change-2026-10-22-designed-backgrounds.md (the user's request, the facts 19.3 measured, the conflicts, the constraints and open questions) and docs/change-2026-10-22-reference.webp (the target look). The 19.3 entry's native-text change request was removed: the user rejected it and wants titles kept in the background.
+- Change request: `gemini-4-argon` generates rich decoration-layer HTML backgrounds: headers, titles, card frames, custom icons, in the reference image's style. Improve its prompt and add a design skill the agent loads. Today's kit look is too simple. This conflicts with the PRD non-goal "No LLM-generated HTML" and the essentials' never-do rule, so the user must approve the rule change (user, 2026-10-22; see the brief).
+- Change request: the user asks whether the background can be made "the same size in the first place" to avoid stretching. Data Studio doesn't stretch it (box = canvas; the viewer's display scaling does the scaling). Clarify whether they mean a larger canvas (e.g. 1920 wide) (user, 2026-10-22; see the brief).
