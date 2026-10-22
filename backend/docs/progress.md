@@ -1248,3 +1248,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: designer z-index escaped the design root until `isolation:isolate`; revise context dumps spec incl. design.html (20.4 budget).
 - Left open: P3 layout.minimum_box duplicates design_page.minimum - src/dss/spec/layout.py; P3 2x fallback file not re-checked against LIMIT - src/dss/render/background.py; P3 code-laid specs may validate at widths 1201-1920 - src/dss/spec/models.py
 - Next: Task 20.3. Start by `status`; build designed specs with design_decoration + measured boxes, record write_pages scales in the trace.
+
+## 2026-10-22: Task 20.3 Designer node in the prototype action
+- Status: done
+- Plan check: off
+- What changed: nodes/designer.py (design(): page 1, then pages 2-n via gather; one repair; per-page and page-1 fallback; re-validate), accept calls it after layout when Config.designed_pages; context.designer_context + designer budget 12k; PLANNER_NODES adds designer; render span records background_2x; prompts/v1/designer.md, skills/dashboard-design.md; tests.
+- Checks: `uv run pytest tests/test_designer.py tests/test_graph.py tests/test_context.py tests/test_render.py` PASS (98); Test (all) `uv run pytest` PASS (1523 passed, 12 deselected); one live gemini-4-argon page-1 call: schema + LOW thinking accepted, 1 repair then designed at 1440, 57 s, 6476 in / 2175 out tokens.
+- Decisions: designer calls BaseLlm.generate_content_async directly inside the prototype code node (one Workflow/trace), adds usage to trace + run.usage, sets trace.model. Schemas FirstPage{canvas_width 1200-1920, html} / LaterPage{html}, extra forbidden. Code prepends page 1's sanitized CSS (root written `body`) to later pages. Provider error, missing key, over_budget, unsafe -> immediate fallback (no repair); empty or MAX_TOKENS-cut answers get the repair. Repair sends the model's own html + up to 20 errors. Spans carry counts only: designer{page,attempt,tokens}, validate{page,attempt,errors}, designer_fallback{page,reason,errors}. Pages whose decorations a ledger requirement names stay code-laid (keep) until 20.4 checks design.html. Fallback message: "Page n uses the standard layout..." / ALL_FALLBACK.
+- Digest: nodes/designer.design(spec, get_model, trace, *, secrets, report, keep)->(spec, notes); FirstPage/LaterPage; assemble(spec, results, model); context.designer_context(design, page, *, shared, repair), PAGE_HEADER; Config.designed_pages; test_designer.DesignerLLM, designed_flow
+- Tried and failed: none
+- Gotchas: added the designed_pages default-on test-flow note to AGENTS.md.
+- Left open: none
+- Next: Task 20.4. Start by `status`; regenerate a page with designer_context(..., repair-like previous html + comments) and drop the `keep` gate once design.html verifies decoration requirements.

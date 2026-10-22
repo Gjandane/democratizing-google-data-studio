@@ -26,6 +26,9 @@ class Config(BaseModel):
     engine_mode: Literal["local", "agent"] = "local"
     cloud_service: str = ""
     consolidate_every: int = Field(default=5, ge=1)
+    # The planner designs each page around its components (architecture.md#Designed pages).
+    # A Config attribute only: no env name, no API setting. Off: today's code layout and kits.
+    designed_pages: bool = True
 
     @classmethod
     def from_env(cls):

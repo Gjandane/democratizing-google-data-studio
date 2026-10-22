@@ -10,14 +10,16 @@ from dss.spec.models import DashboardSpec
 def artifacts(spec, service, folder):
     data = aggregate_data(spec, service, folder)
     html = render(spec, data=data, folder=folder)
-    background.write_pages(spec, folder)
+    scales = background.write_pages(spec, folder)
     temporary_html = folder / 'prototype.html.tmp'
     temporary_html.write_text(html, encoding='utf-8')
     temporary_html.replace(folder / 'prototype.html')
+    return scales
 
 
 async def perform(harness, build_id, run_id, payload, trace):
     trace.span('render')
+    span = trace.spans[-1]
     config = payload['config']
     with harness.db.connect() as conn:
         version = conn.execute('SELECT current_version FROM builds WHERE id=?', (build_id,)).fetchone()[0]
@@ -30,7 +32,7 @@ async def perform(harness, build_id, run_id, payload, trace):
     try:
         worker = asyncio.create_task(asyncio.to_thread(artifacts, spec, payload['factory'](config), folder))
         try:
-            await asyncio.shield(worker)
+            scales = await asyncio.shield(worker)
         except asyncio.CancelledError:
             # Keep the build reserved until the worker has stopped writing artifacts.
             try:
@@ -41,6 +43,9 @@ async def perform(harness, build_id, run_id, payload, trace):
     except Exception:
         # Provider/Playwright diagnostics must not cross ADK's logging boundary.
         raise RunError('invalid_source', 'Prototype rendering failed; check data access and image assets', 422) from None
+    # A designed background over the size limit at 3x is written at 2x (architecture.md#Designed pages).
+    if reduced := sorted(name for name, scale in (scales or {}).items() if scale != background.SCALE):
+        span['background_2x'] = reduced
     if candidate:
         from dss.spec.publication import build_lock
         trace.span('publish')
@@ -142,8 +147,20 @@ async def accept(harness, build_id, run_id, payload, trace):
                           allowed=allowed_types() & catalog().keys())
         except LayoutError as exc:
             raise RunError('invalid_request', 'The Blueprint could not be laid out', 422, {'errors': exc.errors[:20]}) from None
+        notes = []
+        if config.designed_pages:
+            from dss.harness.nodes import designer
+            from dss.spec import requirements as req
+            secrets = tuple(s.get_secret_value() for s in (config.google_api_key, config.access_code, config.agent_token))
+            # Until design.html verifies decoration requirements, pages with bound decorations keep their kit.
+            bound = {cid for r in req.load(folder).requirements for cid in r.component_ids}
+            keep = {page.index for page in spec.pages if any(d.id in bound for d in page.decorations)}
+            spec, notes = await designer.design(
+                spec, payload.get('_designer') or (lambda: harness.models.llm_for('designer')), trace,
+                secrets=secrets, keep=keep, report=lambda totals: harness.emit(build_id, run_id, 'run.usage', {
+                    'run_id': run_id, 'node': 'prototype', **totals}))
         existing.write_text(spec.model_dump_json(indent=2), encoding='utf-8')
-        reply = await perform(harness, build_id, run_id, payload, trace)
+        reply = ' '.join([await perform(harness, build_id, run_id, payload, trace), *notes])
     except RunError:
         raise
     except Exception:

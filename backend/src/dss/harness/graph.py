@@ -74,6 +74,8 @@ class AgentHarness:
                         return "Build created"
                     if action == "prototype":
                         from dss.harness.nodes.render import accept
+                        if llm is not None:
+                            payload['_designer'] = lambda: llm  # else accept asks for the planner model
                         return await accept(self, build_id, run_id, payload, trace)
                     from dss.harness.nodes.intake import perform
                     sources = await asyncio.to_thread(perform, self.db, build_id, payload)

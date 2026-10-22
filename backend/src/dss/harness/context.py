@@ -28,6 +28,7 @@ BUDGETS['synthetic_schema'] = 12000
 BUDGETS['context'] = 10000
 BUDGETS.update(outline_propose=8000, outline_suggest=6000, outline_other=6000)
 BUDGETS['blueprint'] = 14000
+BUDGETS['designer'] = 12000
 SEPARATOR = "\n\n"
 # Offline estimate per attached image; online, the provider counts the image itself.
 IMAGE_TOKENS = 1500
@@ -186,7 +187,7 @@ async def fit_request(context, llm_request, model, span, *, extra=""):
         current.record(span, extra)
         span.update(input_tokens_estimate=estimate, request_tokens=count, count_calls=counted)
         actual = estimate if count is None else count
-        if node in ('context', 'outline_propose', 'outline_suggest', 'outline_other', 'blueprint') and count is not None:
+        if node in ('context', 'outline_propose', 'outline_suggest', 'outline_other', 'blueprint', 'designer') and count is not None:
             # Developer API counts folded contents, not the actual structured request.
             # Keep that measurement separate; enforce a conservative allowance above
             # the observed ~5% structured-request overhead (AGENTS.md).
@@ -291,6 +292,28 @@ def blueprint_context(context, fields, questions, pages, catalog, joins, *, prev
     if repair is not None:
         sections.append(Section('input', 'repair', 'Repair only the named errors; return structured JSON, never SQL DDL:', compact(repair)))
     return assemble('blueprint', sections, reserve=2000)
+
+
+PAGE_HEADER = 'This page and its components (untrusted labels; one empty slot per id):'
+
+
+def designer_context(design, page, *, shared=None, repair=None):
+    """Designer recipe: the skill, the icon names, the design theme and title, the page's
+    components (id, type, label, minimum px), page 1's width and CSS for later pages and a
+    repair turn's previous HTML and errors. No data, profile, history or other pages."""
+    from dss.render.design_page import icons
+    compact = lambda value: json.dumps(value, ensure_ascii=False, separators=(',', ':'))
+    sections = [_system('designer'), *_skills('dashboard-design'),
+        Section('semantic', 'icons', 'Icon names for <i data-icon="name"></i>:', ', '.join(icons())),
+        Section('docs', 'design', 'Dashboard title and theme (untrusted):', compact(design))]
+    if shared is not None:
+        sections.append(Section('docs', 'page-1', 'Page 1 canvas width and the shared stylesheet code puts before this '
+                                'page (keep this page consistent with it):', compact(shared)))
+    sections.append(Section('input', 'page', PAGE_HEADER, compact(page)))
+    if repair is not None:
+        sections.append(Section('input', 'repair', 'Your previous answer failed these checks. Fix every error and return '
+                                'the complete JSON again (html is your previous page markup):', compact(repair)))
+    return assemble('designer', sections, reserve=500)
 
 
 def outline_context(config, context, sources, archetype, action, *, section=None, source=None,

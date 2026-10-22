@@ -331,3 +331,29 @@ async def test_gemini_counter_counts_the_folded_request_and_fakes_stay_offline()
     assert calls[0]["contents"][0].parts[0].text == request.config.system_instruction
     assert calls[0]["contents"][1:] == request.contents
     assert await count_tokens(FakeLLM(), request) is None
+
+
+def designer_page(label='Revenue'):
+    return {'index': 2, 'name': 'Overview', 'pages': 2, 'canvas_width': 1440,
+            'components': [{'id': 'p2_revenue', 'type': 'scorecard', 'label': label, 'min_w': 200, 'min_h': 64}]}
+
+
+def test_designer_sections_follow_the_working_memory_row():
+    from dss.harness.context import designer_context
+    design = {'title': 'Sales', 'theme': {'font_family': 'Arial'}}
+    context = designer_context(design, designer_page(), shared={'canvas_width': 1440, 'css': 'body{padding:24px}'},
+                               repair={'errors': [{'path': 'slots.p2_revenue', 'message': 'missing'}]})
+    assert kinds(context) == ['system', 'skills', 'semantic', 'docs', 'docs', 'input', 'input']
+    assert names(context)[:5] == ['prompts/v1/designer.md', 'skills/dashboard-design.md', 'icons', 'design', 'page-1']
+    assert 'Exactly one empty' in context.sections[0].text and '# Dashboard design' in context.sections[1].text
+    assert 'trending-up' in context.sections[2].text and 'body{padding:24px}' in context
+    assert BUDGETS['designer'] == 12000 and sum(c['tokens'] for c in context.counts()) <= 12000 - 500
+    first = designer_context(design, {**designer_page(), 'index': 1})
+    assert names(first)[-1] == 'page' and 'page-1' not in names(first)
+
+
+def test_designer_over_budget_refuses():
+    from dss.harness.context import designer_context
+    with pytest.raises(RunError) as refused:
+        designer_context({'title': 'Sales', 'theme': {}}, designer_page('Revenue ' * 6000))
+    assert refused.value.code == 'llm_unavailable' and refused.value.detail == {'reason': 'over_budget'}

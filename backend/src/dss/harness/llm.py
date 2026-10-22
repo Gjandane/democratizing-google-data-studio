@@ -12,7 +12,7 @@ from google.genai.errors import APIError
 
 logger = logging.getLogger(__name__)
 
-PLANNER_NODES = frozenset({"blueprint"})
+PLANNER_NODES = frozenset({"blueprint", "designer"})
 PLANNER_TIMEOUT_MS, WORKER_TIMEOUT_MS = 120_000, 30_000
 # 504 is our own deadline (the client timeout Google enforces): retrying would just wait again.
 RETRY_CODES = frozenset({429, 500, 503})

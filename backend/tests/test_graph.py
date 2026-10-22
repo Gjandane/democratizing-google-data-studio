@@ -73,7 +73,9 @@ def test_blueprint_prototype_versions_and_recipe(blueprint_flow):
     client, app, bid, folder, bq, run_id = blueprint_flow
     assert by_node(app, 'blueprint') == [
         ok('blueprint', 'blueprint', 'validate_blueprint_rows', 'validate_blueprint_view')]
-    assert trace(app, run_id) == ok('prototype', 'prototype', 'view', 'layout', 'render', 'publish')
+    # This flow's model answers the designer with Blueprint JSON: page 1 falls back to the code path.
+    assert trace(app, run_id) == ok('prototype', 'prototype', 'view', 'layout', 'designer', 'validate',
+                                    'designer', 'validate', 'designer_fallback', 'render', 'publish')
     build = client.get(f'/api/builds/{bid}').json()
     assert build['stage'] == 'prototype' and set(build['artifacts'].values()) == {'confirmed'}
     before = {name: client.get(f'/api/builds/{bid}/{name}').json() for name in ARTIFACTS}
@@ -93,6 +95,13 @@ def test_blueprint_prototype_versions_and_recipe(blueprint_flow):
     ready_fixture(app, bid, after)
     assert client.post(f'/api/builds/{bid}/recipe').status_code == 200
     assert by_node(app, 'recipe') == [ok('recipe', 'recipe')]
+
+
+def test_prototype_branch_designs_pages_before_render(blueprint_api, monkeypatch):
+    from test_designer import DesignerLLM, designed_flow
+    client, app, bid, folder, run_id = designed_flow(blueprint_api, monkeypatch, DesignerLLM())
+    assert trace(app, run_id) == ok('prototype', 'prototype', 'view', 'layout', 'designer', 'validate',
+                                    'designer', 'validate', 'render', 'publish')
 
 
 def reference_model(app, monkeypatch, llm, mode):
