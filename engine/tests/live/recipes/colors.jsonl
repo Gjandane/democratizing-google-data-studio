@@ -1,0 +1,17 @@
+{"recipe_version":"1.0","build_id":"b_000000000005","version":1,"report_name":"Engine palette colors","canvas":{"width":1200,"height":900},"datasource":{"connector":"bigQuery","project_id":"bigquery-public-data","dataset_id":"thelook_ecommerce","table_id":"order_items"}}
+{"id":"s001","op":"open_report"}
+{"id":"s002","op":"set_canvas","width":1200,"height":900}
+{"id":"s003","op":"add_chart","component_id":"p1_revenue_over_time","chart_type":"time_series","x":24,"y":24,"w":1152,"h":200,"dimensions":[],"date_dimension":"created_at","metrics":[{"field":"sale_price","agg":"sum"}],"title":"Revenue Over Time"}
+{"id":"s004","op":"set_style","component_id":"p1_revenue_over_time","style":{"colors":["#2456A6","#C27D00","#22B9C7","#993878"]}}
+{"id":"s005","op":"add_chart","component_id":"p1_items_by_status","chart_type":"bar","x":24,"y":240,"w":568,"h":240,"dimensions":["status"],"metrics":[{"field":"id","agg":"count"}],"sort":{"field":"id","order":"desc"},"title":"Items by Status","options":{"orientation":"horizontal","stacked":false}}
+{"id":"s006","op":"set_style","component_id":"p1_items_by_status","style":{"colors":["#2456A6","#C27D00","#22B9C7","#993878"]}}
+{"id":"s007","op":"add_chart","component_id":"p1_status_share","chart_type":"pie","x":608,"y":240,"w":568,"h":240,"dimensions":["status"],"metrics":[{"field":"id","agg":"count"}],"title":"Status Share","options":{"donut":true}}
+{"id":"s008","op":"set_style","component_id":"p1_status_share","style":{"colors":["#2456A6","#C27D00","#22B9C7","#993878"]}}
+{"id":"s009","op":"add_chart","component_id":"p1_total_revenue","chart_type":"scorecard","x":24,"y":496,"w":373,"h":84,"dimensions":[],"metrics":[{"field":"sale_price","agg":"sum"}],"title":"Total Revenue"}
+{"id":"s010","op":"set_style","component_id":"p1_total_revenue","style":{"colors":["#2456A6","#C27D00","#22B9C7","#993878"]}}
+{"id":"s011","op":"add_page","name":"Series"}
+{"id":"s012","op":"add_chart","component_id":"p2_two_series","chart_type":"time_series","x":24,"y":24,"w":1152,"h":240,"dimensions":[],"date_dimension":"created_at","metrics":[{"field":"sale_price","agg":"sum"},{"field":"id","agg":"count"}],"title":"Revenue and Items"}
+{"id":"s013","op":"set_style","component_id":"p2_two_series","style":{"colors":["#2456A6","#C27D00","#22B9C7","#993878"]}}
+{"id":"s014","op":"go_to_page","index":1}
+{"id":"s015","op":"save_report"}
+{"id":"s016","op":"get_link"}

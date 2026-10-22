@@ -6,6 +6,13 @@ timestamp: 2026-10-18
 selectors: {}
 ---
 
+- 2026-10-22 task 11.3: added `color_by_position` (pie Color by > Slice order
+  radio, value `position`), `series_select` (time series Series > Select metric
+  combobox), `series_color` (template: `{n}` is the series number) and
+  `series_color_all` (the "All metrics" Line color), after Style-tab dumps of a
+  single-series and a two-series time series, a bar and a pie on order_items.
+  Added `chart_legend_symbol` (legend symbol paths in the chart iframe) for
+  rendered-color readback in live tests.
 - 2026-10-22 task 11.2: added `page_delete` (page row menu item "Delete", no
   confirmation dialog). A fresh one-page report has no Manage pages button and its
   Page -> Manage pages item is disabled; Add page opens the manager, and deleting

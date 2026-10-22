@@ -465,3 +465,16 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: Manage pages rows can lag the Add page click (wait for the row count).
 - Left open: P3 failed rename_page can leave the temporary page when its budget is spent - src/dsengine/ops/pages.py
 - Next: Task 11.3. Start by reading charts/style series swatch handling for `set_style colors`.
+
+## 2026-10-22: Task 11.3 Palette colors on charts with fewer swatches
+- Status: done
+- Plan check: off
+- Diagnosis (live Style-tab dumps, order_items, b_a8ace098d03b shapes): single-series time series 0 multiColor swatches (one "Line color" in cell seriesColor1 behind Series > Select metric); bar 1 ("Bar color"); pie 0 (Color by defaults to Dimension values), 9 clickable + 11 no-drop after Slice order. Old rule needed 4 <= swatches, so all skipped.
+- What changed: style.py `colors` colors the first min(len, swatches) swatches: bar multiColor, pie after Color by -> Slice order, time series per series via Select metric (single metric skips the list); info log "<id>: colors applied N of M"; verify reads each back (rgb). Selectors + live palette case (recipes/colors.jsonl) + 11 offline tests.
+- Checks: live palette case fails pre-fix (4 "unsupported"), passes after (2/2); Done-when live suite 10 passed, 1 failed (manual_acceptance s007, Known gotcha, no set_style); replay b_a8ace098d03b ok, failed 0, unsupported only for 8 scorecards; ../data/report-quality/engine-11.3-colors.png page 2 legend rgb(36,86,166); `uv run pytest` 202 passed.
+- Decisions: messages are `log` info (contract keeps ok messages empty). Series identified by cell key `seriesColor{n}` (selector template), "All metrics" assumed first when the list has several entries; wait for that series' cell alone, re-pick after 12 polls. Single-metric time series (no breakdown) skip the list. Pie switched to Slice order (only way to color by position). Escape an open Select metric list on failure. Two-series live chart on page 2 (Too Many Rows slowed page 1). AGENTS.md: 2 gotchas.
+- Digest: style.py `_swatches(page, ctx, prepare, series=None)` yields (position, control); `_apply_colors(page, ctx, colors, series)->int|None`; log "<id>: colors applied N of M"; selectors color_by_position, series_select, series_color ({n}), series_color_all, chart_legend_symbol.
+- Tried and failed: detecting a pick by "cell changed" (stale cells, missed picks); clicking a single-metric list's sole option (took 16 s while its chart loaded).
+- Gotchas: none beyond AGENTS.md.
+- Left open: P3 breakdown time series can fail instead of skip if no Line color shows - style.py; P3 `_series_color` reads ctx.selectors directly (KeyError not OperationError) - style.py; P3 `colors: []` warns on pies, logs 0 of 0 on bars - style.py.
+- Next: none in plan (11.3 was the last open task).

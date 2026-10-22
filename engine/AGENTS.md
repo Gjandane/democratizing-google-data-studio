@@ -41,4 +41,6 @@ Environment quirks stay here; editor/code conventions live in
 - Ops failing with `TargetClosedError` (or `Chrome is not running`) mean the dedicated Chrome window closed mid-run: `uv run dsengine browser` restarts it with sign-in kept. Diagnostic scripts that attach and open tabs must close them; leftover editor tabs stay open.
 <!-- blueprint-solution:end -->
 - `tests/live/test_golden.py -k timeout` (30 s run budget) flakes: when the deadline cuts a chart op, `save_report` can time out at 20 s (pre-fix 1/3, after 11.1 3/5 runs, 2026-10-22). Rerun it alone before suspecting your change.
+- A run of "operation timed out" after one failed op usually means a list or menu was left open: its transparent `cdk-overlay-backdrop` intercepts every later click, and retry cleanup skips Escape once the budget is spent. Close what your op opens on failure (2026-10-22, task 11.3).
+- Daily time series on `order_items` and on the b_a8ace098d03b view can render "Too Many Rows" (no legend), with or without colors, and slow later ops on that page; live fixtures keep them on a page of their own.
 - `tests/live/test_recipe_replay.py -k manual_acceptance` fails at s007 (six-metric table exhausts the 20 s op budget, then save/get_link fail), also with HEAD cfbc769 source (3/3 runs, 2026-10-22). Its recipe has no page ops; don't chase it from page or recipe changes.

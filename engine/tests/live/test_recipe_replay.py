@@ -15,7 +15,7 @@ from playwright.sync_api import expect
 
 from dsengine import chrome
 from dsengine.cli import main
-from dsengine.ops import charts, controls, report, text
+from dsengine.ops import charts, controls, report, style, text
 from dsengine.recipe import ENGINE_ROOT
 from dsengine.selectors import load_selectors
 
@@ -148,8 +148,9 @@ def _replay(name, tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(controls, "verify", read_control)
     monkeypatch.setattr(text, "verify", read_text)
     monkeypatch.setattr(report, "verify", read_report)
-    for module in (charts, controls, text, report):
+    for module in (charts, controls, text, report, style):
         monkeypatch.setattr(module, "run", observed(module.run))
+    monkeypatch.setattr(style, "verify", observed(style.verify))
 
     code = main(["run", str(recipe_path), "--screens", str(tmp_path / "screens")])
     output = capsys.readouterr()
@@ -255,6 +256,66 @@ def test_scorecard_values_are_sized_to_their_boxes_below_the_title(tmp_path, cap
              if event["event"] == "log" and event["level"] == "info"]
     assert "s003: scorecard value 36px" in infos, infos
     assert any(message.startswith("s005: scorecard value 14px") for message in infos), infos
+
+
+_LEGEND = """(body, symbol) => [...body.querySelectorAll(symbol)].map(e => getComputedStyle(e).fill)"""
+
+
+def _legend_colors(page, ctx, component, expected):
+    """The rendered legend symbols' fills, once their first colors are the expected ones."""
+    body = component.frame_locator(ctx.selectors["chart_iframe"]).locator(
+        ctx.selectors["chart_frame_body"])
+    found = None
+    while ctx.remaining_s() > 3:  # leave the op's own cleanup some budget
+        try:
+            found = body.evaluate(_LEGEND, ctx.selectors["chart_legend_symbol"],
+                                  timeout=ctx.timeout_ms())
+        except Exception:
+            found = None
+        if found and found[:len(expected)] == expected:
+            break
+        page.wait_for_timeout(250)
+    return found
+
+
+def test_series_swatches_take_the_palette_in_order(tmp_path, capsys, monkeypatch):
+    # Release 2.4 b_a8ace098d03b: all 16 `set_style colors` were skipped as
+    # unsupported, since the 4-color palette was longer than every chart's
+    # swatch list. Colors apply to the first min(len(colors), swatches).
+    palette = ["#2456A6", "#C27D00", "#22B9C7", "#993878"]
+    expected = {"s004": 1, "s006": 1, "s008": 4}
+    rendered = {}
+    style_verify = style.verify
+
+    def read_style(page, op, ctx):
+        style_verify(page, op, ctx)
+        if op.id in expected:
+            component, _ = style.component_for(page, op, ctx)
+            rendered[op.id] = _legend_colors(
+                page, ctx, component, [style.rgb(c) for c in palette[:expected[op.id]]])
+        elif op.id == "s013":
+            # Two daily series can render "Too Many Rows" on order_items, with no
+            # legend (and slow the ops after it: it sits alone on page 2): read
+            # both Line colors back from Select metric instead.
+            rendered[op.id] = style._read_colors(page, ctx, len(palette))
+
+    monkeypatch.setattr(style, "verify", read_style)
+    ops, readback = _replay("colors.jsonl", tmp_path, capsys, monkeypatch)
+    _assert_readback(ops, readback)
+    (tmp_path / "rendered.json").write_text(json.dumps(rendered, indent=2), encoding="utf-8")
+    for op_id, count in expected.items():
+        assert rendered[op_id] and rendered[op_id][:count] == [
+            style.rgb(c) for c in palette[:count]], (op_id, rendered)
+    # The pie has five status slices: the fifth keeps Data Studio's color.
+    assert len(rendered["s008"]) == 5 and rendered["s008"][4] not in map(style.rgb, palette), rendered
+    assert rendered["s013"] == [style.rgb(c) for c in palette[:2]] + [None, None], rendered
+    events = [json.loads(line) for line in
+              (tmp_path / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    logs = [(event["level"], event["message"]) for event in events if event["event"] == "log"]
+    for op_id, count in {**expected, "s013": 2}.items():
+        assert ("info", f"{op_id}: colors applied {count} of 4") in logs, logs
+    unsupported = [message for level, message in logs if "unsupported style key colors" in message]
+    assert unsupported == ["s010: unsupported style key colors for this component"], logs
 
 
 def test_page_one_is_renamed_and_saved_beside_an_added_page(tmp_path, capsys, monkeypatch):

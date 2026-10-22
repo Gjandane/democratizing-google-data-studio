@@ -14,6 +14,7 @@ selectors:
   component_table: 'ng2-canvas-component.simple-table'
   chart_iframe: 'iframe'
   chart_frame_body: 'body'
+  chart_legend_symbol: '.role-legend-symbol path'
   image_component: '.lego-component-repeat:has(ng2-canvas-component.image-component)'
   image_content: '.image-component img'
   page_menu: 'role=button[name="Page"]'
@@ -126,6 +127,10 @@ selectors:
   orientation_vertical: 'role=radio[name=/Vertical/]'
   stacked_switch: 'role=switch[name="Stacked bars"]'
   pie_inner_radius: 'role=slider[name="Inner radius"]'
+  color_by_position: '[data-webdriver-cell-key="coordinatedColoring"] input[value="position"]'
+  series_select: '[data-webdriver-cell-key="seriesSelect"] [role="combobox"]'
+  series_color: '[data-webdriver-cell-key="seriesColor{n}"] ng2-color-picker-button'
+  series_color_all: '[data-webdriver-cell-key="seriesColorAll"] ng2-color-picker-button'
   rows_per_page_control: 'role=combobox[name=/Rows per page/]'
 ---
 
@@ -288,6 +293,26 @@ oversized value is drawn past the box, not clipped) only after its query returns
 Measured (titled, name hidden, top padding 0): h=84 + 36px: title 208-242, value
 243-284 in a 208-292 box; h=44 + 14px: value 359-375 overflows the 368 bottom
 by 7 px, and 11px title (27 px tall) brings it to 352-368, inside.
+
+### Series colors (task 11.3, live 2026-10-22)
+
+Swatches per chart (order_items, release b_a8ace098d03b shapes): a single-series
+bar has one "Bar color" picker in the multiColor cell (`style_colors`), one per
+series with more metrics. A pie has none there: Color by (cell
+`coordinatedColoring`) defaults to Dimension values (value `content`, colors per
+value through "Manage dimension value colors"); Slice order (`color_by_position`,
+value `position`) lists 20 multiColor `.swatch` spans, 9 clickable and 11 dashed
+`cursor: no-drop` placeholders (status has 5 slices; all 20 show at once, no
+"more" control). A time series has no multiColor cell: Series > Select metric
+(`series_select`) picks one series at a time and shows its Line color in cell
+`seriesColor<n>` (`series_color`, n = series number); with several metrics the
+list is "All metrics" (cell `seriesColorAll`, one shared color), then each metric
+in order. The combobox text changes before the cell does, and a quick reopen hits
+the still-closing list: wait for the list to close and for the series' own cell.
+A scorecard has no series swatch (`set_style colors` skips it).
+Rendered colors: chart iframe legend symbols (`chart_legend_symbol`) in series
+order. Two daily metrics over order_items can render "Too Many Rows" (no legend)
+and slow later ops on that page.
 
 Title is the textbox within Chart title, after enabling Show title. Rows per page
 is in Setup. Compact numbers and bar orientation/stacking are in Style. Donut is
