@@ -43,7 +43,7 @@ class Operation(BaseModel):
     id: str
     op: Literal[
         "open_report", "set_canvas", "set_background_image", "add_page",
-        "go_to_page", "add_chart", "add_control", "add_text", "add_image",
+        "rename_page", "go_to_page", "add_chart", "add_control", "add_text", "add_image",
         "set_style", "save_report", "get_link",
     ]
 

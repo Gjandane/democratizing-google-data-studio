@@ -189,7 +189,7 @@ tasks and require a separately specified scope/contract revision. Task statuses 
   - If: the replay's BigQuery view (`dash_b_a8ace098d03b_v1_r_431ffda865e9`) no longer exists -> replay another release 2.4 build (b_ced0f5b4c491, b_9ec14b32752e) and say which in progress.md.
   - If: Data Studio offers no value font-size setting for a scorecard -> record what it offers in editor.md and progress.md and block naming it; never shrink the box or fake the value with a text box.
   - Review focus: no new recipe argument (recipe 1.1 states the rule); selectors only from knowledge/datastudio-ui; no fixed sleeps over 1 s; existing per-op budgets unchanged; 10.1's replays still pass; the live case asserts computed sizes and boxes, not op status alone.
-- [ ] 11.2 `rename_page` op
+- [x] 11.2 `rename_page` op
   - Goal: page 1 of every report carries its spec name instead of "Untitled Page" (every release 2.4 report); the backend emits the op in its 19.2.
   - Spec: ../contracts/recipe.md#Ops; docs/architecture.md#Live editor conventions
   - Files: src/dsengine/recipe.py, src/dsengine/printer.py, src/dsengine/ops/pages.py, tests/test_contract.py, tests/test_cli.py, tests/test_executor.py, tests/live/test_recipe_replay.py, tests/live/recipes/*.jsonl

@@ -1773,3 +1773,256 @@ def test_scorecard_value_left_unrendered_by_its_source_warns_within_the_budget(t
         "s006: scorecard value did not render; its fit was not checked",
         "s006: scorecard value 14px, title 11px"]
     charts._verify_scorecard(page, ctx, component, applied)
+
+
+class FakePagesUI:
+    """Manage pages with renamable rows; selector keys double as selectors."""
+
+    def __init__(self, names, active, keep=None):
+        self.names, self.active = list(names), active
+        self.keep = keep  # Data Studio keeps this name instead of the typed one.
+        self.open = False
+        self.menu = self.renaming = None
+        self.typed = None
+        self.calls = []
+
+    def locator(self, key):
+        return FakePagesLocator(self, key)
+
+
+class FakePagesLocator:
+    def __init__(self, ui, key, index=None):
+        self.ui, self.key, self.index = ui, key, index
+
+    def count(self):
+        if self.key == "page_rows":
+            return len(self.ui.names) if self.ui.open else 0
+        if self.key in {"pages_close", "pages_panel", "page_add"}:
+            return int(self.ui.open)
+        if self.key == "manage_pages":
+            # A one-page report shows Add page in its place; Manage pages is disabled.
+            return int(len(self.ui.names) > 1)
+        if self.key == "add_page_button":
+            return int(len(self.ui.names) == 1 and not self.ui.open)
+        if self.key == "page_delete":
+            return int(self.ui.menu is not None)
+        if self.key == "page_row_menu":
+            return int(self.ui.open and self.index < len(self.ui.names))
+        return int(self.key in {"canvas", "page_rename", "page_name"})
+
+    def nth(self, index):
+        return FakePagesLocator(self.ui, self.key, index)
+
+    def is_visible(self):
+        return bool(self.count())
+
+    def locator(self, key):
+        return FakePagesLocator(self.ui, key, self.index)
+
+    def inner_text(self):
+        if self.key == "manage_pages":
+            return f"Page {self.ui.active} of {len(self.ui.names)}"
+        assert self.key == "page_rows" and self.ui.open
+        return f" {self.ui.names[self.index]} "
+
+    def wait_for(self, *, state, timeout):
+        assert self.count()
+
+    def click(self, *, timeout):
+        ui = self.ui
+        ui.calls.append(("click", self.key, self.index))
+        assert self.count(), self.key
+        if self.key == "manage_pages":
+            ui.open = True
+        elif self.key in {"add_page_button", "page_add"}:
+            # Add page inserts after the current page and opens the manager.
+            ui.names.insert(ui.active, "Untitled Page")
+            ui.active += 1
+            ui.open = True
+        elif self.key == "page_delete":
+            del ui.names[ui.menu]
+            ui.active = min(ui.active, len(ui.names))
+            ui.menu = None
+        elif self.key == "pages_close":
+            ui.open = False
+        elif self.key == "page_row_menu":
+            ui.menu = self.index
+        elif self.key == "page_rename":
+            ui.renaming, ui.menu = ui.menu, None
+        elif self.key == "page_rows":
+            ui.active = self.index + 1
+
+    def fill(self, value, *, timeout):
+        assert self.key == "page_name" and self.ui.renaming is not None
+        self.ui.typed = value
+
+    def press(self, key, *, timeout):
+        ui = self.ui
+        assert (self.key, key) == ("page_name", "Enter")
+        ui.names[ui.renaming] = ui.keep if ui.keep is not None else ui.typed
+        ui.renaming = None
+
+    def evaluate(self, _expression):
+        return [1200, 900]
+
+
+class FakePagesPage:
+    def __init__(self, ui):
+        self.ui = ui
+        self.keyboard = FakeKeyboard(ui.calls)
+
+    def locator(self, selector):
+        return self.ui.locator(selector)
+
+    def wait_for_timeout(self, _ms):
+        pass
+
+
+def pages_context(tmp_path, *ops, seconds=5.0):
+    import time
+
+    from dsengine.selectors import load_selectors
+
+    recipe = make_recipe(tmp_path)
+    recipe.ops.extend(ops)
+    deadline = time.monotonic() + seconds
+    selectors = {key: key for key in load_selectors()}
+    return OpContext(recipe=recipe, selectors=selectors, events=EventWriter(io.StringIO()),
+                     screens=tmp_path, run_deadline=deadline, op_deadline=deadline)
+
+
+@pytest.mark.parametrize("name", ["Overview", 'Q&A "Top" \'picks\''])
+def test_rename_page_on_a_one_page_report_opens_manage_pages_through_a_temporary_page(
+        tmp_path, name):
+    # Live 2026-10-22: a fresh report has no Manage pages button and Page ->
+    # Manage pages is disabled; Add page opens the manager.
+    from dsengine.ops import pages
+
+    op = Operation(id="s002", op="rename_page", name=name)
+    ui = FakePagesUI(["Untitled Page"], active=1)
+    page, ctx = FakePagesPage(ui), pages_context(tmp_path, op)
+
+    pages.run(page, op, ctx)
+    assert ui.open  # verify reads the row before the manager closes
+    pages.verify(page, op, ctx)
+
+    assert ui.names == [name] and ui.typed == name
+    assert (ui.active, ui.open) == (1, False)
+    assert ("click", "add_page_button", None) in ui.calls
+    assert ("click", "page_delete", None) in ui.calls
+    assert ctx.state["s002"] == {"index": 1, "temporary": False, "name": name}
+
+
+@pytest.mark.parametrize("left", ["added", "deleted"])
+def test_rename_page_retry_deletes_the_temporary_page_once(tmp_path, left):
+    from dsengine.ops import pages
+
+    op = Operation(id="s002", op="rename_page", name="Overview")
+    ui = FakePagesUI(["Untitled Page"], active=1)
+    page, ctx = FakePagesPage(ui), pages_context(tmp_path, op)
+    ctx.state["s002"] = {"index": 1, "temporary": True}
+    if left == "added":  # the first attempt failed before deleting it
+        ui.names, ui.active, ui.open = ["Untitled Page", "Untitled Page"], 2, True
+
+    pages.run(page, op, ctx)
+    pages.verify(page, op, ctx)
+
+    assert ui.names == ["Overview"]
+    assert ui.calls.count(("click", "page_delete", None)) == 1
+
+
+def test_rename_page_verify_fails_when_manage_pages_closed_on_a_one_page_report(tmp_path):
+    from dsengine.ops import OperationError, pages
+
+    op = Operation(id="s002", op="rename_page", name="Overview")
+    ui = FakePagesUI(["Untitled Page"], active=1)
+    page, ctx = FakePagesPage(ui), pages_context(tmp_path, op)
+    pages.run(page, op, ctx)
+    ui.open = False
+
+    with pytest.raises(OperationError, match="Manage pages closed"):
+        pages.verify(page, op, ctx)
+
+
+@pytest.mark.parametrize("name", ["Overview", 'Q&A "Top" \'picks\''])
+def test_rename_page_renames_the_current_page_through_manage_pages(tmp_path, name):
+    from dsengine.ops import handler_for, pages
+
+    op = Operation(id="s002", op="rename_page", name=name)
+    ui = FakePagesUI(["Untitled Page", "Detail", "Appendix"], active=2)
+    page, ctx = FakePagesPage(ui), pages_context(tmp_path, op)
+    assert handler_for("rename_page") is pages
+
+    pages.run(page, op, ctx)
+    pages.verify(page, op, ctx)
+
+    assert ui.names == ["Untitled Page", name, "Appendix"]
+    assert ui.typed == name
+    assert (ui.active, ui.open) == (2, False)
+    assert ctx.state["s002"] == {"index": 2, "name": name}
+    assert ("click", "add_page_button", None) not in ui.calls
+
+
+def test_rename_page_and_add_page_share_one_rename_step(tmp_path, monkeypatch):
+    from dsengine.ops import pages
+
+    renamed = []
+    original = pages._rename
+
+    def spy(page, ctx, index, name, message):
+        renamed.append((index, name))
+        return original(page, ctx, index, name, message)
+
+    monkeypatch.setattr(pages, "_rename", spy)
+    rename = Operation(id="s002", op="rename_page", name="Overview")
+    add = Operation(id="s003", op="add_page", name="Detail")
+    ui = FakePagesUI(["Untitled Page"], active=1)
+    page, ctx = FakePagesPage(ui), pages_context(tmp_path, rename, add)
+    for op in (rename, add):
+        pages.run(page, op, ctx)
+        pages.verify(page, op, ctx)
+
+    assert renamed == [(1, "Overview"), (2, "Detail")]
+    assert ui.names == ["Overview", "Detail"]
+    assert (ui.active, ui.open) == (2, False)
+
+
+def test_rename_page_verify_fails_when_the_row_text_differs(tmp_path):
+    from dsengine.ops import OperationError, pages
+
+    op = Operation(id="s002", op="rename_page", name="Overview")
+    ui = FakePagesUI(["Untitled Page"], active=1)
+    page, ctx = FakePagesPage(ui), pages_context(tmp_path, op)
+    pages.run(page, op, ctx)
+    ui.names[0] = "Overview (old)"
+
+    with pytest.raises(OperationError, match="page name did not match the recipe"):
+        pages.verify(page, op, ctx)
+    assert not ui.open
+
+
+def test_rename_page_fails_within_its_budget_when_the_name_is_not_kept(tmp_path):
+    from dsengine.ops import OperationError, pages
+
+    op = Operation(id="s002", op="rename_page", name="Overview")
+    ui = FakePagesUI(["Untitled Page"], active=1, keep="Untitled Page")
+    page, ctx = FakePagesPage(ui), pages_context(tmp_path, op, seconds=0.2)
+
+    with pytest.raises(OperationError, match="page name did not verify"):
+        pages.run(page, op, ctx)
+
+
+def test_rename_page_retry_renames_the_page_current_at_first_attempt(tmp_path):
+    from dsengine.ops import pages
+
+    op = Operation(id="s002", op="rename_page", name="Overview")
+    ui = FakePagesUI(["Untitled Page", "Detail"], active=1)
+    page, ctx = FakePagesPage(ui), pages_context(tmp_path, op)
+    ctx.state["s002"] = {"index": 1}
+    ui.active = 2  # a failed first attempt left another page current
+
+    pages.run(page, op, ctx)
+    pages.verify(page, op, ctx)
+
+    assert ui.names == ["Overview", "Detail"]
+    assert ui.active == 1

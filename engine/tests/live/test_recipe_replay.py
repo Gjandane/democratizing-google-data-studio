@@ -11,10 +11,13 @@ from pathlib import Path
 
 import pytest
 from dotenv import load_dotenv
+from playwright.sync_api import expect
 
+from dsengine import chrome
 from dsengine.cli import main
 from dsengine.ops import charts, controls, report, text
 from dsengine.recipe import ENGINE_ROOT
+from dsengine.selectors import load_selectors
 
 pytestmark = pytest.mark.live
 
@@ -252,3 +255,24 @@ def test_scorecard_values_are_sized_to_their_boxes_below_the_title(tmp_path, cap
              if event["event"] == "log" and event["level"] == "info"]
     assert "s003: scorecard value 36px" in infos, infos
     assert any(message.startswith("s005: scorecard value 14px") for message in infos), infos
+
+
+def test_page_one_is_renamed_and_saved_beside_an_added_page(tmp_path, capsys, monkeypatch):
+    # Release 2.4: every report's page 1 stayed "Untitled Page"; the backend
+    # names it with rename_page right after open_report (recipe 1.1).
+    _replay("rename_page.jsonl", tmp_path, capsys, monkeypatch)
+    events = [json.loads(line) for line in
+              (tmp_path / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    selectors = load_selectors()
+    with chrome.attached(chrome.ChromeConfig.from_env()) as browser:
+        page = browser.new_page()
+        try:
+            page.set_viewport_size({"width": 1920, "height": 1200})
+            page.goto(events[-1]["report_url"] + "/edit", wait_until="domcontentloaded")
+            expect(page.locator(selectors["manage_pages"])).to_contain_text("of 2", timeout=20000)
+            page.locator(selectors["manage_pages"]).click()
+            rows = page.locator(selectors["pages_panel"]).locator(selectors["page_rows"])
+            expect(rows).to_have_text(["Overview", "Detail"], timeout=20000)
+            page.screenshot(path=str(tmp_path / "pages.png"))
+        finally:
+            page.close()

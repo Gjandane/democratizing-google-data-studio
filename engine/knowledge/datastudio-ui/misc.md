@@ -36,6 +36,7 @@ selectors:
   page_row_menu: 'button'
   page_add: 'role=button[name=/^Add a page$/]'
   page_rename: 'role=menuitem[name=/^Rename$/]'
+  page_delete: 'role=menuitem[name=/^Delete$/]'
   page_name: 'role=textbox[name="Enter new name"]'
   pages_close: 'role=button[name="Close Report Pages"]'
 ---
@@ -46,6 +47,8 @@ on the viewer's text nodes. Custom color opens a Hex dialog above the palette.
 Chart series colors are individual multiColor pickers; skip unavailable styles with
 a warning. Page manager rows expose nested menu buttons and Rename -> Enter new name.
 The initial Add page creates page 2 and opens the manager; later adds use Add a page.
+A one-page report has no Manage pages button and Page -> Manage pages is disabled: Add page
+opens the manager; deleting that page (row menu Delete, no confirmation) leaves it open.
 
 
 Exit text editing with Selection Mode before geometry, then deselect before reading the viewer.

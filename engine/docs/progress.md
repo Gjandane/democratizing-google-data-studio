@@ -453,3 +453,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: scorecard value can stay unrendered after Style edits (not seen since pre-render wait).
 - Left open: P3 horizontal overflow only warns - charts.py; P3 `to_be_hidden` passes if `.kpi-label` absent - test_golden.py/test_charts_a.py; golden timeout-recovery save flake - report.py.
 - Next: Task 11.2 `rename_page` op.
+
+## 2026-10-22: Task 11.2 `rename_page` op
+- Status: done
+- Plan check: off
+- What changed: recipe.py accepts `rename_page`; pages.py `_rename(page, ctx, index, name, message)` shared by add_page and rename_page; one-page reports open Manage pages through a temporary page; verify reads the row live. Selector `page_delete` (misc.md + log.md, outside Files: selectors live in the bundle). Live case + recipes/rename_page.jsonl, 9 offline tests.
+- Checks: `uv run pytest tests/test_contract.py tests/test_cli.py tests/test_executor.py` PASS 156; live rename case fails before (pydantic literal_error, invalid recipe), passes after: 7/7 ok, saved report rows "Overview", "Detail"; `uv run pytest -m live tests/live/test_recipe_replay.py tests/live/test_misc_ops.py` 5 passed, 1 failed (manual_acceptance s007 budget, fails identically on HEAD source; user accepted); `uv run pytest` PASS 190.
+- Decisions: live probe: one-page report has no Manage pages button and Page > Manage pages is disabled; user approved temp page: Add page (opens manager) -> row 2 Delete (no confirm, manager stays open) -> rename row 1; `state["temporary"]` set before the click so a retry deletes it once. rename_page leaves the manager open; verify reads the row, then closes it. Retry on multi-page switches back to the first attempt's page. printer.py unchanged (generic). Header stays "1.0". AGENTS.md gotcha added.
+- Digest: op `rename_page {name}` renames current page; pages.py `_rename(page, ctx, index, name, message)->str` shared with add_page; `_single_page_manager` temp-page path for one-page reports; selector `page_delete`; recipes/rename_page.jsonl live case.
+- Tried and failed: Page > Manage pages menu item on a one-page report (disabled).
+- Gotchas: Manage pages rows can lag the Add page click (wait for the row count).
+- Left open: P3 failed rename_page can leave the temporary page when its budget is spent - src/dsengine/ops/pages.py
+- Next: Task 11.3. Start by reading charts/style series swatch handling for `set_style colors`.

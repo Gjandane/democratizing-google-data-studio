@@ -46,7 +46,7 @@ def test_header_only_is_successful_zero_op_run(tmp_path, records, capsys):
     "empty", "blank", "broken_json", "duplicate_key", "nonfinite", "header_missing",
     "invalid_utf8", "duplicate_id", "decreasing_id", "bad_id", "unknown_op",
     "bad_header", "negative_geometry", "missing_metric", "bad_agg", "bad_color",
-    "dropdown_without_field", "unknown_header_key",
+    "dropdown_without_field", "unknown_header_key", "rename_without_name",
 ])
 def test_invalid_recipe_rejected_before_any_op(tmp_path, records, capsys, problem):
     if problem == "duplicate_id":
@@ -71,6 +71,8 @@ def test_invalid_recipe_rejected_before_any_op(tmp_path, records, capsys, proble
         records[4]["control_type"] = "dropdown"
     elif problem == "unknown_header_key":
         records[0]["unexpected"] = "private-value-must-not-appear"
+    elif problem == "rename_without_name":
+        records[1]["op"] = "rename_page"
     path = write_recipe(tmp_path, records)
     corruptions = {
         "empty": b"", "blank": b"\n", "broken_json": b'{"private-value-must-not-appear"',
@@ -225,3 +227,19 @@ def test_event_writer_flushes_each_json_line():
     assert stream.flush_count == 1
     assert len(stream.getvalue().splitlines()) == 1
     assert json.loads(stream.getvalue())["message"] == "two\nlines 東京"
+
+
+def test_rename_page_prints_one_quoted_name_and_dry_runs(tmp_path, records, capsys):
+    name = "Revenue's \"best\" & $(do-not-run)"
+    records.insert(2, {"id": "s001", "op": "rename_page", "name": name})
+    for index, record in enumerate(records[1:], 1):
+        record["id"] = f"s{index:03d}"
+    path = write_recipe(tmp_path, records)
+    assert main(["print", str(path)]) == 0
+    line = capsys.readouterr().out.splitlines()[1]
+    assert shlex.split(line) == ["dsengine", "rename-page", "--name", name]
+    assert main(["run", str(path), "--dry-run"]) == 0
+    events = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert [(event["op_id"], event["op"], event.get("status")) for event in events[3:5]] == [
+        ("s002", "rename_page", None), ("s002", "rename_page", "skipped")]
+    assert events[-1]["skipped"] == 15

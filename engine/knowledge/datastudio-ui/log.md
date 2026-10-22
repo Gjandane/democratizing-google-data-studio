@@ -6,6 +6,10 @@ timestamp: 2026-10-18
 selectors: {}
 ---
 
+- 2026-10-22 task 11.2: added `page_delete` (page row menu item "Delete", no
+  confirmation dialog). A fresh one-page report has no Manage pages button and its
+  Page -> Manage pages item is disabled; Add page opens the manager, and deleting
+  the added page leaves the manager open on the single row.
 - 2026-10-22 task 11.1: added `scorecard_value_size` (cell `fontSize`, Style >
   Labels > Font size, default auto), `scorecard_hide_name` (switch "Hide field
   name"), `scorecard_padding_top` (cell `paddingTop`), `scorecard_value`

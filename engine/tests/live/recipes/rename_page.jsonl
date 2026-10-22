@@ -1,0 +1,8 @@
+{"recipe_version":"1.0","build_id":"b_000000000003","version":1,"report_name":"Engine rename page","canvas":{"width":1200,"height":900},"datasource":{"connector":"bigQuery","project_id":"bigquery-public-data","dataset_id":"thelook_ecommerce","table_id":"order_items"}}
+{"id":"s001","op":"open_report"}
+{"id":"s002","op":"rename_page","name":"Overview"}
+{"id":"s003","op":"set_canvas","width":1200,"height":900}
+{"id":"s004","op":"add_page","name":"Detail"}
+{"id":"s005","op":"go_to_page","index":1}
+{"id":"s006","op":"save_report"}
+{"id":"s007","op":"get_link"}
