@@ -60,7 +60,8 @@ def test_all_types_arguments_and_order(spec):
     assert header['version'] == 3  # Build version, not spec_version (7).
     assert header['datasource'] == dict(connector='bigQuery', project_id='public-source',
                                       dataset_id='analytics', table_id='sales_view_v3')
-    assert [op['op'] for op in ops[:3]] == ['open_report', 'set_canvas', 'set_background_image']
+    assert [op['op'] for op in ops[:4]] == ['open_report', 'rename_page', 'set_canvas', 'set_background_image']
+    assert ops[1]['name'] == spec.pages[0].name
     assert [op['op'] for op in ops[-2:]] == ['save_report', 'get_link']
     creations = [op for op in ops if op['op'].startswith('add_')]
     assert len(creations) == 12
@@ -88,7 +89,8 @@ def test_all_types_arguments_and_order(spec):
             assert op['op'] == 'add_control' and op['control_type'] == c.type
             assert op.get('field') == c.field
     styles = [op for op in ops if op['op'] == 'set_style']
-    assert [op['component_id'] for op in styles] == ['p1_' + kind for kind in TYPES[:8]]
+    # Scorecards have no series swatch, so the engine would skip `colors` with a warning.
+    assert [op['component_id'] for op in styles] == ['p1_' + kind for kind in TYPES[:8] if kind != 'scorecard']
     assert all(op['style'] == {'colors': spec.theme.palette} for op in styles)
     assert all(ops[ops.index(op) - 1]['component_id'] == op['component_id'] for op in styles)
     assert not any(op.get('component_id') == 'p1_title' for op in ops)
@@ -132,6 +134,7 @@ def test_extra_page_op_order(spec):
                                            'components': [], 'decorations': []})
     spec.pages.append(page)
     ops = validate_lines(compile_recipe(spec, 3))[1:]
+    assert [op['op'] for op in ops].count('rename_page') == 1 and ops[1]['name'] == 'Overview'
     assert [{k: v for k, v in op.items() if k != 'id'} for op in ops[-5:]] == [
         {'op': 'add_page', 'name': 'Details'},
         {'op': 'set_canvas', 'width': 1200, 'height': 700},
@@ -192,11 +195,11 @@ def test_compiler_checks_emitted_recipe_contract(spec, tmp_path, corruption):
     assert not (tmp_path / 'recipe.jsonl.tmp').exists()
 
 
-@pytest.mark.parametrize('count', [994, 995])
+@pytest.mark.parametrize('count', [993, 994])  # 19.2: rename_page takes one id
 def test_op_id_capacity(spec, count):
     note = next(c for c in spec.pages[0].components if c.type == 'text')
     spec.pages[0].components = [note.model_copy(update={'id': f'p1_note_{i}'}) for i in range(count)]
-    if count == 995:
+    if count == 994:
         with pytest.raises(ValueError, match='three-digit op id capacity'):
             compile_recipe(spec, 3)
     else:

@@ -1,9 +1,9 @@
 {"build_id":"b_123456789abc","canvas":{"height":1800,"width":1200},"datasource":{"connector":"bigQuery","dataset_id":"analytics","project_id":"public-source","table_id":"sales_view_v3"},"recipe_version":"1.0","report_name":"Golden sales — all types","version":3}
 {"id":"s001","op":"open_report"}
-{"height":1800,"id":"s002","op":"set_canvas","width":1200}
-{"h":1800,"id":"s003","op":"set_background_image","path":"background_p1.png","w":1200,"x":0,"y":0}
-{"chart_type":"scorecard","component_id":"p1_scorecard","dimensions":[],"h":224,"id":"s004","metrics":[{"agg":"sum","field":"revenue"}],"op":"add_chart","options":{"compact_numbers":true},"title":"Revenue","w":568,"x":24,"y":124}
-{"component_id":"p1_scorecard","id":"s005","op":"set_style","style":{"colors":["#1E40AF","#0D9488","#E11D48"]}}
+{"id":"s002","name":"Overview","op":"rename_page"}
+{"height":1800,"id":"s003","op":"set_canvas","width":1200}
+{"h":1800,"id":"s004","op":"set_background_image","path":"background_p1.png","w":1200,"x":0,"y":0}
+{"chart_type":"scorecard","component_id":"p1_scorecard","dimensions":[],"h":224,"id":"s005","metrics":[{"agg":"sum","field":"revenue"}],"op":"add_chart","options":{"compact_numbers":true},"title":"Revenue","w":568,"x":24,"y":124}
 {"breakdown":"region","chart_type":"time_series","component_id":"p1_time_series","date_dimension":"sale_date","dimensions":[],"h":224,"id":"s006","metrics":[{"agg":"avg","field":"revenue"}],"op":"add_chart","options":{},"sort":{"field":"sale_date","order":"asc"},"title":"Revenue over time","w":568,"x":608,"y":124}
 {"component_id":"p1_time_series","id":"s007","op":"set_style","style":{"colors":["#1E40AF","#0D9488","#E11D48"]}}
 {"chart_type":"bar","component_id":"p1_bar","dimensions":["region"],"h":224,"id":"s008","metrics":[{"agg":"max","field":"revenue"},{"agg":"min","field":"units"}],"op":"add_chart","options":{"orientation":"horizontal","stacked":true},"sort":{"field":"revenue","order":"desc"},"title":"Revenue by region","w":568,"x":24,"y":404}

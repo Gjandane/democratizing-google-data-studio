@@ -1,13 +1,13 @@
 {
- "recorded": "2026-10-19 from `PYTHONIOENCODING=utf-8 uv run --project ../engine dsengine print <recipe>`; stdout split on LF, CR stripped",
+ "recorded": "2026-10-19 (golden re-recorded 2026-10-22, task 19.2) from `PYTHONIOENCODING=utf-8 uv run --project ../engine dsengine print <recipe>`; stdout split on LF, CR stripped",
  "golden": {
   "recipe": "golden_recipe.jsonl",
   "lines": [
    "dsengine open-report",
+   "dsengine rename-page --name Overview",
    "dsengine set-canvas --height 1800 --width 1200",
    "dsengine set-background-image --h 1800 --path background_p1.png --w 1200 --x 0 --y 0",
    "dsengine add-chart --type scorecard --id p1_scorecard --h 224 --metric revenue:sum --options '{\"compact_numbers\":true}' --title Revenue --w 568 --x 24 --y 124",
-   "dsengine set-style --id p1_scorecard --style '{\"colors\":[\"#1E40AF\",\"#0D9488\",\"#E11D48\"]}'",
    "dsengine add-chart --breakdown region --type time_series --id p1_time_series --date-dimension sale_date --h 224 --metric revenue:avg --options '{}' --sort '{\"field\":\"sale_date\",\"order\":\"asc\"}' --title 'Revenue over time' --w 568 --x 608 --y 124",
    "dsengine set-style --id p1_time_series --style '{\"colors\":[\"#1E40AF\",\"#0D9488\",\"#E11D48\"]}'",
    "dsengine add-chart --type bar --id p1_bar --dim region --h 224 --metric revenue:max --metric units:min --options '{\"orientation\":\"horizontal\",\"stacked\":true}' --sort '{\"field\":\"revenue\",\"order\":\"desc\"}' --title 'Revenue by region' --w 568 --x 24 --y 404",

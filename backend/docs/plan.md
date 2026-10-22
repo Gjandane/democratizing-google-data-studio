@@ -532,7 +532,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: Data Studio rejects the 2x upload or serves it downsampled (`naturalWidth` < 2400) -> record the limit and the file size in progress.md and block naming it (an engine or size question for the program root); never change the recipe box.
   - If: the replay's BigQuery view no longer exists -> use another release 2.4 build (b_ced0f5b4c491, b_9ec14b32752e) and say which.
   - Review focus: prototype HTML and the decoration DOM unchanged; files still replace atomically; no new dependency; the worker-thread capture path unchanged.
-- [ ] 19.2 Page 1 named in the recipe; no scorecard palette op
+- [x] 19.2 Page 1 named in the recipe; no scorecard palette op
   - Goal: the report's page 1 carries its spec name instead of "Untitled Page" (every release 2.4 report), and scorecards stop sending a palette the engine skips with a warning.
   - Spec: docs/architecture.md#Recipe compiler; ../contracts/recipe.md#Ops
   - Files: src/dss/recipe/compiler.py, tests/test_compiler.py, tests/test_recipe_contract.py, tests/data/golden_recipe.jsonl, tests/data/recipe_preview.json

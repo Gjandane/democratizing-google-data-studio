@@ -32,6 +32,8 @@ def compile_recipe(spec: DashboardSpec, version: int) -> str:
     def op(name, /, **args):
         lines.append(dict(id=f"s{len(lines):03d}", op=name, **args))
     op("open_report")
+    # open_report leaves page 1 "Untitled Page" (recipe 1.1).
+    op("rename_page", name=spec.pages[0].name)
     for page_number, page in enumerate(spec.pages):
         if page_number:
             op("add_page", name=page.name)
@@ -56,7 +58,9 @@ def compile_recipe(spec: DashboardSpec, version: int) -> str:
                 if c.sort is not None:
                     optional["sort"] = c.sort.model_dump()
                 op("add_chart", chart_type=c.type, dimensions=c.dimensions, metrics=[m.model_dump() for m in c.metrics], title=c.label, options=c.options, **optional, **args)
-                op("set_style", component_id=c.id, style=dict(colors=c.colors if c.colors is not None else spec.theme.palette))
+                # A scorecard has no series swatch: the engine would skip `colors` with a warning.
+                if c.type != "scorecard":
+                    op("set_style", component_id=c.id, style=dict(colors=c.colors if c.colors is not None else spec.theme.palette))
         # The reserved label lives on page 1 only (require_synthetic_label checks it).
         label = next((d for d in page.decorations if d.id == SYNTHETIC_LABEL_ID), None)
         if spec.datasource.synthetic and label is not None:

@@ -30,7 +30,7 @@ def test_three_page_recipe_ops_order_and_contract():
             validator.validate(value)
     assert header['canvas'] == {'width': 1200, 'height': spec.pages[0].height}
     assert [o['id'] for o in ops] == [f's{i:03d}' for i in range(1, len(ops) + 1)]
-    expected = ['open_report']
+    expected = ['open_report', ('rename_page', spec.pages[0].name)]
     for page in spec.pages:
         if page.index > 1:
             expected.append(('add_page', page.name))
@@ -38,11 +38,13 @@ def test_three_page_recipe_ops_order_and_contract():
         placed = sorted(page.components, key=lambda c: (box(spec.canvas, spec.grid, c.grid, height=page.height)['y'],
                                                         box(spec.canvas, spec.grid, c.grid, height=page.height)['x']))
         for c in placed:
-            expected += [('add_chart', c.id), ('set_style', c.id)]
+            # 19.2: scorecards have no series swatch, so they get no set_style.
+            expected += [('add_chart', c.id)] + ([] if c.type == 'scorecard' else [('set_style', c.id)])
     expected += ['save_report', 'get_link']
+    assert {c.type for p in spec.pages for c in p.components} >= {'scorecard', 'bar'}
     def shape(o):
-        if o['op'] == 'add_page':
-            return ('add_page', o['name'])
+        if o['op'] in ('add_page', 'rename_page'):
+            return (o['op'], o['name'])
         if o['op'] == 'set_canvas':
             assert o['width'] == 1200
             return ('set_canvas', o['height'])
@@ -112,6 +114,14 @@ async def test_staged_27_components_compile_and_fake_engine_run_done(staged_flow
     charts = [o['component_id'] for o in ops if o['op'] == 'add_chart']
     assert sorted(charts) == sorted(c.id for p in spec.pages for c in p.components) and len(charts) == 27
     assert [o['op'] for o in ops].count('add_page') == 2
+    # 19.2: per_section page 1 carries its section name; later pages are named by add_page.
+    assert ops[:2] == [{'id': 's001', 'op': 'open_report'}, {'id': 's002', 'op': 'rename_page', 'name': spec.pages[0].name}]
+    assert [o['op'] for o in ops].count('rename_page') == 1
+    assert [o['name'] for o in ops if o['op'] == 'add_page'] == [p.name for p in spec.pages[1:]]
+    scorecards = {c.id for p in spec.pages for c in p.components if c.type == 'scorecard'}
+    styled = {o['component_id'] for o in ops if o['op'] == 'set_style'}
+    assert scorecards and not scorecards & styled
+    assert styled == {c.id for p in spec.pages for c in p.components} - scorecards
     monkeypatch.setenv('DSS_ENGINE_CMD', f'"{sys.executable}" "{ROOT / "tests/fake_engine.py"}"')
     monkeypatch.setenv('DSS_ENGINE_DRY_RUN', '1')
     seen = engine_inputs(monkeypatch)

@@ -145,8 +145,8 @@ def test_layout_and_determinism():
     assert a == compile_recipe(spec, 1)
     ops = [json.loads(l) for l in a.splitlines()[1:]]
     assert [o["id"] for o in ops] == [f"s{i:03d}" for i in range(1,len(ops)+1)]
-    assert [o["op"] for o in ops] == ["open_report","set_canvas","set_background_image","add_chart","set_style","add_chart","set_style","add_text","save_report","get_link"]
-    assert [o["component_id"] for o in ops if o["op"] == "set_style"] == ["p1_revenue","p1_regions"]
+    assert [o["op"] for o in ops] == ["open_report","rename_page","set_canvas","set_background_image","add_chart","add_chart","set_style","add_text","save_report","get_link"]
+    assert [o["component_id"] for o in ops if o["op"] == "set_style"] == ["p1_regions"]  # 19.2: scorecards get no set_style
     assert json.loads(a.splitlines()[0])["datasource"]["table_id"] == "small_sales"
     spec.pages[0].components[0].label = '<script>"bad"</script>'
     assert '<script>' not in render(spec)
@@ -206,7 +206,7 @@ def test_all_recipe_mappings():
         assert op["op"] == expected
         if expected == "add_chart":
             assert op["chart_type"] == kind
-    assert len([op for op in lines if op.get("op") == "set_style"]) == 8
+    assert len([op for op in lines if op.get("op") == "set_style"]) == 7  # 19.2: the scorecard has none
 
 
 def test_wrapper_timeout_releases_engine(thin, monkeypatch):

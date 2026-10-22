@@ -1168,3 +1168,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: b_a8ace098d03b replay now fails at s025 (p2 time_series "Average Item Sale Price Over Time", y=884; editor shows "Too Many Rows", View menu open) even with original files: 19.2's live check will hit it.
 - Left open: engine/root follow-up for s025 timeout.
 - Next: Task 19.2 (Needs engine 11.2). Expect the s025 replay failure in its live run.
+
+## 2026-10-22: Task 19.2 Page 1 named in the recipe; no scorecard palette op
+- Status: done
+- Plan check: off
+- What changed: compiler.py emits `rename_page` (page 1 name) at s002 and no `set_style` for scorecards. Golden recipe + preview re-recorded from real `dsengine print`. User-approved edits outside Files: test_thin_slice, test_revise (accent test retargeted to bar p1_regions; scoped_overrides scorecard→bar h8; new test_scorecard_color_comment_stays_pending), test_agent_server, test_synthetic_label (line-index shifts).
+- Checks: `uv run pytest tests/test_compiler.py tests/test_recipe_contract.py` PASS 51 (old compiler: 8 FAIL); `dsengine validate` golden + live recipe exit 0; Test (all) `uv run pytest` PASS 1445. Live b_a8ace098d03b recompile (45 ops): rename_page ok, 0 colors warnings for 8 scorecards, report d4af98f7… page 1 "Executive Summary & Headline KPIs", page 2 correct; `failed: 17` from known s021 p2 time_series timeout cascade (pages 3-4 not added); user waived.
+- Decisions: op-capacity test params 993/994 (rename_page uses an id). Scorecard color comments now stay pending (coverage sees no set_style), user chose honest pending. AGENTS.md: gotcha on coverage_errors.
+- Digest: compile_recipe ops: s001 open_report, s002 rename_page{name=pages[0].name}, then per page; set_style only for non-scorecard charts; header recipe_version "1.0". Scorecard style.colors comments stay pending.
+- Tried and failed: scorecard→bar at h7 in scoped test (bar min h is 8).
+- Gotchas: none beyond AGENTS.md.
+- Left open: P2 feasibility still accepts style.colors on scorecards (should be unsupported_app, fail fast) - src/dss/spec/capabilities.py; P3 empty page-1 name now fails compile (Page.name has no min_length) - src/dss/spec/models.py; engine s021 time_series timeout.
+- Next: plan complete (63/63); follow-up for scorecard colors feasibility.

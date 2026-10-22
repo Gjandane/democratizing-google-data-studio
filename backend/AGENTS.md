@@ -57,3 +57,4 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - The live outline_other/comment extractor varies its record shape per run (breakdown as field key or value, dimension mapping agg "none", needs-less record, decoration hex as need or property): normalize in code and confirm a staged live flow with 2+ consecutive passing runs.
 - tests/test_blueprint.artifact() calls asyncio.run: staged API tests that use it (or recreate_build in test_render) must be plain `def`, not `async def`.
 - The engine's `run_finished.report_url` opens the report's last page; open `https://datastudio.google.com/reporting/<id>` (no `/page/...`) to inspect page 1.
+- requirements.coverage_errors verifies needs against compiled recipe ops: a compiler op change also moves revise/thin_slice/agent_server tests that index recipe lines or expect set_style per chart (19.2 touched 5 such files).

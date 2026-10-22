@@ -48,7 +48,7 @@ def test_label_spec_html_recipe_and_reserved_box(sample):
     assert native['op'] == 'add_text' and native['text'] == SYNTHETIC_LABEL
     assert native['y'] == bounds['y'] + 16 and native['color'] == '#0F172A'
     assert recipe[0]['canvas']['height'] == spec.canvas.height
-    assert recipe[3]['op'] == 'set_background_image'
+    assert recipe[4]['op'] == 'set_background_image'  # 19.2: rename_page is s002
 
 
 @pytest.mark.parametrize('change', ['remove', 'move', 'text', 'opacity', 'color', 'size', 'logo', 'component_overlap', 'decoration_overlap'])

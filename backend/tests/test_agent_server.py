@@ -390,7 +390,7 @@ def test_job_ships_recipe_of_revised_spec(remote, monkeypatch):
     run_id, job = accept(remote)
     shipped = job_recipe(client, run_id)
     assert shipped == compile_recipe(revised, 1) and shipped != stale
-    chart = json.loads(shipped.split("\n")[4])
+    chart = json.loads(shipped.split("\n")[5])  # after open_report, rename_page, canvas, background
     assert chart["component_id"] == "p1_revenue" and chart["title"] == "Net revenue" and chart["w"] > 568
     post_events(client, run_id)
     finish(client, run_id)

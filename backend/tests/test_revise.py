@@ -412,7 +412,7 @@ def test_run_executes_revised_spec_not_compiled_recipe(setup, client, monkeypatc
     assert wait_done(client, bid)['stage'] == 'done'
     expected = compile_recipe(revised, 1)
     assert seen == [expected] and expected != stale
-    chart = json.loads(expected.split('\n')[4])
+    chart = json.loads(expected.split('\n')[5])  # after open_report, rename_page, canvas, background
     assert chart['component_id'] == 'p1_revenue' and chart['title'] == 'Net revenue' and chart['w'] > 568
 
 
@@ -518,27 +518,41 @@ def test_supported_batch_one_trace_and_atomic_proof(setup, client, monkeypatch):
 
 
 def test_component_dark_blue_accent_changes_only_its_recipe_style(setup, client, monkeypatch):
+    # 19.2: the bar, not the scorecard: scorecards have no series swatch and get no set_style.
     from dss.recipe.compiler import compile_recipe
     app, bid, folder, original, service, *_ = setup
     comment = 'Use a dark blue accent for this component; preserve its position and data.'
     fake = CommentFlow(needs_by_text={comment: [{'capability': 'style.colors', 'value': ['#172554']}]},
-        response=response([op('/pages/0/components/0/colors', ['#172554'], 'add')]))
+        response=response([op('/pages/0/components/1/colors', ['#172554'], 'add')]))
     monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
     before = [json.loads(line) for line in compile_recipe(original, 1).splitlines()]
-    assessment = post_batch(client, app, bid, [{'component_id': 'p1_revenue', 'text': comment}])
+    assessment = post_batch(client, app, bid, [{'component_id': 'p1_regions', 'text': comment}])
     assert assessment['state'] == 'ready' and assessment['pending_comments'] is None, assessment
     revised = DashboardSpec.model_validate_json((folder/'spec.json').read_text())
     expected = original.model_dump()
     expected['spec_version'] = revised.spec_version
-    expected['pages'][0]['components'][0]['colors'] = ['#172554']
+    expected['pages'][0]['components'][1]['colors'] = ['#172554']
     assert revised.model_dump() == expected
     after = [json.loads(line) for line in compile_recipe(revised, 1).splitlines()]
     changed = [(old, new) for old, new in zip(before, after) if old != new]
     assert len(changed) == 1
     assert changed[0][0]['op'] == changed[0][1]['op'] == 'set_style'
-    assert changed[0][1]['component_id'] == 'p1_revenue'
+    assert changed[0][1]['component_id'] == 'p1_regions'
     assert changed[0][1]['style'] == {'colors': ['#172554']}
     assert fake.extractions == fake.revisions == 1 and not service.queries
+
+
+def test_scorecard_color_comment_stays_pending(setup, client, monkeypatch):
+    """19.2: scorecards get no set_style, so their color comment can't verify against the recipe."""
+    app, bid, folder, *_ = setup
+    comment = 'Use a dark blue accent for this component; preserve its position and data.'
+    fake = CommentFlow(needs_by_text={comment: [{'capability': 'style.colors', 'value': ['#172554']}]},
+        response=response([op('/pages/0/components/0/colors', ['#172554'], 'add')]))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
+    original = (folder/'spec.json').read_bytes()
+    assessment = post_batch(client, app, bid, [{'component_id': 'p1_revenue', 'text': comment}])
+    assert assessment['pending_comments']['comments'] == [{'component_id': 'p1_revenue', 'text': comment}]
+    assert (folder/'spec.json').read_bytes() == original
 
 
 @pytest.mark.parametrize('count', [1, 2])
@@ -547,6 +561,11 @@ def test_scoped_overrides_preserve_global_palette_when_every_chart_changes(setup
     app, bid, folder, original, *_ = setup
     original.theme.palette = ['#1E40AF']
     original.pages[0].components = original.pages[0].components[:count]
+    # 19.2: a scorecard gets no set_style (no series swatch), so a color comment on it can't
+    # verify against the recipe; every chart here is one with swatches.
+    for c in original.pages[0].components:
+        if c.type == 'scorecard':
+            c.type, c.options, c.dimensions, c.grid.h = 'bar', {}, ['region'], 8  # bar min h
     (folder / 'spec.json').write_text(original.model_dump_json(), encoding='utf-8')
     theme = 'Use a clean blue theme'
     episodic.save(app.state.db, bid, 'user', theme)
