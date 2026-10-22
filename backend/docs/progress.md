@@ -1180,3 +1180,5 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: P2 feasibility still accepts style.colors on scorecards (should be unsupported_app, fail fast) - src/dss/spec/capabilities.py; P3 empty page-1 name now fails compile (Page.name has no min_length) - src/dss/spec/models.py; engine s021 time_series timeout.
 - Next: plan complete (63/63); follow-up for scorecard colors feasibility.
+- Change request: feasibility rejects `style.colors` on scorecards (unsupported_app, src/dss/spec/capabilities.py) so a scorecard color comment fails fast instead of staying pending after 19.2 (user, 2026-10-22).
+- Change request: backgrounds still not sharp enough in Data Studio; user's target: >= 1920x1080 px PNG, ~200 KB-1 MB, under 2 MB (user, 2026-10-22). Facts: 19.1 SCALE=2 gives 2400 px wide (p1 2400x1064, 42 KB); the 19.2 live replay used b_a8ace098d03b/v1's pre-19.1 1x files (1200x532, 15 KB), so report d4af98f7 shows 1x backgrounds. Decide scale (e.g. 3x) and whether file size is a target.
