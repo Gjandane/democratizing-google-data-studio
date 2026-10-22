@@ -306,3 +306,82 @@ def test_labels_with_list_quote_syntax_or_lines_fail_validation(label):
                                     'message': 'Label must be one line without list or quote syntax'}]
     spec['pages'][0]['components'][0]['label'] = "Sales 'Q1'"
     assert not validate_spec(spec)
+
+
+def designed():
+    return json.loads(Path('tests/data/designed_spec.json').read_text(encoding='utf-8'))
+
+
+def test_designed_spec_validates_and_serializes_unchanged():
+    from dss.spec.models import DashboardSpec
+    text = Path('tests/data/designed_spec.json').read_text(encoding='utf-8')
+    spec = designed()
+    assert spec['canvas']['width'] == 1440 and spec['pages'][0]['design']['html']
+    assert [d['id'] for d in spec['pages'][0]['decorations']] == ['p1_design', 'p1_synthetic_sample_data']
+    assert all(c['box'] for c in spec['pages'][0]['components'])
+    assert validate_spec(spec, allowed=catalog()) == []
+    assert DashboardSpec.model_validate_json(text).model_dump_json(indent=2) + '\n' == text
+    # Code-laid specs keep their bytes: no `box`/`design` keys appear when they are absent.
+    golden = Path('tests/data/golden_layout_spec.json').read_text(encoding='utf-8')
+    assert DashboardSpec.model_validate_json(golden).model_dump_json(indent=2) == golden
+
+
+def _designed_mutation(mutation):
+    from dss.render.design_page import minimum
+    spec = designed()
+    page = spec['pages'][0]
+    items = page['components']
+    if mutation == 'box_without_design':
+        spec = sample()
+        spec['pages'][0]['components'][0]['box'] = dict(x=24, y=80, w=300, h=100)
+        return spec, [{'path': 'pages.0.components.0.box',
+                       'message': "A box needs the page's design: box and design appear together"}]
+    if mutation == 'design_missing_box':
+        del items[2]['box']
+        return spec, [{'path': 'pages.0.components.2.box', 'message': 'A component on a designed page needs its measured box'}]
+    if mutation == 'design_without_decoration':
+        page['decorations'] = page['decorations'][1:]
+        return spec, [{'path': 'pages.0.decorations', 'message': 'A designed page needs exactly one design decoration p1_design'}]
+    if mutation == 'decoration_without_design':
+        del page['design']
+        for item in items:
+            del item['box']
+        return spec, [{'path': 'pages.0.decorations', 'message': "A design decoration needs the page's design"}]
+    if mutation == 'overlap':
+        items[1]['box'] = dict(items[0]['box'], x=items[0]['box']['x'] + 100)
+        return spec, [{'path': 'pages.0.components.1.box', 'message': 'Components must not overlap'}]
+    if mutation == 'small':
+        need_w, need_h = minimum('table', 1440)
+        items[6]['box'].update(w=need_w - 1, h=need_h - 1)
+        return spec, [{'path': 'pages.0.components.6.box.w', 'message': f'Minimum w is {need_w} px at canvas width 1440'},
+                      {'path': 'pages.0.components.6.box.h', 'message': f'Minimum h is {need_h} px at canvas width 1440'}]
+    if mutation == 'outside':
+        items[3]['box']['x'] = 1300  # 1300 + 240 > 1440
+        return spec, [{'path': 'pages.0.components.3.box', 'message': 'Box is outside the 1440 x 1312 px page'}]
+    if mutation == 'below':
+        items[7]['box']['y'] = 1100  # 1100 + 240 > 1312
+        return spec, [{'path': 'pages.0.decorations', 'message': 'Layout overlaps the reserved Synthetic sample data label'},
+                      {'path': 'pages.0.components.7.box', 'message': 'Box is outside the 1440 x 1312 px page'}]
+    if mutation == 'footer':
+        items[7]['box']['y'] = 1000  # inside the page, but into the reserved footer at 1224-1288
+        return spec, [{'path': 'pages.0.decorations', 'message': 'Layout overlaps the reserved Synthetic sample data label'}]
+    width = int(mutation.removeprefix('width_'))
+    spec['canvas']['width'] = width
+    bound = 'greater than or equal to 1200' if width < 1200 else 'less than or equal to 1920'
+    return spec, [{'path': 'canvas.width', 'message': f'Input should be {bound}'}]
+
+
+@pytest.mark.parametrize('mutation', ['box_without_design', 'design_missing_box', 'design_without_decoration',
+                                      'decoration_without_design', 'overlap', 'small', 'outside', 'below',
+                                      'footer', 'width_1199', 'width_1921'])
+def test_designed_page_errors(mutation):
+    spec, expected = _designed_mutation(mutation)
+    assert validate_spec(spec, allowed=catalog()) == expected
+
+
+@pytest.mark.parametrize('width', [1200, 1920])
+def test_canvas_width_bounds_are_inclusive(width):
+    spec = designed()
+    spec['canvas']['width'] = width
+    errors = validate_spec(spec, allowed=catalog())
+    assert not any(e['path'] == 'canvas.width' for e in errors)

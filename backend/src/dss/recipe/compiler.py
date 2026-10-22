@@ -4,7 +4,7 @@ import shlex
 from functools import lru_cache
 from jsonschema import Draft202012Validator, ValidationError
 from dss.config import BACKEND_DIR
-from dss.spec.layout import box
+from dss.spec.layout import layout_box
 from dss.spec.models import Component, DashboardSpec, Theme, image_paths, reference_image
 
 
@@ -39,7 +39,7 @@ def compile_recipe(spec: DashboardSpec, version: int) -> str:
             op("add_page", name=page.name)
         op("set_canvas", width=spec.canvas.width, height=page.height)
         op("set_background_image", path=f"background_p{page.index}.png", x=0, y=0, w=spec.canvas.width, h=page.height)
-        placed = [(c, box(spec.canvas, spec.grid, c.grid, height=page.height)) for c in page.components]
+        placed = [(c, layout_box(spec, page, c)) for c in page.components]
         for c, bounds in sorted(placed, key=lambda item: (item[1]["y"], item[1]["x"])):
             Component.model_validate(c.model_dump(warnings=False))
             if c.colors is not None and c.type in ("date_range", "dropdown", "text", "image"):
@@ -64,7 +64,7 @@ def compile_recipe(spec: DashboardSpec, version: int) -> str:
         # The reserved label lives on page 1 only (require_synthetic_label checks it).
         label = next((d for d in page.decorations if d.id == SYNTHETIC_LABEL_ID), None)
         if spec.datasource.synthetic and label is not None:
-            bounds = box(spec.canvas, spec.grid, label.grid, height=page.height)
+            bounds = layout_box(spec, page, label)
             # Native text also makes provenance visible in recipe preview and editable reports.
             op('add_text', component_id=label.id, text=SYNTHETIC_LABEL, x=bounds['x']+16,
                y=bounds['y']+16, w=bounds['w']-32, h=bounds['h']-32,

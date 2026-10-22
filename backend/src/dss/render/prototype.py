@@ -10,7 +10,8 @@ from pathlib import Path
 import re
 
 from dss.data.bigquery import quoted, table_uri
-from dss.spec.layout import box, decoration_text_style, decoration_text_errors
+from dss.render import design_page
+from dss.spec.layout import decoration_text_style, decoration_text_errors, layout_box
 from dss.spec.models import reference_image
 from dss.spec.validate import catalog
 
@@ -221,6 +222,24 @@ def chart_option(item, rows, theme, width):
     return base
 
 
+PROTOTYPE_CSS = '*{box-sizing:border-box}.item{position:absolute;overflow:hidden;padding:16px}.component{display:flex;flex-direction:column;gap:4px;padding:8px}.label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:600;flex:none}.chart{flex:1;min-height:0}.value{font-size:36px;font-weight:700}.component.scorecard{padding:6px 12px;gap:0}.scorecard .label{font-size:12px;line-height:12px}.scorecard .value{font-size:clamp(16px,calc(var(--box-height) - 28px),36px);line-height:1.1}.empty{margin:auto}.data-summary{overflow:auto;font-size:12px}table{border-collapse:collapse}th,td{text-align:left;padding:6px}select,input{font:inherit;min-height:24px;max-width:100%}.component.text{padding:8px;font-size:14px;line-height:20px}.component.date_range,.component.dropdown{padding:0;flex-direction:row;align-items:center;gap:4px}.date_range label{display:flex;align-items:center;gap:4px;font-size:12px}.date_range input{width:100px}.dropdown select{width:100%}img{width:100%;height:100%;object-fit:contain}.title{font-size:28px;font-weight:700}.subtitle{font-size:18px}.decoration{white-space:pre-wrap}'
+
+
+def design_root(spec, page, item, b):
+    """The page's design decoration at the page rect, holding the stored design HTML sanitized
+    again and drawn through design_page.wrap, as it was measured. `all:initial` gives the design
+    the measuring document's inherited defaults; no data-cid survives sanitizing."""
+    if page.design is None:
+        raise ValueError('A design decoration needs the page design')
+    html = design_page.sanitize(page.design.html, page=page.index, fonts=(spec.theme.font_family,))
+    # isolation: no designer z-index can paint the design over components or the footer.
+    style = 'all:initial;display:block;position:absolute;overflow:hidden;isolation:isolate;' + ';'.join(
+        f'{k}:{b[v]}px' for k, v in (('left', 'x'), ('top', 'y'), ('width', 'w'), ('height', 'h')))
+    return (f'<div class="item decoration design" data-cid="{escape(item.id, quote=True)}" data-label="design" '
+            f'data-kind="decoration" style="{escape(style, quote=True)}">'
+            + design_page.wrap(html, b['w'], b['h'], page=page.index) + '</div>')
+
+
 def render(spec, *, layer=None, data=None, folder=None, page=None):
     """`page` (1-based index) renders that page's section alone, for its background capture."""
     from dss.spec.layout import require_synthetic_label
@@ -232,21 +251,30 @@ def render(spec, *, layer=None, data=None, folder=None, page=None):
     data = data or {}
     known = catalog()
     charts = []
-    parts = [f'<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{escape(spec.title)}</title>',
-        '<meta name="viewport" content="width=device-width, initial-scale=1">',
-        '<style>body{margin:0}*{box-sizing:border-box}.item{position:absolute;overflow:hidden;padding:16px}.component{display:flex;flex-direction:column;gap:4px;padding:8px}.label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:600;flex:none}.chart{flex:1;min-height:0}.value{font-size:36px;font-weight:700}.component.scorecard{padding:6px 12px;gap:0}.scorecard .label{font-size:12px;line-height:12px}.scorecard .value{font-size:clamp(16px,calc(var(--box-height) - 28px),36px);line-height:1.1}.empty{margin:auto}.data-summary{overflow:auto;font-size:12px}table{border-collapse:collapse}th,td{text-align:left;padding:6px}select,input{font:inherit;min-height:24px;max-width:100%}.component.text{padding:8px;font-size:14px;line-height:20px}.component.date_range,.component.dropdown{padding:0;flex-direction:row;align-items:center;gap:4px}.date_range label{display:flex;align-items:center;gap:4px;font-size:12px}.date_range input{width:100px}.dropdown select{width:100%}img{width:100%;height:100%;object-fit:contain}.title{font-size:28px;font-weight:700}.subtitle{font-size:18px}.decoration{white-space:pre-wrap}</style></head><body>']
     pages = [p for p in spec.pages if page is None or p.index == page]
     if not pages:
         raise ValueError('Unknown page')
+    css = PROTOTYPE_CSS
+    if any(p.design is not None for p in pages):
+        # Code rules never reach inside a design root: it renders as design_page measured it.
+        css = f'@scope (#dss-canvas) to (.{design_page.ROOT}){{{css}}}'
+    parts = [f'<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{escape(spec.title)}</title>',
+        '<meta name="viewport" content="width=device-width, initial-scale=1">',
+        f'<style>body{{margin:0}}{css}</style></head><body>']
     # Contract 2.0: one canvas, its page sections stacked with no gap.
     parts.append(f'<div id="dss-canvas" style="position:relative;width:{spec.canvas.width}px;height:{sum(p.height for p in pages)}px;background:{css_value(theme.background)};color:{css_value(theme.text)};font-family:{css_value(theme.font_family)}">')
     for page in pages:
         parts.append(f'<section data-page="{page.index}" data-page-name="{escape(page.name, quote=True)}" style="position:relative;width:{spec.canvas.width}px;height:{page.height}px">')
-        for kind, items in (('decoration', page.decorations), ('component', page.components)):
+        # A designed page's design decoration is drawn first, under every other item.
+        decorations = sorted(page.decorations, key=lambda d: d.kind != 'design')
+        for kind, items in (('decoration', decorations), ('component', page.components)):
             for item in items:
                 if kind == 'component' and item.type not in known:
                     raise ValueError('Chart type is missing from the catalog')
-                b = box(spec.canvas, spec.grid, item.grid, height=page.height)
+                b = layout_box(spec, page, item)
+                if kind == 'decoration' and item.kind == 'design':
+                    parts.append(design_root(spec, page, item, b))
+                    continue
                 label = item.label if kind == 'component' else (item.text or item.kind)
                 style = ';'.join(f'{k}:{b[v]}px' for k, v in (('left','x'),('top','y'),('width','w'),('height','h')))
                 style += f';border-radius:{theme.radius}px;--box-height:{b["h"]}px'

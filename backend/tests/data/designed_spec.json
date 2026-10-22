@@ -1,0 +1,405 @@
+{
+  "spec_version": 1,
+  "build_id": "b_123456789abc",
+  "title": "Sales Operations Overview",
+  "archetype": "operational",
+  "canvas": {
+    "width": 1440,
+    "height": 1312
+  },
+  "grid": {
+    "columns": 12,
+    "row_height": 20,
+    "gutter": 16,
+    "margin": 24
+  },
+  "theme": {
+    "background": "#F1F5F9",
+    "surface": "#FFFFFF",
+    "text": "#0F172A",
+    "muted": "#64748B",
+    "accent": "#4F46E5",
+    "palette": [
+      "#4F46E5",
+      "#059669",
+      "#D97706",
+      "#E11D48"
+    ],
+    "font_family": "Arial",
+    "radius": 16
+  },
+  "datasource": {
+    "table": "sample-project.dss_demo.small_sales",
+    "fields": [
+      {
+        "name": "region",
+        "type": "STRING",
+        "label": "Region",
+        "role": "dimension",
+        "default_agg": "none"
+      },
+      {
+        "name": "category",
+        "type": "STRING",
+        "label": "Category",
+        "role": "dimension",
+        "default_agg": "none"
+      },
+      {
+        "name": "product",
+        "type": "STRING",
+        "label": "Product",
+        "role": "dimension",
+        "default_agg": "none"
+      },
+      {
+        "name": "customer_id",
+        "type": "STRING",
+        "label": "Customer",
+        "role": "dimension",
+        "default_agg": "none"
+      },
+      {
+        "name": "revenue",
+        "type": "FLOAT",
+        "label": "Revenue",
+        "role": "metric",
+        "default_agg": "sum"
+      },
+      {
+        "name": "orders",
+        "type": "INTEGER",
+        "label": "Orders",
+        "role": "metric",
+        "default_agg": "sum"
+      },
+      {
+        "name": "delivery_days",
+        "type": "FLOAT",
+        "label": "Delivery days",
+        "role": "metric",
+        "default_agg": "avg"
+      }
+    ],
+    "synthetic": true
+  },
+  "pages": [
+    {
+      "index": 1,
+      "name": "Overview",
+      "height": 1312,
+      "decorations": [
+        {
+          "id": "p1_design",
+          "kind": "design",
+          "grid": {
+            "col": 1,
+            "row": 1,
+            "w": 12,
+            "h": 64
+          },
+          "text": null,
+          "style": {}
+        },
+        {
+          "id": "p1_synthetic_sample_data",
+          "kind": "text",
+          "grid": {
+            "col": 1,
+            "row": 61,
+            "w": 12,
+            "h": 4
+          },
+          "text": "Synthetic sample data",
+          "style": {
+            "background": "#FFFFFF",
+            "color": "#0F172A",
+            "font_size": 16,
+            "font_weight": 400,
+            "border_radius": 0,
+            "opacity": 1
+          }
+        }
+      ],
+      "components": [
+        {
+          "id": "p1_kpi_revenue",
+          "type": "scorecard",
+          "label": "Revenue",
+          "grid": {
+            "col": 1,
+            "row": 5,
+            "w": 3,
+            "h": 5
+          },
+          "box": {
+            "x": 104,
+            "y": 120,
+            "w": 240,
+            "h": 56
+          },
+          "dimensions": [],
+          "metrics": [
+            {
+              "field": "revenue",
+              "agg": "sum"
+            }
+          ],
+          "date_dimension": null,
+          "breakdown": null,
+          "sort": null,
+          "options": {},
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": null,
+          "question_ref": null
+        },
+        {
+          "id": "p1_kpi_orders",
+          "type": "scorecard",
+          "label": "Orders",
+          "grid": {
+            "col": 4,
+            "row": 5,
+            "w": 3,
+            "h": 5
+          },
+          "box": {
+            "x": 456,
+            "y": 120,
+            "w": 240,
+            "h": 56
+          },
+          "dimensions": [],
+          "metrics": [
+            {
+              "field": "orders",
+              "agg": "sum"
+            }
+          ],
+          "date_dimension": null,
+          "breakdown": null,
+          "sort": null,
+          "options": {},
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": null,
+          "question_ref": null
+        },
+        {
+          "id": "p1_kpi_customers",
+          "type": "scorecard",
+          "label": "Customers",
+          "grid": {
+            "col": 7,
+            "row": 5,
+            "w": 3,
+            "h": 5
+          },
+          "box": {
+            "x": 808,
+            "y": 120,
+            "w": 240,
+            "h": 56
+          },
+          "dimensions": [],
+          "metrics": [
+            {
+              "field": "customer_id",
+              "agg": "count_distinct"
+            }
+          ],
+          "date_dimension": null,
+          "breakdown": null,
+          "sort": null,
+          "options": {},
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": null,
+          "question_ref": null
+        },
+        {
+          "id": "p1_kpi_delivery",
+          "type": "scorecard",
+          "label": "Avg delivery days",
+          "grid": {
+            "col": 10,
+            "row": 5,
+            "w": 3,
+            "h": 5
+          },
+          "box": {
+            "x": 1160,
+            "y": 120,
+            "w": 240,
+            "h": 56
+          },
+          "dimensions": [],
+          "metrics": [
+            {
+              "field": "delivery_days",
+              "agg": "avg"
+            }
+          ],
+          "date_dimension": null,
+          "breakdown": null,
+          "sort": null,
+          "options": {},
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": null,
+          "question_ref": null
+        },
+        {
+          "id": "p1_bar_sales_by_region",
+          "type": "bar",
+          "label": "Sales by region",
+          "grid": {
+            "col": 1,
+            "row": 10,
+            "w": 6,
+            "h": 14
+          },
+          "box": {
+            "x": 40,
+            "y": 256,
+            "w": 656,
+            "h": 280
+          },
+          "dimensions": [
+            "region"
+          ],
+          "metrics": [
+            {
+              "field": "revenue",
+              "agg": "sum"
+            }
+          ],
+          "date_dimension": null,
+          "breakdown": null,
+          "sort": null,
+          "options": {},
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": null,
+          "question_ref": null
+        },
+        {
+          "id": "p1_pie_category_mix",
+          "type": "pie",
+          "label": "Category mix",
+          "grid": {
+            "col": 7,
+            "row": 10,
+            "w": 6,
+            "h": 14
+          },
+          "box": {
+            "x": 744,
+            "y": 256,
+            "w": 656,
+            "h": 280
+          },
+          "dimensions": [
+            "category"
+          ],
+          "metrics": [
+            {
+              "field": "revenue",
+              "agg": "sum"
+            }
+          ],
+          "date_dimension": null,
+          "breakdown": null,
+          "sort": null,
+          "options": {},
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": null,
+          "question_ref": null
+        },
+        {
+          "id": "p1_table_top_products",
+          "type": "table",
+          "label": "Top products",
+          "grid": {
+            "col": 1,
+            "row": 24,
+            "w": 12,
+            "h": 12
+          },
+          "box": {
+            "x": 40,
+            "y": 616,
+            "w": 1360,
+            "h": 240
+          },
+          "dimensions": [
+            "product"
+          ],
+          "metrics": [
+            {
+              "field": "revenue",
+              "agg": "sum"
+            }
+          ],
+          "date_dimension": null,
+          "breakdown": null,
+          "sort": null,
+          "options": {},
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": null,
+          "question_ref": null
+        },
+        {
+          "id": "p1_table_late_shipments",
+          "type": "table",
+          "label": "Late shipments",
+          "grid": {
+            "col": 1,
+            "row": 36,
+            "w": 12,
+            "h": 12
+          },
+          "box": {
+            "x": 40,
+            "y": 936,
+            "w": 1360,
+            "h": 240
+          },
+          "dimensions": [
+            "product"
+          ],
+          "metrics": [
+            {
+              "field": "delivery_days",
+              "agg": "avg"
+            }
+          ],
+          "date_dimension": null,
+          "breakdown": null,
+          "sort": null,
+          "options": {},
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": null,
+          "question_ref": null
+        }
+      ],
+      "design": {
+        "html": "<style>.dss-design-p1 *{box-sizing:border-box}.dss-design-p1{margin:0;padding:24px;background:#F1F5F9;color:#0F172A;font-family:Arial, sans-serif}.dss-design-p1 .header{height:64px;margin-bottom:16px;display:flex;flex-direction:column;justify-content:center;gap:4px}.dss-design-p1 .header h1{margin:0;font-size:28px;line-height:35px;font-weight:700}.dss-design-p1 .header p{margin:0;font-size:16px;line-height:20px;color:#64748B}.dss-design-p1 .kpis{display:grid;grid-template-columns:repeat(4, 336px);gap:16px;margin-bottom:16px}.dss-design-p1 .kpi{height:88px;padding:16px;display:flex;gap:16px;background:#FFFFFF;border-radius:16px;box-shadow:0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.06)}.dss-design-p1 .tile{flex:none;width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center}.dss-design-p1 .tile svg{width:24px;height:24px}.dss-design-p1 .tile.indigo{background:#E0E7FF;color:#4F46E5}.dss-design-p1 .tile.emerald{background:#D1FAE5;color:#059669}.dss-design-p1 .tile.amber{background:#FEF3C7;color:#D97706}.dss-design-p1 .tile.rose{background:#FFE4E6;color:#E11D48}.dss-design-p1 .kpi [data-slot]{flex:none;width:240px;height:56px}.dss-design-p1 .charts{display:grid;grid-template-columns:repeat(2, 688px);gap:16px;margin-bottom:16px}.dss-design-p1 .tables{display:grid;grid-template-columns:1392px;gap:16px}.dss-design-p1 .card{padding:16px;background:#FFFFFF;border-radius:16px;box-shadow:0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.06)}.dss-design-p1 .card h2{margin:0 0 12px;font-size:16px;line-height:20px;font-weight:700;color:#0F172A}.dss-design-p1 .charts [data-slot]{height:280px}.dss-design-p1 .tables [data-slot]{height:240px}</style>\n\n<header class=\"header\">\n  <h1>Sales Operations Overview</h1>\n  <p>Weekly performance across regions, orders and deliveries</p>\n</header>\n<section class=\"kpis\">\n  <div class=\"kpi\"><div class=\"tile indigo\"><i data-icon=\"dollar-sign\"><svg class=\"lucide lucide-dollar-sign\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"12\" x2=\"12\" y1=\"2\" y2=\"22\"></line><path d=\"M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6\"></path></svg></i></div><div data-slot=\"p1_kpi_revenue\"></div></div>\n  <div class=\"kpi\"><div class=\"tile emerald\"><i data-icon=\"shopping-cart\"><svg class=\"lucide lucide-shopping-cart\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m2.05 2.05 1.099-.028a1 1 0 0 1 1.008.815l2.69 14.347A1 1 0 0 0 7.83 18H18\"></path><path d=\"M4.563 5h16.435a1 1 0 0 1 .981 1.204l-1.026 6.226A2 2 0 0 1 18.962 14H6.25\"></path><circle cx=\"18\" cy=\"20\" r=\"2\"></circle><circle cx=\"8\" cy=\"20\" r=\"2\"></circle></svg></i></div><div data-slot=\"p1_kpi_orders\"></div></div>\n  <div class=\"kpi\"><div class=\"tile amber\"><i data-icon=\"users\"><svg class=\"lucide lucide-users\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\"></path><path d=\"M16 3.128a4 4 0 0 1 0 7.744\"></path><path d=\"M22 21v-2a4 4 0 0 0-3-3.87\"></path><circle cx=\"9\" cy=\"7\" r=\"4\"></circle></svg></i></div><div data-slot=\"p1_kpi_customers\"></div></div>\n  <div class=\"kpi\"><div class=\"tile rose\"><i data-icon=\"truck\"><svg class=\"lucide lucide-truck\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2\"></path><path d=\"M15 18H9\"></path><path d=\"M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14\"></path><circle cx=\"17\" cy=\"18\" r=\"2\"></circle><circle cx=\"7\" cy=\"18\" r=\"2\"></circle></svg></i></div><div data-slot=\"p1_kpi_delivery\"></div></div>\n</section>\n<section class=\"charts\">\n  <div class=\"card\"><h2>Sales by region</h2><div data-slot=\"p1_bar_sales_by_region\"></div></div>\n  <div class=\"card\"><h2>Category mix</h2><div data-slot=\"p1_pie_category_mix\"></div></div>\n</section>\n<section class=\"tables\">\n  <div class=\"card\"><h2>Top products</h2><div data-slot=\"p1_table_top_products\"></div></div>\n  <div class=\"card\"><h2>Late shipments</h2><div data-slot=\"p1_table_late_shipments\"></div></div>\n</section>\n",
+        "source": "designer",
+        "model": "gemini-4-argon"
+      }
+    }
+  ]
+}

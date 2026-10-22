@@ -139,3 +139,23 @@ def test_synthetic_label_is_emitted_once_on_page_one():
     labels = [o for o in ops if o.get('component_id') == SYNTHETIC_LABEL_ID]
     assert len(labels) == 1 and labels[0]['op'] == 'add_text'
     assert ops.index(labels[0]) < next(i for i, o in enumerate(ops) if o['op'] == 'add_page')
+
+
+def test_designed_recipe_uses_the_canvas_width_and_measured_boxes():
+    from dss.spec.models import DashboardSpec
+    spec = DashboardSpec.model_validate_json(Path('tests/data/designed_spec.json').read_text(encoding='utf-8'))
+    page = spec.pages[0]
+    header, *ops = lines(compile_recipe(spec, 1))
+    for kind, values in (('header', [header]), ('op', ops)):
+        validator = Draft202012Validator({**SCHEMA, '$ref': '#/$defs/' + kind})
+        for value in values:
+            validator.validate(value)
+    assert header['canvas'] == {'width': 1440, 'height': page.height}
+    assert [o for o in ops if o['op'] == 'set_canvas'] == [{'id': 's003', 'op': 'set_canvas', 'width': 1440, 'height': page.height}]
+    assert [(o['x'], o['y'], o['w'], o['h']) for o in ops if o['op'] == 'set_background_image'] == [(0, 0, 1440, page.height)]
+    charts = {o['component_id']: {k: o[k] for k in 'xywh'} for o in ops if o['op'] == 'add_chart'}
+    assert charts == {c.id: c.box.model_dump() for c in page.components}
+    # Charts are emitted in reading order of their boxes; the code-drawn footer text follows.
+    assert list(charts) == [c.id for c in sorted(page.components, key=lambda c: (c.box.y, c.box.x))]
+    label = next(o for o in ops if o.get('component_id') == SYNTHETIC_LABEL_ID)
+    assert (label['op'], label['y'], label['w']) == ('add_text', 1224 + 16, 1440 - 48 - 32)

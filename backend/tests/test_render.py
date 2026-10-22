@@ -1006,3 +1006,124 @@ def test_twelve_component_full_render_budget(dashboard, tmp_path):
     assert len(png) < 2 * 1024 * 1024
     artifacts(dashboard, service, tmp_path)
     assert len(service.queries) == 12
+
+
+DESIGNED = Path('tests/data/designed_spec.json')
+# sha256 of render(golden_spec.json) for layer all / decoration, recorded before designed pages (20.2).
+GOLDEN_PROTOTYPE = ('1481af850dd5c99f617b2a6524220be154b05ee17de988cfda58325fd1f10727',
+                    '9d7b1aaa26c6d85d994835a5f598205b67fc7fa43366fb532a55da05e3080fd4')
+
+
+def designed_spec():
+    return DashboardSpec.model_validate_json(DESIGNED.read_text(encoding='utf-8'))
+
+
+def test_golden_code_laid_prototype_is_byte_identical():
+    from hashlib import sha256
+    spec = DashboardSpec.model_validate_json(Path('tests/data/golden_spec.json').read_text(encoding='utf-8'))
+    assert tuple(sha256(render(spec, layer=layer).encode()).hexdigest() for layer in (None, 'decoration')) == GOLDEN_PROTOTYPE
+    assert '@scope' not in render(spec) and 'dss-design' not in render(spec)
+
+
+def test_designed_prototype_html_contract():
+    spec = designed_spec()
+    page = spec.pages[0]
+    for layer in (None, 'decoration'):
+        html = render(spec, layer=layer)
+        parsed = PageParser(html)  # asserts one data-cid per item and none nested
+        assert set(parsed.items) == {i.id for i in page.decorations + page.components}
+        assert {tuple((t, i) for t, i, _ in a['chain']) for a in parsed.items.values()} == {(('div', 'dss-canvas'), ('section', None))}
+        assert f'width:1440px;height:{page.height}px' in parsed.canvas[0]['style']
+        root = parsed.items['p1_design']
+        assert root['data-kind'] == 'decoration' and 'display:none' not in root['style']
+        assert all(f'{k}:{v}px' in root['style'] for k, v in (('left', 0), ('top', 0), ('width', 1440), ('height', page.height)))
+        for c in page.components:
+            attrs = parsed.items[c.id]
+            assert all(f'{k}:{getattr(c.box, v)}px' in attrs['style'] for k, v in (('left', 'x'), ('top', 'y'), ('width', 'w'), ('height', 'h')))
+            assert ('display:none' in attrs['style']) == (layer == 'decoration')
+        # The design root comes first (under everything); the code-drawn footer is still there.
+        assert list(parsed.items)[:2] == ['p1_design', 'p1_synthetic_sample_data']
+        assert html.count('class="dss-design dss-design-p1"') == 1 and '@scope (#dss-canvas) to (.dss-design)' in html
+
+
+def test_designed_prototype_sanitizes_the_stored_design_again():
+    spec = designed_spec()
+    spec.pages[0].design.html += ('<script>alert(1)</script><div onclick="steal()" data-cid="p1_fake">x</div>'
+                                  '<style>.x{background:url(http://evil.test/a.png)}@import "http://evil.test";</style>'
+                                  '<a href="javascript:alert(2)">link</a><svg><foreignObject>f</foreignObject></svg>')
+    html = render(spec, layer='decoration')
+    for hostile in ('alert(', 'steal', 'p1_fake', 'evil.test', 'javascript:', 'foreignObject', '<a '):
+        assert hostile not in html
+    assert 'Sales Operations Overview' in html and 'data-slot="p1_kpi_revenue"' in html
+
+
+def test_designed_page_draws_components_on_their_slots_in_chromium():
+    from playwright.sync_api import sync_playwright
+    spec = designed_spec()
+    page = spec.pages[0]
+    script = '''() => { const s = document.querySelector('section').getBoundingClientRect();
+      const rect = e => { const r = e.getBoundingClientRect(); return [r.x - s.x, r.y - s.y, r.width, r.height]; };
+      return {slots: Object.fromEntries([...document.querySelectorAll('[data-slot]')].map(e => [e.dataset.slot, rect(e)])),
+              items: Object.fromEntries([...document.querySelectorAll('[data-cid]')].map(e => [e.dataset.cid,
+                     [...rect(e), getComputedStyle(e).display]]))}; }'''
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        try:
+            tab = browser.new_page(viewport={'width': 1440, 'height': page.height})
+            tab.set_content(render(spec))
+            shown = tab.evaluate(script)
+            tab.set_content(render(spec, layer='decoration'))
+            hidden = tab.evaluate(script)
+        finally:
+            browser.close()
+    for c in page.components:
+        expected = [c.box.x, c.box.y, c.box.w, c.box.h]
+        assert shown['slots'][c.id] == expected and shown['items'][c.id][:4] == expected
+        assert hidden['items'][c.id][4] == 'none'
+    assert shown['items']['p1_design'] == [0, 0, 1440, page.height, 'block'] == hidden['items']['p1_design']
+    assert hidden['slots'] == shown['slots']
+
+
+def test_designer_z_index_never_paints_over_components_or_the_footer():
+    from playwright.sync_api import sync_playwright
+    spec = designed_spec()
+    page = spec.pages[0]
+    page.design.html += '<style>.dss-design-p1{z-index:9}.card,.kpi{position:relative;z-index:5}</style>'
+    items = page.components + [d for d in page.decorations if d.kind != 'design']
+    centres = {i.id: (b['x'] + b['w'] // 2, b['y'] + b['h'] // 2) for i in items
+               for b in [i.box.model_dump() if getattr(i, 'box', None) else box(spec.canvas, spec.grid, i.grid, height=page.height)]}
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        try:
+            tab = browser.new_page(viewport={'width': 1440, 'height': page.height})
+            tab.set_content(render(spec))
+            hits = tab.evaluate('''centres => Object.fromEntries(Object.entries(centres).map(([cid, [x, y]]) =>
+                [cid, document.elementFromPoint(x, y).closest('[data-cid]').dataset.cid]))''', centres)
+        finally:
+            browser.close()
+    assert hits == {cid: cid for cid in centres}
+
+
+def test_designed_background_is_3x_and_under_2mb(tmp_path):
+    spec = designed_spec()
+    assert background.write_pages(spec, tmp_path) == {'background_p1.png': 3}
+    png = (tmp_path / 'background_p1.png').read_bytes()
+    assert struct.unpack('>II', png[16:24]) == (4320, 3 * spec.pages[0].height)
+    assert len(png) < 2 * 1024 * 1024
+
+
+def test_designed_background_over_2mb_at_3x_falls_back_to_2x(tmp_path, monkeypatch):
+    calls = []
+    def fake_capture(html, path, width, height, scale=background.SCALE):
+        calls.append((width, height, scale))
+        path.write_bytes(b'x' * (background.LIMIT if scale == 3 else 10))
+    monkeypatch.setattr(background, 'capture', fake_capture)
+    spec = designed_spec()
+    assert background.write_pages(spec, tmp_path) == {'background_p1.png': 2}
+    assert calls == [(1440, spec.pages[0].height, 3), (1440, spec.pages[0].height, 2)]
+    assert (tmp_path / 'background_p1.png').read_bytes() == b'x' * 10
+    # A code-laid page never drops below 3x.
+    calls.clear()
+    code = three_pages()
+    assert background.write_pages(code, tmp_path) == {name: 3 for name in background.names(code)}
+    assert [scale for *_, scale in calls] == [3, 3, 3]

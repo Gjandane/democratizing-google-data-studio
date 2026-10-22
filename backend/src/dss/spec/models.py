@@ -1,6 +1,6 @@
 """Typed Dashboard Spec; semantic constraints are checked against the catalog."""
 from typing import Annotated, Literal
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_serializer
 
 TYPES = ("scorecard", "time_series", "bar", "pie", "table", "pivot_table", "geo_map", "scatter", "text", "image", "date_range", "dropdown")
 SYNTHETIC_LABEL_ID = 'p1_synthetic_sample_data'
@@ -27,7 +27,8 @@ class Model(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 class Canvas(Model):
-    width: Literal[1200] = 1200
+    # Code-laid builds keep 1200; a designed page 1 sets 1200-1920 (#Designed pages).
+    width: int = Field(default=1200, ge=1200, le=1920, strict=True)
     height: int = Field(default=900, gt=0)
 
 class Grid(Model):
@@ -41,6 +42,30 @@ class Cell(Model):
     row: int = Field(ge=1)
     w: int = Field(ge=1)
     h: int = Field(ge=1)
+
+class Box(Model):
+    """Measured pixel box of a component on a designed page; Layout returns it unchanged."""
+    x: int = Field(ge=0, strict=True)
+    y: int = Field(ge=0, strict=True)
+    w: int = Field(ge=1, strict=True)
+    h: int = Field(ge=1, strict=True)
+
+
+class Design(Model):
+    """A designed page: the sanitized page HTML, stored so versions and reloads need no model."""
+    html: str = Field(min_length=1)
+    source: str = Field(min_length=1)  # provenance, e.g. "designer" or "revise"
+    model: str = Field(min_length=1)
+
+
+def _without_none(handler, value, keys):
+    # Code-laid specs serialize byte for byte as before the optional designed-page keys.
+    data = handler(value)
+    for key in keys:
+        if getattr(value, key) is None:
+            data.pop(key, None)
+    return data
+
 
 Color = Annotated[str, Field(strict=True, pattern=r"^#[0-9A-Fa-f]{6}$", min_length=7, max_length=7)]
 
@@ -68,7 +93,8 @@ class Component(Model):
     id: str = Field(pattern=r"^p[1-9][0-9]*_[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
     type: Literal["scorecard", "time_series", "bar", "pie", "table", "pivot_table", "geo_map", "scatter", "text", "image", "date_range", "dropdown"]
     label: str
-    grid: Cell
+    grid: Cell  # the code layout's cell; on a designed page the fallback if the design is dropped
+    box: Box | None = None
     dimensions: list[str] = Field(default_factory=list)
     metrics: list[Metric] = Field(default_factory=list)
     date_dimension: str | None = None
@@ -81,9 +107,13 @@ class Component(Model):
     field: str | None = None
     question_ref: str | None = None
 
+    @model_serializer(mode='wrap')
+    def _serialize(self, handler):
+        return _without_none(handler, self, ('box',))
+
 class Decoration(Model):
     id: str = Field(pattern=r"^p[1-9][0-9]*_[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
-    kind: Literal["band", "panel", "title", "subtitle", "text", "logo", "divider"]
+    kind: Literal["band", "panel", "title", "subtitle", "text", "logo", "divider", "design"]
     grid: Cell
     text: str | None = None
     style: dict = Field(default_factory=dict)
@@ -94,6 +124,11 @@ class Page(Model):
     height: int = Field(gt=0)
     decorations: list[Decoration] = Field(default_factory=list)
     components: list[Component] = Field(default_factory=list)
+    design: Design | None = None
+
+    @model_serializer(mode='wrap')
+    def _serialize(self, handler):
+        return _without_none(handler, self, ('design',))
 
 class DataField(Model):
     name: str = Field(min_length=1)

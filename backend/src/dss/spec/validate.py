@@ -7,7 +7,7 @@ from pydantic import ValidationError
 from dss.config import BACKEND_DIR
 from dss.memory.semantic import parse_concept
 from dss.spec.models import DashboardSpec, image_paths, reference_image
-from dss.spec.layout import box, synthetic_errors, decoration_text_errors
+from dss.spec.layout import box, minimum_box, overlaps, synthetic_errors, decoration_text_errors
 
 
 def synthetic_participation(db, build_id, folder):
@@ -114,6 +114,14 @@ def _validate_page(spec, p, page, rules, allowed, fields, ids, refs, error):
     height = min(page.height, spec.canvas.height) if p == 0 else page.height
     prefix = f"p{p + 1}_"
     boxes = []
+    # Designed page (#Designed pages): `design`, its one `p<n>_design` decoration and a measured
+    # `box` on every component appear together or not at all; boxes replace the grid geometry.
+    designed = page.design is not None
+    designs = [d.id for d in page.decorations if d.kind == "design"]
+    if designed and designs != [f"p{p + 1}_design"]:
+        error(f"pages.{p}.decorations", f"A designed page needs exactly one design decoration p{p + 1}_design")
+    if not designed and designs:
+        error(f"pages.{p}.decorations", "A design decoration needs the page's design")
     for group in ("decorations", "components"):
         for i, item in enumerate(getattr(page, group)):
             path = f"pages.{p}.{group}.{i}"
@@ -122,18 +130,31 @@ def _validate_page(spec, p, page, rules, allowed, fields, ids, refs, error):
             ids.add(item.id)
             if not item.id.startswith(prefix):
                 error(path + ".id", f"ID must use the page prefix {prefix}")
-            try:
-                b = box(spec.canvas, spec.grid, item.grid, height=height)
-                if group == "components":
-                    for other in boxes:
-                        if b['x'] < other['x'] + other['w'] and other['x'] < b['x'] + b['w'] and b['y'] < other['y'] + other['h'] and other['y'] < b['y'] + b['h']:
-                            error(path + ".grid", "Components must not overlap")
-                            break
+            if group == "components" and designed:
+                if item.box is None:
+                    error(path + ".box", "A component on a designed page needs its measured box")
+                else:
+                    b = item.box.model_dump()
+                    if b['x'] + b['w'] > spec.canvas.width or b['y'] + b['h'] > height:
+                        error(path + ".box", f"Box is outside the {spec.canvas.width} x {height} px page")
+                    if any(overlaps(b, other) for other in boxes):
+                        error(path + ".box", "Components must not overlap")
                     boxes.append(b)
-            except ValueError:
-                error(path + ".grid", "Grid box is outside the canvas or has no area")
+            else:
+                try:
+                    b = box(spec.canvas, spec.grid, item.grid, height=height)
+                    if group == "components":
+                        for other in boxes:
+                            if b['x'] < other['x'] + other['w'] and other['x'] < b['x'] + b['w'] and b['y'] < other['y'] + other['h'] and other['y'] < b['y'] + b['h']:
+                                error(path + ".grid", "Components must not overlap")
+                                break
+                        boxes.append(b)
+                except ValueError:
+                    error(path + ".grid", "Grid box is outside the canvas or has no area")
             if group != "components":
                 continue
+            if item.box is not None and not designed:
+                error(path + ".box", "A box needs the page's design: box and design appear together")
             if item.question_ref:
                 refs[item.question_ref] += 1
             if "\n" in item.label or "\r" in item.label or label_text(item.label) != " ".join(item.label.split()):
@@ -146,9 +167,14 @@ def _validate_page(spec, p, page, rules, allowed, fields, ids, refs, error):
             for slot in ("dimensions", "metrics"):
                 if not rule['min_' + slot] <= len(getattr(item, slot)) <= rule['max_' + slot]:
                     error(path + "." + slot, f"Expected {rule['min_' + slot]}..{rule['max_' + slot]} {slot}")
-            for axis in ("w", "h"):
-                if getattr(item.grid, axis) < rule['min_' + axis]:
-                    error(path + ".grid." + axis, f"Minimum {axis} is {rule['min_' + axis]}")
+            if designed and item.box is not None:
+                for axis, need in zip(("w", "h"), minimum_box(rule, spec.canvas, spec.grid)):
+                    if getattr(item.box, axis) < need:
+                        error(path + ".box." + axis, f"Minimum {axis} is {need} px at canvas width {spec.canvas.width}")
+            elif not designed:
+                for axis in ("w", "h"):
+                    if getattr(item.grid, axis) < rule['min_' + axis]:
+                        error(path + ".grid." + axis, f"Minimum {axis} is {rule['min_' + axis]}")
             if rule['requires_date_dimension'] and not item.date_dimension:
                 error(path + ".date_dimension", "A date dimension is required")
             if item.type == "dropdown" and not item.field:

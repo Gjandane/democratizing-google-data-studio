@@ -1236,3 +1236,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: page.on('request') logs a URL once per measure pass; setuptools won't ship render/icons/*.svg in a non-editable wheel without package-data (editable uv install is fine).
 - Left open: P3 non-slot, non-text elements outside the page give no error - design_page.py; P3 root `display:none/contents` gives 0x0 slot errors without naming the cause - design_page.py; P3 (for 20.2) designer CSS reaches root descendants, so draw components and the footer outside the root - design_page.py
 - Next: Task 20.2. Start by `status`; reuse design_page.wrap/sanitize for the designed prototype root.
+
+## 2026-10-22: Task 20.2 Designed pages in the spec, layout, prototype, background and recipe
+- Status: done
+- Plan check: off
+- What changed: models (Canvas.width int 1200-1920, Box, Design, decoration kind `design`), layout.layout_box/minimum_box/design_decoration, validator box rules, prototype design root, background 2x fallback, compiler via Layout; tests/data/designed_spec.json (1440 x 1312, synthetic footer) + tests.
+- Checks: Done-when pytest set PASS (354; review-fix tests rerun PASS); live 12-component budget PASS (1.22 s); `uv run dsengine validate` (../engine) on the designed recipe exit 0; Test (all) `uv run pytest` PASS (1507 passed, 12 deselected; one earlier run hit the known 100 ms feasibility timing flake, passed 3/3 isolated and in the serial rerun).
+- Decisions: None box/design omitted on dump (code-laid spec.json bytes unchanged). Designed page: component grid ignored (fallback), boxes checked (inside page, no overlap, catalog min px at canvas width, footer via synthetic_errors). Design.source free string ("designer"/"revise"). Prototype: code CSS in `@scope (#dss-canvas) to (.dss-design)` only when a rendered page is designed; design root div `all:initial;isolation:isolate` at page rect holding design_page.wrap(sanitize(html, page=n, fonts=(theme font,))), drawn before other decorations. write_pages returns {name: scale}; trace recording of a 2x drop left to 20.3 (nodes/render.py). No test pinned width 1200 for the If.
+- Digest: spec.models Box{x,y,w,h}, Design{html,source,model}, Page.design, Component.box, Canvas.width 1200-1920; layout.layout_box(spec,page,item), design_decoration(n,height); background.write_pages->{name:scale}, LIMIT; fixture tests/data/designed_spec.json
+- Tried and failed: none
+- Gotchas: designer z-index escaped the design root until `isolation:isolate`; revise context dumps spec incl. design.html (20.4 budget).
+- Left open: P3 layout.minimum_box duplicates design_page.minimum - src/dss/spec/layout.py; P3 2x fallback file not re-checked against LIMIT - src/dss/render/background.py; P3 code-laid specs may validate at widths 1201-1920 - src/dss/spec/models.py
+- Next: Task 20.3. Start by `status`; build designed specs with design_decoration + measured boxes, record write_pages scales in the trace.

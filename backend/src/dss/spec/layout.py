@@ -145,7 +145,10 @@ def synthetic_errors(spec):
         # Reserve the entire horizontal strip, including the label's margins.
         reserved.update(x=0, w=spec.canvas.width)
         for item in page.components + page.decorations:
-            if item is not label and overlaps(reserved, box(spec.canvas, spec.grid, item.grid, height=page.height)):
+            # A design covers the page; its measurement keeps every element above the footer.
+            if item is label or getattr(item, 'kind', None) == 'design':
+                continue
+            if overlaps(reserved, layout_box(spec, page, item)):
                 return ['Layout overlaps the reserved Synthetic sample data label']
     except ValueError:
         return ['Synthetic sample data label must fit the canvas']
@@ -156,6 +159,37 @@ def require_synthetic_label(spec):
     errors = synthetic_errors(spec)
     if errors:
         raise ValueError('; '.join(errors))
+
+
+def layout_box(spec, page, item):
+    """Layout for one spec item: a designed page's measured component `box` unchanged, the page
+    rect for its `design` decoration, else the grid cell's box. Prototype, background and recipe
+    all ask here, so they agree."""
+    if getattr(item, 'box', None) is not None:
+        return item.box.model_dump()
+    if getattr(item, 'kind', None) == 'design':
+        return dict(x=0, y=0, w=spec.canvas.width, h=page.height)
+    return box(spec.canvas, spec.grid, item.grid, height=page.height)
+
+
+def minimum_box(rule, canvas, grid):
+    """(w, h) px of a catalog type's min_w x min_h cells at this canvas width."""
+    from types import SimpleNamespace
+    from dss.spec.models import Cell
+    size = box(SimpleNamespace(width=canvas.width, height=10 ** 6), grid,
+               Cell(col=1, row=1, w=rule['min_w'], h=rule['min_h']))
+    return size['w'], size['h']
+
+
+def design_decoration(index, height, grid=None):
+    """The `p<n>_design` decoration of a designed page: its grid covers the page's grid rows;
+    Layout draws it at the full page rect."""
+    from dss.spec.models import Cell, Decoration, Grid
+    grid = grid or Grid()
+    rows = max(1, (height - 2 * grid.margin + grid.gutter) // grid.row_height)
+    return Decoration(id=f'p{index}_design', kind='design', grid=Cell(col=1, row=1, w=grid.columns, h=rows))
+
+
 def box(canvas, grid, cell, *, height=None):
     col_w = (canvas.width - 2 * grid.margin - (grid.columns - 1) * grid.gutter) / grid.columns
     left = grid.margin + (cell.col - 1) * (col_w + grid.gutter)
