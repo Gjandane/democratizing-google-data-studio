@@ -1212,3 +1212,15 @@ context. Task status lives in docs/plan.md, not here.
 - Decided by the architect: the design HTML is stored in the spec; page 1 first sets the width and shared CSS, pages 2-n run in parallel; one repair per page then the code layout and kit for that page (page 1 failing -> whole build on the code path at 1200); the off switch is a Config attribute, not an env name or API setting, so contracts/conventions.md and api.md stay unchanged; the design is one `p<n>_design` decoration so the api.md Prototype HTML rules (no nested `data-cid`) hold.
 - Tasks affected: 19.4 unchanged and still first; new 20.1 (M), 20.2 (M), 20.3 (M), 20.4 (M), 20.5 (M, STOP: the user approves the look against the reference).
 - Change requests settled: AI-designed decoration-layer HTML with a design skill (planned: 20.1-20.5); "the same size in the first place" (planned: the canvas follows the designed width via `set_canvas`, 20.2 and 20.5; the 1200 code path and 3x scale stay). No delta audit: target POC.
+
+## 2026-10-22: Task 19.4 Feasibility rejects colors on scorecards
+- Status: done
+- Plan check: off
+- What changed: capabilities.py: `Checker.component` rejects `colors` on a scorecard (unsupported_app, `SCORECARD_COLORS`); other charts keep 1-20, non-charts keep "Only chart components support colors". requirements.py `_requirement_issues`: a `style.colors` need bound to a scorecard component becomes the same unsupported_app issue (fail fast, ledger/pending batch persist, spec.json untouched). Tests: test_capabilities, test_feasibility (per-type), test_revise (pending test became fail-fast; palette test retargeted to the bar).
+- Checks: `uv run pytest tests/test_capabilities.py tests/test_feasibility.py tests/test_revise.py` PASS (265); Test (all) `uv run pytest` PASS (1448 passed, 12 deselected, before a message-text-only edit; the 3 files rerun after it). New tests fail on the old code (3 failed).
+- Decisions: requirements.py is outside Files: `checker.need` has no component types, so the rejection lives where bindings are known (plan "If" path). Message: "Scorecards take no colors (no series swatch in Data Studio): use another chart type to set colors"; no theme-palette advice since nothing colors a scorecard from the theme. No accept-alternative offers exist for style.colors, so only drop resolves the issue.
+- Digest: capabilities.SCORECARD_COLORS; Checker.component rejects scorecard `colors`; requirements._requirement_issues turns scorecard-bound `style.colors` needs into unsupported_app (slot need:i).
+- Tried and failed: none
+- Gotchas: none
+- Left open: P3 prototype still renders scorecard colors (dead path, test_revise scorecard_palette test) - src/dss/render/prototype.py:295
+- Next: Task 20.1. Start by reading docs/architecture.md#Designed pages.

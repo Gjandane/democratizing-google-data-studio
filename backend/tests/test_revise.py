@@ -78,7 +78,7 @@ def test_chart_palette_uses_registry_and_preserves_legacy_fallback():
     from dss.spec.capabilities import Checker, load_registry
     from dss.render.prototype import chart_option
     spec = DashboardSpec.model_validate_json(Path('tests/data/thin_spec.json').read_text())
-    component = spec.pages[0].components[0]
+    component = spec.pages[0].components[1]  # 19.4: the bar; a scorecard with colors is unsupported_app
     checker = Checker(load_registry())
     assert chart_option(component, [], spec.theme, 500)['color'] == spec.theme.palette
     spec.theme.palette = []
@@ -542,8 +542,8 @@ def test_component_dark_blue_accent_changes_only_its_recipe_style(setup, client,
     assert fake.extractions == fake.revisions == 1 and not service.queries
 
 
-def test_scorecard_color_comment_stays_pending(setup, client, monkeypatch):
-    """19.2: scorecards get no set_style, so their color comment can't verify against the recipe."""
+def test_scorecard_color_comment_fails_fast(setup, client, monkeypatch):
+    """19.4: scorecards get no set_style, so a color comment on one is unsupported_app, not merely pending."""
     app, bid, folder, *_ = setup
     comment = 'Use a dark blue accent for this component; preserve its position and data.'
     fake = CommentFlow(needs_by_text={comment: [{'capability': 'style.colors', 'value': ['#172554']}]},
@@ -551,8 +551,10 @@ def test_scorecard_color_comment_stays_pending(setup, client, monkeypatch):
     monkeypatch.setattr(app.state.models, 'llm_for', lambda _: fake)
     original = (folder/'spec.json').read_bytes()
     assessment = post_batch(client, app, bid, [{'component_id': 'p1_revenue', 'text': comment}])
-    assert assessment['pending_comments']['comments'] == [{'component_id': 'p1_revenue', 'text': comment}]
     assert (folder/'spec.json').read_bytes() == original
+    assert assessment['state'] == 'blocked' and fake.revisions == 0, assessment
+    assert assessment['pending_comments']['comments'] == [{'component_id': 'p1_revenue', 'text': comment}]
+    assert any(i['status'] == 'unsupported_app' and 'scorecards' in i['reason'].lower() and 'colors' in i['reason'].lower() for i in assessment['issues']), assessment
 
 
 @pytest.mark.parametrize('count', [1, 2])

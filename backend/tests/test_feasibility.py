@@ -1582,3 +1582,19 @@ def test_replan_keeps_pending_comment_gate(staged_flow, blueprint_api, monkeypat
     fresh = client.get(f'/api/builds/{bid}/feasibility').json()
     assert fresh['state'] == 'ready' and not fresh['prototype_stale'] and fresh['id'] == published_proof(folder)
     executes(client, app, bid, monkeypatch)
+
+
+@pytest.mark.parametrize("component_id,status", [("p1_revenue", "unsupported_app"), ("p1_regions", None)])
+def test_color_need_on_scorecard_fails_fast_per_chart_type(thin, monkeypatch, component_id, status):
+    """19.4: scorecards get no set_style, so a color need bound to one is unsupported_app; other charts are unaffected."""
+    client, app, bid, folder = thin
+    load(client, bid)
+    sid = user(app, bid, "Use a dark blue accent for this component")
+    use_model(monkeypatch, app, {"source_id": sid, "text": "Use a dark blue accent for this component",
+        "needs": [{"capability": "style.colors", "value": ["#172554"]}], "component_ids": [component_id]})
+    _, a = check(client, app, bid)
+    statuses = [(i["status"], i["reason"]) for i in a["issues"]]
+    if status:
+        assert a["state"] == "blocked" and any(s == status and "Scorecards" in r and "colors" in r for s, r in statuses), a
+    else:
+        assert not any(s == "unsupported_app" for s, _ in statuses), a

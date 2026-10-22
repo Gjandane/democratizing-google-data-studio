@@ -22,6 +22,7 @@ OFFICIAL = ("https://docs.cloud.google.com/data-studio/", "https://developers.go
 CONTRACT = ("../contracts/recipe.md", "../contracts/recipe.schema.json", "../contracts/fixtures/")
 # App exclusions may also cite this backend's own code, knowledge or tests.
 LOCAL = ("src/dss/", "knowledge/", "tests/")
+SCORECARD_COLORS = "Scorecards take no colors (no series swatch in Data Studio): use another chart type to set colors"
 CHART_TYPES = ("scorecard", "time_series", "bar", "pie", "table", "pivot_table", "geo_map", "scatter")
 CONTROL_TYPES = ("date_range", "dropdown")
 
@@ -342,7 +343,10 @@ class Checker:
                          Verdict("unsupported_app", f"Argument {locator} has no registry record"))
         if ctype in CHART_TYPES:
             if c.get("colors") is not None:
-                if not isinstance(c["colors"], list) or not 1 <= len(c["colors"]) <= 20:
+                if ctype == "scorecard":
+                    # The recipe sends no set_style for scorecards (no series swatch), so coverage could never verify it.
+                    found.append(Verdict("unsupported_app", SCORECARD_COLORS))
+                elif not isinstance(c["colors"], list) or not 1 <= len(c["colors"]) <= 20:
                     found.append(Verdict("unsupported_app", "Chart colors need 1 to 20 colors"))
                 else:
                     arg("set_style.style.colors", c["colors"])

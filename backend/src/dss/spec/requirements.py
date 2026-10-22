@@ -1226,9 +1226,15 @@ def _choice(requirement, slot, snapshot, ledger, checker):
 def _requirement_issues(snapshot, ledger, checker):
     """Internal issue targets never come from client/model claims."""
     fields, rows = schema(snapshot), []
+    types = {c['id']: c['type'] for p in (snapshot['spec'] or {}).get('pages', []) for c in p.get('components', [])}
     for r in ledger.requirements:
         context = audience_requirement(r, ledger)
         verdicts = [] if context else [(f"need:{i}", checker.need(n, fields)) for i, n in enumerate(r.needs) if f'need:{i}' not in r.superseded]
+        if any(types.get(cid) == 'scorecard' for cid in r.component_ids):
+            # 19.4: no set_style is sent for scorecards, so a color need on one fails fast instead of staying pending.
+            verdicts = [(slot, capabilities.Verdict('unsupported_app', capabilities.SCORECARD_COLORS, v.capability))
+                        if v.ok and r.needs[int(slot[5:])].capability == 'style.colors' else (slot, v)
+                        for slot, v in verdicts]
         if not r.needs and not context and not removal(r):
             verdicts.append(("unknown", capabilities.Verdict("unknown", "No registered capability covers this requirement")))
         elif _flattened_chart(r):

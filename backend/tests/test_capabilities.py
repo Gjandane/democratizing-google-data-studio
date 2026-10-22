@@ -232,6 +232,21 @@ def test_component_checks_types_options_values_and_arguments(registry):
     assert checker.component({"id": "p1_x", "type": "text", "options": {"font_size": 20}})
 
 
+def test_scorecard_colors_reject_per_chart_type(registry):
+    checker = Checker(registry, allowed=ALL)
+    card = {"id": "p1_card", "type": "scorecard", "metrics": [{"field": "revenue", "agg": "sum"}]}
+    assert checker.component(card) == []
+    verdicts = checker.component({**card, "colors": ["#172554"]})
+    assert [v.status for v in verdicts] == ["unsupported_app"]
+    assert "Scorecards" in verdicts[0].reason and "colors" in verdicts[0].reason
+    bar = {"id": "p1_bar", "type": "bar", "dimensions": ["region"], "metrics": [{"field": "revenue", "agg": "sum"}]}
+    assert checker.component({**bar, "colors": ["#172554"]}) == []
+    assert checker.component({**bar, "colors": ["#172554"] * 20}) == []
+    assert checker.component({**bar, "colors": ["#172554"] * 21})
+    text = checker.component({"id": "p1_t", "type": "text", "colors": ["#172554"]})
+    assert [v.reason for v in text] == ["Only chart components support colors"]
+
+
 @pytest.mark.parametrize("name", ["golden_spec.json", "thin_spec.json"])
 def test_existing_golden_specs_stay_supported(registry, name):
     spec = DashboardSpec.model_validate_json((BACKEND_DIR / "tests/data" / name).read_text(encoding="utf-8"))

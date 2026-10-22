@@ -553,7 +553,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: a 3x file is >= 2 MB, or Data Studio rejects the upload or serves it downsampled (`naturalWidth` < 3600) -> record the size and limit in progress.md and block naming it; never change the recipe box and never pad or recompress to hit a byte size.
   - If: the replay's BigQuery view no longer exists -> use another release 2.4 build (b_ced0f5b4c491, b_9ec14b32752e) and say which.
   - Review focus: only the scale changes (prototype HTML, decoration DOM, atomic replace and the worker-thread capture path unchanged); no new dependency.
-- [ ] 19.4 Feasibility rejects colors on scorecards
+- [x] 19.4 Feasibility rejects colors on scorecards
   - Goal: a scorecard color request fails fast with a reason instead of staying pending. Since 19.2 the recipe sends no `set_style` for scorecards, so coverage never verifies their colors, yet feasibility still accepts `style.colors` on them (src/dss/spec/capabilities.py, the `CHART_TYPES` colors branch).
   - Spec: docs/architecture.md#Dashboard Spec; docs/architecture.md#Capability verification
   - Files: src/dss/spec/capabilities.py, tests/test_capabilities.py, tests/test_feasibility.py, tests/test_revise.py
