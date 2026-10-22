@@ -1,17 +1,17 @@
-<!-- essentials-of: docs/architecture.md sha256:0bef1380d792 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:2cc40394017e (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 Read every build session. docs/architecture.md wins if they disagree.
 
 ## Stack
 - Python 3.12/uv; FastAPI/uvicorn (no reload), SSE; ADK 2.x Workflow/LlmAgent; Gemini planner
-  `gemini-4-argon` (blueprint), worker `gemini-3.8-flash` (others), overridable in settings.
+  `gemini-4-argon` (blueprint, designer), worker `gemini-3.8-flash` (others), overridable in settings.
   SQLite/FTS5; BigQuery/ADC; Playwright Chromium; httpx. Cloud Run: one instance, local dss-agent.
 
 ## Folder map
 ```text
 src/dss/        api/, agent/, artifacts/ (models, okf, state), harness/ (graph, nodes, context,
                 llm, guardrails, tracing), memory/, data/ (bigquery, profile, research), spec/,
-                render/ (prototype, background, kits), recipe/, ops/
+                render/ (prototype, background, kits, design_page, icons/), recipe/, ops/
 skills/         procedural memory; prompts/v1/ versioned system prompts
 knowledge/      OKF seed: catalog/, archetypes/, datastudio/ (fonts.md), themes/, index.md, log.md
 tests/          offline fakes; tests/live/ explicitly marked live
@@ -37,6 +37,8 @@ tests/          offline fakes; tests/live/ explicitly marked live
   current spec; flat job assets. Dev routes require DSS_DEV=1.
 - Blueprint accept publishes its owned candidate view/spec/artifacts atomically; never clean a
   published view. Backgrounds: background.write_pages, render(page=n), not the stacked canvas; 3x, <2 MB.
+- Designed pages: planner HTML, sanitized; Chromium measures slots -> component `box`, width
+  1200-1920; one repair, then kit fallback (architecture.md#Designed pages).
   Heading wraps/text fitting: architecture.md#Implementation conventions.
 - Feasibility: structured Blueprint rows; extraction only for Other, comments, references.
   Images are not data. User-approved Other fail-open limitation and contract gap: PRD Later;
@@ -51,7 +53,7 @@ tests/          offline fakes; tests/live/ explicitly marked live
 - Never expose credentials to frontend/logs/prompts, or put rows/history in prompts.
 - Never copy a live SQLite file byte by byte or open it on the GCS volume; use the backup API.
 - Never write semantic memory outside the consolidate node.
-- Never let an LLM produce HTML, a whole spec, an artifact file, SQL DDL text that bypasses the
+- Never let an LLM produce HTML other than the sanitized designed-page layer, a whole spec, an artifact file, SQL DDL text that bypasses the
   view builder, or recipe lines.
 - Never edit ../contracts/; a needed change is a blocked task.
 
@@ -67,20 +69,21 @@ tests/          offline fakes; tests/live/ explicitly marked live
 ## Dependencies
 | Package | Registry | Version | Why | Verified |
 | --- | --- | --- | --- | --- |
-| fastapi | pypi | >=0.115 | API | 2026-10-19 (0.146.0) |
-| uvicorn | pypi | >=0.30 | ASGI server | 2026-10-19 (0.54.0) |
-| sse-starlette | pypi | >=2.1 | SSE stream | 2026-10-19 (3.5.0) |
-| python-multipart | pypi | >=0.0.9 | uploads | 2026-10-19 (0.0.32) |
-| google-adk | pypi | >=2.0 | Workflow, agents, tools | 2026-10-19 (2.12.0) |
-| google-genai | pypi | >=1.0 | Gemini client, token counts | 2026-10-19 (2.31.0) |
-| google-cloud-bigquery | pypi | >=3.25 | loads, views, queries | 2026-10-19 (3.46.2) |
-| python-dotenv | pypi | >=1.0 | ../.env | 2026-10-19 (1.2.4) |
-| pydantic | pypi | >=2.8 | spec and API models | 2026-10-19 (2.14.1) |
-| pyyaml | pypi | >=6.0 | OKF frontmatter | 2026-10-19 (6.0.3) |
-| jsonschema | pypi | >=4.23 | recipe contract | 2026-10-19 (4.26.0) |
-| playwright | pypi | >=1.48 | screenshots | 2026-10-19 (1.64.0) |
-| jsonpatch | pypi | >=1.33 | RFC 6902 spec patches | 2026-10-19 (1.35) |
-| httpx | pypi | >=0.27 | TestClient; dss-agent client | 2026-10-19 (0.28.1) |
-| pytest | pypi | >=8.0 | tests | 2026-10-19 (9.1.1) |
-| pytest-asyncio | pypi | >=0.23 | async tests | 2026-10-19 (1.4.0) |
-| setuptools | pypi | * | build backend, console scripts (user-approved, 1.1) | 2026-10-19 (84.0.0) |
+| fastapi | pypi | >=0.115 | API | 2026-10-22 (0.159.1) |
+| uvicorn | pypi | >=0.30 | ASGI server | 2026-10-22 (0.54.0) |
+| sse-starlette | pypi | >=2.1 | SSE stream | 2026-10-22 (3.5.0) |
+| python-multipart | pypi | >=0.0.9 | uploads | 2026-10-22 (0.0.32) |
+| google-adk | pypi | >=2.0 | Workflow, agents, tools | 2026-10-22 (2.12.0) |
+| google-genai | pypi | >=1.0 | Gemini client, token counts | 2026-10-22 (2.32.0) |
+| google-cloud-bigquery | pypi | >=3.25 | loads, views, queries | 2026-10-22 (3.46.2) |
+| python-dotenv | pypi | >=1.0 | ../.env | 2026-10-22 (1.2.4) |
+| pydantic | pypi | >=2.8 | spec and API models | 2026-10-22 (2.14.1) |
+| pyyaml | pypi | >=6.0 | OKF frontmatter | 2026-10-22 (6.0.3) |
+| jsonschema | pypi | >=4.23 | recipe contract | 2026-10-22 (4.26.0) |
+| playwright | pypi | >=1.48 | screenshots | 2026-10-22 (1.64.0) |
+| jsonpatch | pypi | >=1.33 | RFC 6902 spec patches | 2026-10-22 (1.36) |
+| httpx | pypi | >=0.27 | TestClient; dss-agent client | 2026-10-22 (0.28.1) |
+| pytest | pypi | >=8.0 | tests | 2026-10-22 (9.1.1) |
+| pytest-asyncio | pypi | >=0.23 | async tests | 2026-10-22 (1.4.0) |
+| setuptools | pypi | * | build backend, console scripts (user-approved, 1.1) | 2026-10-22 (84.2.1) |
+| lucide-static | npm | * | icon SVGs vendored into render/icons/ (ISC; not installed; user-approved 2026-10-22) | 2026-10-22 (1.61.0) |

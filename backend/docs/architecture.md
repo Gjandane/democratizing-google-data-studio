@@ -15,7 +15,7 @@ semantic / episodic memory, consolidation, guardrails, trace).
 | Storage | SQLite (stdlib sqlite3) + FTS5 | episodic memory without a server | Postgres, vector DB |
 | Semantic memory | OKF markdown bundles, pyyaml frontmatter | user's constraint: OKF instead of RAG | embeddings |
 | Data | google-cloud-bigquery (load jobs, views, dry runs, aggregates) | every source lands in BigQuery | pandas pipelines |
-| Rendering | string templates + ECharts (CDN) in the HTML; Playwright Chromium for background.png | deterministic, no LLM | LLM-written HTML |
+| Rendering | string templates + ECharts (CDN) in the HTML; Playwright Chromium for background.png; designed pages: planner-written page HTML, sanitized and measured by code (change 2026-10-22, #Designed pages) | deterministic components; the user wants AI-designed backgrounds | LLM-written component/chart HTML |
 | Hosting | Cloud Run, one instance, image from the root `Dockerfile` (release part); serves the built frontend; builds through the local `dss-agent` | one service, same origin; the engine needs the user's signed-in Chrome | engine on Cloud Run with a stored session; separate frontend service |
 
 ## Folder structure
@@ -47,7 +47,8 @@ backend/
     artifacts/            models.py (Context, Outline, Design, Blueprint), okf.py (read/write), state.py
     data/bigquery.py      intake loads, view creation, aggregate queries; data/profile.py (script)
     spec/                 models.py, validate.py, layout.py, patch.py
-    render/               prototype.py, background.py, kits.py (decoration kits)
+    render/               prototype.py, background.py, kits.py (decoration kits), design_page.py
+                          (sanitize + measure designed pages), icons/ (vendored Lucide SVGs, ISC)
     recipe/compiler.py    spec -> recipe.jsonl (../contracts/recipe.md)
   skills/                 procedural memory: context.md, outline.md, blueprint.md, archetype-*.md (4),
                           revise.md, ux-audit.md, style-extract.md, research.md (2026-10-21)
@@ -90,7 +91,8 @@ Files per version: `data/builds/<id>/v<n>/` (../contracts/conventions.md).
   `date_like`) -> `data-profile.md`. GCS: load job from the `gs://` URI, same rules. BigQuery:
   profile in place, no copy.
 - **blueprint accept** (replaces plan): feasibility recheck -> new run-specific candidate view
-  from the blueprint -> code layout (#Spec layout) -> validate -> staged render/backgrounds ->
+  from the blueprint -> code layout (#Spec layout) -> designer per page (#Designed pages) ->
+  validate -> staged render/backgrounds ->
   atomic publish of spec/artifacts with the candidate table identity -> prototype. Failure
   cleans only the candidate and leaves prior docs/spec/view intact; the stage stays `blueprint`.
 - **revise**: comments -> revise node (worker) -> JSON patch -> validate (repair <= 1) -> render ->
@@ -405,11 +407,13 @@ Final-audit corrections (2026-10-19):
 - Inputs and outputs: `{action, build_id, payload}` -> SSE events, DB writes, one trace.
 - Rules (change staged workflow 2026-10-21): START -> router(action) -> the action's branch. LLM
   nodes: context, outline_propose, outline_suggest, outline_other, blueprint, revise, ux_audit,
-  style_extract, research, consolidate, reference_extract, synthetic_schema. Code nodes: intake,
+  style_extract, research, consolidate, reference_extract, synthetic_schema, designer (planner;
+  change 2026-10-22). Code nodes: intake,
   profile, artifact validation and write, feasibility, view (SQL build + dry run), layout, validate,
   render, compile, execute, publish, synthetic_generate. Repair edges: context -> context (once),
   blueprint rows -> blueprint (once), view dry run -> blueprint (once), revise validate -> revise
-  (once). The interview, plan and spec nodes and per-message requirement extraction are removed;
+  (once), design measure -> designer (once per page). The designer runs in the prototype action
+  after layout and in revise when a designed page is regenerated (#Designed pages). The interview, plan and spec nodes and per-message requirement extraction are removed;
   extraction runs only inside outline_other, revise (comments) and reference actions, as a node in
   that action's Workflow. Every branch ends at a guardrail node.
 - Edge cases: unknown action -> error, no LLM call; concurrent actions on one build -> the second
@@ -436,8 +440,9 @@ Final-audit corrections (2026-10-19):
   | blueprint | blueprint | catalog summary (allowed types, slots, options) | context, field list, selected questions, page plan, join facts |
   | revise | revise | catalog/<types of targeted components>.md | targeted components + their grid neighbours only |
   | ux_audit | ux-audit | archetypes/<x>.md | spec summary (ids, types, boxes) |
+  | designer | dashboard-design | icon names list | design theme/title, the page's name and components (id, type, label, min px size), page 1's width and CSS (later pages), previous page HTML + comments (regenerate) |
 - Budgets (input tokens): context 10k, outline_propose 8k, outline_suggest 6k, outline_other 6k,
-  blueprint 14k, revise 6k, ux_audit 10k. Over budget -> shorten profile value lists to the top 5,
+  blueprint 14k, revise 6k, ux_audit 10k, designer 12k (output <= 16k including thinking). Over budget -> shorten profile value lists to the top 5,
   then drop reference observations, then semantic concepts beyond the first; never drop the
   system prompt, skills, upstream artifacts or user input (if those alone exceed it, refuse with
   `llm_unavailable` detail `over_budget`). Count with the API's token counter or
@@ -716,10 +721,15 @@ Final-audit corrections (2026-10-19):
   `{spec_version, build_id, title, archetype, canvas{width:1200,height}, grid{columns:12,
   row_height:20, gutter:16, margin:24}, theme{background, surface, text, muted, accent,
   palette[], font_family, radius}, datasource{table, fields[{name, type, label, role, default_agg}]},
-  pages[{index, name, height, decorations[], components[]}]}`. 1-5 pages (change 2026-10-21).
-  Decoration: `{id, kind: band|panel|title|subtitle|text|logo|divider, grid{col,row,w,h}, text?, style?}`.
-  Component: `{id, type, label, grid{col,row,w,h}, dimensions[], metrics[{field,agg}],
+  pages[{index, name, height, decorations[], components[], design?}]}`. 1-5 pages (change 2026-10-21).
+  Decoration: `{id, kind: band|panel|title|subtitle|text|logo|divider|design, grid{col,row,w,h}, text?, style?}`.
+  Component: `{id, type, label, grid{col,row,w,h}, box?{x,y,w,h}, dimensions[], metrics[{field,agg}],
   date_dimension?, breakdown?, sort?, options?, text?, image_path?, field?, question_ref?}`,
+  Designed pages (change 2026-10-22, #Designed pages): `canvas.width` is an integer 1200-1920
+  (code-laid builds keep 1200); a designed page carries `design{html, source, model}` (the
+  sanitized page HTML, stored in the spec so versions and reloads need no model), one
+  `p<n>_design` decoration of kind `design` covering the page, and a measured pixel `box` on
+  every component; `grid` stays as the code layout's cell, the fallback if the design is dropped.
   `type` in the 12 catalog types: scorecard, time_series, bar, pie, table, pivot_table, geo_map,
   scatter, text, image, date_range, dropdown.
 - Rules (validator): 1-5 pages; ids unique and snake_case with page prefix; types in the
@@ -732,7 +742,10 @@ Final-audit corrections (2026-10-19):
   question id, checked on the code layout output; a revise patch may remove a component, which
   decisions.md records (change 2026-10-21; old builds: questions.md high priority). Errors are a list of
   `{path, message}`, fed to the revise repair turn; a code layout that fails validation is a
-  `run.finished(error)` with those errors (a defect, never sent to a model).
+  `run.finished(error)` with those errors (a defect, never sent to a model). On a designed page
+  the same rules apply to `box`: inside canvas width x page height, no two component boxes
+  overlap, each at least the type's `min_w`/`min_h` converted to pixels by Layout, clear of the
+  reserved synthetic footer; `box` and `design` appear together or not at all on a page.
 - Sort is a validated `{field, order: asc|desc}` object, matching the recipe contract. Renderer
   SQL and compiler consume that same shape; unknown keys or orders fail before publication.
   An explicitly ascending bar/table must render ascending as it will in Data Studio.
@@ -749,9 +762,11 @@ Final-audit corrections (2026-10-19):
 - Rules: `col_w = (canvas.width - 2*margin - (columns-1)*gutter) / columns`; `x = margin +
   (col-1)*(col_w+gutter)`; `w = span*col_w + (span-1)*gutter`; `y = margin + (row-1)*row_height`;
   `h = rows*row_height - gutter`; round x and the right edge separately to integers so adjacent
-  boxes keep a gutter of 16 ± 1 px; every box inside the canvas.
+  boxes keep a gutter of 16 ± 1 px; every box inside the canvas. A component with a `box`
+  (designed page) returns that box unchanged; prototype, background and recipe all ask Layout,
+  so they agree (change 2026-10-22).
 - Oracle: unit tests: two side-by-side spans of 6 fill the content width; gutters 15-17 px; no
-  box exceeds the canvas.
+  box exceeds the canvas; a component with `box` gets exactly that box.
 
 ### Prototype renderer
 - Problem: spec + data -> one HTML page matching ../contracts/api.md "Prototype HTML".
@@ -768,6 +783,11 @@ Final-audit corrections (2026-10-19):
   so Data Studio's scaled view stays sharp; user target >= 1920 x 1080 px, each file < 2 MB, no
   minimum file size) -> `background_p<n>.png`, one per page (change 2026-10-21). Each page is a
   `section[data-page][data-page-name]` under `#dss-canvas` (../contracts/api.md 2.0).
+  A designed page (change 2026-10-22) renders its `p<n>_design` decoration as one root element
+  at 0,0 with the page's size holding the sanitized HTML (CSS scoped to that root, slots
+  transparent), and the components as sibling elements on top at their boxes; no `data-cid`
+  inside the design root. A designed page's PNG drops to device scale 2 only if its 3x file
+  would be >= 2 MB (recorded in the trace); the recipe box is unchanged either way.
 - Deferred preview parity (change 2026-10-20; PRD Later, former 13.4): supported options are to
   have matching visible semantics: bar orientation/stacking, pie donut,
   scorecard compact formatting, table rows_per_page (within the 20-row query cap) and pivot row/column assignments. Derive both aggregate
@@ -781,7 +801,71 @@ Final-audit corrections (2026-10-19):
 - Edge cases: empty query result -> chart shows "No data"; very long labels truncated with title attr.
 - Oracle: tests parse the HTML: one `data-cid` per spec item, boxes equal Layout's, decoration
   layer has no visible component; background_p<n>.png is 3x the page's canvas size in pixels
-  and under 2 MB.
+  and under 2 MB (designed pages: 3x, or 2x when 3x would reach 2 MB).
+
+### Designed pages
+- Problem (change 2026-10-22, user; target look docs/change-2026-10-22-reference.webp: light
+  gray page, white rounded cards with soft shadows, KPI cards with pastel icon tiles, section
+  cards with a title, a header with a bold title and subtitle): the planner designs each page's
+  background as HTML/CSS around the native components; code turns it into component boxes and a
+  background image, so Data Studio charts sit exactly in the AI's cards.
+- Inputs and outputs: the laid-out spec (theme, title, pages, components with type, label and
+  minimum size), the dashboard-design skill and the icon list -> per page `{canvas_width (page 1
+  only), html}` from the designer node (planner model, `prompts/v1/designer.md`,
+  `skills/dashboard-design.md`) -> code: sanitize -> render in Chromium at the canvas width ->
+  measure -> a spec with `design`, the `p<n>_design` decoration, component boxes and the
+  measured page height.
+- Rules:
+  - Slots: exactly one empty `<div data-slot="<component id>">` per component on the page; no
+    slot for an unknown, missing or duplicate id. The designer never adds, removes or retypes
+    components (types stay the blueprint's Data Studio types). Code empties and makes slots
+    transparent; a card behind a slot is allowed.
+  - Measured slot rect -> integer `box`; page height = the page root's measured height (within
+    the validator's page-height limit). A box below its type's minimum, outside the page, or
+    overlapping another box is a measure error.
+  - No text, icon or image element intersects any slot box; every text element fits its box
+    (no overflow or clipping, same rule as #Prototype renderer's text fit); on page 1 of a
+    synthetic build, nothing intersects the reserved 64 px footer, which code still draws.
+  - Sanitizer (stdlib parser, allowlist): structural/text tags, one `<style>` scoped to the page
+    root, inline SVG limited to shape elements; strip scripts, event attributes, iframes,
+    forms, links, `<use>`, `foreignObject`, `href`/`src`, CSS `url()`, `@import`, `@font-face`
+    and `position: fixed`. Fonts: the theme font and fonts.md only. Chromium renders the page
+    with JavaScript off and every network request aborted.
+  - Icons: `<i data-icon="<name>">` -> the vendored Lucide SVG inline (`render/icons/`, ISC
+    licence kept beside them); an unknown name is a measure error unless the model drew its own
+    sanitized inline `<svg>` (the user's fallback).
+  - Order: page 1 first; it sets `canvas_width` (1200-1920) and the shared stylesheet; pages
+    2-n then run in parallel with both as input. Each page: one repair turn with the sanitizer
+    and measure errors, then that page falls back to the code layout and kit (trace span and
+    assistant message say so). If page 1 falls back, the whole build uses the code path at
+    width 1200 with no further designer calls.
+  - Config flag `designed_pages` (default on; a Config attribute, not an env name or API
+    setting, so no contract change). Off, a legacy spec, or a fallback page: today's code
+    path, byte-identical output.
+  - Revise on a designed page: comments on `p<n>_design`, geometry (move, resize, layout),
+    removal, or heading/text/icon/decoration colors regenerate that page (designer with the
+    previous HTML and the comments, then sanitize, measure, one repair); on failure the spec is
+    unchanged and the comments stay pending with the errors as the reason. Data comments
+    (metrics, aggregation, sort, chart colors, type) use the revise patch with no designer call,
+    unless the new type's minimum no longer fits its slot, which regenerates the page.
+  - Coverage: a decoration requirement on a designed page (a heading text, a hex color) is
+    verified by its presence in the sanitized `design.html`; components keep their recipe checks.
+  - Determinism: the model runs only in the prototype action and in revise regeneration, never
+    in GET, recompile or new versions; the same spec gives the same prototype, PNG and recipe
+    bytes.
+- Edge cases: model output that isn't valid HTML or has zero slots -> repair, then fallback; a
+  text that only fits by shrinking below 12 px -> measure error; a 5-page build -> 1 + 4
+  parallel calls.
+- Budget: designer input <= 12k tokens, output <= 16k including thinking (low thinking level),
+  each call within the planner's 120 s deadline; sanitize + measure + background for a
+  12-component designed page <= 15 s excluding model time.
+- Oracle: tests/test_design_page.py: hostile fixtures (script, onerror, `url(http...)`,
+  `@import`, `javascript:`, `foreignObject`) come out stripped and the Chromium network log is
+  empty; a hand-written reference-style fixture measures to its expected boxes ± 1 px; text over
+  a slot, overflow, missing/extra slots and small slots each give their error. FakeLLM tests
+  cover repair, per-page fallback and page-1 fallback. Live: the user approves the real
+  planner's pages against the reference image (STOP), and the Data Studio report shows each
+  chart inside its card.
 
 ### Revise
 - Problem: comments -> the smallest spec change.
@@ -801,6 +885,8 @@ Final-audit corrections (2026-10-19):
   mapping_origins['remove'] plus removed_item and retire requirements bound only to the removed
   item. Keep the narrow parser and partial-binding recovery limitations in PRD Later; do not
   claim arbitrary deletion prose is understood.
+- On a designed page, which comments regenerate the page instead of patching: #Designed pages
+  (change 2026-10-22).
 - Oracle: tests with FakeLLM patches: a patch touching an uncommented, non-neighbour id is
   rejected; each edge case above has a test.
 
@@ -814,6 +900,8 @@ Final-audit corrections (2026-10-19):
   one `set_style` per chart with the theme palette, none for scorecards (no series swatch);
   then `save_report`,
   `get_link`. Boxes from Layout. Op ids `s001`... Deterministic: same spec -> byte-identical file.
+  Every `set_canvas` takes `spec.canvas.width` (1200-1920 on designed builds) and the page
+  height, so the report's canvas matches the designed background (change 2026-10-22).
 - Oracle: every line validates against the schema; golden spec -> golden recipe file; ids sequential.
 - All accepted Theme colors must meet the recipe's #RRGGBB constraint, including palette items;
   invalid model colors are rejected into the existing bounded spec repair before publication.
@@ -959,3 +1047,4 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-22 | Recover freshness only with validated candidate publication; reconcile recreate observations with active user instructions and confirmed Context KPI definitions | clear staleness on check; accept dropped image observations | user chose both release 2.5 blocker fixes; preserve acceptance and existing contracts | change reference recovery (program root) |
 | 2026-10-22 | Backgrounds captured at device scale 2 with the recipe box unchanged; page 1 named by `rename_page`; no palette `set_style` for scorecards | SVG or higher-res upload per component; accept "Untitled Page" | user flagged soft backgrounds and the engine skips scorecard palettes; recipe 1.1 adds the op | change report quality (program root) |
 | 2026-10-22 | Backgrounds at device scale 3 (each PNG < 2 MB, no minimum size); feasibility rejects colors on scorecards as unsupported_app | keep 2x; per-page scale to an exact 1920 x 1080; pad files to 200 KB; leave scorecard color comments pending | user target >= 1920 x 1080 (2x page 1 is 1064 tall); bytes don't add sharpness; renderer, compiler and engine must agree on scorecard colors | change backgrounds 3x and scorecard colors |
+| 2026-10-22 | Designed pages: the planner writes each page's background HTML around measured component slots; code sanitizes, measures, screenshots and falls back to the kit per page; width 1200-1920 via `set_canvas`; page regenerated on geometry/heading comments; vendored Lucide icons | design JSON rendered by an upgraded code kit; AI grid + code-drawn cards; code-only revise moves; a 1920 canvas for every build; native Data Studio text for headings | user wants AI-designed backgrounds and layouts with native charts placed in them (reference image); recipe 1.1 already has `set_canvas`; measured slots keep charts inside their cards | change designed backgrounds (user, after 19.3) |

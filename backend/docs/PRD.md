@@ -22,8 +22,9 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
    a validate-and-repair loop.
 4. Token economy: code computes and writes; the LLM fills structured judgment fields from compact
    profiles and upstream artifacts (never rows or chat history); artifacts, spec layout, HTML,
-   background, SQL view and recipe are deterministic code; model routing (planner
-   `gemini-4-argon` only for blueprint; `gemini-3.8-flash` for the rest).
+   background, SQL view and recipe are deterministic code, except the designed page layer
+   (goal 9); model routing (planner `gemini-4-argon` for blueprint and designer;
+   `gemini-3.8-flash` for the rest).
 5. History: every build keeps its versions; a new version starts from the latest spec.
 
 6. Required: style/recreate reference extraction and data reconciliation, with evidence-backed
@@ -35,11 +36,20 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 7. Screenshot-only builds: schema/row-count/seed driven Python CSV generation, exposed as a
    reusable function/CLI and API; typed BigQuery intake, visible synthetic provenance.
 
+9. Designed pages (change 2026-10-22, user): the planner, guided by a dashboard-design skill,
+   writes each page's background HTML/CSS (header, titles, cards, icons) around one empty slot
+   per spec component, and picks the page width (1200-1920). Code sanitizes it, measures the
+   slots in Chromium to place the native Data Studio components, screenshots the rest as the
+   background, and falls back to the code layout and kit per page. Target look:
+   docs/change-2026-10-22-reference.webp.
+
 ## Non-goals
 - No user identities, accounts or multi-user isolation (POC, one shared access code).
 - No vector store or embeddings (OKF navigation + FTS5 instead).
 - No Data Studio calculated fields or blends: derived fields and joins live in the BigQuery view.
-- No LLM-generated HTML or recipe text (deterministic renderers only).
+- No LLM-generated recipe text, and no LLM HTML outside the sanitized designed page layer
+  (goal 9; lifted for that layer by change 2026-10-22). Components, charts and their data stay
+  native Data Studio objects drawn by code.
 - No Dockerfile or deploy script here (the release part owns them); no engine in the cloud.
 - No accounts: one shared access code, not users.
 - No LangGraph (ADK 2.0 Workflow only).
@@ -71,7 +81,7 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 | API per ../contracts/api.md (except stretch routes) | consolidation into data/knowledge/user | vector store |
 | intake: CSV upload, GCS CSV, BigQuery tables; profile | UX audit node (ux-audit skill) | engine on Cloud Run |
 | context, outline, blueprint, layout, revise, render, compile, execute, publish nodes; theme kit; reference modes, feasibility, synthetic data | (style-from-picture now in reference modes) | LLM-judge release gate automation |
-| episodic memory, context assembly, traces | research mode (google_search, capped) | multi-user; LLM-written prototype HTML |
+| episodic memory, context assembly, traces | research mode (google_search, capped) | multi-user; LLM-written charts or component HTML |
 | 4 archetype skills, 12-type catalog in OKF | LLM-judge eval script | |
 | cloud mode, access code, agent mode + `dss-agent` | | |
 | | live token totals on the event stream (`run.usage`, change 2026-10-19) | |
@@ -117,6 +127,12 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 - Reference/capability change 2026-10-19 defaults: one recreation screenshot or 1-3 style
   images per version; explicit substitutions, curated capability evidence, existing dependencies.
   Closest supported recreation and release priority are user decisions, not defaults.
+- Designed pages change 2026-10-22 (user choices: planner-written page HTML with measured slots,
+  page regenerated on geometry/heading comments, width 1200-1920, vendored Lucide icons with
+  LLM-drawn SVG as fallback, deadline not a constraint). Defaults: designer on by default with a
+  backend config flag to turn it off (no new env name or API setting); page 1 is designed first and sets the width and shared CSS, later
+  pages reuse them; one repair per page, then the code layout and kit for that page; the
+  design HTML lives in the spec, so versions and reloads reproduce it without a model call.
 
 - Synthetic-data defaults (change 2026-10-19): 1,000 rows, seed 42; bounded stdlib generators;
   local DSS_DATA_DIR or existing GCS-backed /data volume; one new synthetic dataset in an empty
