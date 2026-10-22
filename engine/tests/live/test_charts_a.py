@@ -28,6 +28,11 @@ def _wait_rendered(component, op, selectors):
         expect(iframe.content_frame.locator(selectors["chart_frame_body"])).to_contain_text(
             re.compile(r"\d"), timeout=20000
         )
+    elif op["chart_type"] == "scorecard" and op.get("title"):
+        # Recipe 1.1: the title carries the label and the metric name is hidden.
+        expect(component.locator(selectors["scorecard_value"])).to_contain_text(
+            re.compile(r"\d"), timeout=20000)
+        expect(component.locator(selectors["scorecard_name"])).to_be_hidden(timeout=20000)
     else:
         expect(component).to_contain_text(op["metrics"][0]["field"], timeout=20000)
 

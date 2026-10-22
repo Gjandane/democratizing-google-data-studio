@@ -1613,3 +1613,163 @@ def test_date_control_calendar_is_closed_before_its_resize(tmp_path, monkeypatch
     charts._place_chart(page, ctx, control, canvas, (24, 264, 276, 44), dismiss_popup=True)
     assert control.box == (24, 264, 276, 44)
     assert not [event for event in events if event[0] == "hit calendar"], events
+
+
+# Live scorecard Style tab (2026-10-22, order_items): Labels > Font size offers
+# these; Chart title > Font size offers more. A title is its font size + 16 px tall.
+_VALUE_SIZES = ["auto", "8px", "9px", "10px", "12px", "14px", "18px", "24px", "28px",
+                "30px", "36px", "48px", "60px", "72px", "96px"]
+_TITLE_SIZES = ["8px", "9px", "10px", "11px", "12px", "14px", "16px", "18px", "20px",
+                "24px", "28px", "30px", "32px", "36px", "40px", "44px", "48px"]
+
+
+@pytest.mark.parametrize("height, applied", [
+    (84, "36px"), (44, "14px"), (60, "30px"), (64, "36px"), (200, "36px"),
+    (50, "18px"), (56, "28px"), (20, "14px"),
+])
+def test_scorecard_value_size_is_the_largest_offered_not_above_the_prototype(height, applied):
+    # Release 2.4 b_a8ace098d03b: titled h=84 scorecards showed "10.9M" at 10 px
+    # (Labels > Font size "auto"). The prototype uses clamp(16, h - 28, 36) px.
+    from dsengine.ops import charts
+
+    assert charts._scorecard_value_size(height, _VALUE_SIZES) == applied
+    assert charts._scorecard_value_size(84, ["auto"]) is None
+
+
+class ScorecardEditor:
+    """A scorecard Style tab whose rendered value follows the chosen sizes."""
+
+    def __init__(self, height, titled=True):
+        self.height, self.clicks, self.menu, self.titled = height, [], None, titled
+        self.value_size, self.title_size, self.hidden, self.padding = "auto", "18px", False, 8
+
+    def fit(self):
+        title = int(self.title_size[:-2]) + 16 if self.titled else 0
+        value = 10 if self.value_size == "auto" else int(self.value_size[:-2])
+        top = title + self.padding + (0 if self.hidden else 8) + 1
+        bottom = top + round(value * 1.15)
+        return {"size": f"{value}px", "title": self.title_size if self.titled else None,
+                "box": [0, top, 100, bottom],
+                "over": max(0, bottom - self.height), "wide": False}
+
+    def locator(self, selector):
+        page = self
+
+        class Control(Nodes):
+            def click(self, *, timeout):
+                page.clicks.append(selector)
+                if selector == "scorecard_hide_name":
+                    page.hidden = not page.hidden
+                elif selector != "style_tab":
+                    page.menu = selector
+
+            def get_attribute(self, name):
+                return "true" if page.hidden else "false"
+
+            def inner_text(self, *, timeout=None):
+                return {"scorecard_value_size": page.value_size,
+                        "style_title_size": page.title_size}[selector]
+
+        class Option(Nodes):
+            def nth(self, index):
+                return Option(page, [self.texts[index]])
+
+            def click(self, *, timeout):
+                label = self.texts[0]
+                page.clicks.append(label)
+                if page.menu == "scorecard_value_size":
+                    page.value_size = label
+                elif page.menu == "style_title_size":
+                    page.title_size = label
+                else:
+                    page.padding = int(label[:-2])
+                page.menu = None
+
+        class Pane(Nodes):
+            def offered(self):
+                return {"scorecard_value_size": _VALUE_SIZES, "style_title_size": _TITLE_SIZES,
+                        "scorecard_padding_top": ["0px", "4px", "8px"]}.get(page.menu, [])
+
+            def locator(self, key):
+                assert key == "dropdown_option"
+                return Nodes(page, self.offered)
+
+            def get_by_text(self, value, *, exact):
+                return Option(page, [text for text in self.offered() if text == value])
+
+        return Pane(self, ["pane"]) if selector == "option_overlay" else Control(self, [selector])
+
+    def wait_for_timeout(self, timeout):
+        pass
+
+
+class ScorecardComponent:
+    def __init__(self, page):
+        self.page = page
+
+    def evaluate(self, expression, selectors, *, timeout):
+        assert selectors == ["scorecard_value", "scorecard_title"]
+        return self.page.fit()
+
+
+def _scorecard_context(tmp_path):
+    ctx = cleanup_context(tmp_path)
+    ctx.events = EventWriter(io.StringIO())
+    ctx.selectors = {key: key for key in (
+        "style_tab", "scorecard_value_size", "scorecard_hide_name", "scorecard_padding_top",
+        "style_title_size", "scorecard_value", "scorecard_title", "option_overlay",
+        "dropdown_option")}
+    ctx.op_deadline = executor.time.monotonic() + 10  # 5 s stay reserved for verify
+    ctx.run_deadline = ctx.op_deadline
+    return ctx
+
+
+@pytest.mark.parametrize("height, title, clicks, message", [
+    (84, "Revenue", ["style_tab", "scorecard_value_size", "36px", "scorecard_hide_name",
+                     "scorecard_padding_top", "0px"], "s006: scorecard value 36px"),
+    # 14px under the 34 px title overflows h=44 by 7 px: the title drops to 11px.
+    (44, "Orders", ["style_tab", "scorecard_value_size", "14px", "scorecard_hide_name",
+                    "scorecard_padding_top", "0px", "style_title_size", "11px"],
+     "s006: scorecard value 14px, title 11px"),
+    (84, None, ["style_tab", "scorecard_value_size", "36px"], "s006: scorecard value 36px"),
+])
+def test_scorecard_value_is_sized_to_its_box_below_the_title(tmp_path, height, title, clicks,
+                                                             message):
+    from types import SimpleNamespace
+    from dsengine.ops import charts
+
+    page, ctx = ScorecardEditor(height, titled=bool(title)), _scorecard_context(tmp_path)
+    component = ScorecardComponent(page)
+    op = SimpleNamespace(id="s006", chart_type="scorecard", title=title)
+    applied = charts._style_scorecard(page, ctx, op, component, height)
+    assert page.clicks == clicks
+    assert page.hidden is bool(title)
+    assert [(e["level"], e["message"]) for e in read_events(ctx.events.stream)] == [("info", message)]
+    assert page.fit()["over"] == 0 and applied["fits"]
+    charts._verify_scorecard(page, ctx, component, applied)
+
+    page.value_size = "auto"  # Data Studio reverted to its default: verify reads it back
+    ctx.op_deadline = executor.time.monotonic() + 0.05
+    with pytest.raises(charts.OperationError, match="scorecard_value_size did not read back"):
+        charts._verify_scorecard(page, ctx, component, {**applied, "fits": False})
+
+
+def test_scorecard_value_left_unrendered_by_its_source_warns_within_the_budget(tmp_path):
+    # A source error (Data Set Configuration Error) can keep the value from
+    # rendering: the chart still succeeds, with the verify reserve left.
+    from types import SimpleNamespace
+    from dsengine.ops import charts
+
+    page, ctx = ScorecardEditor(44), _scorecard_context(tmp_path)
+    ctx.op_deadline = executor.time.monotonic() + 5.3
+    component = SimpleNamespace(evaluate=lambda expression, selectors, *, timeout: None)
+    op = SimpleNamespace(id="s006", chart_type="scorecard", title="Revenue")
+    applied = charts._style_scorecard(page, ctx, op, component, 44)
+    assert ctx.remaining_s() > 4.5
+    assert (applied["value_size"], applied["hide_name"], applied["fits"]) == ("14px", True, False)
+    # The title still drops by the measured rule, without the value's query.
+    assert (applied["title_size"], page.title_size, page.fit()["over"]) == ("11px", "11px", 0)
+    assert [e["message"] for e in read_events(ctx.events.stream)] == [
+        "s006: scorecard value did not render; its fit was not checked",
+        "s006: scorecard value 14px, title 11px"]
+    charts._verify_scorecard(page, ctx, component, applied)

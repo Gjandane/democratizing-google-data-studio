@@ -178,7 +178,7 @@ tasks and require a separately specified scope/contract revision. Task statuses 
   - Review focus: contracts/recipe.md 1.0 (no new op or argument; the nearest-value rule is an engine behaviour reported in the op message); selectors only from knowledge/datastudio-ui; no fixed sleeps over 1 s; existing budgets unchanged; 8.1's and 9.1's replays still pass; the replay asserts on read-back boxes and fields, not on op status alone.
 
 ## Phase 11: Report quality (change 2026-10-22)
-- [ ] 11.1 Scorecard value sized to its box
+- [x] 11.1 Scorecard value sized to its box
   - Goal: scorecard values read like the prototype instead of ~10 px at the box's top-left with the metric name drawn over them (every release 2.4 report; ../docs/img/acceptance-2.4-bigquery.png, build b_a8ace098d03b: titled scorecards h=84 at y=324 and y=424 show "10.9M" tiny under a tiny metric label).
   - Spec: docs/architecture.md#Live editor conventions; ../contracts/recipe.md#Ops
   - Files: src/dsengine/ops/charts.py, knowledge/datastudio-ui/editor.md, knowledge/datastudio-ui/log.md, tests/test_executor.py, tests/live/test_recipe_replay.py, tests/live/recipes/*.jsonl

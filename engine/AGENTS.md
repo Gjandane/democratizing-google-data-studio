@@ -40,3 +40,4 @@ Environment quirks stay here; editor/code conventions live in
 - Live Data Studio can display Data Set Configuration Error even after field metadata loads; diagnose the underlying source separately from geometry/selector failures.
 - Ops failing with `TargetClosedError` (or `Chrome is not running`) mean the dedicated Chrome window closed mid-run: `uv run dsengine browser` restarts it with sign-in kept. Diagnostic scripts that attach and open tabs must close them; leftover editor tabs stay open.
 <!-- blueprint-solution:end -->
+- `tests/live/test_golden.py -k timeout` (30 s run budget) flakes: when the deadline cuts a chart op, `save_report` can time out at 20 s (pre-fix 1/3, after 11.1 3/5 runs, 2026-10-22). Rerun it alone before suspecting your change.

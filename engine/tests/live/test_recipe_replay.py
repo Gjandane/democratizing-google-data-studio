@@ -31,6 +31,30 @@ def _matches(actual, expected):
     )
 
 
+_VALUE = """(component, [valueKey, titleKey, nameKey]) => {
+    const value = component.querySelector(valueKey), title = component.querySelector(titleKey);
+    if (!value || !value.innerText.trim()) return null;
+    const box = r => [r.left, r.top, r.right, r.bottom].map(Math.round);
+    const label = component.querySelector(nameKey);
+    return {font_size: getComputedStyle(value).fontSize, text: value.innerText.trim(),
+            value: box(value.getBoundingClientRect()),
+            component: box(component.getBoundingClientRect()),
+            title: title && box(title.getBoundingClientRect()),
+            name_shown: !!label && getComputedStyle(label).display !== 'none'};
+}"""
+
+
+def _scorecard_value(page, ctx, component):
+    """The rendered value's computed font size and boxes, once its query returns."""
+    keys = [ctx.selectors[key] for key in ("scorecard_value", "scorecard_title", "scorecard_name")]
+    for _ in range(40):
+        found = component.evaluate(_VALUE, keys)
+        if found:
+            return found
+        page.wait_for_timeout(250)
+    return None
+
+
 def _write_png(path, width, height):
     # A plain RGB PNG at the backend's per_section size, without an image dependency.
     def chunk(kind, data):
@@ -75,6 +99,11 @@ def _replay(name, tmp_path, capsys, monkeypatch):
             "metrics": _labels(page, ctx, "metric_group_any"),
             "sort": _labels(page, ctx, "sort_group") if state["sort"] else [],
         }
+        if op.chart_type == "scorecard":
+            readback[op.id]["value"] = _scorecard_value(page, ctx, component)
+            if readback[op.id]["value"] is None:
+                page.screenshot(path=str(tmp_path / f"{op.id}_unrendered.png"))
+                readback[op.id]["shown"] = component.inner_text()
         if "rows_per_page" in (getattr(op, "options", None) or {}):
             readback[op.id]["rows_per_page"] = (
                 ctx.locator(page, "rows_per_page_control").inner_text().strip())
@@ -197,3 +226,29 @@ def test_manual_acceptance_fields_date_control_and_rows_per_page(tmp_path, capsy
     warnings = [event["message"] for event in events
                 if event["event"] == "log" and event["level"] == "warn"]
     assert "s008: rows_per_page 15 is not offered; applied 10" in warnings, warnings
+
+
+def test_scorecard_values_are_sized_to_their_boxes_below_the_title(tmp_path, capsys, monkeypatch):
+    # Release 2.4 b_a8ace098d03b page 1: titled h=84 scorecards drew "10.9M" at
+    # 10 px under a 5 px metric name (Labels > Font size "auto"). The rule is
+    # clamp(16, h - 28, 36) px, Data Studio's largest offered size not above it.
+    ops, readback = _replay("scorecards.jsonl", tmp_path, capsys, monkeypatch)
+    _assert_readback(ops, readback)
+    expected = {84: "36px", 44: "14px"}
+    for op in ops:
+        if op["op"] != "add_chart":
+            continue
+        found = readback[op["id"]]["value"]
+        assert found and found["font_size"] == expected[op["h"]], (op["id"], found)
+        left, top, right, bottom = found["value"]
+        c_left, c_top, c_right, c_bottom = found["component"]
+        assert c_left <= left and right <= c_right and c_top <= top and bottom <= c_bottom, (
+            op["id"], found)
+        assert found["title"] and found["title"][3] <= top, (op["id"], found)
+        assert not found["name_shown"], (op["id"], found)
+    events = [json.loads(line) for line in
+              (tmp_path / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    infos = [event["message"] for event in events
+             if event["event"] == "log" and event["level"] == "info"]
+    assert "s003: scorecard value 36px" in infos, infos
+    assert any(message.startswith("s005: scorecard value 14px") for message in infos), infos

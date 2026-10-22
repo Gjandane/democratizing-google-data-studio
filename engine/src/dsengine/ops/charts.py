@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import math
-from typing import Any
+import re
+from typing import Any, Callable
 
 from dsengine.ops import OpContext, OpResult, OperationError
 
@@ -300,21 +301,23 @@ def _nearest_option(requested: str, offered: list[str]) -> str | None:
 
 
 def _set_dropdown(page: Any, ctx: OpContext, control_key: str, value: str,
-                  option: str, *, nearest: bool = False) -> str:
+                  option: str, *, pick: Callable[[list[str]], str | None] | None = None,
+                  pane_key: str = "last_overlay") -> str:
     """Choose value in a menu control and return the value chosen.
 
-    nearest: when the menu doesn't offer value, choose its nearest number instead.
+    pick: given the offered labels, the one to choose instead of value (None keeps value).
+    pane_key: the overlay that holds the options.
     """
     control = _locator(page, ctx, control_key)
     _wait_visible(control, ctx, f"Data Studio option {option} is unavailable")
     control.click(timeout=ctx.timeout_ms())
     # Another pane can already be visible (one reading "Autogenerate" on the
     # release table, 2026-10-21), so wait until the last pane is the option list.
-    pane = _locator(page, ctx, "last_overlay")
+    pane = _locator(page, ctx, pane_key)
     _poll(page, ctx, lambda: _visible(pane.locator(ctx.selectors["dropdown_option"]).first),
           f"Data Studio option {option} menu did not open")
-    if nearest:
-        value = _nearest_option(value, pane.locator(ctx.selectors["dropdown_option"]).evaluate_all(
+    if pick:
+        value = pick(pane.locator(ctx.selectors["dropdown_option"]).evaluate_all(
             "es => es.map(e => e.innerText.trim())")) or value
     choices = pane.get_by_text(value, exact=True)
     if not _visible(choices):
@@ -360,11 +363,134 @@ def _set_title_and_options(page: Any, ctx: OpContext, op: Any) -> str | None:
         # Rows per page is a fixed menu (1, 5, 10, 20, 25, 50, 100, 250, ...).
         rows = str(options["rows_per_page"])
         applied = _set_dropdown(page, ctx, "rows_per_page_control", rows, "rows per page",
-                                nearest=True)
+                                pick=lambda offered: _nearest_option(rows, offered))
         if applied != rows:
             ctx.warn(f"{op.id}: rows_per_page {rows} is not offered; applied {applied}")
         return applied
     return None
+
+
+# Scorecards (recipe 1.1). Labels > Font size defaults to "auto", which scales the
+# value into what the title leaves: 10 px under a 34 px title at h=84 (live
+# 2026-10-22). Data Studio's title is its font size + 16 px of padding tall.
+_SCORECARD_FIT = """(component, [valueKey, titleKey]) => {
+    const value = component.querySelector(valueKey);
+    if (!value || !value.innerText.trim()) return null;
+    const box = component.getBoundingClientRect(), own = value.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(value);
+    const text = range.getBoundingClientRect(), title = component.querySelector(titleKey);
+    const below = title ? title.getBoundingClientRect().bottom : box.top;
+    return {size: getComputedStyle(value).fontSize,
+            title: title && getComputedStyle(title).fontSize,
+            box: [own.left, own.top, own.right, own.bottom],
+            over: Math.ceil(Math.max(0, own.bottom - box.bottom, below - own.top)),
+            wide: text.left < box.left || text.right > box.right};
+}"""
+
+
+def _largest_size(offered: list[str], limit: int) -> str | None:
+    """The largest offered "<n>px" size not above limit."""
+    sizes = [int(text[:-2]) for text in offered if text.endswith("px") and text[:-2].isdigit()]
+    return f"{max(size for size in sizes if size <= limit)}px" if any(
+        size <= limit for size in sizes) else None
+
+
+def _scorecard_value_size(height: int, offered: list[str]) -> str | None:
+    """The prototype's clamp(16, h - 28, 36) px, as the largest offered size not above it."""
+    return _largest_size(offered, min(max(16, height - 28), 36))
+
+
+def _scorecard_fit(component: Any, ctx: OpContext) -> dict | None:
+    return component.evaluate(_SCORECARD_FIT, [ctx.selectors["scorecard_value"],
+                                               ctx.selectors["scorecard_title"]],
+                              timeout=ctx.timeout_ms())
+
+
+_VERIFY_RESERVE_S = 5  # op budget kept for verification after waiting on a render
+_EDIT_RESERVE_S = 12  # and, before the Style edits, for the edits as well
+
+
+def _settled_fit(page: Any, ctx: OpContext, component: Any, ready: Callable[[dict], bool],
+                 *, reserve: float = _VERIFY_RESERVE_S) -> dict | None:
+    """The rendered value's fit once ready() holds and one poll later it is unchanged.
+
+    None when it doesn't settle while the op budget has more than reserve seconds:
+    a source error can leave the value unrendered, which mustn't fail the chart.
+    """
+    previous = None
+    while True:
+        fit = _scorecard_fit(component, ctx)
+        if fit is not None and ready(fit) and fit == previous:
+            return fit
+        previous = fit
+        remaining = ctx.remaining_s() - reserve
+        if remaining <= 0:
+            return None
+        page.wait_for_timeout(min(250, max(1, int(remaining * 1000))))
+
+
+def _px(text: str | None) -> int | None:
+    match = re.fullmatch(r"(\d+(?:\.\d+)?)px", (text or "").strip())
+    return int(float(match.group(1))) if match else None
+
+
+def _title_limit(height: int, size: str) -> int:
+    """The largest title font size that leaves the value room below it.
+
+    Measured live (2026-10-22): the title is its font size + 16 px tall; with no top
+    padding the value starts 1 px lower, and its line is 1.15 x its size (Arial).
+    """
+    return height - 17 - round(1.15 * (_px(size) or 0))
+
+
+def _shrink_title(page: Any, ctx: OpContext, limit: int) -> str:
+    limit = max(8, limit)
+    return _set_dropdown(page, ctx, "style_title_size", f"{limit}px", "title font size",
+                         pane_key="option_overlay",
+                         pick=lambda offered: _largest_size(offered, limit))
+
+
+def _style_scorecard(page: Any, ctx: OpContext, op: Any, component: Any, height: int) -> dict:
+    """Size the value to the box; with a title, hide the metric name and fit the value below it.
+
+    Style comboboxes show a tooltip pane after the option list opens, so their
+    menus are found by the pane holding options, not by the last pane.
+    """
+    # Edit a rendered value: in 2 of 7 live runs a value still loading when the
+    # edits began never rendered (order_items, 2026-10-22).
+    _settled_fit(page, ctx, component, lambda found: True, reserve=_EDIT_RESERVE_S)
+    _locator(page, ctx, "style_tab").click(timeout=ctx.timeout_ms())
+    size = _set_dropdown(page, ctx, "scorecard_value_size", f"{min(max(16, height - 28), 36)}px",
+                         "scorecard value size", pane_key="option_overlay",
+                         pick=lambda offered: _scorecard_value_size(height, offered))
+    titled = bool(getattr(op, "title", None))
+    title = None
+    if titled:
+        _set_switch(page, ctx, "scorecard_hide_name", True, "hide field name")
+        # The default 8 px top padding leaves a 36 px value touching an 84 px box's border.
+        _set_dropdown(page, ctx, "scorecard_padding_top", "0px", "scorecard top padding",
+                      pane_key="option_overlay")
+        # The title is the one thing above the value: shrink it when the value can't fit,
+        # without waiting on the value's query.
+        current = _px(_locator(page, ctx, "style_title_size").inner_text(timeout=ctx.timeout_ms()))
+        if current is not None and current > max(8, _title_limit(height, size)):
+            title = _shrink_title(page, ctx, _title_limit(height, size))
+    fit = _settled_fit(page, ctx, component,
+                       lambda found: found["size"] == size and title in {None, found["title"]})
+    if titled and fit and fit["over"] > 0 and (_px(fit["title"]) or 8) > 8:
+        title = _shrink_title(page, ctx, _px(fit["title"]) - fit["over"])
+        fit = _settled_fit(page, ctx, component, lambda found: found["title"] == title)
+    result = {"value_size": size, "hide_name": titled, "title_size": title,
+              "fits": bool(fit) and fit["over"] <= 0 and not fit["wide"]}
+    if not fit:
+        ctx.warn(f"{op.id}: scorecard value did not render; its fit was not checked")
+    elif not result["fits"]:
+        ctx.warn(f"{op.id}: scorecard value {size} does not fit "
+                 f"{'below the title ' if titled else ''}in its {height} px box")
+    ctx.events.emit("log", level="info",
+                    message=f"{op.id}: scorecard value {size}" + (f", title {title}" if title else ""))
+    return result
 
 
 def _drag(page: Any, start: tuple[float, float], end: tuple[float, float]) -> None:
@@ -604,6 +730,8 @@ def _run_add_chart(page: Any, op: Any, ctx: OpContext) -> OpResult:
     sort = None if inherent_sort else getattr(op, "sort", None)
     _set_sort(page, ctx, sort)
     rows_per_page = _set_title_and_options(page, ctx, op)
+    scorecard = (_style_scorecard(page, ctx, op, component, target[3])
+                 if op.chart_type == "scorecard" else None)
     ctx.state[op.id] = {
         "target": target,
         "chart_index": before,
@@ -617,8 +745,27 @@ def _run_add_chart(page: Any, op: Any, ctx: OpContext) -> OpResult:
         "title": getattr(op, "title", None),
         "breakdown": breakdown,
         "rows_per_page": rows_per_page,
+        "scorecard": scorecard,
     }
     return OpResult()
+
+
+def _verify_scorecard(page: Any, ctx: OpContext, component: Any, applied: dict) -> None:
+    """Read the applied value size (and title size) back from the open Style tab."""
+    # A closing menu's option labels can briefly join the combobox text.
+    for key, size in (("scorecard_value_size", applied["value_size"]),
+                      ("style_title_size", applied["title_size"])):
+        if size:
+            _poll(page, ctx, lambda: _locator(page, ctx, key).inner_text(
+                timeout=ctx.timeout_ms()).strip() == size, f"scorecard {key} did not read back {size}")
+    if applied["hide_name"] and _locator(page, ctx, "scorecard_hide_name").get_attribute(
+            "aria-checked") != "true":
+        raise OperationError("scorecard field name is shown under its title")
+    if applied["fits"]:
+        def inside() -> bool:
+            fit = _scorecard_fit(component, ctx)
+            return bool(fit) and fit["size"] == applied["value_size"] and fit["over"] <= 0                 and not fit["wide"]
+        _poll(page, ctx, inside, "scorecard value is not inside its box below the title")
 
 
 def _verify_add_chart(page: Any, op: Any, ctx: OpContext) -> None:
@@ -693,8 +840,11 @@ def _verify_add_chart(page: Any, op: Any, ctx: OpContext) -> None:
         # The applied value: the recipe's, or the nearest the menu offers.
         if _locator(page, ctx, "rows_per_page_control").inner_text().strip() != state["rows_per_page"]:
             raise OperationError("table rows per page did not match the recipe")
-    if state["title"] or (options and op.chart_type != "table"):
+    if state["title"] or (options and op.chart_type != "table") or state.get("scorecard"):
         _locator(page, ctx, "style_tab").click(timeout=ctx.timeout_ms())
+    scorecard = state.get("scorecard")
+    if scorecard:
+        _verify_scorecard(page, ctx, component, scorecard)
     if state["title"]:
         title = _locator(page, ctx, "chart_title_input")
         if title.input_value() != state["title"]:

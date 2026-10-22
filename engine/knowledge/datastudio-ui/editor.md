@@ -53,6 +53,7 @@ selectors:
   metric_editor: '.cdk-overlay-pane:has-text("Comparison calculation")'
   aggregation_control: 'role=button[name=/^Aggregation /]'
   last_overlay: '.cdk-overlay-pane >> nth=-1'
+  option_overlay: '.cdk-overlay-pane:has([role="option"]) >> nth=-1'
   breakdown_group: '[data-webdriver-cell-key="breakdownDimension"]'
   drill_down_switch: 'role=switch[name="Drill down"]'
   vertical_bar_chart: 'role=button[name=/^Vertical bar chart$/]'
@@ -115,6 +116,12 @@ selectors:
   show_title_switch: 'role=switch[name=/Show title/]'
   chart_title_input: 'role=group[name="Chart title"] >> role=textbox'
   compact_numbers_switch: 'role=switch[name=/Compact numbers/]'
+  scorecard_value_size: '[data-webdriver-cell-key="fontSize"] [role="combobox"]'
+  scorecard_hide_name: 'role=switch[name="Hide field name"]'
+  scorecard_padding_top: '[data-webdriver-cell-key="paddingTop"] [role="combobox"]'
+  scorecard_value: 'ng2-kpimetric .value-label'
+  scorecard_name: 'ng2-kpimetric .kpi-label'
+  scorecard_title: '.chart-title[role="heading"]'
   orientation_horizontal: 'role=radio[name=/Horizontal/]'
   orientation_vertical: 'role=radio[name=/Vertical/]'
   stacked_switch: 'role=switch[name="Stacked bars"]'
@@ -261,6 +268,26 @@ unrequested breakdown automatically; remove it using remove-chip-button. Scope
 sort order to sortDir/sortDir1 so Secondary sort's radios cannot match. With one
 metric and no breakdown, stacking is visually equivalent and the editor hides its
 switch; verify the sole series, bar type and orientation instead.
+
+### Scorecard value size (task 11.1, live 2026-10-22)
+
+A scorecard's value and metric name are sized by Style > Labels > Font size
+(`scorecard_value_size`, cell `fontSize`), default "auto". Auto scales them into
+the space the title leaves: the title (`scorecard_title`, Style > Chart title >
+Font size, default 18px) is its font size + 16 px of padding tall (34 px), and
+the body below it is the rest. A titled h=84 scorecard rendered its value at
+10 px and the name at 5 px, overlapping; at h=44 the value was 10 px in a 0 px
+row. Labels > Font size offers auto, 8, 9, 10, 12, 14, 18, 24, 28, 30, 36, 48,
+60, 72, 96 px (no 16: h=44 gets 14px). Labels > Hide field name
+(`scorecard_hide_name`, cell `hideMetric`) is off by default. Padding > Top
+(`scorecard_padding_top`, default 8px; offers 0, 4, 5, 8, 10, 16, 24, 32, 36, 48,
+72, 96 px) sits above the value. Line height defaults to auto. Chart title Font
+size offers 8-12, 14, 16, 18, 20, 24, 28, 30, 32, 36, 40, 44, 48, 60, 72, 84, 96 px.
+The value renders in `scorecard_value` (`.value-label`, overflow visible: an
+oversized value is drawn past the box, not clipped) only after its query returns.
+Measured (titled, name hidden, top padding 0): h=84 + 36px: title 208-242, value
+243-284 in a 208-292 box; h=44 + 14px: value 359-375 overflows the 368 bottom
+by 7 px, and 11px title (27 px tall) brings it to 352-368, inside.
 
 Title is the textbox within Chart title, after enabling Show title. Rows per page
 is in Setup. Compact numbers and bar orientation/stacking are in Style. Donut is

@@ -91,6 +91,11 @@ def _open_saved(url, ops, tmp_path, *, complete):
                         expect(frame.content_frame.locator(selectors["chart_frame_body"])).to_contain_text(
                             re.compile(r"\d"), timeout=20000
                         )
+                    elif op["chart_type"] == "scorecard" and op.get("title"):
+                        # Recipe 1.1: the title carries the label; the name is hidden.
+                        expect(chart.locator(selectors["scorecard_value"])).to_contain_text(
+                            re.compile(r"\d"), timeout=20000)
+                        expect(chart.locator(selectors["scorecard_name"])).to_be_hidden(timeout=20000)
                     else:
                         expect(chart).to_contain_text(op["metrics"][0]["field"], timeout=20000)
             page.screenshot(path=str(tmp_path / "saved_report.png"), full_page=True)

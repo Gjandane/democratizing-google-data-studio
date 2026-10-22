@@ -1,0 +1,8 @@
+{"recipe_version":"1.0","build_id":"b_000000000004","version":1,"report_name":"Engine scorecard value size","canvas":{"width":1200,"height":532},"datasource":{"connector":"bigQuery","project_id":"bigquery-public-data","dataset_id":"thelook_ecommerce","table_id":"order_items"}}
+{"id":"s001","op":"open_report"}
+{"id":"s002","op":"set_canvas","width":1200,"height":532}
+{"id":"s003","op":"add_chart","component_id":"p1_total_gross_revenue","chart_type":"scorecard","x":24,"y":324,"w":373,"h":84,"dimensions":[],"metrics":[{"field":"sale_price","agg":"sum"}],"title":"Total Gross Revenue","options":{"compact_numbers":true}}
+{"id":"s004","op":"add_chart","component_id":"p1_average_item_sale_price","chart_type":"scorecard","x":608,"y":424,"w":568,"h":84,"dimensions":[],"metrics":[{"field":"sale_price","agg":"avg"}],"title":"Average Item Sale Price","options":{"compact_numbers":false}}
+{"id":"s005","op":"add_chart","component_id":"p1_total_orders_compact","chart_type":"scorecard","x":24,"y":264,"w":276,"h":44,"dimensions":[],"metrics":[{"field":"order_id","agg":"count_distinct"}],"title":"Total Orders"}
+{"id":"s006","op":"save_report"}
+{"id":"s007","op":"get_link"}

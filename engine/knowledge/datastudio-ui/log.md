@@ -6,6 +6,17 @@ timestamp: 2026-10-18
 selectors: {}
 ---
 
+- 2026-10-22 task 11.1: added `scorecard_value_size` (cell `fontSize`, Style >
+  Labels > Font size, default auto), `scorecard_hide_name` (switch "Hide field
+  name"), `scorecard_padding_top` (cell `paddingTop`), `scorecard_value`
+  (`ng2-kpimetric .value-label`), `scorecard_name` (its `.kpi-label`) and
+  `scorecard_title` (the chart-title
+  heading) after live DOM/accessibility dumps of titled h=84 and h=44
+  scorecards on order_items. Labels > Font size is a cell-key lookup because
+  Chart title has another combobox named "Font size". Added `option_overlay`
+  (the last pane holding options): a Style combobox opens its option list and
+  then a "Font size" tooltip pane, so `last_overlay` is the tooltip.
+
 - 2026-10-22 task 10.1: added `field_picker_search` (the picker's only input,
   type search, aria-label "Text box to search Data Studio") and
   `field_picker_empty` (`text="No results"`): the picker renders 16 field

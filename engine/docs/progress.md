@@ -440,3 +440,16 @@ context. Task status lives in docs/plan.md, not here.
 - What changed: plan.md Phase 11: 11.1 (M, STOP, scorecard value sized to its box), 11.2 (S, `rename_page`), 11.3 (S, palette colors on charts with fewer swatches); architecture.md Live editor conventions + decision log; essentials recipe 1.1. Contract recipe.md 1.1 (additive op, scorecard rule, colors order) and recipe.schema.json changed at the root.
 - Why: user flagged scorecard text size and soft backgrounds on release 2.4 row 2; builder saw "Untitled Page" on every report; audit found every palette op skipped (b_a8ace098d03b 16/16, b_ca4845ae0e0b 15/15, b_ced0f5b4c491 14/14). User chose all four fixes (card).
 - Affected: engine 11.1-11.3 (new); backend 19.2 `Needs: engine 11.2`. No release gate.
+
+## 2026-10-22: Task 11.1 Scorecard value sized to its box
+- Status: done
+- Plan check: off
+- Diagnosis (live, order_items, titled h=84/h=44 dumps): Style > Labels > Font size (cell `fontSize`) default "auto" scales value and name into what the title leaves; title = font (18px default) + 16 px. h=84: value 10px, name 5px, overlapping. Labels > Hide field name (`hideMetric`) default off; Field name/Field value/Comparison alignment radios default Left; Padding Top 8px. Value sizes offered: auto, 8-14, 18, 24, 28, 30, 36, 48+ (no 16).
+- What changed: charts.py `_style_scorecard` sets value size, hides name + top padding 0 when titled, shrinks the title when the value can't fit (h=44: 11px); `_verify_scorecard` reads Style back and the fit. Selectors + live case + 4 offline tests. golden/charts_a scorecard checks now expect value + hidden name (outside Files: old asserts contradicted the rule).
+- Checks: Done-when live suite: run 1 10 passed; run 2 9 passed, golden timeout-recovery failed (pre-existing flake, user accepted). Live scorecard case fails pre-fix (10px≠36px), passes after. Replay b_a8ace098d03b: run 1 partial (s025 page hang), run 2 ok failed 0; ../data/report-quality/engine-11.1-scorecards.png, five values 36px; user approved on STOP card. `uv run pytest` 175 passed.
+- Decisions: op message is a `log` info event (contract keeps ok messages empty); title shrink by measured rule `h-17-round(1.15*v)`; wait for first render before Style edits (bounded, 12 s reserve) after 2/7 runs never rendered; unrendered → warn, not fail. `_set_dropdown(pick=, pane_key=)` replaced `nearest=`; `option_overlay` because a tooltip pane opens last. AGENTS.md gotcha added.
+- Digest: charts.py `_style_scorecard(page, ctx, op, component, h)->{value_size,hide_name,title_size,fits}`, `_set_dropdown(..., pick=fn(offered)->str|None, pane_key="last_overlay")`; selectors scorecard_value_size/hide_name/padding_top/value/name/title, option_overlay.
+- Tried and failed: `last_overlay` for Style menus (tooltip pane).
+- Gotchas: scorecard value can stay unrendered after Style edits (not seen since pre-render wait).
+- Left open: P3 horizontal overflow only warns - charts.py; P3 `to_be_hidden` passes if `.kpi-label` absent - test_golden.py/test_charts_a.py; golden timeout-recovery save flake - report.py.
+- Next: Task 11.2 `rename_page` op.
