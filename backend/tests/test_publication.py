@@ -581,3 +581,51 @@ async def test_late_bigquery_create_keeps_ownership_until_job_terminal(client, a
     await recover(app.state.db, app.state.settings.get(), lambda c: service)
     assert not live and not candidate.record()['creating']
     assert not candidate.root.exists()
+
+
+from test_blueprint import blueprint_api  # noqa: E402,F401  (fixture)
+from test_context_node import context_api  # noqa: E402,F401  (fixture)
+from test_render import staged_flow  # noqa: E402,F401  (fixture)
+
+
+@pytest.mark.parametrize('staged_flow', [(1, 1)], indirect=True)
+@pytest.mark.parametrize('failure', ['render', 'publish', 'intent'])
+def test_failed_replan_keeps_stale_bundle_and_execution_block(staged_flow, blueprint_api, monkeypatch, failure):
+    """18.1: no fresh state leaks from an unpublished candidate; the old bundle and view survive."""
+    from dss.memory import episodic
+    from dss.render import background
+    from dss.spec import requirements as req
+    from test_render import (execution_blocked, executes, feasibility_check, published_proof, replan,
+                             upload_style, use_reference_model)
+    client, app, bid, folder, bq, _ = staged_flow
+    *_, llm, value = blueprint_api
+    published = json.loads((folder / 'spec.json').read_text(encoding='utf-8'))['datasource']['table']
+    use_reference_model(app, monkeypatch)
+    upload_style(client, app, bid)
+    assert feasibility_check(client, app, bid)['prototype_stale']
+    names = ('spec.json', 'prototype.html', 'background_p1.png', 'aggregate-cache.json', 'docs/derived-fields.md')
+    before = {n: (folder / n).read_bytes() for n in names}
+    def capture(html, path, width, height):
+        if failure == 'render':
+            raise RuntimeError('chromium failed')
+        if failure == 'intent':
+            episodic.save(app.state.db, bid, 'user', 'Also show margin by region')
+        path.write_bytes(b'PNG')
+    monkeypatch.setattr(background, 'capture', capture)
+    with monkeypatch.context() as patch:
+        if failure == 'publish':
+            patch.setattr(Candidate, 'commit', lambda *a: (_ for _ in ()).throw(OSError('commit')))
+        trace = replan(client, app, bid, llm, value, monkeypatch)
+    assert trace['status'] == 'error'
+    if failure == 'intent':
+        assert trace['error'] == 'feasibility_stale'
+    assert {n: (folder / n).read_bytes() for n in names} == before
+    assert published not in bq.deleted and json.loads((folder / 'spec.json').read_text(encoding='utf-8'))['datasource']['table'] == published
+    assert req.load(folder).prototype_stale and client.get(f'/api/builds/{bid}/feasibility').json()['prototype_stale']
+    execution_blocked(client, bid, 'wrong_stage')  # The failed acceptance restores the Blueprint stage.
+    if failure != 'intent':
+        monkeypatch.setattr(background, 'capture', lambda html, path, w, h: path.write_bytes(b'PNG'))
+        assert replan(client, app, bid, llm, value, monkeypatch)['status'] == 'ok'
+        fresh = client.get(f'/api/builds/{bid}/feasibility').json()
+        assert not fresh['prototype_stale'] and fresh['id'] == published_proof(folder)
+        executes(client, app, bid, monkeypatch)

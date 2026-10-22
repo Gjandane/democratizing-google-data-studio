@@ -503,7 +503,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: research sources.md still names every source and excluded row; no data rows in any prompt; repair loop limits and model budgets unchanged; contracts/recipe.md 1.0 (no new op or argument).
 
 ## Phase 18: Reference recovery (change 2026-10-22)
-- [ ] 18.1 Recover prototype freshness after validated replan publication
+- [x] 18.1 Recover prototype freshness after validated replan publication
   - Goal: resolve release 2.5's sticky prototype_stale blocker (b_24747c71b7e3); a repaired and accepted prototype reaches recipe/run while an unrepaired artifact stays blocked.
   - Spec: docs/architecture.md#Replan freshness recovery; docs/architecture.md#Plan publication; docs/architecture.md#Capability verification
   - Files: src/dss/spec/requirements.py, src/dss/spec/publication.py, src/dss/harness/nodes/render.py, src/dss/harness/nodes/capability_check.py, src/dss/harness/nodes/blueprint.py, tests/test_feasibility.py, tests/test_render.py, tests/test_publication.py

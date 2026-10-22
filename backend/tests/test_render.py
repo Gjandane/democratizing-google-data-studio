@@ -376,6 +376,126 @@ async def test_staged_multipage_scope_publishes_past_24_components(staged_flow):
     assert client.get(f'/api/builds/{bid}/feasibility').json()['state'] == 'ready'
 
 
+def use_reference_model(app, monkeypatch):
+    """Style extraction with no items; feasibility checks then have no new intent to extract."""
+    from dss.spec import references
+    from test_references import Capture, output
+    monkeypatch.setattr(references, 'decode', lambda _: None)
+    model = Capture(response=output(items=[]), requests=[])
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: model)
+    return model
+
+
+def upload_style(client, app, bid):
+    from test_context_node import wait
+    from test_references import png
+    response = client.post(f'/api/builds/{bid}/reference-images', data={'mode': 'style'},
+                           files=[('files', ('style.png', png(), 'image/png'))])
+    assert response.status_code == 202, response.text
+    wait(app)
+
+
+def feasibility_check(client, app, bid):
+    from test_context_node import wait
+    response = client.post(f'/api/builds/{bid}/feasibility/check')
+    assert response.status_code == 202, response.text
+    wait(app)
+    return client.get(f'/api/builds/{bid}/feasibility').json()
+
+
+def execution_blocked(client, bid, code='feasibility_blocked'):
+    for endpoint in ('recipe', 'run'):
+        response = client.post(f'/api/builds/{bid}/{endpoint}')
+        assert response.status_code == 409 and response.json()['error']['code'] == code, response.text
+
+
+def replan(client, app, bid, llm, value, monkeypatch):
+    """Explicit replan through the staged API: regenerate the Blueprint, then accept it."""
+    from test_context_node import wait
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: llm)
+    llm.replies.append(json.dumps(value))
+    regenerated = client.post(f'/api/builds/{bid}/blueprint/regenerate')
+    assert regenerated.status_code == 202, regenerated.text
+    wait(app)
+    accepted = client.post(f'/api/builds/{bid}/blueprint/accept')
+    assert accepted.status_code == 202, accepted.text
+    wait(app)
+    with app.state.db.connect() as conn:
+        trace = conn.execute('SELECT * FROM traces WHERE run_id=?', (accepted.json()['run_id'],)).fetchone()
+    return trace
+
+
+def executes(client, app, bid, monkeypatch):
+    """Fresh proof: recipe compiles and the offline fake engine finishes the run."""
+    from test_context_node import wait
+    root = Path(__file__).resolve().parent
+    monkeypatch.setenv('DSS_ENGINE_CMD', f'"{__import__("sys").executable}" "{root / "fake_engine.py"}"')
+    monkeypatch.setenv('DSS_ENGINE_DRY_RUN', '1')
+    recipe = client.post(f'/api/builds/{bid}/recipe')
+    assert recipe.status_code == 200, recipe.text
+    run = client.post(f'/api/builds/{bid}/run')
+    assert run.status_code == 202, run.text
+    wait(app)
+    for _ in range(500):
+        if client.get(f'/api/builds/{bid}').json()['stage'] != 'build':
+            break
+        time.sleep(.02)
+    assert client.get(f'/api/builds/{bid}').json()['stage'] == 'done'
+
+
+def reloaded(app, bid):
+    """A restarted application reads the persisted ledger and publication state only."""
+    from fastapi.testclient import TestClient
+    from dss.main import create_app
+    from fakes import fake_models
+    restarted = create_app(app.state.settings.get(), model_lister=fake_models, bigquery_factory=app.state.bigquery_factory)
+    with TestClient(restarted) as api:
+        return api.get(f'/api/builds/{bid}/feasibility').json(), api.get(f'/api/builds/{bid}').json()
+
+
+@pytest.mark.parametrize('staged_flow', [(1, 1)], indirect=True)
+@pytest.mark.parametrize('trigger', ['replace', 'delete'])
+async def test_replan_recovers_freshness_after_reference_change(staged_flow, blueprint_api, monkeypatch, trigger):
+    """Release 2.5 b_24747c71b7e3: ready but prototype_stale after a reference change and a successful replan."""
+    client, app, bid, folder, bq, _ = staged_flow
+    *_, llm, value = blueprint_api
+    use_reference_model(app, monkeypatch)
+    upload_style(client, app, bid)
+    assert feasibility_check(client, app, bid)['prototype_stale']
+    trace = replan(client, app, bid, llm, value, monkeypatch)
+    assert trace['status'] == 'ok', trace['error']
+    use_reference_model(app, monkeypatch)
+    if trigger == 'replace':
+        upload_style(client, app, bid)
+    else:
+        assert client.delete(f'/api/builds/{bid}/reference-images').status_code == 204
+    stale = client.get(f'/api/builds/{bid}/feasibility').json()
+    assert stale['state'] == 'stale' and stale['prototype_stale']
+    execution_blocked(client, bid)
+    # An explicit check alone (and GET) never re-authorizes the old artifact.
+    checked = feasibility_check(client, app, bid)
+    assert checked['state'] == 'ready' and checked['prototype_stale'], checked
+    execution_blocked(client, bid)
+    assert client.get(f'/api/builds/{bid}/feasibility').json()['prototype_stale']
+    trace = replan(client, app, bid, llm, value, monkeypatch)
+    assert trace['status'] == 'ok', trace['error']
+    fresh = client.get(f'/api/builds/{bid}/feasibility').json()
+    assert fresh['state'] == 'ready' and not fresh['prototype_stale'], fresh
+    assert client.get(f'/api/builds/{bid}').json()['stage'] == 'prototype'
+    executes(client, app, bid, monkeypatch)
+    assessment, build = reloaded(app, bid)
+    assert assessment['state'] == 'ready' and not assessment['prototype_stale'] and build['stage'] == 'done'
+    assert assessment['id'] == fresh['id'] == published_proof(folder)
+
+
+def published_proof(folder):
+    """The fresh state and its proof are in the published ledger itself, not derived by GET."""
+    from dss.spec import requirements as req
+    ledger = req.load(folder)
+    assert not ledger.prototype_stale and not ledger.invalidated and ledger.assessment.state == 'ready'
+    return ledger.assessment.id
+
+
 def test_html_contract_geometry_layers(dashboard):
     for layer in ('all', 'decoration'):
         parsed = ContractParser(render(dashboard, layer=layer))

@@ -1127,3 +1127,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none
 - Left open: P3 a legit quoted list label (`Orders 'open', 'closed'`) is cut to its first fragment and trailing possessives fail validation - src/dss/spec/validate.py
 - Next: Task 18.1. Start with `status`.
+
+## 2026-10-22: Task 18.1 Recover prototype freshness after validated replan publication
+- Status: done
+- Plan check: off
+- What changed: render.perform (candidate branch, under build_lock, after new_sources/blocked/coverage/revalidate) sets ledger.prototype_stale=False before saving the candidate ledger, so freshness+proof publish with the bundle and roll back with it. Staged-API regressions in test_render/test_feasibility/test_publication.
+- Checks: `uv run pytest tests/test_feasibility.py tests/test_render.py tests/test_publication.py tests/test_api_contract.py` PASS 271 (2 deselected); Test (all) `uv run pytest` PASS 1419 (12 deselected); with render.py reverted 7 of 8 new tests fail (intent-change guard already held); strengthened pending test then rerun: test_feasibility.py PASS 141.
+- Decisions: root cause: sticky ledger.prototype_stale was never cleared by any path. Pending batches stay gated through evaluate/get `or bool(pending_comments)`; GET/check/decide/preflight/revise/copy_version unchanged. Outline trigger = selection change (recipe blocked by wrong_stage until replan). No model call added.
+- Digest: render.perform clears Ledger.prototype_stale only after candidate coverage, under build_lock. Helpers in tests/test_render.py: use_reference_model, upload_style, feasibility_check, execution_blocked(client,bid,code), replan->trace, executes, reloaded, published_proof(folder).
+- Tried and failed: none
+- Gotchas: after a failed accept the stage rolls back to blueprint, so recipe/run return wrong_stage (require_confirmed), not feasibility_blocked.
+- Left open: none
+- Next: Task 18.2. Start with `status`.

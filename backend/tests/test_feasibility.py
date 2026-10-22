@@ -1289,3 +1289,108 @@ def test_staged_scope_keeps_row_page_field_kpi_and_capability_checks(change, rea
     assessment = req.evaluate(snapshot, req.Ledger(), checker)
     assert assessment.state == 'blocked'
     assert any(reason in i.reason and i.resolution == 'unresolved' for i in assessment.issues), assessment.issues
+
+
+from test_blueprint import blueprint_api  # noqa: E402,F401  (fixture)
+from test_context_node import context_api  # noqa: E402,F401  (fixture)
+from test_render import staged_flow  # noqa: E402,F401  (fixture)
+
+
+def select(client, bid, selected):
+    response = client.put(f'/api/builds/{bid}/outline/selection', json={'questions': [{'id': 'q1_2', 'selected': selected}]})
+    assert response.status_code == 200, response.text
+
+
+@pytest.mark.parametrize('staged_flow', [(1, 2)], indirect=True)
+def test_outline_requirement_change_recovers_only_by_explicit_replan(staged_flow, blueprint_api, monkeypatch):
+    """18.1: a changed supported outline requirement invalidates the accepted prototype; restoring it does not re-authorize."""
+    from test_context_node import wait
+    from test_render import executes, feasibility_check, execution_blocked, published_proof
+    client, app, bid, folder, bq, _ = staged_flow
+    *_, llm, value = blueprint_api
+    select(client, bid, False)
+    a = client.get(f'/api/builds/{bid}/feasibility').json()
+    assert a['state'] == 'stale' and a['prototype_stale']
+    execution_blocked(client, bid, 'wrong_stage')
+    assert feasibility_check(client, app, bid)['prototype_stale']
+    select(client, bid, True)
+    restored = feasibility_check(client, app, bid)
+    assert restored['state'] == 'ready' and restored['prototype_stale'] and req.load(folder).prototype_stale
+    select(client, bid, False)
+    assert client.post(f'/api/builds/{bid}/outline/confirm').status_code == 200
+    llm.replies.append(json.dumps(value))
+    assert client.post(f'/api/builds/{bid}/design/confirm').status_code == 202
+    wait(app)
+    accepted = client.post(f'/api/builds/{bid}/blueprint/accept')
+    assert accepted.status_code == 202, accepted.text
+    wait(app)
+    fresh = client.get(f'/api/builds/{bid}/feasibility').json()
+    assert fresh['state'] == 'ready' and not fresh['prototype_stale'], fresh
+    assert fresh['id'] == published_proof(folder)
+    spec = json.loads((folder / 'spec.json').read_text(encoding='utf-8'))
+    assert not any('1.2' in c['label'] for p in spec['pages'] for c in p['components'])
+    executes(client, app, bid, monkeypatch)
+
+
+@pytest.mark.parametrize('staged_flow', [(1, 1)], indirect=True)
+def test_allowlist_narrowing_and_restoration_need_explicit_replan(staged_flow, blueprint_api, monkeypatch):
+    from test_render import executes, feasibility_check, execution_blocked, published_proof, replan, reloaded
+    client, app, bid, folder, bq, _ = staged_flow
+    *_, llm, value = blueprint_api
+    monkeypatch.setenv('DSS_ALLOWED_TYPES', 'scorecard')
+    assert client.get(f'/api/builds/{bid}/feasibility').json()['prototype_stale']
+    execution_blocked(client, bid)
+    narrowed = feasibility_check(client, app, bid)
+    assert narrowed['state'] == 'blocked' and narrowed['prototype_stale']
+    assert any(i['status'] == 'unsupported_app' for i in narrowed['issues'])
+    monkeypatch.delenv('DSS_ALLOWED_TYPES')
+    # Restoration plus GET/check proves support again, never the old artifact.
+    assert client.get(f'/api/builds/{bid}/feasibility').json()['prototype_stale']
+    restored = feasibility_check(client, app, bid)
+    assert restored['state'] == 'ready' and restored['prototype_stale']
+    assert feasibility_check(client, app, bid)['prototype_stale']
+    execution_blocked(client, bid)
+    assert replan(client, app, bid, llm, value, monkeypatch)['status'] == 'ok'
+    fresh = client.get(f'/api/builds/{bid}/feasibility').json()
+    assert fresh['state'] == 'ready' and not fresh['prototype_stale'] and fresh['id'] == published_proof(folder)
+    executes(client, app, bid, monkeypatch)
+    assessment, build = reloaded(app, bid)
+    assert assessment['id'] == fresh['id'] and not assessment['prototype_stale'] and build['stage'] == 'done'
+
+
+@pytest.mark.parametrize('staged_flow', [(1, 1)], indirect=True)
+def test_replan_keeps_pending_comment_gate(staged_flow, blueprint_api, monkeypatch):
+    """Replanning never silently applies, clears or authorizes a pending batch; its abandon flow still decides."""
+    from test_render import (executes, execution_blocked, feasibility_check, published_proof, replan,
+                             upload_style, use_reference_model)
+    client, app, bid, folder, bq, _ = staged_flow
+    *_, llm, value = blueprint_api
+    use_reference_model(app, monkeypatch)
+    upload_style(client, app, bid)
+    feasibility_check(client, app, bid)
+    target = json.loads((folder / 'spec.json').read_text(encoding='utf-8'))['pages'][0]['components'][0]['id']
+    a = pending((client, app, bid, folder), [{'component_id': target, 'text': 'Animate this'}])
+    assert a['state'] == 'blocked' and a['prototype_stale'] and a['pending_comments']
+    batch = a['pending_comments']['id']
+    llm.replies.append(json.dumps(value))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: llm)
+    assert client.post(f'/api/builds/{bid}/blueprint/regenerate').status_code == 202
+    from test_context_node import wait
+    wait(app)
+    refused = client.post(f'/api/builds/{bid}/blueprint/accept')
+    assert refused.status_code == 409 and refused.json()['error']['code'] == 'feasibility_blocked', refused.text
+    kept = client.get(f'/api/builds/{bid}/feasibility').json()
+    assert kept['pending_comments']['id'] == batch and kept['prototype_stale'] and req.load(folder).prototype_stale
+    # Resolved batch: the replan publishes, clears the artifact flag, yet keeps the batch and its gate.
+    resolved = choose(client, bid, kept, *(drop(i) for i in kept['issues'] if i['resolution'] == 'unresolved'))
+    assert resolved.status_code == 200 and resolved.json()['state'] == 'ready', resolved.text
+    assert replan(client, app, bid, llm, value, monkeypatch)['status'] == 'ok'
+    gated = client.get(f'/api/builds/{bid}/feasibility').json()
+    assert gated['pending_comments']['id'] == batch and gated['prototype_stale'] and not req.load(folder).prototype_stale
+    execution_blocked(client, bid)
+    abandoned = client.delete(f'/api/builds/{bid}/feasibility/pending-comments', params={'assessment_id': gated['id']})
+    assert abandoned.status_code == 200, abandoned.text
+    assert abandoned.json()['pending_comments'] is None and not abandoned.json()['prototype_stale']
+    fresh = client.get(f'/api/builds/{bid}/feasibility').json()
+    assert fresh['state'] == 'ready' and not fresh['prototype_stale'] and fresh['id'] == published_proof(folder)
+    executes(client, app, bid, monkeypatch)

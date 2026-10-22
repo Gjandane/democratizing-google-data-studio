@@ -63,6 +63,9 @@ async def perform(harness, build_id, run_id, payload, trace):
                 ledger.verification = req.verification(snapshot, ledger, checker)
                 for rid, ids in bindings.items():
                     ledger.verification[rid].append({'fulfilled_by': ids})
+                # Only this validated candidate may retire the old artifact's stale flag;
+                # it publishes with the bundle. A pending batch keeps its own gate.
+                ledger.prototype_stale = False
                 req.save(folder, ledger, req.evaluate(snapshot, ledger, checker))
                 if payload.get('transition'):
                     # Blueprint acceptance commits with its prototype: a failed publish
