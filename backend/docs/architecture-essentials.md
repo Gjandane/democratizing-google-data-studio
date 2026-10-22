@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:0da7c382c634 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:0bef1380d792 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 Read every build session. docs/architecture.md wins if they disagree.
 
@@ -31,12 +31,12 @@ tests/          offline fakes; tests/live/ explicitly marked live
   thread. Provider: response_json_schema, guarded raw output, sanitized errors, callable context.
   Gemini: planner 120 s, worker 30 s; one retry on 429/500/503, never 504.
 - Types: `DSS_ALLOWED_TYPES`; sort `{field, order}`. COUNT variants allow dimensions; dropdown
-  uses one dimension. Chart colors override theme; accent comments affect only their target.
+  uses one dimension. Chart colors override theme (no scorecards); accents affect only their target.
 - Cloud: SPA/$PORT, code cookie/header, fail-closed startup; backup API every 30 s when dirty;
   agent token, model-only settings, 60 s retry deadline. Preview needs no engine; run recompiles
   current spec; flat job assets. Dev routes require DSS_DEV=1.
 - Blueprint accept publishes its owned candidate view/spec/artifacts atomically; never clean a
-  published view. Backgrounds: background.write_pages, render(page=n), never the stacked canvas; 2x scale.
+  published view. Backgrounds: background.write_pages, render(page=n), not the stacked canvas; 3x, <2 MB.
   Heading wraps/text fitting: architecture.md#Implementation conventions.
 - Feasibility: structured Blueprint rows; extraction only for Other, comments, references.
   Images are not data. User-approved Other fail-open limitation and contract gap: PRD Later;

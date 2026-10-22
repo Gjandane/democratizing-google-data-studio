@@ -736,7 +736,10 @@ Final-audit corrections (2026-10-19):
 - Sort is a validated `{field, order: asc|desc}` object, matching the recipe contract. Renderer
   SQL and compiler consume that same shape; unknown keys or orders fail before publication.
   An explicitly ascending bar/table must render ascending as it will in Data Studio.
-- Per-chart colors override the theme in both prototype and recipe. COUNT/COUNT DISTINCT may
+- Per-chart colors override the theme in both prototype and recipe. Scorecards take no colors
+  (no series swatch; the recipe sends no `set_style` for them): feasibility returns
+  `unsupported_app` for colors on a scorecard, so such a comment fails fast instead of staying
+  pending (change 2026-10-22). COUNT/COUNT DISTINCT may
   take a dimension field. Blueprint dropdown rows have exactly one dimension, mapped to the
   control field by layout.
 - Oracle: property tests on random valid/invalid specs (fixed seed) + golden invalid cases.
@@ -761,8 +764,9 @@ Final-audit corrections (2026-10-19):
   spec; `data-cid`, `data-label`, `data-kind` on every component and decoration;
   `layer=decoration` hides components; a chart type the catalog lacks can't render (raises).
   Background: Playwright Chromium (sync API in a worker thread) screenshots `layer=decoration` at
-  canvas size and device scale 2 (change 2026-10-22: 2x pixels, e.g. 2400 x 1064 for 1200 x 532,
-  so Data Studio's scaled view stays sharp) -> `background_p<n>.png`, one per page (change 2026-10-21). Each page is a
+  canvas size and device scale 3 (change 2026-10-22: 3x pixels, e.g. 3600 x 1596 for 1200 x 532,
+  so Data Studio's scaled view stays sharp; user target >= 1920 x 1080 px, each file < 2 MB, no
+  minimum file size) -> `background_p<n>.png`, one per page (change 2026-10-21). Each page is a
   `section[data-page][data-page-name]` under `#dss-canvas` (../contracts/api.md 2.0).
 - Deferred preview parity (change 2026-10-20; PRD Later, former 13.4): supported options are to
   have matching visible semantics: bar orientation/stacking, pie donut,
@@ -776,7 +780,8 @@ Final-audit corrections (2026-10-19):
   clipped heading into the final background; preserve the reserved synthetic footer.
 - Edge cases: empty query result -> chart shows "No data"; very long labels truncated with title attr.
 - Oracle: tests parse the HTML: one `data-cid` per spec item, boxes equal Layout's, decoration
-  layer has no visible component; background_p<n>.png is 2x the page's canvas size in pixels.
+  layer has no visible component; background_p<n>.png is 3x the page's canvas size in pixels
+  and under 2 MB.
 
 ### Revise
 - Problem: comments -> the smallest spec change.
@@ -953,3 +958,4 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-21 | Record the user-approved outline_other fail-open behavior as a POC limitation and contract gap | claim complete original-behavior preservation | task 15.11 explicitly approved empty extraction and skipped clarification/coverage; contracts remain root-owned | task 15.11; final re-audit |
 | 2026-10-22 | Recover freshness only with validated candidate publication; reconcile recreate observations with active user instructions and confirmed Context KPI definitions | clear staleness on check; accept dropped image observations | user chose both release 2.5 blocker fixes; preserve acceptance and existing contracts | change reference recovery (program root) |
 | 2026-10-22 | Backgrounds captured at device scale 2 with the recipe box unchanged; page 1 named by `rename_page`; no palette `set_style` for scorecards | SVG or higher-res upload per component; accept "Untitled Page" | user flagged soft backgrounds and the engine skips scorecard palettes; recipe 1.1 adds the op | change report quality (program root) |
+| 2026-10-22 | Backgrounds at device scale 3 (each PNG < 2 MB, no minimum size); feasibility rejects colors on scorecards as unsupported_app | keep 2x; per-page scale to an exact 1920 x 1080; pad files to 200 KB; leave scorecard color comments pending | user target >= 1920 x 1080 (2x page 1 is 1064 tall); bytes don't add sharpness; renderer, compiler and engine must agree on scorecard colors | change backgrounds 3x and scorecard colors |

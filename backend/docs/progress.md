@@ -1182,3 +1182,9 @@ context. Task status lives in docs/plan.md, not here.
 - Next: plan complete (63/63); follow-up for scorecard colors feasibility.
 - Change request: feasibility rejects `style.colors` on scorecards (unsupported_app, src/dss/spec/capabilities.py) so a scorecard color comment fails fast instead of staying pending after 19.2 (user, 2026-10-22).
 - Change request: backgrounds still not sharp enough in Data Studio; user's target: >= 1920x1080 px PNG, ~200 KB-1 MB, under 2 MB (user, 2026-10-22). Facts: 19.1 SCALE=2 gives 2400 px wide (p1 2400x1064, 42 KB); the 19.2 live replay used b_a8ace098d03b/v1's pre-19.1 1x files (1200x532, 15 KB), so report d4af98f7 shows 1x backgrounds. Decide scale (e.g. 3x) and whether file size is a target.
+
+## 2026-10-22: Change backgrounds 3x and scorecard colors
+- What changed: plan.md 19.3 (S, STOP, backgrounds at device scale 3, each PNG < 2 MB) and 19.4 (S, feasibility rejects colors on scorecards as unsupported_app); architecture.md Prototype renderer (3x, size cap, oracle), Dashboard Spec (no scorecard colors) and decision log; essentials background and colors lines.
+- Why: user's HD target >= 1920 x 1080 px under 2 MB (2x page 1 is 2400 x 1064); the "soft" report d4af98f7 used pre-19.1 1x files. No minimum file size: bytes don't add sharpness. Scorecard colors were accepted by feasibility but never sent since 19.2, so comments stayed pending. User chose both on cards; deadline scope gate shown (0 tasks left, both S).
+- Affected: backend 19.3, 19.4 (new; independent, both depend on 19.2). No contract or engine change.
+- Change requests settled: "feasibility rejects style.colors on scorecards" (19.2 entry) -> planned 19.4; "backgrounds still not sharp enough; target >= 1920x1080, ~200 KB-1 MB, under 2 MB" (19.2 entry) -> planned 19.3 (3x scale, < 2 MB cap; the 200 KB-1 MB range is not a target).
