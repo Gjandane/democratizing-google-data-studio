@@ -1,6 +1,8 @@
 # Contract: recipe and engine events
-Version 1.0 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
-(`--timeout`, `error_code: timeout`, background file name).
+Version 1.1 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
+(`--timeout`, `error_code: timeout`, background file name); 1.1 (2026-10-22, change report quality)
+`rename_page` op, scorecard value sizing and `colors` series order stated. Header `recipe_version`
+stays "1.0" (the op is additive).
 Provider: backend writes recipes (its recipe compiler); engine writes events. Consumers: engine
 reads recipes; backend reads events; release validates both. Machine-readable schema:
 `contracts/recipe.schema.json` (JSON Schema 2020-12, `$defs`: `header`, `op`, `event`).
@@ -27,12 +29,13 @@ UTF-8 JSON Lines, one JSON object per line, no blank lines.
 | `set_canvas` | `width`, `height` | sets the current page's canvas size |
 | `set_background_image` | `path`, `x`, `y`, `w`, `h` | inserts the image, sends it to the back, and locks it if the UI allows |
 | `add_page` | `name` | adds a page and makes it current |
+| `rename_page` | `name` | renames the current page (the backend names page 1 with it; `open_report` leaves it "Untitled Page") |
 | `go_to_page` | `index` (1-based) | makes that page current |
 | `add_chart` | `component_id`, `chart_type`, `x`, `y`, `w`, `h`, `dimensions` (list of field names), `metrics` (list of `{field, agg}`), `date_dimension`?, `breakdown`?, `sort`? (`{field, order: asc\|desc}`), `title`?, `options`? (object) | adds the chart, sets its fields, places it at the box |
 | `add_control` | `component_id`, `control_type` (`date_range`\|`dropdown`), `x`, `y`, `w`, `h`, `field`? (dropdown) | adds the control at the box |
 | `add_text` | `component_id`, `text`, `x`, `y`, `w`, `h`, `font_size`?, `color`?, `bold`?, `align`? (`left`\|`center`\|`right`) | adds a text box |
 | `add_image` | `component_id`, `path`, `x`, `y`, `w`, `h` | uploads and places an image |
-| `set_style` | `component_id`, `style` (object: `colors`? list, `show_title`?, `font_size`?, `background`?, `border_color`?) | styles an existing component; unsupported keys are skipped with a message |
+| `set_style` | `component_id`, `style` (object: `colors`? list, `show_title`?, `font_size`?, `background`?, `border_color`?) | styles an existing component; `colors` apply in order to the chart's series swatches, extra colors ignored; unsupported keys are skipped with a message |
 | `save_report` | — | makes sure the report is saved in the user's account ("Edit and share" if shown) |
 | `get_link` | — | reads the report's view URL; returned in `run_finished.report_url` |
 
@@ -43,6 +46,9 @@ UTF-8 JSON Lines, one JSON object per line, no blank lines.
   `stacked` (bool); `pie`: `donut` (bool); `pivot_table`: `row_dimensions`, `column_dimensions`
   (lists, which replace `dimensions`); `geo_map`: `geo_type` (`country`\|`region`\|`city`);
   `table`: `rows_per_page` (int); `scorecard`: `compact_numbers` (bool).
+- Scorecards (engine behaviour, no argument): the value is sized to the box like the prototype,
+  `clamp(16, h - 28, 36)` px (Data Studio's largest offered size not above it), and the metric
+  name is hidden when `title` is set, since the title carries the label.
 - Field names are BigQuery column names of the header's table, exactly.
 
 ## Engine CLI (provided by engine)

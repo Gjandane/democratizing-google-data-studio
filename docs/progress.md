@@ -399,3 +399,10 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: in AGENTS.md.
 - Left open: P2 scorecard values tiny at box top-left (engine/backend, user flagged); P2 background PNGs low-definition, user suggests rendering the HTML background as HD PNG (backend); P2 page 1 "Untitled Page" (engine).
 - Next: Task 2.5 (reference, refusal and synthetic e2e, local), per its stash-resume note.
+
+## 2026-10-22: Change report quality (program)
+- What changed: contracts/recipe.md 1.0 -> 1.1 (`rename_page` op; scorecard value rule `clamp(16, h - 28, 36)` px and hidden metric name when titled; `colors` apply in order to the swatches a chart has) and recipe.schema.json (`rename_page`); program.md contracts table, roadmap bullet, decision log; root essentials recipe 1.1; root PRD Later line on page 1 name and scorecard size removed (now planned). Engine plan Phase 11: 11.1 (M, STOP), 11.2 (S), 11.3 (S). Backend plan Phase 19: 19.1 (S, STOP), 19.2 (S, `Needs: engine 11.2`). Each part's architecture, essentials and progress updated.
+- Ruling: user ticked all four on the scope card (scorecard size, HD backgrounds, page 1 name, chart palette colors). Audit evidence: b_a8ace098d03b scorecards h=84 get only title + compact_numbers (no value size); background.py captures at device_scale_factor=1 (1200 x 532); compiler emits `add_page` for pages 2+ only; 16/16 `set_style colors` skipped (palette 4 > swatches). Scorecard size is derived from the box (no new argument); `rename_page` is additive, header stays "1.0". No release gate: 2.5 stays the critical path.
+- Decisions: two STOPs (engine 11.1 scorecard look, backend 19.1 sharpness) because both are visual judgments; evidence screenshots go to data/report-quality/ (git-ignored). Contract fixture recipe.sample.jsonl unchanged (inserting an op would renumber it); the parts' own tests cover `rename_page`. POC: delta audit optional, not run.
+- Left open: release 2.6 screenshots and README images show the fixes only if these land first.
+- Next: engine/ 11.1 -> 11.2 -> 11.3 (one Chrome; not during release 2.5 live runs); backend/ 19.1 any time, 19.2 after engine 11.2.

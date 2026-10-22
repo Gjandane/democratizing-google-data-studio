@@ -175,6 +175,14 @@ These conventions consolidate the verified build decisions and selector traps fr
   to leave text editing before geometry/readback. Image Setup can require canvas deselection
   and a top-left component click. Poll exact title-font readback within the operation budget;
   closing dropdown options can briefly appear in the combobox text.
+- Scorecards (change 2026-10-22, recipe 1.1): size the value to the recipe box like the backend
+  prototype, `clamp(16, h - 28, 36)` px, using Data Studio's largest offered size not above it;
+  hide the metric name when `title` is set; the value sits inside the box below the title, not
+  clipped. The op message names the applied size.
+- `set_style colors` (recipe 1.1): apply colors in order to the first min(len(colors), swatches)
+  series swatches and ignore the rest; a component with no series swatch (scorecard) skips the
+  key with a message. `rename_page` renames the current page with the same Manage pages rename
+  step `add_page` uses.
 - Read text through logical blocks and BR elements to preserve blank lines; neither textContent
   nor innerText alone is a reliable whitespace oracle.
 - Live recipes use `DSS_TEST_TABLE`; shared contract fixtures contain an unavailable placeholder
@@ -199,3 +207,4 @@ These conventions consolidate the verified build decisions and selector traps fr
 | 2026-10-21 | Detect data-access review dialogs by dialog, with the risk checkbox optional | pin a template or URL that avoids the dialog | Data Studio's dialog now has Close/Acknowledge only and blocked release 2.3; user chose the engine fix | change 2026-10-21, task 6.1 |
 | 2026-10-21 | Poll review controls every 250 ms within the existing deadline, rechecking the optional checkbox until acknowledgement is enabled | check checkbox once at dialog visibility; rely on retry | audit probe proved the checkbox renders after the dialog while the button stays disabled, consuming the shared attempt budget | final re-audit, task 7.1 |
 | 2026-10-21 | Placement ops reach boxes below the viewport fold at 100% zoom, read back in canvas coordinates | backend caps page height at the viewport; zoom out the editor | tall per_section pages are the staged design; 100% zoom keeps the ±4 px readback | change tall canvas (user choice), task 9.1 |
+| 2026-10-22 | Scorecard value sized from the box (prototype rule), `rename_page` op, palette colors applied to the swatches a chart has | new recipe font-size argument; accept "Untitled Page"; skip palettes longer than the swatch list | user flagged scorecard size on release 2.4; all 16 palette ops of b_a8ace098d03b were skipped; additive op keeps recipe_version 1.0 files valid | change report quality (user choice), tasks 11.1-11.3 |

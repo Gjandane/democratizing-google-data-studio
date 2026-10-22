@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:cd84890f9501 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:92d76fdd968a (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: engine
 One page, read at the start of every build session. A summary of docs/architecture.md, which
 wins if the two disagree.
@@ -55,7 +55,7 @@ tests/                   offline tests (fake driver); tests/live/ marked `live`
 ## Contracts
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
-| ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.0 | consumes recipes; provides events | `uv run pytest tests/test_contract.py` |
+| ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.1 | consumes recipes; provides events | `uv run pytest tests/test_contract.py` |
 | ../contracts/conventions.md | 1.2 | consumes | manual: env names, ports and paths match (1.1 and 1.2 add nothing the engine reads; the engine stays local) |
 
 ## Dependencies

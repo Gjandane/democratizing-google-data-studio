@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:1f0c268d959a (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:0da7c382c634 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 Read every build session. docs/architecture.md wins if they disagree.
 
@@ -36,7 +36,7 @@ tests/          offline fakes; tests/live/ explicitly marked live
   agent token, model-only settings, 60 s retry deadline. Preview needs no engine; run recompiles
   current spec; flat job assets. Dev routes require DSS_DEV=1.
 - Blueprint accept publishes its owned candidate view/spec/artifacts atomically; never clean a
-  published view. Backgrounds: background.write_pages, render(page=n), never the stacked canvas.
+  published view. Backgrounds: background.write_pages, render(page=n), never the stacked canvas; 2x scale.
   Heading wraps/text fitting: architecture.md#Implementation conventions.
 - Feasibility: structured Blueprint rows; extraction only for Other, comments, references.
   Images are not data. User-approved Other fail-open limitation and contract gap: PRD Later;
@@ -59,7 +59,7 @@ tests/          offline fakes; tests/live/ explicitly marked live
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
 | ../contracts/api.md | 2.0 | provides | `uv run pytest tests/test_api_contract.py` |
-| ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.0 | provides recipes; consumes events | `uv run pytest tests/test_recipe_contract.py` |
+| ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.1 | provides recipes; consumes events | `uv run pytest tests/test_recipe_contract.py` |
 | ../contracts/conventions.md | 1.2 | consumes | manual: env names, ports, paths and IDs match (1.2 renames the Cloud Run service only) |
 | ../contracts/dashboard-intent.md | 1.2 | provides | `uv run pytest tests/test_api_contract.py tests/test_feasibility.py` |
 | ../contracts/synthetic-data.md | 1.2 | provides | `uv run pytest tests -k synthetic` |

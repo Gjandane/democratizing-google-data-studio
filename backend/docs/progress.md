@@ -1151,3 +1151,8 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: legacy recreate ledgers show obs_stale_ until one Check feasibility re-reconciles them; this changes meaning() so earlier drops on observations need re-choosing.
 - Left open: P3 instruction naming a missing field reports needs_clarification, not needs_data - src/dss/spec/requirements.py; P3 two KPIs with identical measure count as one match, evidence names the first - src/dss/spec/requirements.py
 - Next: none in backend plan (61/61). Release 2.5 supplies the live proof.
+
+## 2026-10-22: Change report quality (program)
+- What changed: plan.md Phase 19: 19.1 (S, STOP, HD background images at device scale 2), 19.2 (S, `Needs: engine 11.2`, page 1 `rename_page`, no scorecard palette op); architecture.md Prototype renderer, Recipe compiler and decision log; essentials recipe 1.1 and the background line. Contract recipe.md 1.1 and recipe.schema.json changed at the root.
+- Why: user flagged soft backgrounds and scorecard text on release 2.4 row 2; "Untitled Page" on every report; the engine skips every scorecard palette op. User chose all four fixes (card); engine takes 11.1-11.3.
+- Affected: backend 19.1, 19.2 (new). No release gate.

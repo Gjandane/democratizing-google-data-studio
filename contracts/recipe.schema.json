@@ -67,6 +67,7 @@
           "required": ["path"]
         },
         { "properties": { "op": { "const": "add_page" }, "name": { "type": "string", "minLength": 1 } }, "required": ["name"] },
+        { "properties": { "op": { "const": "rename_page" }, "name": { "type": "string", "minLength": 1 } }, "required": ["name"] },
         { "properties": { "op": { "const": "go_to_page" }, "index": { "type": "integer", "minimum": 1 } }, "required": ["index"] },
         {
           "allOf": [{ "$ref": "#/$defs/box" }],

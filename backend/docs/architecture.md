@@ -761,7 +761,8 @@ Final-audit corrections (2026-10-19):
   spec; `data-cid`, `data-label`, `data-kind` on every component and decoration;
   `layer=decoration` hides components; a chart type the catalog lacks can't render (raises).
   Background: Playwright Chromium (sync API in a worker thread) screenshots `layer=decoration` at
-  canvas size -> `background_p<n>.png`, one per page (change 2026-10-21). Each page is a
+  canvas size and device scale 2 (change 2026-10-22: 2x pixels, e.g. 2400 x 1064 for 1200 x 532,
+  so Data Studio's scaled view stays sharp) -> `background_p<n>.png`, one per page (change 2026-10-21). Each page is a
   `section[data-page][data-page-name]` under `#dss-canvas` (../contracts/api.md 2.0).
 - Deferred preview parity (change 2026-10-20; PRD Later, former 13.4): supported options are to
   have matching visible semantics: bar orientation/stacking, pie donut,
@@ -775,7 +776,7 @@ Final-audit corrections (2026-10-19):
   clipped heading into the final background; preserve the reserved synthetic footer.
 - Edge cases: empty query result -> chart shows "No data"; very long labels truncated with title attr.
 - Oracle: tests parse the HTML: one `data-cid` per spec item, boxes equal Layout's, decoration
-  layer has no visible component; background.png has the canvas size.
+  layer has no visible component; background_p<n>.png is 2x the page's canvas size in pixels.
 
 ### Revise
 - Problem: comments -> the smallest spec change.
@@ -801,10 +802,12 @@ Final-audit corrections (2026-10-19):
 ### Recipe compiler
 - Problem: spec -> recipe.jsonl valid against ../contracts/recipe.schema.json.
 - Rules: header from build, version and `spec.datasource.table` (split into project, dataset,
-  table); ops: `open_report`, `set_canvas`, `set_background_image` (`background_p1.png`), then components in reading order (y, then x) mapped by type
+  table); ops: `open_report`, `rename_page` (page 1's name; recipe 1.1, change 2026-10-22), `set_canvas`, `set_background_image` (`background_p1.png`), then components in reading order (y, then x) mapped by type
   (`date_range`/`dropdown` -> `add_control`, `text` -> `add_text`, `image` -> `add_image`, else
   `add_chart` with `chart_type` = type); per extra page `add_page`, `set_canvas`,
-  `set_background_image`; one `set_style` per chart with the theme palette; then `save_report`,
+  `set_background_image` (its box stays the canvas size: x0 y0 w=canvas width h=page height);
+  one `set_style` per chart with the theme palette, none for scorecards (no series swatch);
+  then `save_report`,
   `get_link`. Boxes from Layout. Op ids `s001`... Deterministic: same spec -> byte-identical file.
 - Oracle: every line validates against the schema; golden spec -> golden recipe file; ids sequential.
 - All accepted Theme colors must meet the recipe's #RRGGBB constraint, including palette items;
@@ -949,3 +952,4 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-21 | Fold staged artifact, aggregate-profile, raw-expression, dry-run-schema, layout, background and revision decisions into conventions | leave them only in task logs | preserve tasks 15.1-15.11 decisions for future sessions | final re-audit |
 | 2026-10-21 | Record the user-approved outline_other fail-open behavior as a POC limitation and contract gap | claim complete original-behavior preservation | task 15.11 explicitly approved empty extraction and skipped clarification/coverage; contracts remain root-owned | task 15.11; final re-audit |
 | 2026-10-22 | Recover freshness only with validated candidate publication; reconcile recreate observations with active user instructions and confirmed Context KPI definitions | clear staleness on check; accept dropped image observations | user chose both release 2.5 blocker fixes; preserve acceptance and existing contracts | change reference recovery (program root) |
+| 2026-10-22 | Backgrounds captured at device scale 2 with the recipe box unchanged; page 1 named by `rename_page`; no palette `set_style` for scorecards | SVG or higher-res upload per component; accept "Untitled Page" | user flagged soft backgrounds and the engine skips scorecard palettes; recipe 1.1 adds the op | change report quality (program root) |

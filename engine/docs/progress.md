@@ -435,3 +435,8 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: Data panel renders all 32 natality fields (no gap there); a failed op leaving a picker/menu open makes later ops time out.
 - Left open: none
 - Next: no engine task left. Release 2.4 (root `..`) can rerun its live builds.
+
+## 2026-10-22: Change report quality (program)
+- What changed: plan.md Phase 11: 11.1 (M, STOP, scorecard value sized to its box), 11.2 (S, `rename_page`), 11.3 (S, palette colors on charts with fewer swatches); architecture.md Live editor conventions + decision log; essentials recipe 1.1. Contract recipe.md 1.1 (additive op, scorecard rule, colors order) and recipe.schema.json changed at the root.
+- Why: user flagged scorecard text size and soft backgrounds on release 2.4 row 2; builder saw "Untitled Page" on every report; audit found every palette op skipped (b_a8ace098d03b 16/16, b_ca4845ae0e0b 15/15, b_ced0f5b4c491 14/14). User chose all four fixes (card).
+- Affected: engine 11.1-11.3 (new); backend 19.2 `Needs: engine 11.2`. No release gate.
