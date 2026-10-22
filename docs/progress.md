@@ -387,3 +387,15 @@ context. Task status lives in docs/plan.md, not here.
 - Checks: root Test (all), `uv run --project integration python integration/check_contracts.py`: PASS, all 9 checks (the 13-check extension remains in the unapplied 2.5 stash). Backend stamp completed; backend/release lint: 0 errors; program: 0 problems; git diff --check passed. Existing plan-size/older Spec and root AGENTS length warnings remain advisory. Backend product tests and live acceptance not run: implementation is pending.
 - Left open: existing 2.5 hosted-allowlist runner concern remains for release 4.3; no additional task or acceptance waiver. Stash drops remain user cleanup. No new STOP or unverified dependency.
 - Next: open backend/ for builder 17.1, then 18.1 and 18.2. Return to the root for 2.5's full live acceptance and user comparison card; 4.3 repeats the same standard on the hosted service.
+
+## 2026-10-22: Task 2.4 Manual acceptance: CSV, research, BigQuery and GCS
+- Status: done
+- Plan check: off
+- What changed: docs/acceptance.md rows 2 (research, b_ca4845ae0e0b) and 3 (BigQuery, b_a8ace098d03b) rerun after engine 10.1 / backend 17.1, both PASS (user card); docs/img/acceptance-2.4-{research,bigquery}.png replaced (page 1, cropped). AGENTS.md: 2 gotchas.
+- Checks: row 2 run ok 45/45, row 3 ok 52/52; values match source (research PPP 13.3M = 13,256,570, 11 countries; BQ 10.9M/125.5K/182.0K/80.0K users/59.75 = direct query); user verdicts PASS, PASS; `check_contracts.py` PASS (9/9).
+- Decisions: same inputs as the first runs, default outline/design, no prototype comments. Row 2 build title typed twice by a browser misfire (no rename endpoint; cosmetic, the report title comes from Context). Rows 1 and 4 stand.
+- Digest: docs/acceptance.md: 4 rows PASS (csv b_ced0f5b4c491, research b_ca4845ae0e0b, bigquery b_a8ace098d03b, gcs b_9ec14b32752e) with Data Studio links; docs/img/acceptance-2.4-{csv,research,bigquery,gcs}.png for README.
+- Tried and failed: first Build click silently did nothing (engine Chrome not running); see AGENTS.md.
+- Gotchas: in AGENTS.md.
+- Left open: P2 scorecard values tiny at box top-left (engine/backend, user flagged); P2 background PNGs low-definition, user suggests rendering the HTML background as HD PNG (backend); P2 page 1 "Untitled Page" (engine).
+- Next: Task 2.5 (reference, refusal and synthetic e2e, local), per its stash-resume note.
