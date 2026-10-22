@@ -1,13 +1,17 @@
 import asyncio
 from copy import deepcopy
+from functools import lru_cache
+from html import escape
 import json
 from pathlib import Path
+import re
 
 import pytest
 from google.adk.models.llm_response import LlmResponse
 from google.genai import types
 
 from dss.db import now
+from dss.harness.context import PAGE_HEADER, SEPARATOR
 from dss.harness.guardrails import RunError
 from dss.harness.nodes.intake import write_doc
 from dss.memory.episodic import messages
@@ -16,6 +20,7 @@ from dss.spec.models import DashboardSpec
 from dss.spec.patch import apply_scoped, PatchError
 from dss.spec.validate import validate_spec
 from fakes import FakeLLM
+from test_render import three_pages
 
 
 class RevisionModel(FakeLLM):
@@ -897,3 +902,265 @@ def test_patch_scope_spans_pages_but_not_across_them():
         apply_scoped(document, [op('/pages/1/components/0/label', 'x')], 'p3_scorecard_0')
     with pytest.raises(PatchError):
         apply_scoped(document, [op('/pages/01/components/0/label', 'x')], 'p2_scorecard_0')
+
+
+# Task 20.4: revise on designed pages (architecture.md#Designed pages, #Revise).
+
+@lru_cache(maxsize=1)
+def designed_json():
+    """three_pages() designed by the fake planner at 1440 px (measured once in real Chromium)."""
+    from dss.harness.nodes import designer
+    from test_designer import DesignerLLM, Trace
+    spec, notes = asyncio.run(designer.design(three_pages(), lambda: DesignerLLM(), Trace()))
+    assert notes == [] and all(p.design for p in spec.pages)
+    return spec.model_dump_json()
+
+
+@pytest.fixture
+def designed(setup):
+    """The seeded build with the designed 3-page spec as its prototype."""
+    app, bid, folder, _, service, _ = setup
+    spec = DashboardSpec.model_validate_json(designed_json())
+    spec.build_id = bid
+    (folder / 'spec.json').write_text(spec.model_dump_json(), encoding='utf-8')
+    for page in spec.pages[1:]:
+        (folder / f'background_p{page.index}.png').write_bytes(b'previous background')
+    aggregate_data(spec, service, folder)
+    service.queries.clear()
+    return spec
+
+
+class DesignFlow(CommentFlow):
+    """CommentFlow plus the designer: each page answer lays one titled card per slot under a header
+    (a revision adds a subtitle and top padding, so every box moves down). `plan` maps a page to its answers ('ok' or
+    'bad' = no slots); `obey` copies a 'Title: ...' text and hex colors from the comments."""
+    plan: dict = {}
+    obey: bool = True
+    designs: list = []
+
+    async def generate_content_async(self, request, stream=False):
+        instruction = str(request.config.system_instruction)
+        if PAGE_HEADER not in instruction:
+            async for result in super().generate_content_async(request, stream):
+                yield result
+            return
+        page = json.loads(instruction.split(PAGE_HEADER + '\n', 1)[1].split(SEPARATOR, 1)[0])
+        attempt = sum(index == page['index'] for index, _ in self.designs)
+        self.designs.append((page['index'], instruction))
+        marker = 'Revise your previous design'
+        revision = instruction.split(marker, 1)[1] if marker in instruction else ''
+        comments = revision.split('"comments"', 1)[-1] if revision else ''
+        title = re.search(r'Title: ([A-Za-z ]+)', comments) if self.obey else None
+        accent = ''.join('.head{border-color:%s}' % h for h in re.findall(r'#[0-9A-Fa-f]{6}', comments)) if self.obey else ''
+        cards = ''.join(f'<section class="card"><h2>{escape(c["label"])}</h2>'
+                        f'<div data-slot="{c["id"]}" style="height:{c["min_h"]}px"></div></section>' for c in page['components'])
+        top = 400 if revision else 24
+        html = ('<style>body{padding:%dpx 24px 24px;font-family:Arial}.card{margin-bottom:16px}%s</style>' % (top, accent)
+                + f'<header class="head"><h1>{escape(title[1] if title else page["name"])}</h1>'
+                + ('<p>Revised</p>' if revision else '') + f'</header>{cards}')
+        if self.plan.get(page['index'], ['ok', 'ok'])[attempt] == 'bad':
+            html = '<p>No slots here</p>'
+        answer = {'html': html}
+        if 'canvas_width' in request.config.response_json_schema['required']:
+            answer['canvas_width'] = 1440
+        yield LlmResponse(content=types.Content(role='model', parts=[types.Part(text=json.dumps(answer))]),
+                          usage_metadata=types.GenerateContentResponseUsageMetadata(prompt_token_count=5, candidates_token_count=2))
+
+
+def post_designed(client, app, bid, comments):
+    """post_batch with time for real Chromium measurement; (assessment, run id)."""
+    accepted = client.post(f'/api/builds/{bid}/comments', json={'comments': comments})
+    assert accepted.status_code == 202, accepted.text
+    async def drain():
+        for _ in range(6000):
+            if not app.state.engine_tasks:
+                return
+            await asyncio.sleep(.01)
+    client.portal.call(drain)
+    assert not app.state.engine_tasks
+    return client.get(f'/api/builds/{bid}/feasibility').json(), accepted.json()['run_id']
+
+
+def finished(app, bid, run_id):
+    return next(p for k, p in events(app, bid) if k == 'run.finished' and p['run_id'] == run_id)
+
+
+REDESIGNS = {
+    'move': ('p1_bar_4', 'Make this chart wider', [{'capability': 'chart.bar'}], [],
+             [op('/pages/0/components/4/grid/w', 12), op('/pages/0/components/5/grid/row', 40)]),
+    'design': ('p1_design', 'Title: Sales overview', [{'capability': 'layout.background_image'}],
+               [{'path': 'text', 'value': 'Sales overview'}], None),
+    'heading': ('p1_bar_4', 'call it Net revenue', [{'capability': 'argument.title'}],
+                [{'path': 'label', 'value': 'Net revenue'}], [op('/pages/0/components/4/label', 'Net revenue')]),
+    'remove': ('p1_bar_4', 'Remove this chart', [], [], [{'op': 'remove', 'path': '/pages/0/components/4'}]),
+    'hex': ('p1_design', 'Use #1E3A8A for the header', [{'capability': 'style.colors', 'value': ['#1E3A8A']}], [], None),
+}
+
+
+@pytest.mark.parametrize('case', list(REDESIGNS))
+def test_designed_page_comment_regenerates_only_that_page(setup, designed, client, monkeypatch, case):
+    app, bid, folder, *_ = setup
+    target, text, needs, properties, patch = REDESIGNS[case]
+    fake = DesignFlow(needs_by_text={text: needs}, properties_by_text={text: properties},
+                      response=response(patch or []))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda node: fake)
+    assessment, run_id = post_designed(client, app, bid, [{'component_id': target, 'text': text}])
+    assert assessment['state'] == 'ready' and assessment['pending_comments'] is None, (assessment, finished(app, bid, run_id))
+    # One designer run for page 1 only, with the previous HTML and the comment; no reviser call
+    # for a comment on the page design.
+    assert [index for index, _ in fake.designs] == [1] and fake.revisions == (0 if patch is None else 1)
+    instruction = fake.designs[0][1]
+    previous = designed.pages[0]
+    assert text in instruction and 'Revise your previous design' in instruction
+    assert escape(previous.components[5].label) in instruction and 'dss-design-p1' not in instruction
+    revised = DashboardSpec.model_validate_json((folder / 'spec.json').read_text(encoding='utf-8'))
+    page = revised.pages[0]
+    assert revised.spec_version == designed.spec_version + 1 and validate_spec(revised) == []
+    assert page.design.source == 'revise' and page.design.html != previous.design.html and '<p>Revised</p>' in page.design.html
+    # Re-measured: the new header pushes every slot down; other pages stay byte for byte.
+    assert all(c.box.y > p.box.y for c in page.components for p in previous.components if p.id == c.id)
+    assert revised.pages[1:] == designed.pages[1:] and revised.canvas.width == 1440
+    assert revised.canvas.height == page.height
+    if case == 'move':
+        # Designed pages ignore grid patches: the designer re-laid the page.
+        assert [c.grid for c in page.components] == [c.grid for c in previous.components]
+    if case == 'heading':
+        assert page.components[4].label == 'Net revenue' and 'Net revenue' in page.design.html
+    if case == 'remove':
+        assert 'p1_bar_4' not in {c.id for c in page.components} and 'p1_bar_4' not in page.design.html
+        assert 'p1_bar_4' not in instruction.split(PAGE_HEADER, 1)[1].split(SEPARATOR, 1)[0]
+    if case == 'design':
+        assert 'Sales overview' in page.design.html
+    if case == 'hex':
+        assert '#1e3a8a' in page.design.html.lower()
+    decisions = (folder / 'docs/decisions.md').read_text(encoding='utf-8')
+    assert text in decisions and '"redesigned_page": 1' in decisions
+    assert ('prototype.updated', {'spec_version': revised.spec_version}) in events(app, bid)
+    with app.state.db.connect() as conn:
+        spans = [s['node'] for s in json.loads(conn.execute('SELECT spans_json FROM traces WHERE run_id=?', (run_id,)).fetchone()[0])]
+    assert spans.count('designer') == 1 and 'render' in spans
+
+
+@pytest.mark.parametrize('obey', [True, False])
+@pytest.mark.parametrize('case', ['design', 'hex'])
+def test_design_decoration_requirement_is_proven_by_design_html(setup, designed, client, monkeypatch, case, obey):
+    app, bid, folder, *_ = setup
+    target, text, needs, properties, _ = REDESIGNS[case]
+    fake = DesignFlow(needs_by_text={text: needs}, properties_by_text={text: properties}, obey=obey, response=response())
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda node: fake)
+    before = (folder / 'spec.json').read_bytes()
+    assessment, run_id = post_designed(client, app, bid, [{'component_id': target, 'text': text}])
+    if obey:
+        assert assessment['pending_comments'] is None, finished(app, bid, run_id)
+        return
+    # The designer ignored the request: nothing changes and the comment stays pending.
+    assert assessment['pending_comments']['comments'] == [{'component_id': target, 'text': text}]
+    assert (folder / 'spec.json').read_bytes() == before and len(fake.designs) == 1
+    assert 'does not fulfill the requirements' in finished(app, bid, run_id)['error']
+
+
+def test_failed_regeneration_keeps_the_spec_and_the_comments_pending_with_the_errors(setup, designed, client, monkeypatch):
+    from dss.spec import requirements as req
+    app, bid, folder, *_ = setup
+    target, text, needs, properties, patch = REDESIGNS['move']
+    fake = DesignFlow(needs_by_text={text: needs}, response=response(patch), plan={1: ['bad', 'bad']})
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda node: fake)
+    before = {p.name: p.read_bytes() for p in folder.iterdir() if p.is_file() and p.name != 'requirements.json'}
+    assessment, run_id = post_designed(client, app, bid, [{'component_id': target, 'text': text}])
+    assert [index for index, _ in fake.designs] == [1, 1] and fake.revisions == 1
+    after = {p.name: p.read_bytes() for p in folder.iterdir() if p.is_file() and p.name != 'requirements.json'}
+    assert after == before
+    assert assessment['pending_comments']['comments'] == [{'component_id': target, 'text': text}]
+    assert req.load(folder).pending_comments is not None
+    error = finished(app, bid, run_id)['error']
+    assert 'comments stay pending' in error and 'page 1:' in error and 'has no slot' in error, error
+    assert not any(k == 'prototype.updated' for k, _ in events(app, bid))
+    with app.state.db.connect() as conn:
+        trace = conn.execute('SELECT * FROM traces WHERE run_id=?', (run_id,)).fetchone()
+        assert conn.execute('SELECT spec_version FROM versions WHERE build_id=?', (bid,)).fetchone()[0] == 1
+    assert trace['error'] == 'invalid_request'
+    assert {'node': 'redesign_failed', 'page': 1, 'reason': 'invalid', 'errors': 8} in json.loads(trace['spans_json'])
+
+
+DATA = {
+    'metric': ('Average revenue', [{'capability': 'argument.metric_agg', 'value': 'avg'}],
+               [op('/pages/0/components/4/metrics/0/agg', 'avg')]),
+    'sort': ('Sort descending', [{'capability': 'argument.sort', 'value': 'desc'}],
+             [op('/pages/0/components/4/sort', {'field': 'revenue', 'order': 'desc'}, 'add')]),
+    'colors': ('Use a dark blue accent for this component; preserve its position and data.',
+               [{'capability': 'style.colors', 'value': ['#172554']}], [op('/pages/0/components/4/colors', ['#172554'], 'add')]),
+    'fitting type': ('Make it a pie', [{'capability': 'chart.pie'}], [op('/pages/0/components/4/type', 'pie')]),
+}
+
+
+@pytest.mark.parametrize('case', list(DATA))
+def test_data_comments_on_a_designed_page_patch_without_the_designer(setup, designed, client, monkeypatch, case):
+    app, bid, folder, *_ = setup
+    text, needs, patch = DATA[case]
+    fake = DesignFlow(needs_by_text={text: needs}, response=response(patch))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda node: fake)
+    assessment, run_id = post_designed(client, app, bid, [{'component_id': 'p1_bar_4', 'text': text}])
+    assert assessment['state'] == 'ready' and assessment['pending_comments'] is None, (assessment, finished(app, bid, run_id))
+    assert fake.designs == [] and fake.revisions == 1
+    revised = DashboardSpec.model_validate_json((folder / 'spec.json').read_text(encoding='utf-8'))
+    assert revised.spec_version == designed.spec_version + 1
+    assert [p.design for p in revised.pages] == [p.design for p in designed.pages]
+    assert [[c.box for c in p.components] for p in revised.pages] == [[c.box for c in p.components] for p in designed.pages]
+
+
+def test_type_change_that_no_longer_fits_its_slot_regenerates_the_page(setup, designed, client, monkeypatch):
+    from dss.render import design_page
+    app, bid, folder, *_ = setup
+    slot = designed.pages[0].components[0].box
+    assert designed.pages[0].components[0].type == 'scorecard' and slot.h < design_page.minimum('table', 1440)[1]
+    fake = DesignFlow(needs_by_text={'Make it a table': [{'capability': 'chart.table'}]}, response=response(
+        [op('/pages/0/components/0/type', 'table'), op('/pages/0/components/0/dimensions', ['region'])]))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda node: fake)
+    assessment, run_id = post_designed(client, app, bid, [{'component_id': 'p1_scorecard_0', 'text': 'Make it a table'}])
+    assert assessment['pending_comments'] is None, finished(app, bid, run_id)
+    assert [index for index, _ in fake.designs] == [1]
+    page = DashboardSpec.model_validate_json((folder / 'spec.json').read_text(encoding='utf-8')).pages[0]
+    assert page.components[0].type == 'table' and page.components[0].box.h >= design_page.minimum('table', 1440)[1]
+
+
+def test_design_html_recomputation_stays_within_budget():
+    """Deterministic recomputation (evaluate + coverage) of 40 design-bound rows on the designed
+    3-page spec stays <= 100 ms."""
+    import time
+    from dss.spec import capabilities, requirements as req
+    spec = json.loads(designed_json())
+    checker = capabilities.Checker(capabilities.load_registry())
+    rows = [req.Requirement(id=f'r{i}', source=req.Source(id=f'm{i}', kind='message', text='x'), text=f'Heading {i}',
+                            component_ids=[f'p{i % 3 + 1}_design'], needs=[capabilities.Need(capability='layout.background_image')],
+                            properties=[req.Property(path='text', value=spec['pages'][i % 3]['name'])]) for i in range(40)]
+    snapshot = {'sources': [], 'incoming': [], 'reference': None, 'definitions': {}, 'spec': spec}
+    ledger = req.Ledger(requirements=rows)
+    timings = []
+    for _ in range(3):
+        start = time.perf_counter()
+        errors = req.coverage_errors(snapshot, ledger, checker)
+        timings.append(time.perf_counter() - start)
+    assert errors == [] and min(timings) < .1, (errors, timings)
+
+
+def test_mixed_batch_designs_each_page_once(setup, designed, client, monkeypatch):
+    app, bid, folder, *_ = setup
+    texts = {'Title: Sales overview': ([{'capability': 'layout.background_image'}], [{'path': 'text', 'value': 'Sales overview'}]),
+             'Make this chart wider': ([{'capability': 'chart.bar'}], []),
+             'Average revenue': ([{'capability': 'argument.metric_agg', 'value': 'avg'}], []),
+             'Remove this chart': ([], [])}
+    comments = [{'component_id': 'p1_design', 'text': 'Title: Sales overview'},
+                {'component_id': 'p1_bar_4', 'text': 'Make this chart wider'},
+                {'component_id': 'p2_bar_4', 'text': 'Average revenue'},
+                {'component_id': 'p3_bar_5', 'text': 'Remove this chart'}]
+    # The reviser sees the three component comments, in order.
+    fake = DesignFlow(needs_by_text={t: n for t, (n, _) in texts.items()}, properties_by_text={t: p for t, (_, p) in texts.items()},
+                      response=response([op('/pages/0/components/4/grid/w', 12)], [op('/pages/1/components/4/metrics/0/agg', 'avg')],
+                                        [{'op': 'remove', 'path': '/pages/2/components/5'}]))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda node: fake)
+    assessment, run_id = post_designed(client, app, bid, comments)
+    assert assessment['pending_comments'] is None, finished(app, bid, run_id)
+    assert sorted(index for index, _ in fake.designs) == [1, 3] and fake.revisions == 1
+    revised = DashboardSpec.model_validate_json((folder / 'spec.json').read_text(encoding='utf-8'))
+    assert revised.pages[1].design == designed.pages[1].design and revised.pages[1].components[4].metrics[0].agg == 'avg'
+    assert 'p3_bar_5' not in revised.pages[2].design.html and 'Sales overview' in revised.pages[0].design.html

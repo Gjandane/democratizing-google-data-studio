@@ -203,6 +203,36 @@ async def test_pages_with_requirement_bound_decorations_keep_their_kit():
     assert result is spec and notes == [ALL_FALLBACK] and llm.calls == 0
 
 
+def test_readable_html_names_vendored_icons_again():
+    from dss.render import design_page
+    name = next(iter(design_page.icons()))
+    clean = design_page.sanitize(f'<div><i data-icon="{name}" class="k"></i><i data-icon="mine">'
+                                 '<svg viewBox="0 0 2 2"><circle cx="1" cy="1" r="1"></circle></svg></i></div>', page=2)
+    assert clean.count('<svg') == 2
+    text = designer.readable(clean)
+    # The vendored icon is its name again; the model's own drawing stays.
+    assert f'<i data-icon="{name}" class="k"></i>' in text and text.count('<svg') == 1 and 'dss-design' not in text
+
+
+async def test_regenerate_redesigns_only_the_named_page_from_its_previous_html():
+    spec, _ = await designer.design(three_pages(), lambda: DesignerLLM(), Trace())
+    comment = {'component_id': 'p2_design', 'text': 'Make the header darker'}
+    llm, trace = DesignerLLM(), Trace()
+    revised, failed = await designer.regenerate(spec, {2: [comment]}, lambda: llm, trace)
+    assert failed == {} and llm.calls == 1 and [index for index, _ in llm.seen] == [2]
+    instruction = llm.seen[0][1]
+    assert 'Make the header darker' in instruction and 'Revise your previous design' in instruction
+    assert 'border-radius:12px' in instruction and '"canvas_width":1440' in instruction  # previous html, fixed width
+    assert llm.configs[0].response_json_schema['required'] == ['html']
+    assert revised.pages[1].design.source == 'revise' and revised.pages[1].design.model == 'gemini-4-argon'
+    assert revised.pages[0] == spec.pages[0] and revised.pages[2] == spec.pages[2] and validate_spec(revised) == []
+    assert nodes(trace) == ['designer', 'validate'] and trace.model is None  # the reviser's trace keeps its model
+    llm, trace = DesignerLLM(plan={2: ['bad', 'json']}), Trace()
+    result, failed = await designer.regenerate(spec, {2: [comment]}, lambda: llm, trace)
+    assert result is None and llm.calls == 2 and failed[2].reason == 'invalid' and failed[2].errors
+    assert trace.spans[-1] == {'node': 'redesign_failed', 'page': 2, 'reason': 'invalid', 'errors': len(failed[2].errors)}
+
+
 def test_designer_uses_the_planner_model(client, app):
     from dss.harness.llm import PLANNER_TIMEOUT_MS
     models = app.state.models

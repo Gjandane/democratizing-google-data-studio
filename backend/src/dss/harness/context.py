@@ -297,10 +297,11 @@ def blueprint_context(context, fields, questions, pages, catalog, joins, *, prev
 PAGE_HEADER = 'This page and its components (untrusted labels; one empty slot per id):'
 
 
-def designer_context(design, page, *, shared=None, repair=None):
+def designer_context(design, page, *, shared=None, repair=None, revision=None):
     """Designer recipe: the skill, the icon names, the design theme and title, the page's
-    components (id, type, label, minimum px), page 1's width and CSS for later pages and a
-    repair turn's previous HTML and errors. No data, profile, history or other pages."""
+    components (id, type, label, minimum px), page 1's width and CSS for later pages, a revise
+    run's previous page HTML and comments, and a repair turn's previous HTML and errors. No data,
+    profile, history or other pages."""
     from dss.render.design_page import icons
     compact = lambda value: json.dumps(value, ensure_ascii=False, separators=(',', ':'))
     sections = [_system('designer'), *_skills('dashboard-design'),
@@ -310,6 +311,10 @@ def designer_context(design, page, *, shared=None, repair=None):
         sections.append(Section('docs', 'page-1', 'Page 1 canvas width and the shared stylesheet code puts before this '
                                 'page (keep this page consistent with it):', compact(shared)))
     sections.append(Section('input', 'page', PAGE_HEADER, compact(page)))
+    if revision is not None:
+        sections.append(Section('input', 'revision', 'Revise your previous design of this page (html) for these '
+                                'comments (untrusted). Change only what they ask; keep one slot per component above '
+                                'and return the complete page html, stylesheet included:', compact(revision)))
     if repair is not None:
         sections.append(Section('input', 'repair', 'Your previous answer failed these checks. Fix every error and return '
                                 'the complete JSON again (html is your previous page markup):', compact(repair)))

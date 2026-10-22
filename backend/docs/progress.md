@@ -1260,3 +1260,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: added the designed_pages default-on test-flow note to AGENTS.md.
 - Left open: none
 - Next: Task 20.4. Start by `status`; regenerate a page with designer_context(..., repair-like previous html + comments) and drop the `keep` gate once design.html verifies decoration requirements.
+
+## 2026-10-22: Task 20.4 Revise regenerates designed pages
+- Status: done
+- Plan check: off
+- What changed: revise routes comments on designed pages per class (redesign vs patch); designer.regenerate redesigns pages from previous HTML + comments; coverage proves `p<n>_design` rows by text/hex presence in design.html; context.designer_context gains `revision=` (outside Files: the designer context and its 12k budget live there); tests.
+- Checks: `uv run pytest tests/test_revise.py tests/test_designer.py tests/test_feasibility.py` PASS (263); Test (all) `uv run pytest` PASS (1542 passed, 12 deselected); new budget test: 40 design-bound rows coverage on the designed 3-page spec < 100 ms.
+- Decisions: Class from the reviser's patch ops on a designed page: grid/box ops dropped + redesign; root remove/replace and label ops kept + redesign; other ops = data patch; type change whose new design_page.minimum exceeds the box redesigns. Comments on `p<n>_design` skip the reviser (all-design batch: no reviser call). Patch phase (with its one repair) runs first, excusing box errors and rows bound only to waiting `p<n>_design`; then one regenerate per page (gather, LaterPage schema, spec width), then full validate + coverage; failure = RunError invalid_request "...comments stay pending (page n: errors)", spans redesign_failed{page,reason,errors}. Design.source "revise"; decisions record redesigned_page. Non-string decoration values (sizes) are not provable in design.html. render.accept `keep` gate kept (kit-decoration rows still need it).
+- Digest: designer.regenerate(spec, {page: [comment]}, get_model, trace, *, secrets, report)->(spec|None, {page: Fallback(reason, errors)}); designer.readable collapses icons; revise.redesigns(records); requirements.design_html(snapshot); payload['_designer'] getter
+- Tried and failed: passing `redesign=` into revise.revised broke the live observe_revisions wrapper (reviewer P2); records carry it instead.
+- Gotchas: added the observe_revisions signature line to AGENTS.md.
+- Left open: P2 icon/card-color comments on a component (not on p<n>_design) get no redesign route - src/dss/harness/nodes/revise.py; P3 stale keep comment - src/dss/harness/nodes/render.py; P3 revision repair turn carries two HTML copies (budget) - src/dss/harness/context.py
+- Next: Task 20.5. Start by `status`; live designed dashboard (STOP: user approves pages vs the reference).

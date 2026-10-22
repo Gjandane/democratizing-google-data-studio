@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 from functools import lru_cache
+from html import unescape
 from typing import Literal
 
 import yaml
@@ -1380,6 +1381,8 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None):
     ops = [json.loads(line) for line in compile_recipe(DashboardSpec.model_validate(snapshot['spec']), 1).split('\n')[1:-1]]
     present = {c['id'] for c in components}
     removed = {cid for r in ledger.requirements if (cid := removal(r))}
+    decorations = {c['id']: c for p in (snapshot['spec'] or {}).get('pages', []) for c in p.get('decorations', [])}
+    designs = design_html(snapshot)
     for r in ledger.requirements:
         if audience_requirement(r, ledger):
             continue
@@ -1432,9 +1435,9 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None):
         matches = [c for c in candidates if _component_fulfills(c, active, needs, checker, snapshot) and
                    all(_recipe_fulfills(compiled_need(n, c), checker,
                        [op for op in ops if op.get('component_id') in (None, c['id'])]) for n in needs)]
-        decorations = {c['id']: c for p in (snapshot['spec'] or {}).get('pages', []) for c in p.get('decorations', [])}
         decoration_proven = (r.component_ids and set(r.component_ids) <= decorations.keys() and properties
-                             and all(_properties_match(decorations[cid], properties) for cid in r.component_ids))
+                             and all(_in_design(designs[cid], properties) if cid in designs else
+                                     _properties_match(decorations[cid], properties) for cid in r.component_ids))
         if (not r.component_ids or decoration_proven) and not r.mappings and needs and all(
                 n.capability.startswith('layout.') and _recipe_fulfills(n, checker, ops) for n in needs):
             continue
@@ -1548,6 +1551,32 @@ def _component_fulfills(component, requirement, needs, checker, snapshot):
                 return False
         # Unit is a source-defined metric meaning kept in the ledger; recipe 1.0
         # has no display-unit setting. Never infer a currency conversion here.
+    return True
+
+
+def design_html(snapshot):
+    """{`p<n>_design` decoration id: its page's sanitized design HTML} for the designed pages."""
+    return {d['id']: p['design']['html'] for p in (snapshot['spec'] or {}).get('pages', []) if p.get('design')
+            for d in p.get('decorations', []) if d.get('kind') == 'design'}
+
+
+def _in_design(html, properties):
+    """A decoration requirement on a designed page (architecture.md#Designed pages): each value is
+    present in the design, a hex color anywhere in it (case-insensitive), any other text in its
+    visible text (whitespace and case folded). Other values (sizes, flags) cannot be proven there."""
+    text = None
+    for p in properties:
+        if not isinstance(p.value, str) or not p.value.strip():
+            return False
+        if re.fullmatch(r'#[0-9a-fA-F]{6}', p.value):
+            if p.value.lower() not in html.lower():
+                return False
+            continue
+        if text is None:
+            visible = re.sub(r'<[^>]*>', ' ', re.sub(r'<style>.*?</style>', ' ', html, flags=re.S))
+            text = ' '.join(unescape(visible).split()).casefold()
+        if ' '.join(p.value.split()).casefold() not in text:
+            return False
     return True
 
 
