@@ -496,6 +496,195 @@ def published_proof(folder):
     return ledger.assessment.id
 
 
+RECREATE = json.loads((Path(__file__).parent / 'data/recreate_definitions.json').read_text(encoding='utf-8'))
+OBSERVED = ['o2', 'o3', 'o4', 'o5', 'o6']
+
+
+def recreate_build(blueprint_api, monkeypatch, matching=True):
+    """Staged build whose Blueprint answers the recreate fixture; KPIs that name its metrics or not."""
+    from types import SimpleNamespace
+    from test_blueprint import artifact, fixture
+    from test_references import Capture, output
+    from dss.artifacts.models import Context, Outline
+    from dss.spec import references
+    client, app, bid, sid, folder, bq, llm, value = blueprint_api
+    context = fixture('context')
+    context['datasets'][0]['source_id'] = sid
+    if not matching:
+        context['kpis'] = RECREATE['unmatched_kpis']
+    artifact(folder, Context.model_validate(context))
+    ids = dict(zip(('revenue', 'orders', 'units'), [k['id'] for k in context['kpis']]))
+    outline = fixture('outline')
+    template = outline['sections'][0]['questions'][0]
+    outline['sections'] = [{'id': 's1', 'title': 'Store performance', 'purpose': 'Recreate the reference.', 'questions': [
+        {**template, 'id': qid, 'text': text, 'kpi_refs': [ids[k] for k in dict.fromkeys(
+            r['kpi'] for r in RECREATE['rows'] if r['question_id'] == qid)]} for qid, text in RECREATE['questions'].items()]}]
+    artifact(folder, Outline.model_validate(outline))
+    value['rows'] = [{'question_id': r['question_id'], 'section_id': 's1', 'page': 1, 'note': '', 'status': 'ok',
+                      'issue_ids': [], 'component': r['component']} for r in RECREATE['rows']]
+    value['derived_fields'] = [*value['derived_fields'], RECREATE['derived_field']]
+    llm.replies = [json.dumps(value)]
+    bq.created, bq.deleted = [], []
+    bq.dry_run = lambda sql: bq.sql.append(sql) or [SimpleNamespace(name=n, field_type=t, mode='NULLABLE')
+                                                     for n, t in (('order_size_band', 'STRING'), ('order_month', 'DATE'))]
+    bq.create_view = lambda table, sql: bq.created.append(table)
+    bq.delete_view = lambda table: bq.deleted.append(table) or True
+    bq.aggregate = lambda sql: [{'region': 'West', 'order_month': '2026-01-01', 'm0': 10}]
+    monkeypatch.setattr(background, 'capture', lambda html, path, width, height: path.write_bytes(b'PNG'))
+    monkeypatch.setattr(references, 'decode', lambda _: None)
+    build = SimpleNamespace(client=client, app=app, bid=bid, folder=folder, llm=llm, value=value, context=context,
+                            vision=Capture(response=output(items=RECREATE['items']), requests=[]), extraction=None)
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda action: {
+        'reference_extract': build.vision, 'capability_check': build.extraction}.get(action) or llm)
+    return build
+
+
+def upload_recreate(build, instructions=''):
+    from test_references import png
+    response = build.client.post(f'/api/builds/{build.bid}/reference-images', data={'mode': 'recreate', 'instructions': instructions},
+                                 files=[('files', ('reference.png', png(), 'image/png'))])
+    assert response.status_code == 202, response.text
+    from test_context_node import wait
+    wait(build.app)
+    reference = build.client.get(f'/api/builds/{build.bid}/reference-images').json()
+    # One extraction reply for exactly the new sources; code reconciles every definition.
+    items = [{'source_id': f'{reference["id"]}:{oid}', **RECREATE['extraction'][oid]} for oid in OBSERVED]
+    if instructions:
+        items.append({'source_id': reference['id'] + ':instructions', **RECREATE['extraction']['instructions']})
+    from test_references import Capture
+    build.extraction = Capture(response=json.dumps({'requirements': items}), requests=[])
+    return reference['id']
+
+
+def observations(build):
+    from dss.spec import requirements as req
+    rows = [r for r in req.load(build.folder).requirements if r.source.kind == 'image']
+    assert sorted(r.source.item_id for r in rows) == OBSERVED  # none dropped, none duplicated
+    return rows
+
+
+def accept(build):
+    from test_blueprint import confirm
+    from test_context_node import wait
+    if build.client.get(f'/api/builds/{build.bid}/blueprint').json() is None:
+        confirm(build.client, build.app, build.bid)
+    accepted = build.client.post(f'/api/builds/{build.bid}/blueprint/accept')
+    assert accepted.status_code == 202, accepted.text
+    wait(build.app)
+    with build.app.state.db.connect() as conn:
+        trace = conn.execute('SELECT * FROM traces WHERE run_id=?', (accepted.json()['run_id'],)).fetchone()
+    assert trace['status'] == 'ok', trace['error']
+    assert build.client.get(f'/api/builds/{build.bid}').json()['stage'] == 'prototype'
+
+
+def assert_bound(build, evidence):
+    """Every observation keeps its image provenance, its definition evidence and real component ids."""
+    from dss.spec import requirements as req
+    ledger = req.load(build.folder)
+    spec = DashboardSpec.model_validate_json((build.folder / 'spec.json').read_text(encoding='utf-8'))
+    components = {c.id: c for p in spec.pages for c in p.components}
+    for row in observations(build):
+        assert row.source.reference_id and row.source.image_id and row.source.item_id
+        proof = ledger.verification[row.id]
+        bound = [entry['fulfilled_by'] for entry in proof if 'fulfilled_by' in entry]
+        assert bound and bound[0] and set(bound[0]) <= components.keys(), (row.source.item_id, proof)
+        assert all(components[c].type == json.loads(row.source.text)['chart_candidate'] for c in bound[0])
+        metrics = [entry for entry in proof if 'mapping' in entry and entry['mapping']['aggregation']]
+        assert metrics and all(entry['status'] == 'supported' and entry['definition_evidence'] == evidence(entry['mapping'])
+                               for entry in metrics), proof
+
+
+@pytest.mark.parametrize('case', ['kpis', 'instructions', 'both'])
+def test_recreate_observations_bind_to_confirmed_definitions(blueprint_api, monkeypatch, case):
+    """Release 2.5 b_b4319fb6113d: explicit definitions left every observation needs_clarification."""
+    from test_context_node import wait
+    build = recreate_build(blueprint_api, monkeypatch, matching=case != 'instructions')
+    rid = upload_recreate(build, RECREATE['instructions'] if case != 'kpis' else '')
+    assessment = feasibility_check(build.client, build.app, build.bid)
+    assert assessment['state'] == 'ready', assessment['issues']
+    assert build.extraction.calls == 1  # reuse and revalidation add no model call
+    kpi = {'Revenue': 'kpi:net_revenue', 'Orders': 'kpi:orders', 'Units sold': 'kpi:units_sold'}
+    def evidence(mapping):
+        return ([kpi[mapping['label']]] if case != 'instructions' else []) + ([rid + ':instructions'] if case != 'kpis' else [])
+    accept(build)
+    assert_bound(build, evidence)
+    fresh = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+    assert fresh['state'] == 'ready' and not fresh['prototype_stale'], fresh
+    executes(build.client, build.app, build.bid, monkeypatch)
+    assessment, saved = reloaded(build.app, build.bid)
+    assert assessment['state'] == 'ready' and not assessment['prototype_stale'] and saved['stage'] == 'done'
+    # A copied version keeps the observations and their valid evidence, never the old authorization.
+    assert build.client.post(f'/api/builds/{build.bid}/versions').status_code == 201
+    copied = build.folder.parent / 'v2'
+    assert build.client.get(f'/api/builds/{build.bid}/feasibility').json()['state'] == 'unchecked'
+    assert feasibility_check(build.client, build.app, build.bid)['state'] == 'ready'
+    assert build.extraction.calls == 1
+    build.folder = copied
+    observations(build)
+    from dss.spec import requirements as req
+    assert all(json.loads(row.mapping_origins['observed:0'])['evidence'] == evidence(row.mappings[0].model_dump())
+               for row in req.load(copied).requirements if row.source.kind == 'image')
+
+
+@pytest.mark.parametrize('when', ['before', 'after'])
+def test_recreate_instructions_clarify_and_their_removal_blocks(blueprint_api, monkeypatch, when):
+    """No matching KPI: the observations ask for definitions; reference instructions answer them."""
+    build = recreate_build(blueprint_api, monkeypatch, matching=False)
+    if when == 'after':
+        from test_blueprint import confirm
+        confirm(build.client, build.app, build.bid)
+        assert build.client.get(f'/api/builds/{build.bid}/blueprint').json() is not None
+    upload_recreate(build)
+    blocked = feasibility_check(build.client, build.app, build.bid)
+    assert blocked['state'] == 'blocked' and {i['status'] for i in blocked['issues']} == {'needs_clarification'}
+    reasons = ' '.join(i['reason'] for i in blocked['issues'])
+    assert all(f'Define {label}' in reasons for label in ('Revenue', 'Orders', 'Units sold')), reasons
+    observations(build)
+    if when == 'after':
+        refused = build.client.post(f'/api/builds/{build.bid}/blueprint/accept')
+        assert refused.status_code == 409 and refused.json()['error']['code'] == 'feasibility_blocked'
+    rid = upload_recreate(build, RECREATE['instructions'])
+    assessment = feasibility_check(build.client, build.app, build.bid)
+    assert assessment['state'] == 'ready', assessment['issues']
+    accept(build)
+    assert_bound(build, lambda mapping: [rid + ':instructions'])
+    # Replacing the set without instructions leaves no orphaned instruction binding behind.
+    old = rid
+    upload_recreate(build)
+    execution_blocked(build.client, build.bid)
+    blocked = feasibility_check(build.client, build.app, build.bid)
+    assert blocked['state'] == 'blocked' and blocked['prototype_stale']
+    from dss.spec import requirements as req
+    ledger = req.load(build.folder)
+    assert not any(s.reference_id == old for r in ledger.requirements for s in (r.source, *r.clarifications))
+    assert all('observed:0' not in r.mapping_origins for r in observations(build))
+    execution_blocked(build.client, build.bid)
+
+
+def test_recreate_draft_and_changed_kpis_never_authorize(blueprint_api, monkeypatch):
+    """A draft KPI edit authorizes nothing; a confirmed edit must still match the screenshot."""
+    from test_context_node import wait
+    build = recreate_build(blueprint_api, monkeypatch)
+    upload_recreate(build)
+    assert feasibility_check(build.client, build.app, build.bid)['state'] == 'ready'
+    accept(build)
+    context = {k: v for k, v in build.context.items() if k not in ('revision', 'issues')}
+    context['kpis'][0]['measure']['agg'] = 'avg'
+    edited = build.client.put(f'/api/builds/{build.bid}/context', json=context)
+    assert edited.status_code == 200, edited.text
+    assert build.client.get(f'/api/builds/{build.bid}/feasibility').json()['state'] == 'stale'
+    draft = feasibility_check(build.client, build.app, build.bid)
+    assert draft['state'] == 'blocked' and any('Define Revenue' in i['reason'] for i in draft['issues']), draft['issues']
+    execution_blocked(build.client, build.bid, 'wrong_stage')
+    assert build.client.post(f'/api/builds/{build.bid}/context/confirm').status_code == 202
+    wait(build.app)
+    changed = feasibility_check(build.client, build.app, build.bid)
+    reasons = [i['reason'] for i in changed['issues']]
+    assert changed['state'] == 'blocked' and any('screenshot shows sum' in r and 'avg' in r for r in reasons), reasons
+    assert build.extraction.calls == 1
+    observations(build)
+
+
 def test_html_contract_geometry_layers(dashboard):
     for layer in ('all', 'decoration'):
         parsed = ContractParser(render(dashboard, layer=layer))

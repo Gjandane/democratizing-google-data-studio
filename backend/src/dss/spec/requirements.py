@@ -249,6 +249,15 @@ def inputs(db, build_id, folder):
                 "definitions": definitions, "spec": _json(folder, "spec.json")}
     from dss.artifacts.okf import read_artifact
     from dss.artifacts.models import Blueprint, Context, Outline, Design
+    if reference and reference["mode"] == "recreate":
+        # Recreate reconciliation reads confirmed Context with or without a Blueprint;
+        # a draft edit authorizes nothing. Other builds keep their earlier digests.
+        from dss.artifacts import state as stages
+        with db.connect() as conn:
+            row = conn.execute("SELECT artifacts_json FROM builds WHERE id=?", (build_id,)).fetchone()
+        path = folder / "docs/context.md"
+        confirmed = row is not None and stages.states({"artifacts_json": row[0]})["context"] == "confirmed"
+        snapshot["confirmed_kpis"] = [k.model_dump() for k in read_artifact(path, Context).kpis] if confirmed and path.is_file() else []
     if (folder / 'docs/blueprint.md').is_file():
         for name, model in [('blueprint', Blueprint), ('context', Context), ('outline', Outline), ('design', Design)]:
             snapshot[name] = read_artifact(folder / f'docs/{name}.md', model).model_dump()
@@ -319,6 +328,9 @@ def merge(ledger, snapshot, extraction):
         raise ValueError("Extraction cites an unknown source")
     current_ref = (snapshot["reference"] or {}).get("id")
     updated.requirements = [r for r in updated.requirements if not r.source.reference_id or r.source.reference_id == current_ref]
+    for r in updated.requirements:
+        # A replaced or removed reference's instructions no longer clarify anything.
+        r.clarifications = [s for s in r.clarifications if not s.reference_id or s.reference_id == current_ref]
     # Code, not the model, reads an aggregate and grain the source explicitly defines.
     def stated(item, m):
         defined = _definition(sources[item.source_id]["text"], m) or {}
@@ -368,7 +380,9 @@ def merge(ledger, snapshot, extraction):
             if mapping_verdict(mapping, proposed, schema(snapshot)) or not _assignment(source.text, mapping):
                 continue
             for previous in updated.requirements:
-                if previous.source.id == source.id:
+                # Observations take definitions from evidence (_reconcile_observations),
+                # never from another source's model-proposed mapping.
+                if previous.source.id == source.id or previous.source.kind == 'image':
                     continue
                 for i, old in enumerate(previous.mappings):
                     if _normal(old.label) != _normal(mapping.label):
@@ -414,6 +428,8 @@ def merge(ledger, snapshot, extraction):
         raise ValueError("Requirement scope exceeded")
     updated.processed_sources.update({sid: digest(s) for sid, s in sources.items()})
     _reconcile_definitions(updated, snapshot)
+    for r in updated.requirements:
+        _reconcile_observation(r, snapshot)
     _reconcile_grains(updated, snapshot)
     _absorb_definitions(updated)
     _normalize_presentation(updated, snapshot)
@@ -560,7 +576,9 @@ def _compiled_assignment(field, label):
     # An aggregate word names a different metric ("average revenue" is not "revenue"),
     # so it is part of the label, never an optional prefix.
     named = r'(?:(?:the|total)\s+)?' + label + r'(?:e?s)?'
-    return re.compile(r"(?:^|[,.;\n]|\band\s+)\s*(?:and\s+)?" + audience + r"(?:please\s+)?(?:use\s+" + value('used') + r"\s+(?:for|as)\s+" + named
+    # A list heading ("Definitions: Revenue = SUM(revenue) in USD; Orders = ...") is not a clause of its own.
+    heading = r'(?:(?:metric\s+|kpi\s+)?definitions?\s*:\s*)?'
+    return re.compile(r"(?:^|[,.;\n]|\band\s+)\s*(?:and\s+)?" + heading + audience + r"(?:please\s+)?(?:use\s+" + value('used') + r"\s+(?:for|as)\s+" + named
         + r"|" + named + r"\s*(?:means|is|uses|=|:)\s*" + value('value') + r")(?=\s*(?:$|[,.;\n]|\band\b))", re.I)
 
 
@@ -736,13 +754,149 @@ def _absorb_definitions(ledger):
     ledger.requirements = [r for r in ledger.requirements if r.id not in absorbed]
 
 
+_CURRENCIES = {'$': 'usd', 'us$': 'usd', 'dollar': 'usd', 'dollars': 'usd', '€': 'eur', 'euro': 'eur', 'euros': 'eur', '£': 'gbp'}
+
+
+def _unit(value):
+    text = ' '.join(str(value).lower().split()) if value else ''
+    return _CURRENCIES.get(text, text) or None
+
+
+def _same(key, a, b):
+    return _unit(a) == _unit(b) if key == 'unit' else a == b
+
+
+def _tokens(text):
+    return frozenset(re.findall(r'[a-z0-9]+', (text or '').lower()))
+
+
+def _kpi_matches(label, kpis):
+    """Confirmed KPIs whose name or id names this label: the same words first, else every label
+    word in the name ("Revenue" -> "Net revenue"); a qualified label ("Average revenue") is another metric."""
+    words = _tokens(label)
+    if not words:
+        return []
+    named = [(k, (_tokens(k.get('name')), _tokens(k.get('id')))) for k in kpis]
+    exact = [k for k, names in named if words in names]
+    return exact or [k for k, names in named if any(words <= n for n in names)]
+
+
+def _observed_key(mapping):
+    return digest(mapping.model_dump())
+
+
+def _reconcile_observation(r, snapshot):
+    """Bind a recreate observation's metric to definition evidence, never to an image/model guess.
+
+    Evidence is a confirmed Context KPI that unambiguously names the label and the current
+    reference's user instructions. Each pass restarts from the original extraction, so a changed
+    KPI or removed instruction cannot leave its authorization behind. Pure: no model call.
+    """
+    reference = snapshot.get('reference') or {}
+    if reference.get('mode') != 'recreate' or not r.source.reference_id or r.source.reference_id != reference.get('id'):
+        return
+    fields, kpis = schema(snapshot), snapshot.get('confirmed_kpis') or []
+    instructions = next((Source.model_validate(s) for s in snapshot['incoming'] if s['id'] == reference['id'] + ':instructions'), None)
+    item = json.loads(r.source.text) if r.source.kind == 'image' else {}
+    r.clarifications = [s for s in r.clarifications if instructions is None or s.id != instructions.id]
+    used = False
+    for i, m in enumerate(r.mappings):
+        if f'definition:{i}' in r.mapping_origins or str(i) in r.mapping_conflicts or any(
+                s.kind == 'message' and _candidates(s.text, m, fields) for s in r.clarifications):
+            continue  # A conversational definition, or its conflict, governs (_reconcile_definitions).
+        base = Mapping.model_validate_json(r.mapping_origins.setdefault(f'requested:{i}', m.model_dump_json()))
+        r.mappings[i] = base
+        r.mapping_origins.pop(f'observed:{i}', None)
+        r.mapping_conflicts.pop(str(i), None)
+        label = base.label
+        requested = {'aggregation': base.aggregation, 'unit': base.unit, 'date_grain': base.date_grain}
+        observed = r.source.kind == 'image' and _normal(label) == _normal(item.get('metric_label') or '')
+        if observed:
+            requested = {k: v or item.get(k) for k, v in requested.items()}
+        requested['aggregation'] = None if requested['aggregation'] == 'none' else requested['aggregation']
+        if not (observed or requested['aggregation'] is not None):
+            continue  # A dimension keeps its own binding; a KPI never redefines it.
+        matches = _kpi_matches(label, kpis)
+        stated = _candidates(instructions.text, base, fields) if instructions else []
+
+        def conflict(reason):
+            r.mapping_conflicts[str(i)] = reason
+        if not matches and not stated:
+            if r.source.kind == 'image':
+                # A matching field name alone does not define a metric.
+                conflict(f'Define {label}: confirm a matching Context KPI or add a reference instruction such as {label} = SUM(<field>)')
+            continue
+        if len({json.dumps([k['measure'], _unit(k.get('unit'))], sort_keys=True) if k.get('measure') else k['id'] for k in matches}) > 1:
+            conflict(f'Clarify which confirmed KPI defines {label}: ' + ', '.join(sorted(k['name'] for k in matches)))
+            continue
+        kpi = matches[0] if matches else None
+        if kpi and not kpi.get('measure'):
+            if stated:
+                conflict(f'Confirmed KPI {kpi["name"]} is a ratio, but the reference instructions define {label} as one metric')
+            continue  # A ratio keeps its existing refusal and alternatives.
+        if _conflicting(stated):
+            conflict(f'Conflicting definitions for {label}; provide an explicit correction')
+            continue
+        definition = {}
+        if stated:
+            definition = {'field': stated[0][0], **{k: next((d[k] for _, d in stated if d.get(k)), None)
+                                                   for k in ('aggregation', 'unit', 'date_grain', 'date_field')}}
+        if kpi:
+            measure = {'field': kpi['measure']['field'], 'aggregation': kpi['measure']['agg'], 'unit': kpi.get('unit')}
+            differing = [k for k, v in measure.items() if v and definition.get(k) and not _same(k, v, definition[k])]
+            if differing:
+                conflict(f'Confirmed KPI {kpi["name"]} and the reference instructions define {label} differently '
+                         f'({", ".join(differing)}); change one of them')
+                continue
+            if not stated:
+                # A KPI alone must still match what the screenshot shows; explicit instructions clarify it.
+                differing = [k for k in ('aggregation', 'unit') if requested[k] and measure[k] and not _same(k, requested[k], measure[k])]
+                if differing:
+                    conflict(f'Clarify {label}: the screenshot shows ' + ', '.join(str(requested[k]) for k in differing)
+                             + f' but confirmed KPI {kpi["name"]} is ' + ', '.join(str(measure[k]) for k in differing)
+                             + '; add a reference instruction or change the KPI')
+                    continue
+            definition = {**measure, **{k: v for k, v in definition.items() if v}}
+        if not definition.get('aggregation'):
+            conflict(f'Define the aggregation for {label}, for example {label} = SUM({definition["field"]})')
+            continue
+        grain = requested['date_grain']
+        if definition.get('date_grain') and grain and definition['date_grain'] != grain:
+            conflict(f'Clarify the date grain for {label}: {grain} or {definition["date_grain"]}')
+            continue
+        if not grain and any(n.capability == 'chart.time_series' for n in r.needs):
+            grain = definition.get('date_grain')
+        dates = {n.fields.get('date_field') for n in r.needs if n.fields.get('date_field')}
+        if definition.get('date_field') and dates and definition['date_field'] not in dates:
+            conflict(f'Clarify incompatible date fields for {label}')
+            continue
+        proposed = Mapping(label=label, field=definition['field'], aggregation=definition.get('aggregation'),
+                           unit=definition.get('unit'), date_grain=grain)
+        r.mappings[i] = proposed
+        r.mapping_origins[f'observed:{i}'] = json.dumps({'evidence': (['kpi:' + kpi['id']] if kpi else []) + (
+            [instructions.id] if stated else []), 'key': _observed_key(proposed)})
+        used |= bool(stated)
+    if used and r.source != instructions:
+        r.clarifications.append(instructions)  # Provenance of the clarified image item.
+
+
+def observation_stale(snapshot, r):
+    """The stored reconciliation no longer follows from the current KPIs, instructions and schema."""
+    reference = snapshot.get('reference') or {}
+    if reference.get('mode') != 'recreate' or not r.source.reference_id or r.source.reference_id != reference.get('id'):
+        return False
+    fresh = r.model_copy(deep=True)
+    _reconcile_observation(fresh, snapshot)
+    return fresh != r
+
+
 def _reconcile_grains(ledger, snapshot):
     """An explicit same-metric/date trend refines an earlier unspecified trend."""
     fields = schema(snapshot)
     for r in ledger.requirements:
         dates = {n.fields.get('date_field') for n in r.needs if n.capability == 'chart.time_series'}
-        if not dates:
-            continue
+        if not dates or r.source.kind == 'image':
+            continue  # An observed chart keeps its own grain (_reconcile_observation).
         for i, m in enumerate(r.mappings):
             if m.date_grain:
                 continue
@@ -881,6 +1035,17 @@ def removal(requirement):
     return requirement.mapping_origins.get('remove')
 
 
+def _flattened_chart(requirement):
+    """An observed chart extracted as background/style/element needs only: flattening cannot recreate it.
+
+    Unsupported behavior (geo points, animation, extensions) keeps its own refusal and alternatives.
+    """
+    if requirement.source.kind != 'image' or not requirement.needs:
+        return False
+    return (json.loads(requirement.source.text).get('kind') == 'chart'
+            and all(n.capability.startswith(('layout.', 'style.', 'element.')) for n in requirement.needs))
+
+
 def _preserves_comment(component, requirement, snapshot):
     if not re.search(r'preserve\s+its\s+position\s+and\s+data', requirement.source.text, re.I):
         return True
@@ -907,6 +1072,10 @@ def mapping_verdict(mapping, requirement, fields):
     # aggregation and unit; the source text only restates it.
     kpi = requirement.mapping_origins.get('kpi:' + label, '')
     if kpi.partition(':')[2] == _kpi_key(mapping):
+        return None
+    # A recreate observation reconciled to a confirmed KPI and/or the reference instructions.
+    if any(k.startswith('observed:') and json.loads(v)['key'] == _observed_key(mapping)
+           for k, v in requirement.mapping_origins.items()):
         return None
     explicit = _assignment(text, mapping)
     if label != _normal(field) and not explicit:
@@ -1062,6 +1231,9 @@ def _requirement_issues(snapshot, ledger, checker):
         verdicts = [] if context else [(f"need:{i}", checker.need(n, fields)) for i, n in enumerate(r.needs) if f'need:{i}' not in r.superseded]
         if not r.needs and not context and not removal(r):
             verdicts.append(("unknown", capabilities.Verdict("unknown", "No registered capability covers this requirement")))
+        elif _flattened_chart(r):
+            verdicts.append(('unknown', capabilities.Verdict('needs_clarification',
+                'An observed chart needs a real bound component; decoration flattening cannot recreate it')))
         verdicts += [(f"mapping:{i}", v) for i, m in enumerate(r.mappings) if (v := mapping_verdict(m, r, fields))]
         verdicts += [(f'mapping:{i}', capabilities.Verdict('needs_clarification', reason))
                      for i, reason in r.mapping_conflicts.items()]
@@ -1099,6 +1271,11 @@ def evaluate(snapshot, ledger, checker, *, check_components=True):
         for source in new_sources(snapshot, ledger):
             found.append(Issue(id='bp_intent_' + digest(source)[:20], requirement=source['text'], status='unknown',
                 reason='New intent has not been assessed; run Check feasibility before accepting the Blueprint'))
+    for r in ledger.requirements:
+        # Not a decision target: only an explicit check re-reconciles changed definitions.
+        if observation_stale(snapshot, r):
+            found.append(Issue(id='obs_stale_' + digest([r.id, meaning(r)])[:20], requirement=r.text, status='needs_clarification',
+                reason='Confirmed KPIs, reference instructions or the schema changed for this observation; run Check feasibility'))
     def add(rid, text, verdict):
         if verdict.ok:
             return
@@ -1412,6 +1589,8 @@ def verification(snapshot, ledger, checker):
             rows.append({"mapping": mapping.model_dump(), "status": verdict.status if verdict else "supported",
                          "reason": verdict.reason if verdict else "Original source defines this binding",
                          "source_id": r.source.id, "definition_sources": [s.id for s in (r.source, *r.clarifications) if _assignment(s.text, mapping)],
+                         "definition_evidence": next((json.loads(v)['evidence'] for k, v in r.mapping_origins.items()
+                             if k.startswith('observed:') and json.loads(v)['key'] == _observed_key(mapping)), []),
                          "schema_type": fields.get(mapping.field), "component_ids": r.component_ids})
         if r.properties or r.superseded:
             rows.append({'properties': [p.model_dump() for p in r.properties], 'superseded': r.superseded})

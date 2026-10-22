@@ -182,6 +182,33 @@ def test_style_mode_imports_no_chart_or_data_requirements(ref):
     assert "set chart_candidate" in model.requests[0].config.system_instruction
 
 
+@pytest.mark.parametrize("mode", ["style", "recreate"])
+def test_only_recreate_observations_reuse_confirmed_definitions(ref, mode):
+    """Task 18.2: a style reference adds no chart/data requirement and never reads Context KPIs."""
+    from dss.spec import requirements as req
+    client, app, bid, folder, model, _ = ref
+    with app.state.db.connect() as conn:
+        conn.execute("UPDATE builds SET artifacts_json=? WHERE id=?", (json.dumps({"context": "confirmed"}), bid))
+    import asyncio
+    from dss.artifacts.models import Context
+    from dss.artifacts.okf import write_artifact
+    from test_api_contract import FIXTURES
+    context = Context.model_validate_json((FIXTURES / "context.json").read_text(encoding="utf-8"))
+    async def ignore(*args):
+        pass
+    asyncio.run(write_artifact(folder / "docs/context.md", context, emit=ignore))
+    upload(client, app, bid, [("files", ("a.png", png(), "image/png"))], mode=mode, instructions="Revenue = SUM(revenue) in USD")
+    snapshot = req.inputs(app.state.db, bid, folder)
+    images = [s for s in snapshot["incoming"] if s["kind"] == "image"]
+    if mode == "style":
+        assert not images and "confirmed_kpis" not in snapshot
+    else:
+        assert len(images) == len(ITEMS) and [k["id"] for k in snapshot["confirmed_kpis"]] == [k.id for k in context.kpis]
+        with app.state.db.connect() as conn:
+            conn.execute("UPDATE builds SET artifacts_json=? WHERE id=?", (json.dumps({"context": "draft"}), bid))
+        assert req.inputs(app.state.db, bid, folder)["confirmed_kpis"] == []  # a draft edit authorizes nothing
+
+
 def test_recreate_needs_exactly_one_and_style_at_most_three(ref):
     client, app, bid, *_ = ref
     two = [("files", (f"{i}.png", png(), "image/png")) for i in range(2)]

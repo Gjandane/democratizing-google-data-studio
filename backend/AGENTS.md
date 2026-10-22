@@ -55,3 +55,4 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - The periodic-backup test once saw `backups=[]` in a full run, then passed unchanged in isolation and a serial rerun; retry before diagnosing this timing assertion.
 - The shape-only `api/design.json` contract fixture uses a font outside the current theme presets; use a preset font when exercising Design confirmation.
 - The live outline_other/comment extractor varies its record shape per run (breakdown as field key or value, dimension mapping agg "none", needs-less record, decoration hex as need or property): normalize in code and confirm a staged live flow with 2+ consecutive passing runs.
+- tests/test_blueprint.artifact() calls asyncio.run: staged API tests that use it (or recreate_build in test_render) must be plain `def`, not `async def`.

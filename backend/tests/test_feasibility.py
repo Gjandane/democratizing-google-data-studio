@@ -800,6 +800,194 @@ def test_bounded_recompute_speed_with_definitions():
     assert min(timings) < .1, timings
 
 
+RECREATE = json.loads((Path(__file__).parent / 'data/recreate_definitions.json').read_text(encoding='utf-8'))
+NET = {'id': 'net_revenue', 'name': 'Net revenue', 'unit': 'USD', 'measure': {'field': 'revenue', 'agg': 'sum'}, 'ratio': None}
+SALES = {'order_id': 'STRING', 'order_date': 'DATE', 'revenue': 'FLOAT', 'quantity': 'INTEGER', 'region': 'STRING'}
+
+
+def recreate_snapshot(kpis=(NET,), instructions='', fields=SALES, items=None, rid='ref_obs'):
+    """What inputs() returns for a recreate reference (task 18.2), without a database."""
+    items = [{**item, 'id': f'o{n}'} for n, item in enumerate(items or RECREATE['items'], 1)]
+    incoming = [req.Source(id=rid + ':instructions', kind='reference', text=instructions, reference_id=rid).model_dump()] * bool(instructions)
+    incoming += [req.Source(id=f'{rid}:{i["id"]}', kind='image', text=json.dumps(i), reference_id=rid, image_id='img_obs',
+                            item_id=i['id']).model_dump() for i in items if i['kind'] != 'decoration']
+    return {'sources': [{'id': 's', 'table': 'p.d.t', 'columns': [{'name': n, 'type': t, 'bq_type': t} for n, t in fields.items()]}],
+            'incoming': incoming, 'reference': {'id': rid, 'mode': 'recreate', 'instructions': instructions,
+            'images': [{'id': 'img_obs'}], 'interpretation': {'items': items}}, 'definitions': {}, 'spec': None,
+            'confirmed_kpis': [dict(k) for k in kpis]}
+
+
+def recreate_assess(snapshot, extraction=None, ledger=None):
+    extraction = extraction if extraction is not None else {**RECREATE['extraction']}
+    rid = snapshot['reference']['id']
+    items = [{'source_id': f'{rid}:{oid}', **e} for oid, e in extraction.items()
+             if f'{rid}:{oid}' in {s['id'] for s in snapshot['incoming']}]
+    checker = capabilities.Checker(capabilities.load_registry())
+    ledger = req.merge(ledger or req.Ledger(), snapshot, req.Extraction.model_validate({'requirements': items}))
+    return ledger, req.evaluate(snapshot, ledger, checker, check_components=False)
+
+
+def test_recreate_kpis_instructions_and_both_reconcile_without_dropping():
+    """Release 2.5 b_b4319fb6113d: every observation stayed needs_clarification despite definitions."""
+    unmatched = RECREATE['unmatched_kpis']
+    for kpis, instructions in (((NET, {**NET, 'id': 'orders', 'name': 'Orders', 'unit': None, 'measure': {'field': 'order_id', 'agg': 'count_distinct'}},
+                                 {**NET, 'id': 'units_sold', 'name': 'Units sold', 'unit': 'units', 'measure': {'field': 'quantity', 'agg': 'sum'}}), ''),
+                               (unmatched, RECREATE['instructions']), ((NET,), RECREATE['instructions'])):
+        snapshot = recreate_snapshot(kpis, instructions)
+        ledger, a = recreate_assess(snapshot)
+        assert a.state == 'ready', (instructions, [i.reason for i in a.issues])
+        observed = [r for r in ledger.requirements if r.source.kind == 'image']
+        assert sorted(r.source.item_id for r in observed) == ['o2', 'o3', 'o4', 'o5', 'o6']
+        trend = next(r for r in observed if r.source.item_id == 'o5')
+        assert trend.mappings == [req.Mapping(label='Revenue', field='revenue', unit='USD', aggregation='sum', date_grain='month')]
+        # The definition-only instruction row is absorbed into the observations it clarifies.
+        assert all(r.source.kind == 'image' for r in ledger.requirements)
+        if instructions:
+            assert all(snapshot['incoming'][0]['id'] in [s.id for s in r.clarifications] for r in observed)
+        # Deterministic: a second pass on unchanged inputs is a fixed point.
+        again = req.merge(ledger, snapshot, req.Extraction(requirements=[]))
+        assert again.requirements == ledger.requirements
+
+
+GROSS = {'id': 'gross_revenue', 'name': 'Gross revenue', 'unit': 'USD', 'measure': {'field': 'gross_sales', 'agg': 'sum'}, 'ratio': None}
+NET_SALES = {**GROSS, 'id': 'net_revenue', 'name': 'Net revenue', 'measure': {'field': 'net_sales', 'agg': 'sum'}}
+
+
+@pytest.mark.parametrize('kpis, instructions, item, status, reason', [
+    ((GROSS, NET_SALES), '', 'o2', 'needs_clarification', 'Clarify which confirmed KPI defines Revenue: Gross revenue, Net revenue'),
+    (({**NET, 'measure': {'field': 'revenue', 'agg': 'avg'}},), '', 'o2', 'needs_clarification', 'screenshot shows sum but confirmed KPI Net revenue is avg'),
+    (({**NET, 'id': 'orders', 'name': 'Orders', 'unit': None, 'measure': {'field': 'order_id', 'agg': 'count'}},), '', 'o3',
+     'needs_clarification', 'screenshot shows count_distinct but confirmed KPI Orders is count'),
+    (({**NET, 'unit': 'EUR'},), '', 'o2', 'needs_clarification', 'screenshot shows USD but confirmed KPI Net revenue is EUR'),
+    ((NET,), 'Revenue = SUM(revenue) by week', 'o5', 'needs_clarification', 'Clarify the date grain for Revenue: month or week'),
+    ((NET,), 'Revenue = AVG(revenue)', 'o2', 'needs_clarification', 'define Revenue differently (aggregation)'),
+    ((NET,), 'Revenue = SUM(revenue). Revenue = AVG(revenue).', 'o2', 'needs_clarification', 'Conflicting definitions for Revenue'),
+    ((), '', 'o2', 'needs_clarification', 'Define Revenue: confirm a matching Context KPI or add a reference instruction'),
+    (({**NET, 'measure': {'field': 'net_revenue', 'agg': 'sum'}},), '', 'o2', 'needs_data', 'Field net_revenue is not in the connected data'),
+])
+def test_recreate_ambiguous_or_conflicting_definitions_stay_unresolved(kpis, instructions, item, status, reason):
+    fields = {**SALES, 'gross_sales': 'FLOAT', 'net_sales': 'FLOAT'}
+    ledger, a = recreate_assess(recreate_snapshot(kpis, instructions, fields))
+    assert a.state == 'blocked'
+    target = next(r for r in ledger.requirements if r.source.item_id == item)
+    issues = [i for i in a.issues if i.requirement == target.text]
+    assert any(i.status == status and reason in i.reason for i in issues), [(i.status, i.reason) for i in a.issues]
+    assert all(i.alternatives == [] and i.resolution == 'unresolved' for i in issues)
+    assert len([r for r in ledger.requirements if r.source.kind == 'image']) == 5  # nothing dropped
+    if status == 'needs_clarification':
+        assert 'observed:0' not in target.mapping_origins  # no authorization was recorded
+
+
+def test_recreate_unsupported_flattened_and_ratio_observations_keep_their_paths():
+    items = RECREATE['items'] + [
+        {**RECREATE['items'][1], 'label': 'Flow', 'chart_candidate': 'sankey', 'metric_label': None, 'aggregation': None, 'unit': None},
+        {**RECREATE['items'][1], 'label': 'Hero chart', 'metric_label': None, 'aggregation': None, 'unit': None},
+        {**RECREATE['items'][1], 'label': 'Average order value', 'metric_label': 'Average order value', 'aggregation': None, 'unit': 'USD'}]
+    extraction = {**RECREATE['extraction'],
+                  'o7': {'text': 'Flow sankey', 'needs': [{'capability': 'chart.sankey'}]},
+                  'o8': {'text': 'Hero chart as background art', 'needs': [{'capability': 'layout.background_image'}]},
+                  'o9': {'text': 'Average order value scorecard', 'needs': [{'capability': 'chart.scorecard'}],
+                         'mappings': [{'label': 'Average order value', 'unit': 'USD'}]}}
+    ratio = {'id': 'avg_order_value', 'name': 'Average order value', 'unit': 'USD', 'measure': None,
+             'ratio': {'numerator': 'net_revenue', 'denominator': 'orders'}}
+    kpis = (NET, {**NET, 'id': 'orders', 'name': 'Orders', 'unit': None, 'measure': {'field': 'order_id', 'agg': 'count_distinct'}},
+            {**NET, 'id': 'units_sold', 'name': 'Units sold', 'unit': None, 'measure': {'field': 'quantity', 'agg': 'sum'}}, ratio)
+    ledger, a = recreate_assess(recreate_snapshot(kpis, items=items), extraction)
+    by_item = {r.source.item_id: r for r in ledger.requirements if r.source.kind == 'image'}
+    assert sorted(by_item) == ['o2', 'o3', 'o4', 'o5', 'o6', 'o7', 'o8', 'o9']
+    status = {item: {i.status for i in a.issues if i.requirement == r.text} for item, r in by_item.items()}
+    assert status['o7'] and status['o7'] <= {'unknown', 'unsupported_app', 'unsupported_product'}
+    assert status['o8'] == {'needs_clarification'} and status['o9'] == {'needs_clarification'}
+    assert not any(k.startswith('observed:') for k in by_item['o9'].mapping_origins)  # a ratio is never one metric
+    assert all(not status[item] for item in ('o2', 'o3', 'o4', 'o5', 'o6')), status
+
+
+def test_recreate_kpi_never_redefines_a_qualified_label_or_a_dimension():
+    """Review 18.2: "Average revenue" is not "Revenue"; a KPI named for a region cannot rebind region."""
+    items = [{**RECREATE['items'][1], 'label': 'Average revenue', 'metric_label': 'Average revenue', 'aggregation': None, 'unit': None},
+             RECREATE['items'][5]]
+    extraction = {'o1': {'text': 'Average revenue scorecard', 'needs': [{'capability': 'chart.scorecard'}],
+                         'mappings': [{'label': 'Average revenue', 'field': 'revenue'}]},
+                  'o2': RECREATE['extraction']['o6']}
+    kpis = ({**NET, 'id': 'revenue', 'name': 'Revenue'}, {**NET, 'id': 'revenue_per_region', 'name': 'Revenue per region'})
+    ledger, a = recreate_assess(recreate_snapshot(kpis, items=items), extraction)
+    average, bar = (next(r for r in ledger.requirements if r.source.item_id == o) for o in ('o1', 'o2'))
+    assert any('Define Average revenue' in i.reason for i in a.issues if i.requirement == average.text), a.issues
+    assert bar.mappings[1] == req.Mapping(label='region', field='region')
+
+
+def test_recreate_unsupported_observation_keeps_its_alternative_path():
+    """Review 18.2: an observed GPS animation resolves through its code-built alternative, not a drop."""
+    items = [{**RECREATE['items'][1], 'label': 'Route playback', 'chart_candidate': 'geo_map', 'metric_label': None, 'aggregation': None, 'unit': None}]
+    extraction = {'o1': {'text': 'Animate GPS points along a route', 'needs': [{'capability': 'animation.temporal_playback'}]}}
+    snapshot = recreate_snapshot(items=items)
+    ledger, a = recreate_assess(snapshot, extraction)
+    [issue] = [i for i in a.issues if i.resolution == 'unresolved']
+    assert issue.status == 'unsupported_app' and issue.alternatives, a.issues
+    ledger.assessment = a
+    checker = capabilities.Checker(capabilities.load_registry())
+    body = req.Decisions(assessment_id=a.id, decisions=[req.DecisionInput(issue_id=issue.id, action='accept_alternative',
+                                                                          alternative_id=issue.alternatives[0].id)])
+    _, decided = req.decide(snapshot, ledger, checker, body)
+    assert decided.state == 'ready', decided.issues
+
+
+def test_recreate_message_unit_conflict_is_not_overridden_by_a_kpi():
+    """Review 18.2: a conversational EUR definition conflicts with a USD observation; a KPI cannot erase it."""
+    snapshot = recreate_snapshot()
+    message = req.Source(id='m_eur', kind='message', text='Revenue = SUM(revenue) in EUR').model_dump()
+    snapshot['incoming'].insert(0, message)
+    items = [{'source_id': f'ref_obs:{oid}', **RECREATE['extraction'][oid]} for oid in ('o2', 'o3', 'o4', 'o5', 'o6')]
+    items.append({'source_id': 'm_eur', 'text': message['text'],
+                  'mappings': [{'label': 'Revenue', 'field': 'revenue', 'unit': 'EUR', 'aggregation': 'sum'}]})
+    ledger = req.merge(req.Ledger(), snapshot, req.Extraction.model_validate({'requirements': items}))
+    a = req.evaluate(snapshot, ledger, capabilities.Checker(capabilities.load_registry()), check_components=False)
+    scorecard = next(r for r in ledger.requirements if r.source.item_id == 'o2')
+    assert any('incompatible units for Revenue' in i.reason for i in a.issues if i.requirement == scorecard.text), a.issues
+
+
+def test_recreate_changed_or_draft_kpis_and_schema_invalidate_without_a_check():
+    checker = capabilities.Checker(capabilities.load_registry())
+    snapshot = recreate_snapshot(RECREATE['unmatched_kpis'] + [NET, {**NET, 'id': 'orders', 'name': 'Orders', 'unit': None,
+        'measure': {'field': 'order_id', 'agg': 'count_distinct'}}, {**NET, 'id': 'units_sold', 'name': 'Units sold', 'unit': None,
+        'measure': {'field': 'quantity', 'agg': 'sum'}}])
+    ledger, a = recreate_assess(snapshot)
+    assert a.state == 'ready', [i.reason for i in a.issues]
+    for change in ('edit', 'draft'):
+        changed = copy.deepcopy(snapshot)
+        changed['confirmed_kpis'] = [{**k, 'measure': {'field': 'revenue', 'agg': 'avg'}} if k['id'] == 'net_revenue' else k
+                                     for k in changed['confirmed_kpis']] if change == 'edit' else []
+        # The stored reconciliation cannot authorize under new definitions before a check.
+        stale = req.evaluate(changed, ledger, checker, check_components=False)
+        assert stale.state == 'blocked' and any(i.id.startswith('obs_stale_') for i in stale.issues)
+        rechecked, blocked = recreate_assess(changed, {}, ledger)
+        assert blocked.state == 'blocked' and not any(i.id.startswith('obs_stale_') for i in blocked.issues)
+        assert len([r for r in rechecked.requirements if r.source.kind == 'image']) == 5
+        restored, ready = recreate_assess(snapshot, {}, rechecked)
+        assert ready.state == 'ready' and restored.requirements == ledger.requirements
+    narrowed = copy.deepcopy(snapshot)
+    narrowed['sources'][0]['columns'] = [c for c in narrowed['sources'][0]['columns'] if c['name'] != 'revenue']
+    _, missing = recreate_assess(narrowed, {}, ledger)
+    assert any(i.status == 'needs_data' and 'revenue' in i.reason for i in missing.issues)
+
+
+def test_recreate_bounded_recompute_speed():
+    """24 observations (the interpretation maximum) reconcile with KPIs and instructions within 100 ms."""
+    items = [{**RECREATE['items'][1 + n % 5], 'label': f'Chart {n}'} for n in range(24)]
+    extraction = {f'o{n + 1}': RECREATE['extraction'][f'o{2 + n % 5}'] for n in range(24)}
+    extraction['instructions'] = RECREATE['extraction']['instructions']
+    snapshot = recreate_snapshot((NET,), RECREATE['instructions'], items=items)
+    ledger, a = recreate_assess(snapshot, extraction)
+    assert a.state == 'ready', [i.reason for i in a.issues]
+    checker = capabilities.Checker(capabilities.load_registry())
+    timings = []
+    for _ in range(3):
+        start = time.perf_counter()
+        req.evaluate(snapshot, ledger, checker, check_components=False)
+        timings.append(time.perf_counter() - start)
+    assert min(timings) < .1, timings
+
+
 def test_ledger_mandatory_and_no_rows(thin, monkeypatch):
     client, app, bid, folder = thin
     sid = user(app, bid, "Show bar")
