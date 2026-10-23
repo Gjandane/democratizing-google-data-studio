@@ -9,9 +9,8 @@ Written 2026-10-18.
   know their data (analysts, managers, students) can't turn their questions into a good dashboard.
 - Local user (one, no accounts): connects data or describes a topic, confirms a drafted
   context, picks questions and a design, accepts a blueprint, comments on a prototype, and gets a real Data Studio dashboard link.
-- Context: Google GCP hackathon (AI Builder Cup). Deadline **2026-10-23 01:05 MPST** (moved from
-  2026-10-20 01:05 by the user on 2026-10-20, change 2026-10-20; earlier moved from 2026-10-19 01:05,
-  change 2026-10-19).
+- Context: Google GCP hackathon (AI Builder Cup). Deadline: no longer binding; the user keeps the full
+  scope past 2026-10-23 01:05 MPST (change 2026-10-23; earlier 2026-10-20 and 2026-10-19 01:05).
 - Hosted on Cloud Run in this version (change 2026-10-19): the app runs as one Cloud Run service
   behind a shared access code; the Data Studio build runs through a build agent on the user's
   machine, because the engine needs the signed-in Chrome profile.
@@ -185,6 +184,7 @@ phases" below.
 - Manual acceptance fixes (change 2026-10-22): release 2.4 waits on engine 10.1 and backend 17.1 (`Needs:`), then reruns rows 2-3 only. Engine 10.1 first (it holds the signed-in Chrome); backend 17.1 is offline and can run alongside; release 2.5 (live, Chrome) after engine 10.1.
 - Reference recovery (change 2026-10-22, user chose both fixes): backend 17.1 -> 18.1 (validated replan freshness) -> 18.2 (recreate definition reconciliation), then release 2.5 reruns all five live cases, restart persistence and its comparison STOP. Release 2.5 waits on both tasks; release 4.3 retains the same hosted acceptance via its existing dependency on 2.5. No observation drops or relaxed recreation claim; no interface change. Release 2.6 remains independently ready after 2.3.
 - Report quality (change 2026-10-22, user chose all four fixes): engine 11.1 (scorecard value size, STOP) -> 11.2 (`rename_page`, recipe 1.1) -> 11.3 (palette colors) in engine/ (one signed-in Chrome, so one at a time and not alongside release 2.5's live runs); backend 19.1 (HD backgrounds, STOP) needs no gate and can run first; backend 19.2 (page 1 name, no scorecard palette op) `Needs: engine 11.2`. No release task waits on them: release 2.5 stays the critical path; release 2.6's acceptance screenshots and README images (3.1) show the fixes only if these land first. Cut first if behind: 11.3, then 19.2 + 11.2.
+- Recreate publication (change 2026-10-23, user choice): backend 21.1 (coverage errors in the publish span; recreate and screenshot-only accepts publish with designed pages) -> release 2.5 reruns the full five-case `--live` suite, `--after-restart` and its comparison STOP; then 2.6, 3.x, 4.x in order. No contract change.
 
 ## Integration checks
 - `uv run --project integration python integration/check_contracts.py`: the recipe and event
@@ -287,3 +287,4 @@ phases" below.
 | 2026-10-22 | Release 2.4 rows 2 (research) and 3 (BigQuery) fixed in the parts: engine 10.1 (off-screen picker fields, date control size, nearest rows-per-page value), backend 17.1 (clean labels, research aggregate rows); rerun rows 2-3 only | engine only; accept as known limits and relax 2.4 | both rows block a clean demo; no contract change; P2s (page 1 name, scorecard font) to Later | change manual acceptance fixes (user choice) |
 | 2026-10-22 | Report quality: engine sizes scorecard values like the prototype (11.1), adds `rename_page` (recipe 1.1, additive; 11.2) and applies palette colors to the swatches a chart has (11.3); backend renders backgrounds at 2x device scale (19.1) and names page 1 (19.2) | keep 1.0 and accept "Untitled Page"; send explicit scorecard font sizes in the recipe | user flagged scorecard size and soft backgrounds on release 2.4 row 2; audit found 16/16 palette ops skipped; a derived size rule needs no new argument | change report quality (user choice) |
 | 2026-10-22 | Fix both release 2.5 blockers in backend 18.1 and 18.2, then repeat full acceptance | stale-state fix only and accept dropped recreate observations | user chose both; existing required recreation/feasibility behavior is broken, no new feature or contract shape | change reference recovery (user choice) |
+| 2026-10-23 | Deadline (2026-10-23 01:05 MPST) no longer binding: full scope kept; release 2.5's recreate/synthetic publish failure fixed in backend 21.1 | cut to push with recreate tagged planned; backend switch to turn designed pages off | user choice on cards after the deadline passed with 2.5 blocked | change recreate publication (user choice) |

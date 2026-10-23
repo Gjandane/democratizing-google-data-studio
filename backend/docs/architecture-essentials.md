@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:2cc40394017e (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:808c82cd13f9 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 Read every build session. docs/architecture.md wins if they disagree.
 
@@ -38,7 +38,8 @@ tests/          offline fakes; tests/live/ explicitly marked live
 - Blueprint accept publishes its owned candidate view/spec/artifacts atomically; never clean a
   published view. Backgrounds: background.write_pages, render(page=n), not the stacked canvas; 3x, <2 MB.
 - Designed pages: planner HTML, sanitized; Chromium measures slots -> component `box`, width
-  1200-1920; one repair, then kit fallback (architecture.md#Designed pages).
+  1200-1920; one repair, then kit fallback; a page whose design breaks publish coverage falls
+  back too (architecture.md#Designed pages).
   Heading wraps/text fitting: architecture.md#Implementation conventions.
 - Feasibility: structured Blueprint rows; extraction only for Other, comments, references.
   Images are not data. User-approved Other fail-open limitation and contract gap: PRD Later;

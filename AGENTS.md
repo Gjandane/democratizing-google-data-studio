@@ -21,7 +21,7 @@ recipe. Each part below is its own project, with its own AGENTS.md, docs/ and pl
   contracts its AGENTS.md names and never edits them; only the architect, at this root, changes
   one.
 - docs/program.md holds the parts, their order and the gates between them (the `Needs:` fields).
-- Hard deadline 2026-10-23 01:05 MPST: no gold-plating; the cut order is in docs/program.md.
+- Deadline no longer binding (user, 2026-10-23): still no gold-plating; the cut order is in docs/program.md.
 
 ## Known gotchas
 Traps that hit more than one part, one line each. The architect adds them.

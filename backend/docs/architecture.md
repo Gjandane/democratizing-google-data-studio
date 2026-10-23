@@ -850,6 +850,10 @@ Final-audit corrections (2026-10-19):
     unless the new type's minimum no longer fits its slot, which regenerates the page.
   - Coverage: a decoration requirement on a designed page (a heading text, a hex color) is
     verified by its presence in the sanitized `design.html`; components keep their recipe checks.
+    If a page's design is what makes publish coverage fail (the same candidate with that page
+    code-laid passes), that page falls back to the code layout and kit (`designer_fallback`,
+    reason `coverage`) before publish; a coverage failure records its errors in the `publish`
+    span (change 2026-10-23).
   - Determinism: the model runs only in the prototype action and in revise regeneration, never
     in GET, recompile or new versions; the same spec gives the same prototype, PNG and recipe
     bytes.
@@ -1048,3 +1052,4 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-22 | Backgrounds captured at device scale 2 with the recipe box unchanged; page 1 named by `rename_page`; no palette `set_style` for scorecards | SVG or higher-res upload per component; accept "Untitled Page" | user flagged soft backgrounds and the engine skips scorecard palettes; recipe 1.1 adds the op | change report quality (program root) |
 | 2026-10-22 | Backgrounds at device scale 3 (each PNG < 2 MB, no minimum size); feasibility rejects colors on scorecards as unsupported_app | keep 2x; per-page scale to an exact 1920 x 1080; pad files to 200 KB; leave scorecard color comments pending | user target >= 1920 x 1080 (2x page 1 is 1064 tall); bytes don't add sharpness; renderer, compiler and engine must agree on scorecard colors | change backgrounds 3x and scorecard colors |
 | 2026-10-22 | Designed pages: the planner writes each page's background HTML around measured component slots; code sanitizes, measures, screenshots and falls back to the kit per page; width 1200-1920 via `set_canvas`; page regenerated on geometry/heading comments; vendored Lucide icons | design JSON rendered by an upgraded code kit; AI grid + code-drawn cards; code-only revise moves; a 1920 canvas for every build; native Data Studio text for headings | user wants AI-designed backgrounds and layouts with native charts placed in them (reference image); recipe 1.1 already has `set_canvas`; measured slots keep charts inside their cards | change designed backgrounds (user, after 19.3) |
+| 2026-10-23 | Recreate publish failures are diagnosed from the `publish` span's coverage errors; a designed page that breaks coverage falls back to the code layout | expose errors in the API (contract change); accept recreate unproven live | release 2.5 recreate/synthetic accepts fail coverage with no visible errors; user chose a backend fix over a limit | change recreate publication (program root) |
