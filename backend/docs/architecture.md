@@ -405,6 +405,12 @@ Final-audit corrections (2026-10-19):
   the gap as an Issue with its alternative, the decision makes it ready, and accept publishes
   with every observation bound to a real component (recipe compiles, fake engine done). The
   21.1 and 18.2 recreate fixtures still publish unchanged.
+- Built (task 22.1): the observations are the current recreate reference's image and
+  instruction records that publish coverage checks, minus dropped, retired, layout-only and ones
+  with their own unresolved issue (stale ones stay; freshness blocks them). One bound by
+  component ids or non-label properties can't be checked against rows: needs_clarification. An
+  alternative is offered only when recomputed coverage fulfils it and keeps every other
+  observation. A drop is a requirement-level ledger decision with `source_id` and `issue_id`.
 
 ### Multi-page feasibility scope
 - The Outline limit is 24 selected questions, not 24 rendered components. A question may have
@@ -1045,7 +1051,8 @@ runtime dependency), pytest + pytest-asyncio (tests).
 - Context recipes have tested section order and shapes. Append node guidance inside existing
   system sections instead of adding sections that change working-memory tracing contracts.
 - The requirements.json section is mandatory in revise's 6k budget; do not repeat source text
-  per row. Cache requirement regexes to preserve the 100 ms recompute oracle. Extraction
+  per row. Cache requirement regexes and read the catalog once per feasibility pass
+  (`validate.catalog()` re-parses its YAML, ~25 ms) to preserve the 100 ms recompute oracle. Extraction
   normalization accepts only provably redundant bindings, not fabricated capability evidence.
 - Typed synthetic CSV loads use an empty null_marker so a single-column all-null csv.writer
   record (`""`) remains NULL and still counts as a row (live-checked task 12.2).

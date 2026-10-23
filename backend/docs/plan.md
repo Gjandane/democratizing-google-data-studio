@@ -1,5 +1,5 @@
 # Plan: backend
-Target: POC · Audit: done 2026-10-23 (final re-audit: DEFECTS, one P1; task 22.1; details in docs/progress.md "2026-10-23: Audit (final)")
+Target: POC · Audit: done 2026-10-23 (final re-audit of 22.1: ACCEPTED; details in docs/progress.md "2026-10-23: Audit (final) re-audit of 22.1")
 
 Markers: [ ] to do, [~] in progress, [x] done, [!] blocked. Only blueprint.py changes them.
 Sizes: S small, M a normal session, L needs a whole fresh session (never run unattended).

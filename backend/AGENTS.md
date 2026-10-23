@@ -39,7 +39,6 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Gemini's generic `400 INVALID_ARGUMENT` does not identify the invalid field; isolate worker/model/schema compatibility with a minimal live request before attributing it to `Any` or unions.
 - HTTP clients normalize literal `..` path segments before sending: use `%2e%2e` when testing the API's invalid-name guard.
 - Starlette StaticFiles normalizes paths with OS separators: normalize backslashes before checking the API boundary for SPA fallback on Windows.
-- Uvicorn's graceful-shutdown timeout excludes lifespan teardown; backup I/O has a separate deadline (architecture.md#Implementation conventions).
 - httpx string headers must be ASCII; use byte header values when testing non-ASCII credentials at the server boundary.
 - Config does not strip root .env values and GCP_PROJECT_ID there has leading whitespace; live tests pass a stripped project through PUT /api/settings (or DSS_LIVE_GCP_PROJECT).
 - Bash heredocs (even quoted 'EOF') in this shell can collapse backslashes in Python source (\0 became a NUL byte); write code with backslashes via the Write/Edit tools.
@@ -57,10 +56,8 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - The engine's `run_finished.report_url` opens the report's last page; open `https://datastudio.google.com/reporting/<id>` (no `/page/...`) to inspect page 1. Find a report's full id in engine Chrome at datastudio.google.com/navigation/reporting.
 - coverage_errors checks needs against compiled recipe ops: a compiler op change also breaks tests that index recipe lines or expect set_style per chart (19.2: 5 files).
 - tests/live/test_staged_flow.observe_revisions wraps revise.revised(document, comments, batch, allowed) positionally and default runs skip it: keep that signature (a new kwarg breaks every live revise).
-- designed_pages is on by default: a one-reply fake (ContextLLM) also answers the designer, falls back on page 1 and adds designer/validate/designer_fallback spans and +2 model calls.
 - To replay a live test build with `dsengine run`, run the live test with DSS_LIVE_KEEP=1 (test_designed_dashboard_sample_csv) so its BigQuery source/view survive; delete them afterwards.
-- A publish 422 "Candidate no longer fulfills" lists its failing requirements in the trace's `publish` span (`coverage_errors`); to diagnose a release build, copy it (sqlite backup API from `?mode=ro`), lay out its Blueprint and call `requirements.coverage_errors` on the copy.
+- One-reply fakes (ContextLLM) also answer the designer (default designed_pages: page-1 fallback, +2 model calls, designer/validate/designer_fallback spans) and a recreate observation gap's row repair (needs a second `{"rows": [...]}` reply, or llm_unavailable).
+- A publish 422 "Candidate no longer fulfills": its `publish` trace span lists `coverage_errors`; to diagnose a release build, copy it (sqlite backup API, `?mode=ro`), lay out its Blueprint, call `requirements.coverage_errors`.
+- Reference interpretation item ids are positional (o1, o2, ...): omitting an item from a vision fixture renumbers the rest.
 <!-- blueprint-solution:end -->
-- A recreate Blueprint with an observation gap now takes the one row repair: a one-reply fake (ContextLLM) answers it with the Draft JSON, which RowRepair rejects (llm_unavailable); give it a second `{"rows": [...]}` reply.
-- Reference interpretation item ids are positional (o1, o2, ...): omitting an item from a vision fixture renumbers the rest and the extraction cites unknown sources.
-- validate.catalog() re-parses the catalog YAML on every call (~25 ms): read it once per pass (feasibility.component_errors takes `rules`).

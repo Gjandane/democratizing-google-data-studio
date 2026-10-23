@@ -235,3 +235,8 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
   2026-10-23).
 - Engine-side: the s021/s025 time_series "Too Many Rows" timeout cascade on the b_a8ace098d03b
   replay, and canvas placement above ~1380 px (program root; audit 2026-10-23).
+- Blueprint observation check (22.1): its titling mirror walks rows in row order and skips accept's
+  `after < before` recheck, so rows competing for one title on a multi-page Blueprint could
+  disagree with accept; the fallback gap text names a title claim when an op, option or label
+  failed; a gap with no nearest row marks no row blocked (accept still blocks) (P3; re-audit
+  2026-10-23).

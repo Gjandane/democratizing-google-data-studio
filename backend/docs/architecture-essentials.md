@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:d7e619050a09 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:6b6113e82509 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 Read every build session. docs/architecture.md wins if they disagree.
 
