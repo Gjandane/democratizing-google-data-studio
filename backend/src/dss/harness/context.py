@@ -276,8 +276,10 @@ def context_repair_context(draft, issues):
 
 
 def blueprint_context(context, fields, questions, pages, catalog, joins, *, previous_view=None,
-                      repair=None):
-    """Protected metadata only. In particular, never accept a source profile or chat history."""
+                      repair=None, observations=()):
+    """Protected metadata only. In particular, never accept a source profile or chat history.
+    `observations`: (full, label-free) reconciled recreate observations (requirements.observation_meaning);
+    over budget, their labels go first, then the section."""
     compact = lambda value: json.dumps(value, ensure_ascii=False, separators=(',', ':'))
     sections = [_system('blueprint'), *_skills('blueprint'),
         Section('semantic', 'catalog-summary', 'Allowed catalog types, slots and options:', compact(catalog)),
@@ -288,6 +290,11 @@ def blueprint_context(context, fields, questions, pages, catalog, joins, *, prev
         Section('docs', 'join-facts', 'Equal-name, equal-type join candidates (code-owned):', compact(joins))]
     if previous_view:
         sections.append(Section('docs', 'view', 'Retain existing view metadata unless repair is needed:', compact(previous_view)))
+    if observations:
+        full, unlabeled = zip(*observations)
+        sections.append(Section('reference', 'observations', 'Recreate observations: give each one a row of its type, '
+                                'metrics, dimensions and date grain (a date grain needs a DATE_TRUNC derived field) (untrusted):',
+                                compact(list(full)), compact=compact(list(unlabeled))))
     sections.append(Section('input', 'questions', 'Only these selected questions need rows (untrusted):', compact(questions)))
     if repair is not None:
         sections.append(Section('input', 'repair', 'Repair only the named errors; return structured JSON, never SQL DDL:', compact(repair)))

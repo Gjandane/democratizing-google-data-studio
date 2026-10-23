@@ -61,3 +61,6 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - To replay a live test build with `dsengine run`, run the live test with DSS_LIVE_KEEP=1 (test_designed_dashboard_sample_csv) so its BigQuery source/view survive; delete them afterwards.
 - A publish 422 "Candidate no longer fulfills" lists its failing requirements in the trace's `publish` span (`coverage_errors`); to diagnose a release build, copy it (sqlite backup API from `?mode=ro`), lay out its Blueprint and call `requirements.coverage_errors` on the copy.
 <!-- blueprint-solution:end -->
+- A recreate Blueprint with an observation gap now takes the one row repair: a one-reply fake (ContextLLM) answers it with the Draft JSON, which RowRepair rejects (llm_unavailable); give it a second `{"rows": [...]}` reply.
+- Reference interpretation item ids are positional (o1, o2, ...): omitting an item from a vision fixture renumbers the rest and the extraction cites unknown sources.
+- validate.catalog() re-parses the catalog YAML on every call (~25 ms): read it once per pass (feasibility.component_errors takes `rules`).

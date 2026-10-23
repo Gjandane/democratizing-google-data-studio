@@ -1598,3 +1598,103 @@ def test_color_need_on_scorecard_fails_fast_per_chart_type(thin, monkeypatch, co
         assert a["state"] == "blocked" and any(s == status and "Scorecards" in r and "colors" in r for s, r in statuses), a
     else:
         assert not any(s == "unsupported_app" for s, _ in statuses), a
+
+
+def recreate_blueprint(snapshot, rows=None):
+    """A recreate snapshot with a staged Blueprint answering the 18.2 fixture (task 22.1)."""
+    from test_blueprint import fixture
+    context = fixture('context')
+    context.update(datasets=[{'source_id': 's', 'summary': 'Sales'}], derived_fields=[])
+    ids = dict(zip(('revenue', 'orders', 'units'), [k['id'] for k in context['kpis']]))
+    rows = RECREATE['rows'] if rows is None else rows
+    outline = fixture('outline')
+    template = outline['sections'][0]['questions'][0]
+    outline['sections'] = [{'id': 's1', 'title': 'Store', 'purpose': 'Recreate.', 'questions': [
+        {**template, 'id': qid, 'text': text, 'kpi_refs': [ids[k] for k in dict.fromkeys(r['kpi'] for r in rows if r['question_id'] == qid)]}
+        for qid, text in RECREATE['questions'].items()]}]
+    blueprint = fixture('blueprint')
+    blueprint.update(view_sources={'base': 's', 'joins': [], 'union': []}, derived_fields=[RECREATE['derived_field']],
+                     rows=[{'question_id': r['question_id'], 'section_id': 's1', 'page': 1, 'note': '', 'status': 'ok',
+                            'issue_ids': [], 'component': r['component']} for r in rows])
+    snapshot = {**snapshot, 'context': context, 'outline': outline, 'design': fixture('design'), 'blueprint': blueprint,
+                'confirmed_kpis': context['kpis'], 'blueprint_errors': []}
+    snapshot['sources'][0]['bq_table'] = snapshot['sources'][0]['table']
+    return snapshot
+
+
+def observation_verdicts(snapshot, ledger):
+    from dss.artifacts.models import Blueprint
+    from dss.spec import feasibility
+    bp = Blueprint.model_validate(snapshot['blueprint'])
+    checker = capabilities.Checker(capabilities.load_registry())
+    return {r.source.item_id or r.text: indices for r, _, _, indices, _ in feasibility.coverage(snapshot, ledger, checker, bp.rows, bp.derived_fields)}
+
+
+def test_blueprint_observation_coverage_binds_rows_and_shares_one_row():
+    """22.1: every observation names the rows that fulfil it; two observations one row satisfies are both bound to it."""
+    items = [*RECREATE['items'], {**RECREATE['items'][4]}]
+    extraction = {**RECREATE['extraction'], 'o7': RECREATE['extraction']['o5']}
+    snapshot = recreate_blueprint(recreate_snapshot(items=items))
+    ledger, a = recreate_assess(snapshot, extraction)
+    assert a.state == 'ready', [i.reason for i in a.issues]
+    assert observation_verdicts(snapshot, ledger) == {'o2': [0], 'o3': [1], 'o4': [2], 'o5': [3], 'o6': [4], 'o7': [3]}
+
+
+def test_blueprint_observation_keeps_its_own_verdict():
+    """An unsupported observation keeps its existing verdict; no Blueprint issue doubles it."""
+    extraction = copy.deepcopy(RECREATE['extraction'])
+    extraction['o3']['needs'].append({'capability': 'animation.temporal_playback'})
+    snapshot = recreate_blueprint(recreate_snapshot())
+    ledger, a = recreate_assess(snapshot, extraction)
+    target = next(r for r in ledger.requirements if r.source.item_id == 'o3')
+    assert [i.status for i in a.issues if i.requirement == target.text] == ['unsupported_app']
+    assert not any(i.requirement.startswith('Observation') for i in a.issues)
+    assert 'o3' not in observation_verdicts(snapshot, ledger)
+
+
+def test_blueprint_observation_gap_is_an_issue_with_a_bucket_alternative():
+    rows = copy.deepcopy(RECREATE['rows'])
+    rows[3]['component'].update(date_dimension='order_date')
+    snapshot = recreate_blueprint(recreate_snapshot(), rows)
+    ledger, a = recreate_assess(snapshot)
+    [issue] = [i for i in a.issues if i.requirement.startswith('Observation')]
+    assert a.state == 'blocked' and issue.status == 'needs_clarification' and 'no month bucket of order_date' in issue.reason
+    assert [alt.id for alt in issue.alternatives] == ['date_bucket']
+    assert observation_verdicts(snapshot, ledger)['o5'] == []
+
+
+def test_style_and_data_builds_skip_observation_coverage(monkeypatch):
+    """No recreate reference: no observation pass at all (unchanged behavior and bytes)."""
+    from dss.spec import feasibility
+    monkeypatch.setattr(req, '_requirement_issues', lambda *a: pytest.fail('no observation pass'))
+    checker = capabilities.Checker(capabilities.load_registry())
+    data = staged_snapshot(1, 1)
+    style = {**data, 'reference': {'id': 'ref', 'mode': 'style', 'instructions': '', 'images': [], 'interpretation': {'items': []}}}
+    for snapshot in (data, style):
+        assert req.blueprint_observations(snapshot, req.Ledger(), checker) == []
+        assert not any(e['code'] == 'observation' for e in feasibility.diagnostics(snapshot, req.Ledger(), checker))
+
+
+def test_recreate_blueprint_recompute_speed_with_24_observations():
+    """The deterministic recomputation, observation coverage on Blueprint rows included, stays within 100 ms."""
+    items = [{**RECREATE['items'][1 + n % 5], 'label': f'Chart {n}'} for n in range(24)]
+    extraction = {f'o{n + 1}': RECREATE['extraction'][f'o{2 + n % 5}'] for n in range(24)}
+    extraction['instructions'] = RECREATE['extraction']['instructions']
+    checker = capabilities.Checker(capabilities.load_registry())
+    # Every observation fulfilled, then every one a gap with alternatives to validate (no bucket, no table).
+    gaps = copy.deepcopy(RECREATE['rows'])
+    gaps[3]['component']['date_dimension'] = 'order_date'
+    gaps[4]['component']['type'] = 'table'
+    for rows, state in ((None, 'ready'), (gaps, 'blocked')):
+        snapshot = recreate_blueprint(recreate_snapshot((NET,), RECREATE['instructions'], items=items), rows)
+        ledger, a = recreate_assess(snapshot, extraction)
+        assert a.state == state, [i.reason for i in a.issues]
+        verdicts = observation_verdicts(snapshot, ledger)
+        assert len([k for k in verdicts if k.startswith('o')]) == 24
+        assert all(verdicts.values()) if rows is None else len([i for i in a.issues if i.requirement.startswith('Observation')]) >= 9
+        timings = []
+        for _ in range(3):
+            start = time.perf_counter()
+            req.evaluate(snapshot, ledger, checker, check_components=False)
+            timings.append(time.perf_counter() - start)
+        assert min(timings) < .1, (state, timings)

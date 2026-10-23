@@ -6,7 +6,7 @@ the ledger keeps the code-built effects and the evidence binding each explicit c
 from collections import Counter
 from copy import deepcopy
 
-from dss.artifacts.models import Blueprint, BlueprintRow, BlueprintComponent, Context, Outline, ViewSources
+from dss.artifacts.models import Blueprint, BlueprintRow, BlueprintComponent, Context, DerivedField, Outline, ViewSources
 from dss.harness.nodes import view
 from dss.spec import requirements as req
 from dss.spec.capabilities import CONTROL_TYPES
@@ -39,14 +39,15 @@ def choices(snapshot, ledger, checker):
     return [d for d in ledger.blueprint_decisions if d['binding'] == binding(snapshot, checker, d['target'])]
 
 
-def component_errors(component, fields, checker):
+def component_errors(component, fields, checker, rules=None):
+    """`rules`: the catalog, read once per diagnostics pass."""
     c = component.model_dump()
     if component.type == 'dropdown' and len(component.dimensions) == 1:
         c['field'], c['dimensions'] = component.dimensions[0], []
     errors = [(v.status, v.reason, list(v.evidence)) for v in checker.component(c)]
     if errors:
         return errors  # Invalid option values must never reach slot arithmetic.
-    rule = catalog().get(component.type)
+    rule = (catalog() if rules is None else rules).get(component.type)
     if rule is None:
         return errors + [('unsupported_app', 'Component type is absent from the catalog', [])]
     dimensions = component.dimensions
@@ -109,7 +110,7 @@ def diagnostics(snapshot, ledger, checker):
         result.append(dict(code=code, indices=indices, qids=qids, message=message, status=status,
                            repairable=repairable, offers=list(offers), evidence=list(evidence)))
 
-    fields, source_invalid = {}, False
+    fields, source_invalid, rules = {}, False, catalog()
     try:
         fields = {f['name']: f for f in view.blueprint_fields(connected, bp.view_sources, bp.derived_fields)}
         # Validate join keys too, without executing SQL.
@@ -165,7 +166,7 @@ def diagnostics(snapshot, ledger, checker):
                         'dimensions': [], 'metrics': [kpi.measure.model_dump()], 'date_dimension': None,
                         'breakdown': None, 'sort': None, 'options': {}})
                     rows.append(row.model_dump())
-                if all(not component_errors(type(bp.rows[0]).model_validate(r).component, fields, checker) for r in rows):
+                if all(not component_errors(type(bp.rows[0]).model_validate(r).component, fields, checker, rules) for r in rows):
                     offers.append({'id': 'numerator_denominator', 'label': 'Show numerator and denominator as separate metrics',
                                    'rows': rows, 'ratio_measures': [k.measure.model_dump() for k in measures]})
             add('ratio', indices, [qid], 'A ratio KPI cannot be a chart metric; calculated fields are outside this app',
@@ -183,7 +184,7 @@ def diagnostics(snapshot, ledger, checker):
             add('coverage', [i], [row.question_id], 'Row must answer a selected question')
         if row.question_id in selected and row.section_id != sections[row.question_id]:
             add('page', [i], [row.question_id], 'Row must belong to its question section')
-        for status, message, evidence in component_errors(row.component, fields, checker):
+        for status, message, evidence in component_errors(row.component, fields, checker, rules):
             offers = []
             date = fields.get(row.component.date_dimension)
             if row.component.type == 'time_series' and (not date or date['type'] not in ('DATE', 'DATETIME', 'TIMESTAMP')):
@@ -196,7 +197,7 @@ def diagnostics(snapshot, ledger, checker):
                     replacement = row.model_copy(deep=True)
                     replacement.component = replacement.component.model_copy(update={'type': kind, 'dimensions': dimensions,
                         'date_dimension': None, 'breakdown': None, 'options': {}, 'sort': None})
-                    if not component_errors(replacement.component, fields, checker):
+                    if not component_errors(replacement.component, fields, checker, rules):
                         offers.append({'id': 'without_date', 'label': f'Use a {kind} without a date axis',
                                        'replace_indices': [i], 'rows': [replacement.model_dump()]})
                         break
@@ -226,14 +227,176 @@ def diagnostics(snapshot, ledger, checker):
     for error in snapshot.get('blueprint_errors', []):
         if error.get('question_id') is None:
             add('sql', list(range(len(bp.rows))), [], error['message'], 'needs_data', False)
+    if not source_invalid:
+        result.extend(observation_errors(snapshot, ledger, checker, bp, fields, connected, context, rules))
     return result
+
+
+AGGS = {'sum': 'SUM', 'avg': 'AVG', 'count': 'COUNT', 'count_distinct': 'COUNT DISTINCT', 'min': 'MIN', 'max': 'MAX'}
+TRUNC = {'DATE': ('DATE_TRUNC', 'date'), 'DATETIME': ('DATETIME_TRUNC', 'datetime'), 'TIMESTAMP': ('TIMESTAMP_TRUNC', 'datetime')}
+
+
+def laid_out(rows):
+    """{row index: component} as code lays each Blueprint row out (auto_layout), before placement."""
+    from dss.spec.auto_layout import _component
+    from dss.spec.models import Cell
+    return {i: {**_component('', row, Cell(col=1, row=1, w=1, h=1), set()), 'id': f'row_{i}'} for i, row in enumerate(rows)}
+
+
+def coverage(snapshot, ledger, checker, rows, derived_fields, observations=None):
+    return req.observation_coverage(snapshot, ledger, checker, laid_out(rows), observations=observations,
+        derived={f.name: f.expression for f in derived_fields}, palette=(snapshot.get('design') or {}).get('palette'))
+
+
+def observation_errors(snapshot, ledger, checker, bp, fields, connected, context, rules):
+    """architecture.md#Blueprint observation coverage: an observation no row fulfils is an issue on
+    its nearest row (repairable once, with code-built alternatives) or, with no such row, on none."""
+    observed = req.blueprint_observations(snapshot, ledger, checker)
+    if not observed:
+        return []
+    verdicts = coverage(snapshot, ledger, checker, bp.rows, bp.derived_fields, observed)
+    fulfilled = {r.id for r, _, _, indices, _ in verdicts if indices}
+    components = laid_out(bp.rows)
+    checked = {}  # candidate Blueprint digest -> observations it fulfils; gaps on one row share candidates
+    errors = []
+    for r, needs, properties, indices, unchecked in verdicts:
+        if indices:
+            continue
+        meaning = req.observation_meaning(r, needs, properties)
+        # Never the extraction text (it may echo boxes); an untitled record is named by its code-built meaning.
+        name = repr(meaning['title']) if meaning.get('title') else f"{meaning['id']} ({_describe(meaning)})"
+        error = dict(code='observation', indices=[], qids=[], status='needs_clarification', repairable=False, offers=[],
+                     evidence=[r.source.id], requirement=f'Observation {name}', requirement_id=r.id, meaning=req.meaning(r))
+        if unchecked:
+            errors.append({**error, 'message': f'Observation {name} cannot be checked against Blueprint rows: {unchecked}; '
+                           'clarify it or drop it'})
+            continue
+        nearest = _nearest(meaning, components)
+        if nearest is None:
+            missing = ({m['field'] for m in meaning.get('metrics', [])} | set(meaning.get('dimensions', []))) - fields.keys()
+            errors.append({**error, 'status': 'needs_data' if missing else 'needs_clarification',
+                           'message': f'Observation {name} has no Blueprint row: add a row for {_describe(meaning)}'})
+            continue
+        row = bp.rows[nearest]
+        offers = _observation_offers(snapshot, ledger, checker, bp, fields, connected, context, rules, r, meaning, nearest, fulfilled, observed, checked)
+        errors.append({**error, 'indices': [nearest], 'qids': [row.question_id] if row.question_id else [], 'repairable': True,
+                       'offers': offers, 'message': f'Observation {name}' + f' ({_describe(meaning)})' * bool(meaning.get('title'))
+                       + ' has no matching Blueprint row: '
+                       f'row {row.component.label!r} ' + '; '.join(_gaps(meaning, components[nearest], bp.derived_fields))})
+    return errors
+
+
+def _describe(meaning):
+    metrics = ' and '.join(f"{AGGS.get(m.get('aggregation'), '')}({m['field']})" for m in meaning.get('metrics', []) if m.get('field'))
+    text = f"a {meaning.get('type', 'chart')}" + (f' of {metrics}' if metrics else '')
+    grains = {m['date_grain'] for m in meaning.get('metrics', []) if m.get('date_grain')}
+    if grains:
+        text += f" by {'/'.join(sorted(grains))} of {meaning.get('date_field', 'its date')}"
+    return text + ''.join(f' by {d}' for d in meaning.get('dimensions', []))
+
+
+def _bound(component):
+    return set(component['dimensions']) | {m['field'] for m in component['metrics']} | {
+        component.get(k) for k in ('date_dimension', 'field', 'breakdown')} - {None}
+
+
+def _nearest(meaning, components):
+    """The row closest to an observation: most of its metrics, then its type, then its dimensions;
+    none shares a metric (or, for a metric-less observation, a dimension)."""
+    best, key = None, None
+    for i, c in components.items():
+        metrics = sum(any(m['field'] == want.get('field') and m['agg'] == want.get('aggregation') for m in c['metrics'])
+                      for want in meaning.get('metrics', []))
+        dimensions = len(set(meaning.get('dimensions', [])) & _bound(c))
+        score = (metrics, c['type'] == meaning.get('type'), dimensions)
+        if (metrics or (not meaning.get('metrics') and dimensions)) and (key is None or score > key):
+            best, key = i, score
+    return best
+
+
+def _gaps(meaning, component, derived_fields):
+    derived = {f.name: f.expression for f in derived_fields}
+    gaps = []
+    if meaning.get('type') and component['type'] != meaning['type']:
+        gaps.append(f"is a {component['type']}, the observation is a {meaning['type']}")
+    for want in meaning.get('metrics', []):
+        if not any(m['field'] == want.get('field') and m['agg'] == want.get('aggregation') for m in component['metrics']):
+            gaps.append(f"lacks {AGGS.get(want.get('aggregation'), '')}({want.get('field')})")
+        if want.get('date_grain') and not req._date_bucket({}, component.get('date_dimension'), want['date_grain'], derived=derived):
+            gaps.append(f"has no {req.grain_name(want['date_grain'])} bucket of {meaning.get('date_field') or 'its date'}"
+                        + (f" (it uses {component['date_dimension']})" if component.get('date_dimension') else ''))
+    gaps += [f'lacks the {d} dimension' for d in meaning.get('dimensions', []) if d not in _bound(component)]
+    return gaps or ['does not carry its title: another observation claims the matching row']
+
+
+def _bucket(meaning, component, fields, bp):
+    """A code-built derived field at the observed grain of the observed date field (the view builder
+    builds it; accept dry-runs it), with the row rebound to it, or None."""
+    grains = {req.grain_name(m['date_grain']) for m in meaning.get('metrics', []) if m.get('date_grain')}
+    source = meaning.get('date_field') or component.get('date_dimension')
+    if len(grains) != 1 or not grains <= set(req.GRAINS) or source not in fields or fields[source]['type'] not in TRUNC:
+        return None
+    grain = grains.pop()
+    function, kind = TRUNC[fields[source]['type']]
+    field = DerivedField(name=f'{source}_{grain}', expression=f'{function}({source}, {grain.upper()})', type=kind,
+                         description=f'{grain.capitalize()} of {source}')
+    existing = next((f for f in bp.derived_fields if f.name == field.name), None)
+    if (existing and existing != field) or (not existing and field.name in fields):
+        return None
+    return field, existing is None
+
+
+def _observation_offers(snapshot, ledger, checker, bp, fields, connected, context, rules, r, meaning, nearest, fulfilled, observed, checked):
+    """Observed type and date-bucket alternatives for the nearest row, offered only when the changed
+    Blueprint fulfils this observation and keeps every observation it already fulfilled."""
+    row, component = bp.rows[nearest], laid_out(bp.rows)[nearest]
+    kind = meaning.get('type')
+    bucket = _bucket(meaning, component, fields, bp)
+    candidates = []
+    if kind and kind != row.component.type:
+        candidates.append(('observed_type', f'Use a {kind} for {meaning.get("title") or _describe(meaning)}', kind, None))
+    if bucket:
+        candidates.append(('date_bucket', f'Add {bucket[0].name} ({bucket[0].description.lower()}) to the view for '
+                           f'{meaning.get("title") or _describe(meaning)}', None, bucket))
+        if kind and kind != row.component.type:
+            candidates.append(('observed_type_date_bucket', f'Use a {kind} by {bucket[0].description.lower()} for '
+                               f'{meaning.get("title") or _describe(meaning)}', kind, bucket))
+    offers = []
+    for oid, label, new_type, new_field in candidates:
+        update = {'type': new_type, 'options': {}} if new_type else {}
+        derived = list(bp.derived_fields)
+        if new_field:
+            field, added = new_field
+            derived += [field] if added else []
+            old = component.get('date_dimension') or meaning.get('date_field')
+            update['date_dimension'] = field.name if (row.component.date_dimension or (new_type or row.component.type) == 'time_series') else None
+            update['dimensions'] = [field.name if d == old else d for d in row.component.dimensions]
+            if row.component.sort and row.component.sort.field == old:
+                update['sort'] = row.component.sort.model_copy(update={'field': field.name})
+        replacement = row.model_copy(update={'component': row.component.model_copy(update=update)}, deep=True)
+        try:
+            view_fields = {f['name']: f for f in view.blueprint_fields(connected, bp.view_sources, derived)}
+            view.blueprint_sql(connected, bp.view_sources, derived, context_fields=[f.name for f in context.derived_fields])
+        except ValueError:
+            continue
+        if component_errors(replacement.component, view_fields, checker, rules):
+            continue
+        rows = [replacement if i == nearest else other for i, other in enumerate(bp.rows)]
+        key = req.digest([[r.model_dump() for r in rows], [f.model_dump() for f in derived]])
+        if key not in checked:
+            checked[key] = {v[0].id for v in coverage(snapshot, ledger, checker, rows, derived, observed) if v[3]}
+        after = checked[key]
+        if r.id in after and fulfilled <= after:
+            offers.append({'id': oid, 'label': label, 'replace': [{'index': nearest, 'row': replacement.model_dump()}],
+                           **({'derived_fields': [new_field[0].model_dump()]} if new_field and new_field[1] else {})})
+    return offers
 
 
 def issue_rows(snapshot, ledger, checker):
     rows = []
     for error in diagnostics(snapshot, ledger, checker):
         iid = 'bp_' + req.digest(error)[:24]
-        issue = req.Issue(id=iid, requirement=', '.join(error['qids']) or 'Blueprint view',
+        issue = req.Issue(id=iid, requirement=error.get('requirement') or ', '.join(error['qids']) or 'Blueprint view',
             status=error['status'], reason=error['message'], evidence=error['evidence'],
             alternatives=[req.Alternative(id=o['id'], label=o['label']) for o in error['offers']])
         rows.append((issue, error))
@@ -291,8 +454,16 @@ def decide(snapshot, ledger, checker, body):
         if target['code'] == 'row':
             drop_questions = [qid for qid in drop_questions if all(
                 r.question_id != qid or i in target['indices'] for i, r in enumerate(bp.rows))]
-        effect = offer or {'drop_questions': drop_questions}
-        if item.action == 'drop':
+        if target['code'] == 'observation':
+            # Dropping an observation is the user's explicit choice; its rows stay (a drop of rows is another issue's).
+            # No drop_questions: the nearest row's question keeps every question check.
+            effect = offer or {'drop_observation': target['requirement_id'], 'drop_questions': []}
+            if item.action == 'drop':
+                updated.decisions = [d for d in updated.decisions if d.get('requirement_id') != target['requirement_id']]
+                updated.decisions.append(req.observation_drop(snapshot, ledger, target['requirement_id'], issue.id))
+        else:
+            effect = offer or {'drop_questions': drop_questions}
+        if item.action == 'drop' and target['code'] != 'observation':
             remove_indices.update(target['indices'])
             if target['code'] == 'sql':
                 fresh['blueprint_errors'] = []
@@ -301,6 +472,12 @@ def decide(snapshot, ledger, checker, body):
         if 'rows' in effect:
             remove_indices.update(effect.get('replace_indices', target['indices']))
             additions.extend(effect['rows'])
+        for replaced in effect.get('replace', []):
+            bp.rows[replaced['index']] = BlueprintRow.model_validate(replaced['row'])
+        if effect.get('derived_fields'):
+            names = {f.name for f in bp.derived_fields}  # two offers of one batch may add the same bucket
+            bp.derived_fields += [DerivedField.model_validate(f) for f in effect['derived_fields'] if f['name'] not in names]
+            bp.view_table = None  # the code-built field needs the accept-time dry run
         if 'view_sources' in effect:
             bp.view_sources = ViewSources.model_validate(effect['view_sources'])
             bp.view_table = None  # explicit choice needs the accept-time dry run

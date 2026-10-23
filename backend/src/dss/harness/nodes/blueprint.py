@@ -127,6 +127,14 @@ def fallback_label(component):
     return text[:1].upper() + text[1:]
 
 
+def observations(db, build_id, folder):
+    """The recreate observations the rows must fulfil (architecture.md#Blueprint observation coverage),
+    as (meaning, label-free meaning) pairs. Reconciled meaning only; style and data builds have none."""
+    snapshot = req.inputs(db, build_id, folder)
+    found = req.blueprint_observations(snapshot, req.load(folder), Checker(load_registry()))
+    return [(req.observation_meaning(*o), req.observation_meaning(*o, labels=False)) for o in found]
+
+
 def inputs_path(folder):
     return folder / 'blueprint-inputs.json'
 
@@ -203,6 +211,7 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
     kept = [r for r in old.rows if r.question_id in kept_ids or (kept_ids and r.question_id is None)] if old else []
     metadata, summary = source_metadata(connected), catalog_summary()
     facts = join_facts(metadata)
+    observed = observations(harness.db, build_id, folder)
     retained = [f for f in old.derived_fields if f.name not in recorded.get('context_fields', [])] if old and kept_ids else []
     initial_view = ViewDraft(view_sources=old.view_sources if old and kept_ids else
         ViewSources(base=connected[0]['id'], joins=[], union=[]), derived_fields=derived_fields(context, [], retained))
@@ -235,7 +244,7 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                       'view': state['view'].model_dump()}
             schema = ViewDraft
         memory = blueprint_context(context, metadata, list(request_questions.values()), pages, summary, facts,
-            previous_view=state['view'].model_dump(), repair=repair)
+            previous_view=state['view'].model_dump(), repair=repair, observations=observed)
         check_reply(memory, secrets)
         llm_request.config.system_instruction = str(memory)
         llm_request.config.response_mime_type = 'application/json'

@@ -1,0 +1,1480 @@
+{
+ "about": "Task 22.1 (release 2.5 b_48ef72ff1bff, b_dfb67c24f176): recreate Blueprints that reported ready and then failed publish coverage. Rebuilt from read-only copies (sqlite backup API from ?mode=ro): the screenshot items (boxes in 0-1000 units), the extraction records as the capability_check model returned them (original mappings before reconciliation), the reference instructions, the confirmed KPIs, the connected columns, the selected questions and the planner rows. `dropped`: the records the user dropped in the build before drafting (monthly: o7, an undefined quantity metric; table: o3 and o4, unit conflicts, and the generic instruction); tests replay those drops. Rows are on one page: one date range and one dropdown control kept of the repeated per-page controls.",
+ "monthly": {
+  "build": "b_48ef72ff1bff",
+  "synthetic": false,
+  "instructions": "Recreate this dashboard with my sales data. Definitions: Revenue = SUM(revenue) in USD; Orders = COUNT(DISTINCT order_id); Units sold = SUM(quantity); Revenue by month = SUM(revenue) by month of order_date; Revenue by category = SUM(revenue) by category; Top products by revenue = SUM(revenue) and SUM(quantity) by product_name.",
+  "dropped": [
+   "o7"
+  ],
+  "items": [
+   {
+    "kind": "decoration",
+    "label": "Online Store Performance",
+    "box": {
+     "x": 0,
+     "y": 0,
+     "w": 1000,
+     "h": 96
+    },
+    "chart_candidate": null,
+    "metric_label": null,
+    "unit": null,
+    "aggregation": null,
+    "date_grain": null,
+    "confidence": "high"
+   },
+   {
+    "kind": "chart",
+    "label": "Revenue",
+    "box": {
+     "x": 20,
+     "y": 123,
+     "w": 307,
+     "h": 147
+    },
+    "chart_candidate": "scorecard",
+    "metric_label": "Revenue",
+    "unit": "USD",
+    "aggregation": null,
+    "date_grain": null,
+    "confidence": "high"
+   },
+   {
+    "kind": "chart",
+    "label": "Orders",
+    "box": {
+     "x": 347,
+     "y": 123,
+     "w": 307,
+     "h": 147
+    },
+    "chart_candidate": "scorecard",
+    "metric_label": "Orders",
+    "unit": null,
+    "aggregation": null,
+    "date_grain": null,
+    "confidence": "high"
+   },
+   {
+    "kind": "chart",
+    "label": "Units sold",
+    "box": {
+     "x": 673,
+     "y": 123,
+     "w": 307,
+     "h": 147
+    },
+    "chart_candidate": "scorecard",
+    "metric_label": "Units sold",
+    "unit": null,
+    "aggregation": null,
+    "date_grain": null,
+    "confidence": "high"
+   },
+   {
+    "kind": "chart",
+    "label": "Revenue by month",
+    "box": {
+     "x": 20,
+     "y": 293,
+     "w": 634,
+     "h": 347
+    },
+    "chart_candidate": "time_series",
+    "metric_label": "Revenue",
+    "unit": null,
+    "aggregation": null,
+    "date_grain": "month",
+    "confidence": "high"
+   },
+   {
+    "kind": "chart",
+    "label": "Revenue by category",
+    "box": {
+     "x": 673,
+     "y": 293,
+     "w": 307,
+     "h": 347
+    },
+    "chart_candidate": "bar",
+    "metric_label": "Revenue",
+    "unit": null,
+    "aggregation": null,
+    "date_grain": null,
+    "confidence": "high"
+   },
+   {
+    "kind": "chart",
+    "label": "Top products by revenue",
+    "box": {
+     "x": 20,
+     "y": 661,
+     "w": 960,
+     "h": 287
+    },
+    "chart_candidate": "table",
+    "metric_label": null,
+    "unit": null,
+    "aggregation": null,
+    "date_grain": null,
+    "confidence": "high"
+   }
+  ],
+  "extraction": {
+   "o2": {
+    "text": "Revenue scorecard",
+    "needs": [
+     {
+      "capability": "chart.scorecard"
+     },
+     {
+      "capability": "argument.title"
+     }
+    ],
+    "mappings": [
+     {
+      "label": "Revenue",
+      "field": "revenue",
+      "unit": "USD",
+      "aggregation": "sum"
+     }
+    ],
+    "properties": [
+     {
+      "path": "label",
+      "value": "Revenue"
+     }
+    ]
+   },
+   "o3": {
+    "text": "Orders scorecard",
+    "needs": [
+     {
+      "capability": "chart.scorecard"
+     },
+     {
+      "capability": "argument.title"
+     }
+    ],
+    "mappings": [
+     {
+      "label": "Orders",
+      "field": "order_id",
+      "aggregation": "count_distinct"
+     }
+    ],
+    "properties": [
+     {
+      "path": "label",
+      "value": "Orders"
+     }
+    ]
+   },
+   "o4": {
+    "text": "Units sold scorecard",
+    "needs": [
+     {
+      "capability": "chart.scorecard"
+     },
+     {
+      "capability": "argument.title"
+     }
+    ],
+    "mappings": [
+     {
+      "label": "Units sold",
+      "field": "quantity",
+      "aggregation": "sum"
+     }
+    ],
+    "properties": [
+     {
+      "path": "label",
+      "value": "Units sold"
+     }
+    ]
+   },
+   "o5": {
+    "text": "Revenue by month time series chart",
+    "needs": [
+     {
+      "capability": "chart.time_series",
+      "fields": {
+       "date_field": "order_date"
+      }
+     },
+     {
+      "capability": "argument.title"
+     }
+    ],
+    "mappings": [
+     {
+      "label": "Revenue",
+      "field": "revenue",
+      "aggregation": "sum",
+      "date_grain": "month"
+     }
+    ],
+    "properties": [
+     {
+      "path": "label",
+      "value": "Revenue by month"
+     }
+    ]
+   },
+   "o6": {
+    "text": "Revenue by category bar chart",
+    "needs": [
+     {
+      "capability": "chart.bar"
+     },
+     {
+      "capability": "argument.title"
+     }
+    ],
+    "mappings": [
+     {
+      "label": "Revenue",
+      "field": "revenue",
+      "aggregation": "sum"
+     },
+     {
+      "label": "category",
+      "field": "category"
+     }
+    ],
+    "properties": [
+     {
+      "path": "label",
+      "value": "Revenue by category"
+     }
+    ]
+   },
+   "o7": {
+    "text": "Top products by revenue table",
+    "needs": [
+     {
+      "capability": "chart.table"
+     },
+     {
+      "capability": "argument.title"
+     }
+    ],
+    "mappings": [
+     {
+      "label": "Revenue",
+      "field": "revenue",
+      "aggregation": "sum"
+     },
+     {
+      "label": "quantity",
+      "field": "quantity",
+      "aggregation": "sum"
+     },
+     {
+      "label": "product_name",
+      "field": "product_name"
+     }
+    ],
+    "properties": [
+     {
+      "path": "label",
+      "value": "Top products by revenue"
+     }
+    ]
+   },
+   "instructions": [
+    {
+     "text": "Revenue = SUM(revenue) in USD",
+     "needs": [
+      {
+       "capability": "argument.metric_agg",
+       "value": "sum"
+      }
+     ],
+     "mappings": [
+      {
+       "label": "Revenue",
+       "field": "revenue",
+       "unit": "USD",
+       "aggregation": "sum"
+      }
+     ]
+    },
+    {
+     "text": "Orders = COUNT(DISTINCT order_id)",
+     "needs": [
+      {
+       "capability": "argument.metric_agg",
+       "value": "count_distinct"
+      }
+     ],
+     "mappings": [
+      {
+       "label": "Orders",
+       "field": "order_id",
+       "aggregation": "count_distinct"
+      }
+     ]
+    },
+    {
+     "text": "Units sold = SUM(quantity)",
+     "needs": [
+      {
+       "capability": "argument.metric_agg",
+       "value": "sum"
+      }
+     ],
+     "mappings": [
+      {
+       "label": "Units sold",
+       "field": "quantity",
+       "aggregation": "sum"
+      }
+     ]
+    },
+    {
+     "text": "Revenue by month = SUM(revenue) by month of order_date",
+     "needs": [
+      {
+       "capability": "chart.time_series",
+       "fields": {
+        "date_field": "order_date"
+       }
+      },
+      {
+       "capability": "argument.metric_agg",
+       "value": "sum"
+      }
+     ],
+     "mappings": [
+      {
+       "label": "Revenue",
+       "field": "revenue",
+       "aggregation": "sum",
+       "date_grain": "month"
+      }
+     ]
+    },
+    {
+     "text": "Revenue by category = SUM(revenue) by category",
+     "needs": [
+      {
+       "capability": "chart.bar"
+      },
+      {
+       "capability": "argument.metric_agg",
+       "value": "sum"
+      }
+     ],
+     "mappings": [
+      {
+       "label": "Revenue",
+       "field": "revenue",
+       "aggregation": "sum"
+      },
+      {
+       "label": "category",
+       "field": "category"
+      }
+     ]
+    },
+    {
+     "text": "Top products by revenue = SUM(revenue) and SUM(quantity) by product_name.",
+     "needs": [
+      {
+       "capability": "chart.table"
+      },
+      {
+       "capability": "argument.metric_agg",
+       "value": "sum"
+      }
+     ],
+     "mappings": [
+      {
+       "label": "Revenue",
+       "field": "revenue",
+       "aggregation": "sum"
+      },
+      {
+       "label": "quantity",
+       "field": "quantity",
+       "aggregation": "sum"
+      },
+      {
+       "label": "product_name",
+       "field": "product_name"
+      }
+     ]
+    }
+   ]
+  },
+  "kpis": [
+   {
+    "id": "total_revenue",
+    "name": "Total Revenue",
+    "description": "Total gross revenue generated across all completed orders (SUM of revenue).",
+    "unit": "USD",
+    "measure": {
+     "field": "revenue",
+     "agg": "sum"
+    },
+    "ratio": null
+   },
+   {
+    "id": "total_orders",
+    "name": "Total Orders",
+    "description": "Distinct count of orders placed (COUNT_DISTINCT of order_id).",
+    "unit": null,
+    "measure": {
+     "field": "order_id",
+     "agg": "count_distinct"
+    },
+    "ratio": null
+   },
+   {
+    "id": "units_sold",
+    "name": "Units Sold",
+    "description": "Total quantity of item units sold across all transactions (SUM of quantity).",
+    "unit": null,
+    "measure": {
+     "field": "quantity",
+     "agg": "sum"
+    },
+    "ratio": null
+   },
+   {
+    "id": "average_order_value",
+    "name": "Average Order Value",
+    "description": "Average revenue generated per distinct order (Total Revenue divided by Total Orders).",
+    "unit": "USD",
+    "measure": null,
+    "ratio": {
+     "numerator": "total_revenue",
+     "denominator": "total_orders"
+    }
+   }
+  ],
+  "columns": [
+   {
+    "name": "order_id",
+    "type": "string",
+    "bq_type": "STRING",
+    "date_like": false
+   },
+   {
+    "name": "order_date",
+    "type": "date",
+    "bq_type": "DATE",
+    "date_like": false
+   },
+   {
+    "name": "region",
+    "type": "string",
+    "bq_type": "STRING",
+    "date_like": false
+   },
+   {
+    "name": "country",
+    "type": "string",
+    "bq_type": "STRING",
+    "date_like": false
+   },
+   {
+    "name": "category",
+    "type": "string",
+    "bq_type": "STRING",
+    "date_like": false
+   },
+   {
+    "name": "product_name",
+    "type": "string",
+    "bq_type": "STRING",
+    "date_like": false
+   },
+   {
+    "name": "customer_segment",
+    "type": "string",
+    "bq_type": "STRING",
+    "date_like": false
+   },
+   {
+    "name": "quantity",
+    "type": "number",
+    "bq_type": "INTEGER",
+    "date_like": false
+   },
+   {
+    "name": "unit_price",
+    "type": "number",
+    "bq_type": "FLOAT",
+    "date_like": false
+   },
+   {
+    "name": "revenue",
+    "type": "number",
+    "bq_type": "FLOAT",
+    "date_like": false
+   }
+  ],
+  "derived_fields": [],
+  "questions": {
+   "q1": {
+    "text": "What is the overall total revenue generated to date?",
+    "kpi_refs": [
+     "total_revenue"
+    ]
+   },
+   "q2": {
+    "text": "How many distinct orders were placed across the store?",
+    "kpi_refs": [
+     "total_orders"
+    ]
+   },
+   "q3": {
+    "text": "What is the total number of product units sold?",
+    "kpi_refs": [
+     "units_sold"
+    ]
+   },
+   "q5": {
+    "text": "How has total revenue trended month over month?",
+    "kpi_refs": [
+     "total_revenue"
+    ]
+   },
+   "q6": {
+    "text": "How does weekly order volume correlate with total revenue trends?",
+    "kpi_refs": [
+     "total_revenue",
+     "total_orders"
+    ]
+   },
+   "q8": {
+    "text": "Which product categories generate the highest total revenue?",
+    "kpi_refs": [
+     "total_revenue"
+    ]
+   },
+   "q9": {
+    "text": "What are the top-ranking products by total revenue?",
+    "kpi_refs": [
+     "total_revenue"
+    ]
+   }
+  },
+  "rows": [
+   {
+    "question_id": null,
+    "component": {
+     "type": "date_range",
+     "label": "Order Date Range",
+     "dimensions": [],
+     "metrics": [],
+     "date_dimension": "order_date",
+     "breakdown": null,
+     "sort": null,
+     "options": {}
+    }
+   },
+   {
+    "question_id": null,
+    "component": {
+     "type": "dropdown",
+     "label": "Region Filter",
+     "dimensions": [
+      "region"
+     ],
+     "metrics": [],
+     "date_dimension": null,
+     "breakdown": null,
+     "sort": null,
+     "options": {}
+    }
+   },
+   {
+    "question_id": "q1",
+    "component": {
+     "type": "scorecard",
+     "label": "Total Revenue",
+     "dimensions": [],
+     "metrics": [
+      {
+       "field": "revenue",
+       "agg": "sum"
+      }
+     ],
+     "date_dimension": null,
+     "breakdown": null,
+     "sort": null,
+     "options": {
+      "compact_numbers": true
+     }
+    }
+   },
+   {
+    "question_id": "q2",
+    "component": {
+     "type": "scorecard",
+     "label": "Total Orders",
+     "dimensions": [],
+     "metrics": [
+      {
+       "field": "order_id",
+       "agg": "count_distinct"
+      }
+     ],
+     "date_dimension": null,
+     "breakdown": null,
+     "sort": null,
+     "options": {
+      "compact_numbers": true
+     }
+    }
+   },
+   {
+    "question_id": "q3",
+    "component": {
+     "type": "scorecard",
+     "label": "Units Sold",
+     "dimensions": [],
+     "metrics": [
+      {
+       "field": "quantity",
+       "agg": "sum"
+      }
+     ],
+     "date_dimension": null,
+     "breakdown": null,
+     "sort": null,
+     "options": {
+      "compact_numbers": true
+     }
+    }
+   },
+   {
+    "question_id": "q5",
+    "component": {
+     "type": "time_series",
+     "label": "Revenue Trend Over Time",
+     "dimensions": [],
+     "metrics": [
+      {
+       "field": "revenue",
+       "agg": "sum"
+      }
+     ],
+     "date_dimension": "order_date",
+     "breakdown": null,
+     "sort": {
+      "field": "order_date",
+      "order": "asc"
+     },
+     "options": {}
+    }
+   },
+   {
+    "question_id": "q6",
+    "component": {
+     "type": "time_series",
+     "label": "Order Volume vs Revenue Trend",
+     "dimensions": [],
+     "metrics": [
+      {
+       "field": "revenue",
+       "agg": "sum"
+      },
+      {
+       "field": "order_id",
+       "agg": "count_distinct"
+      }
+     ],
+     "date_dimension": "order_date",
+     "breakdown": null,
+     "sort": {
+      "field": "order_date",
+      "order": "asc"
+     },
+     "options": {}
+    }
+   },
+   {
+    "question_id": "q8",
+    "component": {
+     "type": "bar",
+     "label": "Total Revenue by Category",
+     "dimensions": [
+      "category"
+     ],
+     "metrics": [
+      {
+       "field": "revenue",
+       "agg": "sum"
+      }
+     ],
+     "date_dimension": null,
+     "breakdown": null,
+     "sort": {
+      "field": "revenue",
+      "order": "desc"
+     },
+     "options": {
+      "orientation": "horizontal",
+      "stacked": false
+     }
+    }
+   },
+   {
+    "question_id": "q9",
+    "component": {
+     "type": "table",
+     "label": "Top Products by Total Revenue",
+     "dimensions": [
+      "product_name",
+      "category"
+     ],
+     "metrics": [
+      {
+       "field": "revenue",
+       "agg": "sum"
+      },
+      {
+       "field": "quantity",
+       "agg": "sum"
+      },
+      {
+       "field": "order_id",
+       "agg": "count_distinct"
+      }
+     ],
+     "date_dimension": null,
+     "breakdown": null,
+     "sort": {
+      "field": "revenue",
+      "order": "desc"
+     },
+     "options": {
+      "rows_per_page": 10
+     }
+    }
+   }
+  ]
+ },
+ "table": {
+  "build": "b_dfb67c24f176",
+  "synthetic": true,
+  "instructions": "Recreate this dashboard with generated sample data.",
+  "dropped": [
+   "instructions",
+   "o3",
+   "o4"
+  ],
+  "items": [
+   {
+    "kind": "decoration",
+    "label": "Online Store Performance",
+    "box": {
+     "x": 0,
+     "y": 0,
+     "w": 1000,
+     "h": 96
+    },
+    "chart_candidate": "text",
+    "metric_label": null,
+    "unit": null,
+    "aggregation": null,
+    "date_grain": null,
+    "confidence": "high"
+   },
+   {
+    "kind": "chart",
+    "label": "Revenue",
+    "box": {
+     "x": 20,
+     "y": 120,
+     "w": 307,
+     "h": 147
+    },
+    "chart_candidate": "scorecard",
+    "metric_label": "Revenue",
+    "unit": "USD",
+    "aggregation": "sum",
+    "date_grain": null,
+    "confidence": "high"
+   },
+   {
+    "kind": "chart",
+    "label": "Orders",
+    "box": {
+     "x": 347,
+     "y": 120,
+     "w": 306,
+     "h": 147
+    },
+    "chart_candidate": "scorecard",
+    "metric_label": "Orders",
+    "unit": "count",
+    "aggregation": "count",
+    "date_grain": null,
+    "confidence": "high"
+   },
+   {
+    "kind": "chart",
+    "label": "Units sold",
+    "box": {
+     "x": 673,
+     "y": 120,
+     "w": 307,
+     "h": 147
+    },
+    "chart_candidate": "scorecard",
+    "metric_label": "Units sold",
+    "unit": "count",
+    "aggregation": "sum",
+    "date_grain": null,
+    "confidence": "high"
+   },
+   {
+    "kind": "chart",
+    "label": "Revenue by month",
+    "box": {
+     "x": 20,
+     "y": 293,
+     "w": 633,
+     "h": 342
+    },
+    "chart_candidate": "time_series",
+    "metric_label": "Revenue",
+    "unit": "USD",
+    "aggregation": "sum",
+    "date_grain": "month",
+    "confidence": "high"
+   },
+   {
+    "kind": "chart",
+    "label": "Revenue by category",
+    "box": {
+     "x": 673,
+     "y": 293,
+     "w": 307,
+     "h": 342
+    },
+    "chart_candidate": "bar",
+    "metric_label": "Revenue",
+    "unit": "USD",
+    "aggregation": "sum",
+    "date_grain": null,
+    "confidence": "high"
+   },
+   {
+    "kind": "chart",
+    "label": "Top products by revenue",
+    "box": {
+     "x": 20,
+     "y": 660,
+     "w": 960,
+     "h": 282
+    },
+    "chart_candidate": "table",
+    "metric_label": "Revenue",
+    "unit": "USD",
+    "aggregation": "sum",
+    "date_grain": null,
+    "confidence": "high"
+   }
+  ],
+  "extraction": {
+   "o2": {
+    "text": "{\"kind\": \"chart\", \"label\": \"Revenue\", \"box\": {\"x\": 0.02, \"y\": 0.12, \"w\": 0.307, \"h\": 0.147}, \"chart_candidate\": \"scorecard\", \"metric_label\": \"Revenue\", \"unit\": \"USD\", \"aggregation\": \"sum\", \"date_grain\": null, \"confidence\": \"high\", \"id\": \"o2\"}",
+    "needs": [
+     {
+      "capability": "chart.scorecard"
+     },
+     {
+      "capability": "argument.title"
+     }
+    ],
+    "mappings": [
+     {
+      "label": "Revenue",
+      "field": "revenue",
+      "unit": "USD",
+      "aggregation": "sum"
+     }
+    ],
+    "component_ids": [
+     "o2"
+    ],
+    "properties": [
+     {
+      "path": "label",
+      "value": "Revenue"
+     }
+    ]
+   },
+   "o3": {
+    "text": "{\"kind\": \"chart\", \"label\": \"Orders\", \"box\": {\"x\": 0.347, \"y\": 0.12, \"w\": 0.306, \"h\": 0.147}, \"chart_candidate\": \"scorecard\", \"metric_label\": \"Orders\", \"unit\": \"count\", \"aggregation\": \"count\", \"date_grain\": null, \"confidence\": \"high\", \"id\": \"o3\"}",
+    "needs": [
+     {
+      "capability": "chart.scorecard"
+     },
+     {
+      "capability": "argument.title"
+     }
+    ],
+    "mappings": [
+     {
+      "label": "Orders",
+      "field": "order_id",
+      "unit": "count",
+      "aggregation": "count_distinct"
+     }
+    ],
+    "component_ids": [
+     "o3"
+    ],
+    "properties": [
+     {
+      "path": "label",
+      "value": "Orders"
+     }
+    ]
+   },
+   "o4": {
+    "text": "{\"kind\": \"chart\", \"label\": \"Units sold\", \"box\": {\"x\": 0.673, \"y\": 0.12, \"w\": 0.307, \"h\": 0.147}, \"chart_candidate\": \"scorecard\", \"metric_label\": \"Units sold\", \"unit\": \"count\", \"aggregation\": \"sum\", \"date_grain\": null, \"confidence\": \"high\", \"id\": \"o4\"}",
+    "needs": [
+     {
+      "capability": "chart.scorecard"
+     },
+     {
+      "capability": "argument.title"
+     }
+    ],
+    "mappings": [
+     {
+      "label": "Units sold",
+      "field": "units_sold",
+      "unit": "count",
+      "aggregation": "sum"
+     }
+    ],
+    "component_ids": [
+     "o4"
+    ],
+    "properties": [
+     {
+      "path": "label",
+      "value": "Units sold"
+     }
+    ]
+   },
+   "o5": {
+    "text": "{\"kind\": \"chart\", \"label\": \"Revenue by month\", \"box\": {\"x\": 0.02, \"y\": 0.293, \"w\": 0.633, \"h\": 0.342}, \"chart_candidate\": \"time_series\", \"metric_label\": \"Revenue\", \"unit\": \"USD\", \"aggregation\": \"sum\", \"date_grain\": \"month\", \"confidence\": \"high\", \"id\": \"o5\"}",
+    "needs": [
+     {
+      "capability": "chart.time_series",
+      "fields": {
+       "date_field": "order_date"
+      }
+     },
+     {
+      "capability": "argument.title"
+     }
+    ],
+    "mappings": [
+     {
+      "label": "Revenue",
+      "field": "revenue",
+      "unit": "USD",
+      "aggregation": "sum",
+      "date_grain": "month"
+     }
+    ],
+    "component_ids": [
+     "o5"
+    ],
+    "properties": [
+     {
+      "path": "label",
+      "value": "Revenue by month"
+     }
+    ]
+   },
+   "o6": {
+    "text": "{\"kind\": \"chart\", \"label\": \"Revenue by category\", \"box\": {\"x\": 0.673, \"y\": 0.293, \"w\": 0.307, \"h\": 0.342}, \"chart_candidate\": \"bar\", \"metric_label\": \"Revenue\", \"unit\": \"USD\", \"aggregation\": \"sum\", \"date_grain\": null, \"confidence\": \"high\", \"id\": \"o6\"}",
+    "needs": [
+     {
+      "capability": "chart.bar"
+     },
+     {
+      "capability": "argument.title"
+     }
+    ],
+    "mappings": [
+     {
+      "label": "Revenue",
+      "field": "revenue",
+      "unit": "USD",
+      "aggregation": "sum"
+     },
+     {
+      "label": "category",
+      "field": "category"
+     }
+    ],
+    "component_ids": [
+     "o6"
+    ],
+    "properties": [
+     {
+      "path": "label",
+      "value": "Revenue by category"
+     }
+    ]
+   },
+   "o7": {
+    "text": "{\"kind\": \"chart\", \"label\": \"Top products by revenue\", \"box\": {\"x\": 0.02, \"y\": 0.66, \"w\": 0.96, \"h\": 0.282}, \"chart_candidate\": \"table\", \"metric_label\": \"Revenue\", \"unit\": \"USD\", \"aggregation\": \"sum\", \"date_grain\": null, \"confidence\": \"high\", \"id\": \"o7\"}",
+    "needs": [
+     {
+      "capability": "chart.table"
+     },
+     {
+      "capability": "argument.title"
+     }
+    ],
+    "mappings": [
+     {
+      "label": "Revenue",
+      "field": "revenue",
+      "unit": "USD",
+      "aggregation": "sum"
+     },
+     {
+      "label": "product_name",
+      "field": "product_name"
+     }
+    ],
+    "component_ids": [
+     "o7"
+    ],
+    "properties": [
+     {
+      "path": "label",
+      "value": "Top products by revenue"
+     }
+    ]
+   },
+   "instructions": [
+    {
+     "text": "Recreate this dashboard with generated sample data.",
+     "needs": [],
+     "mappings": []
+    }
+   ]
+  },
+  "kpis": [
+   {
+    "id": "total_revenue",
+    "name": "Total Revenue",
+    "description": "Sum of transaction revenue in USD across all orders.",
+    "unit": "USD",
+    "measure": {
+     "field": "revenue",
+     "agg": "sum"
+    },
+    "ratio": null
+   },
+   {
+    "id": "total_orders",
+    "name": "Total Orders",
+    "description": "Distinct count of order identifiers.",
+    "unit": "orders",
+    "measure": {
+     "field": "order_id",
+     "agg": "count_distinct"
+    },
+    "ratio": null
+   },
+   {
+    "id": "total_units_sold",
+    "name": "Total Units Sold",
+    "description": "Total quantity of product units sold across all orders.",
+    "unit": "units",
+    "measure": {
+     "field": "units_sold",
+     "agg": "sum"
+    },
+    "ratio": null
+   },
+   {
+    "id": "average_order_value",
+    "name": "Average Order Value",
+    "description": "Average gross revenue per unique order (total_revenue divided by total_orders).",
+    "unit": "USD",
+    "measure": null,
+    "ratio": {
+     "numerator": "total_revenue",
+     "denominator": "total_orders"
+    }
+   },
+   {
+    "id": "average_units_per_order",
+    "name": "Average Units per Order",
+    "description": "Mean number of units purchased per order (total_units_sold divided by total_orders).",
+    "unit": "units/order",
+    "measure": null,
+    "ratio": {
+     "numerator": "total_units_sold",
+     "denominator": "total_orders"
+    }
+   }
+  ],
+  "columns": [
+   {
+    "name": "order_id",
+    "type": "string",
+    "bq_type": "STRING",
+    "date_like": false
+   },
+   {
+    "name": "order_date",
+    "type": "date",
+    "bq_type": "DATE",
+    "date_like": false
+   },
+   {
+    "name": "product_name",
+    "type": "string",
+    "bq_type": "STRING",
+    "date_like": false
+   },
+   {
+    "name": "category",
+    "type": "string",
+    "bq_type": "STRING",
+    "date_like": false
+   },
+   {
+    "name": "unit_price",
+    "type": "number",
+    "bq_type": "NUMERIC",
+    "date_like": false
+   },
+   {
+    "name": "units_sold",
+    "type": "number",
+    "bq_type": "INTEGER",
+    "date_like": false
+   },
+   {
+    "name": "revenue",
+    "type": "number",
+    "bq_type": "NUMERIC",
+    "date_like": false
+   },
+   {
+    "name": "sales_channel",
+    "type": "string",
+    "bq_type": "STRING",
+    "date_like": false
+   }
+  ],
+  "derived_fields": [],
+  "questions": {
+   "q1": {
+    "text": "What is the total revenue generated across all channels?",
+    "kpi_refs": [
+     "total_revenue"
+    ]
+   },
+   "q2": {
+    "text": "How many total orders have been completed?",
+    "kpi_refs": [
+     "total_orders"
+    ]
+   },
+   "q3": {
+    "text": "How many total units were sold across the portfolio?",
+    "kpi_refs": [
+     "total_units_sold"
+    ]
+   },
+   "q5": {
+    "text": "How does total revenue trend month over month throughout the year?",
+    "kpi_refs": [
+     "total_revenue"
+    ]
+   },
+   "q6": {
+    "text": "Which product categories generate the highest total revenue?",
+    "kpi_refs": [
+     "total_revenue"
+    ]
+   },
+   "q7": {
+    "text": "How does order volume distribute across different product categories?",
+    "kpi_refs": [
+     "total_orders"
+    ]
+   },
+   "q9": {
+    "text": "What are the top-selling products ranked by total revenue?",
+    "kpi_refs": [
+     "total_revenue"
+    ]
+   },
+   "q10": {
+    "text": "How does total revenue compare between online and retail sales channels?",
+    "kpi_refs": [
+     "total_revenue"
+    ]
+   },
+   "q11": {
+    "text": "Which products account for the highest total units sold?",
+    "kpi_refs": [
+     "total_units_sold"
+    ]
+   }
+  },
+  "rows": [
+   {
+    "question_id": null,
+    "component": {
+     "type": "date_range",
+     "label": "Order Date Range",
+     "dimensions": [],
+     "metrics": [],
+     "date_dimension": "order_date",
+     "breakdown": null,
+     "sort": null,
+     "options": {}
+    }
+   },
+   {
+    "question_id": null,
+    "component": {
+     "type": "dropdown",
+     "label": "Sales Channel Filter",
+     "dimensions": [
+      "sales_channel"
+     ],
+     "metrics": [],
+     "date_dimension": null,
+     "breakdown": null,
+     "sort": null,
+     "options": {}
+    }
+   },
+   {
+    "question_id": "q1",
+    "component": {
+     "type": "scorecard",
+     "label": "Total Revenue",
+     "dimensions": [],
+     "metrics": [
+      {
+       "field": "revenue",
+       "agg": "sum"
+      }
+     ],
+     "date_dimension": null,
+     "breakdown": null,
+     "sort": null,
+     "options": {
+      "compact_numbers": true
+     }
+    }
+   },
+   {
+    "question_id": "q2",
+    "component": {
+     "type": "scorecard",
+     "label": "Total Orders",
+     "dimensions": [],
+     "metrics": [
+      {
+       "field": "order_id",
+       "agg": "count_distinct"
+      }
+     ],
+     "date_dimension": null,
+     "breakdown": null,
+     "sort": null,
+     "options": {
+      "compact_numbers": true
+     }
+    }
+   },
+   {
+    "question_id": "q3",
+    "component": {
+     "type": "scorecard",
+     "label": "Total Units Sold",
+     "dimensions": [],
+     "metrics": [
+      {
+       "field": "units_sold",
+       "agg": "sum"
+      }
+     ],
+     "date_dimension": null,
+     "breakdown": null,
+     "sort": null,
+     "options": {
+      "compact_numbers": true
+     }
+    }
+   },
+   {
+    "question_id": "q5",
+    "component": {
+     "type": "time_series",
+     "label": "Total Revenue Trend Over Time",
+     "dimensions": [],
+     "metrics": [
+      {
+       "field": "revenue",
+       "agg": "sum"
+      }
+     ],
+     "date_dimension": "order_date",
+     "breakdown": null,
+     "sort": {
+      "field": "order_date",
+      "order": "asc"
+     },
+     "options": {}
+    }
+   },
+   {
+    "question_id": "q6",
+    "component": {
+     "type": "bar",
+     "label": "Total Revenue by Product Category",
+     "dimensions": [
+      "category"
+     ],
+     "metrics": [
+      {
+       "field": "revenue",
+       "agg": "sum"
+      }
+     ],
+     "date_dimension": null,
+     "breakdown": null,
+     "sort": {
+      "field": "revenue",
+      "order": "desc"
+     },
+     "options": {
+      "orientation": "horizontal",
+      "stacked": false
+     }
+    }
+   },
+   {
+    "question_id": "q7",
+    "component": {
+     "type": "pie",
+     "label": "Order Volume Distribution by Category",
+     "dimensions": [
+      "category"
+     ],
+     "metrics": [
+      {
+       "field": "order_id",
+       "agg": "count_distinct"
+      }
+     ],
+     "date_dimension": null,
+     "breakdown": null,
+     "sort": {
+      "field": "order_id",
+      "order": "desc"
+     },
+     "options": {
+      "donut": true
+     }
+    }
+   },
+   {
+    "question_id": "q9",
+    "component": {
+     "type": "bar",
+     "label": "Top Products by Total Revenue",
+     "dimensions": [
+      "product_name"
+     ],
+     "metrics": [
+      {
+       "field": "revenue",
+       "agg": "sum"
+      }
+     ],
+     "date_dimension": null,
+     "breakdown": null,
+     "sort": {
+      "field": "revenue",
+      "order": "desc"
+     },
+     "options": {
+      "orientation": "horizontal",
+      "stacked": false
+     }
+    }
+   },
+   {
+    "question_id": "q10",
+    "component": {
+     "type": "pie",
+     "label": "Total Revenue by Sales Channel",
+     "dimensions": [
+      "sales_channel"
+     ],
+     "metrics": [
+      {
+       "field": "revenue",
+       "agg": "sum"
+      }
+     ],
+     "date_dimension": null,
+     "breakdown": null,
+     "sort": {
+      "field": "revenue",
+      "order": "desc"
+     },
+     "options": {
+      "donut": true
+     }
+    }
+   },
+   {
+    "question_id": "q11",
+    "component": {
+     "type": "bar",
+     "label": "Top Products by Total Units Sold",
+     "dimensions": [
+      "product_name"
+     ],
+     "metrics": [
+      {
+       "field": "units_sold",
+       "agg": "sum"
+      }
+     ],
+     "date_dimension": null,
+     "breakdown": null,
+     "sort": {
+      "field": "units_sold",
+      "order": "desc"
+     },
+     "options": {
+      "orientation": "horizontal",
+      "stacked": false
+     }
+    }
+   }
+  ]
+ }
+}

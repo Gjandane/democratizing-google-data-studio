@@ -625,7 +625,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: no relaxed coverage, automatic drops or bypass of the 18.1 freshness and 18.2 binding rules; span text guarded like other spans (no secrets, no raw model output); no added model call; candidate publication and rollback unchanged.
 
 ## Phase 22: Audit fixes (final audit 2026-10-23)
-- [ ] 22.1 Blueprint feasibility covers recreate observations
+- [x] 22.1 Blueprint feasibility covers recreate observations
   - Goal: a recreate Blueprint that reports ready publishes at accept; a gap between the Blueprint rows and the screenshot's observations shows at the Blueprint as an Issue with an alternative instead of a 422 at accept with no recovery (b_48ef72ff1bff: observed monthly series, no month bucket; b_dfb67c24f176: observed table, bar row).
   - Spec: docs/architecture.md#Blueprint observation coverage; docs/architecture.md#Recreate definition reconciliation
   - Files: src/dss/harness/context.py, src/dss/harness/nodes/blueprint.py, src/dss/spec/feasibility.py, src/dss/spec/requirements.py, prompts/v1/blueprint.md, tests/test_blueprint.py, tests/test_feasibility.py, tests/test_render.py, tests/test_context.py, tests/data/recreate_blueprint_gaps.json

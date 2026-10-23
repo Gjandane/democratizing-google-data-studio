@@ -11,6 +11,7 @@ import pytest
 from dss.harness.nodes.render import artifacts, perform
 from dss.render import background
 from dss.render.prototype import aggregate_data, aggregate_sql, chart_option, render
+from dss.spec import feasibility
 from dss.spec.layout import box
 from dss.spec.models import DashboardSpec, Sort
 from test_blueprint import blueprint_api  # noqa: F401  (fixture)
@@ -497,7 +498,10 @@ def published_proof(folder):
 
 
 RECREATE = json.loads((Path(__file__).parent / 'data/recreate_definitions.json').read_text(encoding='utf-8'))
-OBSERVED = ['o2', 'o3', 'o4', 'o5', 'o6']
+
+
+def observed(data):
+    return sorted(k for k in data['extraction'] if k != 'instructions')
 
 
 def recreate_build(blueprint_api, monkeypatch, matching=True, data=RECREATE, synthetic=False, designer=None, designed=True):
@@ -514,17 +518,23 @@ def recreate_build(blueprint_api, monkeypatch, matching=True, data=RECREATE, syn
     context['datasets'][0]['source_id'] = sid
     if not matching:
         context['kpis'] = data['unmatched_kpis']
+    if 'kpis' in data:
+        # A release build's own confirmed KPIs and connected columns (22.1 gap fixtures).
+        context.update(kpis=data['kpis'], derived_fields=[])
+        with app.state.db.connect() as conn:
+            conn.execute('UPDATE sources SET columns_json=? WHERE id=?', (json.dumps([{**c, 'sample': []} for c in data['columns']]), sid))
     artifact(folder, Context.model_validate(context))
     ids = dict(zip(('revenue', 'orders', 'units'), [k['id'] for k in context['kpis']]))
     outline = fixture('outline')
     template = outline['sections'][0]['questions'][0]
     outline['sections'] = [{'id': 's1', 'title': 'Store performance', 'purpose': 'Recreate the reference.', 'questions': [
-        {**template, 'id': qid, 'text': text, 'kpi_refs': [ids[k] for k in dict.fromkeys(
-            r['kpi'] for r in data['rows'] if r['question_id'] == qid)]} for qid, text in data['questions'].items()]}]
+        {**template, 'id': qid, **question} if isinstance(question, dict) else
+        {**template, 'id': qid, 'text': question, 'kpi_refs': [ids[k] for k in dict.fromkeys(
+            r['kpi'] for r in data['rows'] if r['question_id'] == qid)]} for qid, question in data['questions'].items()]}]
     artifact(folder, Outline.model_validate(outline))
     value['rows'] = [{'question_id': r['question_id'], 'section_id': 's1', 'page': 1, 'note': '', 'status': 'ok',
                       'issue_ids': [], 'component': r['component']} for r in data['rows']]
-    value['derived_fields'] = [*value['derived_fields'], data['derived_field']]
+    value['derived_fields'] = data['derived_fields'] if 'derived_fields' in data else [*value['derived_fields'], data['derived_field']]
     llm.replies = [json.dumps(value)]
     bq.created, bq.deleted = [], []
     bq.dry_run = lambda sql: bq.sql.append(sql) or [SimpleNamespace(name=n, field_type=t, mode='NULLABLE')
@@ -557,7 +567,7 @@ def upload_recreate(build, instructions=''):
     reference = build.client.get(f'/api/builds/{build.bid}/reference-images').json()
     # One extraction reply for exactly the new sources; code reconciles every definition.
     extraction = build.data['extraction']
-    items = [{'source_id': f'{reference["id"]}:{oid}', **extraction[oid]} for oid in OBSERVED]
+    items = [{'source_id': f'{reference["id"]}:{oid}', **extraction[oid]} for oid in observed(build.data)]
     if instructions:
         records = extraction['instructions']
         items += [{'source_id': reference['id'] + ':instructions', **record}
@@ -570,7 +580,7 @@ def upload_recreate(build, instructions=''):
 def observations(build):
     from dss.spec import requirements as req
     rows = [r for r in req.load(build.folder).requirements if r.source.kind == 'image']
-    assert sorted(r.source.item_id for r in rows) == OBSERVED  # none dropped, none duplicated
+    assert sorted(r.source.item_id for r in rows) == observed(build.data)  # none dropped, none duplicated
     return rows
 
 
@@ -588,14 +598,17 @@ def accept(build):
     assert build.client.get(f'/api/builds/{build.bid}').json()['stage'] == 'prototype'
 
 
-def assert_bound(build, evidence):
-    """Every observation keeps its image provenance, its definition evidence and real component ids."""
+def assert_bound(build, evidence, dropped=()):
+    """Every observation keeps its image provenance, its definition evidence and real component ids
+    (`dropped`: item ids the user dropped)."""
     from dss.spec import requirements as req
     ledger = req.load(build.folder)
     spec = DashboardSpec.model_validate_json((build.folder / 'spec.json').read_text(encoding='utf-8'))
     components = {c.id: c for p in spec.pages for c in p.components}
     for row in observations(build):
         assert row.source.reference_id and row.source.image_id and row.source.item_id
+        if row.source.item_id in dropped:
+            continue
         proof = ledger.verification[row.id]
         bound = [entry['fulfilled_by'] for entry in proof if 'fulfilled_by' in entry]
         assert bound and bound[0] and set(bound[0]) <= components.keys(), (row.source.item_id, proof)
@@ -754,6 +767,8 @@ def test_failed_publish_coverage_records_its_errors_in_the_publish_span(blueprin
     trend = next(r for r in data['rows'] if r['component']['type'] == 'time_series')
     trend['component'].update(date_dimension='order_date', sort={'field': 'order_date', 'order': 'asc'})
     build = recreate_build(blueprint_api, monkeypatch, data=data, designed=False)
+    # 22.1 shows this gap at the Blueprint; without that check the Blueprint is ready, as it was in 2.5.
+    monkeypatch.setattr(feasibility, 'observation_errors', lambda *args: [])
     upload_recreate(build, data['instructions'])
     assert feasibility_check(build.client, build.app, build.bid)['state'] == 'ready'
     from test_blueprint import confirm
@@ -780,6 +795,199 @@ def test_failed_publish_coverage_records_its_errors_in_the_publish_span(blueprin
             "SELECT payload_json FROM events WHERE run_id=? AND kind='run.finished'", (accepted.json()['run_id'],))]
     assert finished == [{'run_id': accepted.json()['run_id'], 'node': 'prototype', 'status': 'error',
                          'error': 'Candidate no longer fulfills the active requirements'}]  # run.finished shape unchanged
+
+
+GAPS = json.loads((Path(__file__).parent / 'data/recreate_blueprint_gaps.json').read_text(encoding='utf-8'))
+# Each release build's gaps: {observation item id: the alternative that closes it}.
+GAP_FIXES = {'monthly': {'o5': 'date_bucket'}, 'table': {'o5': 'date_bucket', 'o7': 'observed_type'}}
+
+
+def gap_build(blueprint_api, monkeypatch, case):
+    """A gap fixture build, ready before drafting, whose planner answers the draft and the one row
+    repair with the release build's own rows."""
+    data = GAPS[case]
+    build = recreate_build(blueprint_api, monkeypatch, data=data, synthetic=data['synthetic'], designed=False)
+    build.rid = upload_recreate(build, data['instructions'])
+    assessment = feasibility_check(build.client, build.app, build.bid)
+    # The user's own drops in the release build, replayed before drafting.
+    from dss.spec import requirements as req
+    owners = {r.text: r.source.item_id or 'instructions' for r in req.load(build.folder).requirements}
+    pending = [i for i in assessment['issues'] if i['resolution'] == 'unresolved']
+    assert {owners[i['requirement']] for i in pending} == set(data['dropped']), pending
+    dropped = build.client.post(f'/api/builds/{build.bid}/feasibility/decisions', json={'assessment_id': assessment['id'],
+        'decisions': [{'issue_id': i['id'], 'action': 'drop', 'alternative_id': None} for i in pending]})
+    assert dropped.status_code == 200, dropped.text
+    assessment = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+    assert assessment['state'] == 'ready', assessment['issues']
+    rows = build.value['rows']
+    build.llm.replies = [json.dumps(build.value), json.dumps({'rows': [r for r in rows if r['question_id'] in ('q5', 'q9')]})]
+    return build
+
+
+def gap_issues(assessment, build):
+    """{observation item id: its unresolved Blueprint issue} (instruction records get their own)."""
+    from dss.spec import requirements as req
+    titles = {r.source.item_id: next(p.value for p in r.properties if p.path == 'label')
+              for r in req.load(build.folder).requirements if r.source.kind == 'image'}
+    return {oid: issue for issue in assessment['issues'] for oid, title in titles.items()
+            if issue['requirement'] == f'Observation {title!r}' and issue['resolution'] == 'unresolved'}
+
+
+@pytest.mark.parametrize('case', ['monthly', 'table'])
+def test_recreate_gaps_show_at_the_blueprint_and_publish_after_the_decision(blueprint_api, monkeypatch, case):
+    """Final audit 2026-10-23 (b_48ef72ff1bff, b_dfb67c24f176): the Blueprint reported ready and accept then
+    failed publish coverage with no recovery. Each gap is now an Issue on the Assessment with its
+    code-built alternative; the decision makes the Blueprint ready, and accept publishes."""
+    from test_blueprint import choose, confirm
+    build = gap_build(blueprint_api, monkeypatch, case)
+    confirm(build.client, build.app, build.bid)
+    assert build.llm.calls == 2  # the draft and the one existing row repair, never a second
+    repair = str(build.llm.seen[1].config.system_instruction)
+    assert 'has no matching Blueprint row' in repair and 'Recreate observations' in repair
+    assessment = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+    assert assessment['state'] == 'blocked'
+    gaps = gap_issues(assessment, build)
+    assert gaps.keys() == GAP_FIXES[case].keys(), assessment['issues']
+    for oid, issue in gaps.items():
+        assert issue['status'] == 'needs_clarification' and 'no matching Blueprint row' in issue['reason']
+        assert GAP_FIXES[case][oid] in {a['id'] for a in issue['alternatives']}, issue
+    assert 'month bucket of order_date' in gaps['o5']['reason']
+    assert 'order_date_month' in ' '.join(a['label'] for a in gaps['o5']['alternatives'])
+    if case == 'table':
+        assert 'is a bar, the observation is a table' in gaps['o7']['reason']
+    # Accept before deciding is refused like any other blocked row.
+    refused = build.client.post(f'/api/builds/{build.bid}/blueprint/accept')
+    assert refused.status_code == 409 and refused.json()['error']['code'] == 'feasibility_blocked'
+    assert set(refused.json()['error']['detail']['issue_ids']) >= {i['id'] for i in gaps.values()}
+    for oid, fix in GAP_FIXES[case].items():
+        current = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+        decided = choose(build.client, build.bid, current, gap_issues(current, build)[oid], fix)
+        assert decided.status_code == 200, decided.text
+    ready = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+    assert ready['state'] == 'ready', [i['reason'] for i in ready['issues'] if i['resolution'] == 'unresolved']
+    assert build.llm.calls == 2  # the decision made it ready without a model call
+    blueprint = build.client.get(f'/api/builds/{build.bid}/blueprint').json()
+    assert any(f['name'] == 'order_date_month' and f['expression'] == 'DATE_TRUNC(order_date, MONTH)'
+               for f in blueprint['derived_fields'])
+    assert blueprint['view_table'] is None and all(r['status'] == 'ok' for r in blueprint['rows'])
+    accept(build)
+    kpi = {'Revenue': 'kpi:total_revenue', 'Orders': 'kpi:total_orders', 'Units sold': 'kpi:units_sold'}
+    instructions = [] if 'instructions' in build.data['dropped'] else [build.rid + ':instructions']
+    assert_bound(build, lambda mapping: [kpi[mapping['label']], *instructions], build.data['dropped'])
+    from dss.spec import requirements as req
+    drops = {d['requirement_id'] for d in req.load(build.folder).decisions if d['action'] == 'drop'}
+    # Only the user's own earlier drops: code dropped no observation.
+    assert {r.source.item_id for r in observations(build) if r.id in drops} == set(build.data['dropped']) - {'instructions'}
+    spec = DashboardSpec.model_validate_json((build.folder / 'spec.json').read_text(encoding='utf-8'))
+    components = {c.label: c for p in spec.pages for c in p.components}
+    assert (components['Revenue by month'].type, components['Revenue by month'].date_dimension) == ('time_series', 'order_date_month')
+    if case == 'table':
+        assert components['Top products by revenue'].type == 'table'
+    fresh = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+    assert fresh['state'] == 'ready' and not fresh['prototype_stale'], fresh
+    executes(build.client, build.app, build.bid, monkeypatch)
+
+
+@pytest.mark.parametrize('case', ['monthly', 'table'])
+def test_recreate_gap_fixtures_reproduce_the_release_failure(blueprint_api, monkeypatch, case):
+    """Without the Blueprint observation check (the 2.5 code) each fixture's Blueprint is ready and accept
+    fails publish coverage on exactly its gap observations."""
+    from test_blueprint import confirm
+    from test_context_node import wait
+    monkeypatch.setattr(feasibility, 'observation_errors', lambda *args: [])
+    build = gap_build(blueprint_api, monkeypatch, case)
+    confirm(build.client, build.app, build.bid)
+    assert build.client.get(f'/api/builds/{build.bid}/feasibility').json()['state'] == 'ready'
+    accepted = build.client.post(f'/api/builds/{build.bid}/blueprint/accept')
+    assert accepted.status_code == 202, accepted.text
+    wait(build.app)
+    trace, recorded = spans(build.app, accepted.json()['run_id'])
+    assert (trace['status'], trace['error']) == ('error', 'invalid_request')
+    from dss.spec import requirements as req
+    failed = {e['path'].removeprefix('requirements.') for e in next(s for s in recorded if s['node'] == 'publish')['coverage_errors']}
+    items = {r.id: r.source.item_id for r in req.load(build.folder).requirements if r.source.kind == 'image'}
+    assert {items[rid] for rid in failed if rid in items} == GAP_FIXES[case].keys()
+
+
+def test_recreate_planner_that_follows_the_observations_is_ready_on_first_draft(blueprint_api, monkeypatch):
+    """The blueprint context carries the observations; a planner that drafts its rows from that section
+    (a month bucket for the observed grain, the observed type on the row of its metric and dimension)
+    needs no repair or decision, and accept publishes."""
+    from types import SimpleNamespace
+    from test_blueprint import confirm
+    from test_context_node import ContextLLM
+    build = gap_build(blueprint_api, monkeypatch, 'table')
+    base = build.value
+
+    class Planner(ContextLLM):
+        async def generate_content_async(self, llm_request, stream=False):
+            text = str(llm_request.config.system_instruction)
+            observed = json.loads(text.split('Recreate observations:', 1)[1].split('\n', 1)[1].split('\n\n', 1)[0])
+            draft = copy.deepcopy(base)
+            for o in observed:
+                metrics = [{'field': m['field'], 'agg': m['aggregation']} for m in o.get('metrics', [])]
+                rows = [r['component'] for r in draft['rows'] if all(m in r['component']['metrics'] for m in metrics)
+                        and set(o.get('dimensions', [])) <= set(r['component']['dimensions'])]
+                grain = next((m['date_grain'] for m in o.get('metrics', []) if m.get('date_grain')), None)
+                if grain:
+                    name = f"{o['date_field']}_{grain}"
+                    draft['derived_fields'].append({'name': name, 'expression': f"DATE_TRUNC({o['date_field']}, {grain.upper()})",
+                                                    'type': 'date', 'description': f"{grain} of {o['date_field']}"})
+                    for c in (c for c in rows if c['type'] == o['type']):
+                        c.update(date_dimension=name, sort={'field': name, 'order': 'asc'})
+                elif rows and not any(c['type'] == o['type'] for c in rows):
+                    rows[0].update(type=o['type'], options={})
+            self.replies = [json.dumps(draft)]
+            async for response in super().generate_content_async(llm_request, stream):
+                yield response
+    planner = Planner(replies=[], seen=[])
+    monkeypatch.setattr(build.app.state.models, 'llm_for', lambda action: planner)
+    bq = blueprint_api[5]
+    bq.dry_run = lambda sql: bq.sql.append(sql) or [SimpleNamespace(name='order_date_month', field_type='DATE', mode='NULLABLE')]
+    confirm(build.client, build.app, build.bid)
+    section = str(planner.seen[0].config.system_instruction).split('Recreate observations:', 1)[1].split('\n\n', 1)[0]
+    assert '"title":"Top products by revenue"' in section and 'box' not in section and 'confidence' not in section
+    assessment = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+    assert planner.calls == 1 and assessment['state'] == 'ready', [i['reason'] for i in assessment['issues'] if i['resolution'] == 'unresolved']
+    accept(build)
+    assert_bound(build, lambda mapping: ['kpi:total_revenue'], build.data['dropped'])
+
+
+def test_recreate_gap_check_goes_stale_when_the_reference_is_removed(blueprint_api, monkeypatch):
+    """A reference removed after drafting marks the Blueprint check stale (existing freshness rules), never ready."""
+    from test_blueprint import choose, confirm
+    build = gap_build(blueprint_api, monkeypatch, 'monthly')
+    confirm(build.client, build.app, build.bid)
+    assessment = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+    assert choose(build.client, build.bid, assessment, gap_issues(assessment, build)['o5'], 'date_bucket').status_code == 200
+    assert build.client.get(f'/api/builds/{build.bid}/feasibility').json()['state'] == 'ready'
+    assert build.client.delete(f'/api/builds/{build.bid}/reference-images').status_code == 204
+    assert build.client.get(f'/api/builds/{build.bid}/feasibility').json()['state'] == 'stale'
+    refused = build.client.post(f'/api/builds/{build.bid}/blueprint/accept')
+    assert refused.status_code == 409 and refused.json()['error']['code'] == 'feasibility_blocked', refused.text
+
+
+def test_recreate_gap_drop_is_an_explicit_recorded_choice(blueprint_api, monkeypatch):
+    """Code never drops an observation; a user's drop is recorded with its provenance and keeps the rows."""
+    from test_blueprint import choose, confirm
+    build = gap_build(blueprint_api, monkeypatch, 'table')
+    confirm(build.client, build.app, build.bid)
+    before = build.client.get(f'/api/builds/{build.bid}/blueprint').json()['rows']
+    assessment = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+    issue = gap_issues(assessment, build)['o7']
+    assert choose(build.client, build.bid, assessment, issue).status_code == 200
+    from dss.spec import requirements as req
+    ledger = req.load(build.folder)
+    table = next(r for r in ledger.requirements if r.source.item_id == 'o7')
+    drop = next(d for d in ledger.decisions if d['requirement_id'] == table.id)
+    assert (drop['action'], drop['issue_id'], drop['source_id']) == ('drop', issue['id'], table.source.id)
+    # Dropping the observation waives none of its nearest row's question checks.
+    assert [d['effect']['drop_questions'] for d in ledger.blueprint_decisions if d['issue']['id'] == issue['id']] == [[]]
+    after = build.client.get(f'/api/builds/{build.bid}/blueprint').json()['rows']
+    assert [r['component'] for r in after] == [r['component'] for r in before]
+    current = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+    assert {i['id']: i['resolution'] for i in current['issues']}[issue['id']] == 'dropped'
+    assert 'o7' not in gap_issues(current, build) and 'o5' in gap_issues(current, build)
 
 
 def test_html_contract_geometry_layers(dashboard):

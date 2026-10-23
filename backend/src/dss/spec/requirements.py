@@ -22,6 +22,7 @@ MAX_REQUIREMENTS = 40
 MAX_ISSUES = 20
 # 1-5 pages x 12 rows (architecture.md#Multi-page feasibility scope); 24 is the Outline question limit.
 MAX_COMPONENTS = 60
+GRAINS = ('day', 'week', 'month', 'quarter', 'year')
 
 
 class Strict(BaseModel):
@@ -1392,6 +1393,23 @@ def observed_labels(snapshot, ledger, checker):
     return labels if after < before else {}
 
 
+def _covered(r, snapshot, ledger, checker):
+    """(needs, properties) coverage proves for `r` after its explicit choices; None once a drop retires it."""
+    choice = _choice(r, 'unknown', snapshot, ledger, checker)
+    if choice and choice['action'] == 'drop':
+        return None
+    needs = []
+    for i, need in enumerate(r.needs):
+        if f'need:{i}' in r.superseded:
+            continue
+        choice = _choice(r, f"need:{i}", snapshot, ledger, checker)
+        if choice and choice["action"] == "drop":
+            return None
+        needs.extend([capabilities.Need.model_validate(n) for n in choice["alternative"]["needs"]]
+                     if choice else [need])
+    return needs, [p for i, p in enumerate(r.properties) if f'property:{i}' not in r.superseded]
+
+
 def coverage_errors(snapshot, ledger, checker, *, bindings=None, titles=None):
     """Verify original intent against the candidate, never against a reduced model ledger.
     `bindings` collects {requirement id: fulfilling component ids}; `titles` {requirement id:
@@ -1423,23 +1441,10 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None, titles=None):
             continue
         if r.component_ids and set(r.component_ids) <= removed:
             continue  # A later removal comment retired every item this row styled.
-        choice = _choice(r, 'unknown', snapshot, ledger, checker)
-        if choice and choice['action'] == 'drop':
+        covered = _covered(r, snapshot, ledger, checker)
+        if covered is None:
             continue
-        needs = []
-        dropped = False
-        for i, need in enumerate(r.needs):
-            if f'need:{i}' in r.superseded:
-                continue
-            choice = _choice(r, f"need:{i}", snapshot, ledger, checker)
-            if choice and choice["action"] == "drop":
-                dropped = True
-                break
-            needs.extend([capabilities.Need.model_validate(n) for n in choice["alternative"]["needs"]]
-                         if choice else [need])
-        if dropped:
-            continue
-        properties = [p for i, p in enumerate(r.properties) if f'property:{i}' not in r.superseded]
+        needs, properties = covered
         if not needs and not properties and r.superseded and not r.mappings:
             continue
         active = r.model_copy(update={'properties': properties})
@@ -1492,6 +1497,125 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None, titles=None):
     return errors
 
 
+def blueprint_observations(snapshot, ledger, checker):
+    """The recreate reference's records publish coverage proves on a component, as (requirement,
+    needs, properties) after their choices (architecture.md#Blueprint observation coverage). Image
+    observations and instruction records alike, since coverage checks both. Left out: dropped,
+    retired and layout-only records, and those with an unresolved issue of their own (that verdict
+    stands). A stale one stays in: evaluate blocks it with its own obs_stale issue. Every other
+    build: none."""
+    reference = snapshot.get('reference') or {}
+    if reference.get('mode') != 'recreate':
+        return []
+    own = {r.id for issue, r, _, _ in _requirement_issues(snapshot, ledger, checker) if issue.resolution == 'unresolved'}
+    removed = {cid for r in ledger.requirements if (cid := removal(r))}
+    result = []
+    for r in ledger.requirements:
+        if (r.source.kind not in ('image', 'reference') or r.source.reference_id != reference['id'] or r.id in own
+                or audience_requirement(r, ledger) or removal(r) or r.mapping_origins.get('origin') == 'outline_other'
+                or (r.component_ids and set(r.component_ids) <= removed)):
+            continue
+        covered = _covered(r, snapshot, ledger, checker)
+        if covered is None:
+            continue
+        needs, properties = covered
+        if not needs and not properties and r.superseded and not r.mappings:
+            continue
+        if not r.component_ids and not r.mappings and needs and all(n.capability.startswith('layout.') for n in needs):
+            continue  # Every recipe sets the canvas and the page background.
+        result.append((r, needs, properties))
+    return result
+
+
+def observation_meaning(r, needs, properties, *, labels=True):
+    """One observation's reconciled meaning for the blueprint planner: kind, chart type, metrics,
+    dimensions, date field and title. No boxes, image bytes, rows or source text."""
+    item = json.loads(r.source.text) if r.source.kind == 'image' else {}
+    metrics = [{k: v for k, v in m.model_dump().items() if v is not None and (labels or k != 'label')}
+               for m in r.mappings if m.aggregation not in (None, 'none')]
+    value = {'id': r.source.item_id or 'instructions', 'kind': item.get('kind', 'instruction'),
+             'type': next((n.capability.split('.', 1)[1] for n in needs if n.capability.startswith(('chart.', 'control.'))), None),
+             'metrics': metrics, 'dimensions': [m.field for m in r.mappings if m.aggregation in (None, 'none') and m.field],
+             'date_field': next((n.fields['date_field'] for n in needs if n.fields.get('date_field')), None),
+             'title': next((p.value for p in properties if p.path == 'label'), None) if labels else None}
+    return {k: v for k, v in value.items() if v not in (None, [])}
+
+
+def _row_ops(component, palette):
+    """The ops the compiler emits for one laid-out Blueprint row, plus the page ops every recipe has."""
+    ops = [{'op': name} for name in ('open_report', 'rename_page', 'set_canvas', 'set_background_image', 'save_report', 'get_link')]
+    c, cid = component, component['id']
+    if c['type'] in ('date_range', 'dropdown'):
+        ops.append({'op': 'add_control', 'component_id': cid, 'control_type': c['type'], **({'field': c['field']} if c.get('field') else {})})
+    elif c['type'] == 'text':
+        ops.append({'op': 'add_text', 'component_id': cid, 'text': c.get('text') or c['label']})
+    else:
+        optional = {k: c[k] for k in ('date_dimension', 'breakdown', 'sort') if c.get(k) is not None}
+        ops.append({'op': 'add_chart', 'component_id': cid, 'chart_type': c['type'], 'dimensions': c['dimensions'],
+                    'metrics': c['metrics'], 'title': c['label'], 'options': c['options'], **optional})
+        if c['type'] != 'scorecard':
+            ops.append({'op': 'set_style', 'component_id': cid, 'style': {'colors': c.get('colors') or palette}})
+    return ops
+
+
+def observation_coverage(snapshot, ledger, checker, components, *, derived, palette, observations=None):
+    """Publish coverage of each observation (blueprint_observations) on Blueprint rows, before layout.
+    `components`: {row index: the row as code lays it out}; `derived`: {name: sql} of the Blueprint's
+    derived fields; `palette`: the design palette layout applies. A row fulfils an observation as
+    coverage_errors checks a component, accept's code titling included (observed_labels: a chart that
+    fulfils all but the screenshot title takes it unless another titled observation claims it).
+    `observations`: blueprint_observations, when already computed for these inputs. Returns
+    [(requirement, needs, properties, fulfilling row indices, reason the rows cannot prove it or None)].
+    Pure: no model call."""
+    from dss.spec.validate import label_text
+    view = {**snapshot, 'spec': {'theme': {'palette': palette}}}
+    ops = {i: _row_ops(c, palette) for i, c in components.items()}
+    valid = {i for i, c in components.items() if not checker.component(c)}  # once per row, not per observation
+
+    def fulfils(i, row, needs):
+        return i in valid and _component_fulfills(components[i], row, needs, checker, view, derived=derived, checked=True) and all(
+            _recipe_fulfills(n, checker, ops[i]) for n in needs)
+    results, titles = [], {}
+    for r, needs, properties in (blueprint_observations(snapshot, ledger, checker) if observations is None else observations):
+        if r.component_ids or any(p.path != 'label' for p in properties):
+            results.append([r, needs, properties, [], 'it names laid-out items or properties only the accepted spec can prove'])
+            continue
+        active = r.model_copy(update={'properties': properties})
+        matches = [i for i in components if fulfils(i, active, needs)]
+        title = [p.value for p in properties if p.path == 'label']
+        if not matches and r.source.kind == 'image' and len(title) == 1 and isinstance(title[0], str):
+            rest = active.model_copy(update={'properties': []})
+            titles[r.id] = (title[0], [i for i in components if fulfils(i, rest, needs)])
+        if not matches and any(removal(row) and 'removed_item' in row.mapping_origins and _component_fulfills(
+                json.loads(row.mapping_origins['removed_item']), active, needs, checker, snapshot) for row in ledger.requirements):
+            continue  # The user explicitly removed the chart that fulfilled it.
+        results.append([r, needs, properties, matches, None])
+    # observed_labels, step by step: the first free chart per title, all titles or none (validate_spec's label rule).
+    titled = {r.id for r in ledger.requirements if r.source.kind == 'image' and any(p.path == 'label' for p in r.properties)}
+    claimed = {i for r, _, _, matches, _ in results if r.id in titled for i in matches}
+    labels = {}
+    for label, ids in titles.values():
+        if free := [i for i in ids if i not in claimed]:
+            claimed.add(free[0])
+            labels[free[0]] = label
+    if any('\n' in v or '\r' in v or label_text(v) != ' '.join(v.split()) for v in labels.values()):
+        labels = {}
+    for result in results:
+        if result[0].id in titles:
+            label, ids = titles[result[0].id]
+            result[3] = [i for i in ids if labels.get(i) == label]
+    return [tuple(result) for result in results]
+
+
+def observation_drop(snapshot, ledger, requirement_id, issue_id):
+    """A user's drop of a Blueprint observation issue, recorded as that requirement's own drop
+    decision (publish coverage skips it like any dropped requirement), with its provenance."""
+    r = next(r for r in ledger.requirements if r.id == requirement_id)
+    return {"requirement_id": r.id, "meaning": meaning(r), "slot": "unknown", "action": "drop", "alternative": None,
+            "prerequisites": _prerequisites(snapshot, [], r.mappings), "evidence": [], "issue_id": issue_id,
+            "source_id": r.source.id, "baseline": _bindings(snapshot, r), "applied": False}
+
+
 def _recipe_fulfills(need, checker, ops):
     """A registry capability must actually survive the deterministic compiler."""
     cap = checker.registry.get(need.capability)
@@ -1525,9 +1649,11 @@ def _recipe_fulfills(need, checker, ops):
     return True
 
 
-def _component_fulfills(component, requirement, needs, checker, snapshot):
-    """Check type, typed options, real bindings and metric semantics on the same component."""
-    if ((not needs and not requirement.properties) or checker.component(component)
+def _component_fulfills(component, requirement, needs, checker, snapshot, *, derived=None, checked=False):
+    """Check type, typed options, real bindings and metric semantics on the same component
+    (`derived`: _date_bucket's Blueprint derived fields; `checked`: the caller found no
+    checker.component verdict for it)."""
+    if ((not needs and not requirement.properties) or (not checked and checker.component(component))
             or not _properties_match(component, requirement.properties) or not _preserves_comment(component, requirement, snapshot)):
         return False
     for need in needs:
@@ -1540,12 +1666,12 @@ def _component_fulfills(component, requirement, needs, checker, snapshot):
             return False
         for key, field in need.fields.items():
             bound = component.get("date_dimension") if key == "date_field" else (component.get("dimensions") or [None])[0]
-            bucketed = key == 'date_field' and any(m.date_grain and _date_bucket(snapshot, bound, m.date_grain, field)
+            bucketed = key == 'date_field' and any(m.date_grain and _date_bucket(snapshot, bound, m.date_grain, field, derived)
                                                  for m in requirement.mappings)
             # A generic trend has no requested grain or metric semantics to borrow.
             # A real date bucket of its own date field still fulfills that loose request.
             if key == 'date_field' and not requirement.mappings:
-                bucketed |= any(_date_bucket(snapshot, bound, grain, field) for grain in ('day', 'week', 'month', 'quarter', 'year'))
+                bucketed |= any(_date_bucket(snapshot, bound, grain, field, derived) for grain in GRAINS)
             if field != bound and not bucketed:
                 return False
         for locator in cap.recipe:
@@ -1582,7 +1708,7 @@ def _component_fulfills(component, requirement, needs, checker, snapshot):
             # Recipe 1.0 exposes no bucketing option: prove it in the selected
             # derived date dimension, never by a chart label or planner prose.
             date_field = component.get('date_dimension')
-            if (component['type'] != 'time_series' and date_field not in component.get('dimensions', [])) or not _date_bucket(snapshot, date_field, mapping.date_grain):
+            if (component['type'] != 'time_series' and date_field not in component.get('dimensions', [])) or not _date_bucket(snapshot, date_field, mapping.date_grain, derived=derived):
                 return False
         # Unit is a source-defined metric meaning kept in the ledger; recipe 1.0
         # has no display-unit setting. Never infer a currency conversion here.
@@ -1625,14 +1751,21 @@ def _properties_match(item, properties):
     return True
 
 
-def _date_bucket(snapshot, field, grain, source=None):
-    text = snapshot['definitions'].get('derived-fields.md', '')
-    metadata = yaml.safe_load(text.split('---', 2)[1]) if text.startswith('---') else {}
-    if not isinstance(metadata, dict) or metadata.get('view') != (snapshot['spec'] or {}).get('datasource', {}).get('table'):
-        return False
-    derived = next((f for f in metadata.get('fields', []) if f['name'] == field), None)
-    grain = {'daily': 'day'}.get(grain.lower(), grain.lower().removesuffix('ly'))
-    match = re.fullmatch(r'(?:date|timestamp|datetime)_trunc\s*\(\s*(?:`?t\d+`?\s*\.\s*)?`?([a-z_][a-z0-9_]*)`?\s*,\s*' + re.escape(grain) + r'\s*\)', derived['sql'].strip(), re.I) if derived else None
+def grain_name(grain):
+    return {'daily': 'day'}.get(grain.lower(), grain.lower().removesuffix('ly'))
+
+
+def _date_bucket(snapshot, field, grain, source=None, derived=None):
+    """`field` is a derived DATE_TRUNC of `source` at `grain` in the published view, or in `derived`
+    ({name: sql}, a Blueprint's own derived fields) when given."""
+    if derived is None:
+        text = snapshot['definitions'].get('derived-fields.md', '')
+        metadata = yaml.safe_load(text.split('---', 2)[1]) if text.startswith('---') else {}
+        if not isinstance(metadata, dict) or metadata.get('view') != (snapshot['spec'] or {}).get('datasource', {}).get('table'):
+            return False
+        derived = {f['name']: f['sql'] for f in reversed(metadata.get('fields', []))}
+    sql = derived.get(field)
+    match = re.fullmatch(r'(?:date|timestamp|datetime)_trunc\s*\(\s*(?:`?t\d+`?\s*\.\s*)?`?([a-z_][a-z0-9_]*)`?\s*,\s*' + re.escape(grain_name(grain)) + r'\s*\)', sql.strip(), re.I) if sql else None
     return bool(match and (source is None or match[1] == source))
 
 

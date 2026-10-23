@@ -357,3 +357,51 @@ def test_designer_over_budget_refuses():
     with pytest.raises(RunError) as refused:
         designer_context({'title': 'Sales', 'theme': {}}, designer_page('Revenue ' * 6000))
     assert refused.value.code == 'llm_unavailable' and refused.value.detail == {'reason': 'over_budget'}
+
+
+def observation_inputs(title=None):
+    """24 reconciled recreate observations (the interpretation maximum) from the 21.1 fixture shapes."""
+    from dss.spec import requirements as req
+    data = json.loads((Path(__file__).parent / 'data/recreate_designed.json').read_text(encoding='utf-8'))
+    pairs = []
+    for n in range(24):
+        item = {**data['items'][1 + n % 5], 'id': f'o{n + 1}', 'label': title or f'Chart {n}'}
+        record = data['extraction'][f'o{2 + n % 5}']
+        r = req.Requirement(id=f'r{n}', text=record['text'], needs=record['needs'], mappings=record['mappings'],
+            properties=[{'path': 'label', 'value': item['label']}], source=req.Source(id=f'ref:o{n + 1}', kind='image',
+            text=json.dumps(item), reference_id='ref', image_id='img', item_id=f'o{n + 1}'))
+        pairs.append((req.observation_meaning(r, r.needs, r.properties), req.observation_meaning(r, r.needs, r.properties, labels=False)))
+    return pairs
+
+
+def blueprint_memory(observations):
+    from dss.artifacts.models import Context
+    from dss.harness.context import blueprint_context
+    from dss.harness.nodes import blueprint as node
+    context = Context.model_validate_json((Path(__file__).resolve().parents[2] / 'contracts/fixtures/api/context.json').read_text(encoding='utf-8'))
+    fields = [{'source_id': 's', 'fields': [{'name': n, 'type': t, 'role': r} for n, t, r in (
+        ('order_id', 'STRING', 'dimension'), ('order_date', 'DATE', 'dimension'), ('region', 'STRING', 'dimension'),
+        ('revenue', 'FLOAT64', 'metric'), ('quantity', 'INT64', 'metric'))]}]
+    return blueprint_context(context, fields, [], {'s1': 1}, node.catalog_summary(), [], observations=observations)
+
+
+def test_blueprint_observations_section_fits_without_boxes_bytes_or_rows():
+    """22.1: the planner sees each recreate observation's reconciled meaning, within the blueprint's 14k input."""
+    memory = blueprint_memory(observation_inputs())
+    [section] = [s for s in memory.sections if s.name == 'observations']
+    observed = json.loads(section.body)
+    assert section.kind == 'reference' and len(observed) == 24 and memory.dropped == {'past': 0, 'history': 0, 'semantic': 0}
+    assert observed[3] == {'id': 'o4', 'kind': 'chart', 'type': 'time_series', 'date_field': 'order_date', 'title': 'Chart 3',
+                           'metrics': [{'label': 'Revenue', 'field': 'revenue', 'unit': 'USD', 'aggregation': 'sum', 'date_grain': 'month'}]}
+    assert not any(word in section.body for word in ('box', 'confidence', 'image', 'img', 'rows', 'chart_candidate'))
+    assert tokens(str(memory)) <= BUDGETS['blueprint'] - 2000
+    # Over budget, the observation labels go first; the observed fields stay.
+    memory = blueprint_memory(observation_inputs(title='T' * 1600))
+    [section] = [s for s in memory.sections if s.name == 'observations']
+    assert 'TTT' not in section.body and 'Revenue' not in section.body and memory.dropped['profile'] == 1
+    assert [o['metrics'][0]['field'] for o in json.loads(section.body)] == ['revenue', 'order_id', 'quantity', 'revenue', 'revenue'] * 4 + ['revenue', 'order_id', 'quantity', 'revenue']
+
+
+def test_blueprint_context_without_observations_is_unchanged():
+    memory = blueprint_memory(())
+    assert 'observations' not in names(memory) and 'Recreate observations:' not in str(memory)
