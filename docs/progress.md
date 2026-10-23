@@ -428,3 +428,15 @@ context. Task status lives in docs/plan.md, not here.
 - Tasks affected: backend 21.1 (new, M); release 2.5 (waits on it). release 2.6 also `Needs: backend 21.1` (its screenshot + synthetic accept is the same failing path); 3.x and 4.x unchanged.
 - Change requests: none logged before this entry.
 - Next: build backend 21.1 in backend/, then release 2.5 here.
+
+## 2026-10-23: Task 2.5 Reference, refusal and synthetic end-to-end, local
+- Status: done
+- Plan check: off
+- What changed: applied stash `blueprint: task 2.5 failed attempt 2026-10-23 09:30` (driver, check, samples, bench); style case now also asserts the replanned prototype is ready with prototype_stale false; bench gains `manual_comparison` (user-approved) and the refusal view check, drops the stale 2026-10-21 `manual_restart_check`. AGENTS.md: 1 gotcha (report capture).
+- Checks: on ac915aa (dirty), engine signed in. Full `e2e_references.py --live` exit 1: refusal, revenue, style, synthetic PASS; recreate FAIL b_1402bf5cdc3c (blueprint row lacked SUM(quantity), needs_clarification, no alternative; new step, rerun). `--cases recreate` exit 0 b_36f20b42159c (6/6 in order, live 0 failed, v2, allowlist). Restart, `--after-restart` exit 0 (same sha256). Refusal view: BigQuery 404. check_contracts PASS 13/13. STOP card: user chose "Approve, record all".
+- Decisions: style proves recovery via recipe compile (no style engine run). Report shots in deck/render/references/ (ignored), compare.html.
+- Digest: `integration/e2e_references.py --server URL --live [--cases refusal,revenue,style,recreate,synthetic] | --after-restart`; bench deck/data/bench-references-<local|hosted>.json {cases{name:{passed,build_id,run_date,git_revision}},restart_check,manual_comparison}
+- Tried and failed: CDP captureScreenshot (blank frames).
+- Gotchas: in AGENTS.md.
+- Left open: P2 recreate passes with >=4 of 6 items - e2e_references.py:383; P2 synthetic GPS accepts `unknown` - e2e_references.py:684; P2 synthetic recreation unchecked for coverage (drops allowed) - e2e_references.py:663; P3 dirty revision names no driver commit; P3 refusal "no view" inferred from traces in-script; P3 Revenue regex loose; P3 RECREATE_TEXT dictates labels; earlier P2 hosted allowlist, P3 .env write not atomic. Backend/engine defects (user-approved, unfiled): live `order_date_month` read daily (monthly spikes); synthetic label drawn twice. User: drop stashes 2.3 23:11, 2.5 05:08, 2.5 09:30.
+- Next: Task 2.6 Manual acceptance: screenshot recreation with synthetic data.

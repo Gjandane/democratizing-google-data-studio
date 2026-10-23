@@ -1,0 +1,29 @@
+{
+  "about": "What samples/reference-dashboard.png shows, for integration/e2e_references.py. Bands run top to bottom; columns left to right inside a band. Keywords match a spec component's label (lowercase). Fields are columns of samples/ecommerce_sales.csv.",
+  "image": "samples/reference-dashboard.png",
+  "html": "samples/reference-dashboard.html",
+  "data": "samples/ecommerce_sales.csv",
+  "theme": {
+    "background": "#F5F3FF",
+    "accent": "#7C3AED",
+    "band": "#2E1065",
+    "max_distance": 90
+  },
+  "items": [
+    {"id": "kpi_revenue", "label": "Revenue", "type": "scorecard", "band": 1, "column": 1,
+     "keywords": ["revenue"], "metrics": [{"field": "revenue", "agg": "sum"}]},
+    {"id": "kpi_orders", "label": "Orders", "type": "scorecard", "band": 1, "column": 2,
+     "keywords": ["order"], "metrics": [{"field": "order_id", "agg": "count_distinct"}]},
+    {"id": "kpi_units", "label": "Units sold", "type": "scorecard", "band": 1, "column": 3,
+     "keywords": ["unit", "quantity"], "metrics": [{"field": "quantity", "agg": "sum"}]},
+    {"id": "revenue_by_month", "label": "Revenue by month", "type": "time_series", "band": 2, "column": 1,
+     "keywords": ["month", "trend", "over time", "daily", "weekly"], "date_dimension": "order_date",
+     "metrics": [{"field": "revenue", "agg": "sum"}]},
+    {"id": "revenue_by_category", "label": "Revenue by category", "type": "bar", "band": 2, "column": 2,
+     "keywords": ["category", "categories"], "dimensions": ["category"],
+     "metrics": [{"field": "revenue", "agg": "sum"}]},
+    {"id": "top_products", "label": "Top products by revenue", "type": "table", "band": 3, "column": 1,
+     "keywords": ["product"], "dimensions": ["product_name", "category"],
+     "metrics": [{"field": "quantity", "agg": "sum"}, {"field": "revenue", "agg": "sum"}]}
+  ]
+}

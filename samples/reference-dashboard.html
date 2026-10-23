@@ -1,0 +1,101 @@
+<!doctype html>
+<!-- Reference dashboard mock for release task 2.5 (written for this repo, license-clean).
+     1200x750 canvas, no network requests. Rendered to samples/reference-dashboard.png with
+     `uv run --project integration python integration/e2e_references.py --render-reference`.
+     Values follow samples/ecommerce_sales.csv; to the app they are untrusted observations. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Online Store Performance</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1200px; height: 750px; overflow: hidden; background: #F5F3FF;
+    color: #1E1B4B; font-family: Arial, Helvetica, sans-serif; -webkit-font-smoothing: antialiased; }
+  .band { position: absolute; left: 0; top: 0; width: 1200px; height: 72px; background: #2E1065; }
+  .title { position: absolute; left: 24px; top: 14px; font-size: 28px; font-weight: 700; color: #FFFFFF; }
+  .subtitle { position: absolute; left: 26px; top: 48px; font-size: 13px; color: #C4B5FD; }
+  .card { position: absolute; background: #FFFFFF; border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(46, 16, 101, 0.12); }
+  .card h2 { position: absolute; left: 20px; top: 14px; font-size: 16px; font-weight: 700; color: #1E1B4B; }
+  .kpi .label { position: absolute; left: 20px; top: 16px; font-size: 15px; color: #6D28D9; font-weight: 700; }
+  .kpi .value { position: absolute; left: 20px; top: 42px; font-size: 38px; font-weight: 700; color: #1E1B4B; }
+  svg { position: absolute; }
+  svg text { font-family: Arial, Helvetica, sans-serif; }
+  table { position: absolute; left: 20px; top: 48px; width: 1112px; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; color: #6D28D9; font-size: 13px; padding: 7px 10px; border-bottom: 2px solid #DDD6FE; }
+  td { padding: 8px 10px; border-bottom: 1px solid #EDE9FE; color: #1E1B4B; }
+  .num { text-align: right; }
+</style>
+</head>
+<body>
+<div class="band"></div>
+<div class="title">Online Store Performance</div>
+<div class="subtitle">Orders from January to September 2026, all regions</div>
+
+<div class="card kpi" style="left:24px;top:92px;width:368px;height:108px">
+  <div class="label">Revenue</div><div class="value">$436.6K</div>
+</div>
+<div class="card kpi" style="left:416px;top:92px;width:368px;height:108px">
+  <div class="label">Orders</div><div class="value">2,000</div>
+</div>
+<div class="card kpi" style="left:808px;top:92px;width:368px;height:108px">
+  <div class="label">Units sold</div><div class="value">6,924</div>
+</div>
+
+<div class="card" style="left:24px;top:220px;width:760px;height:256px">
+  <h2>Revenue by month</h2>
+  <svg style="left:16px;top:44px" width="728" height="200" viewBox="0 0 728 200">
+    <g stroke="#EDE9FE" stroke-width="1">
+      <line x1="48" y1="45" x2="712" y2="45"/><line x1="48" y1="95" x2="712" y2="95"/>
+      <line x1="48" y1="145" x2="712" y2="145"/>
+    </g>
+    <g fill="#64748B" font-size="11" text-anchor="end">
+      <text x="40" y="49">60K</text><text x="40" y="99">50K</text><text x="40" y="149">40K</text>
+    </g>
+    <polyline fill="none" stroke="#7C3AED" stroke-width="4" stroke-linejoin="round"
+      points="64,141 144,133 224,121 304,116 384,91 464,85 544,100 624,42 704,93"/>
+    <g fill="#7C3AED">
+      <circle cx="64" cy="141" r="4"/><circle cx="144" cy="133" r="4"/><circle cx="224" cy="121" r="4"/>
+      <circle cx="304" cy="116" r="4"/><circle cx="384" cy="91" r="4"/><circle cx="464" cy="85" r="4"/>
+      <circle cx="544" cy="100" r="4"/><circle cx="624" cy="42" r="4"/><circle cx="704" cy="93" r="4"/>
+    </g>
+    <g fill="#64748B" font-size="12" text-anchor="middle">
+      <text x="64" y="190">Jan</text><text x="144" y="190">Feb</text><text x="224" y="190">Mar</text>
+      <text x="304" y="190">Apr</text><text x="384" y="190">May</text><text x="464" y="190">Jun</text>
+      <text x="544" y="190">Jul</text><text x="624" y="190">Aug</text><text x="704" y="190">Sep</text>
+    </g>
+  </svg>
+</div>
+
+<div class="card" style="left:808px;top:220px;width:368px;height:256px">
+  <h2>Revenue by category</h2>
+  <svg style="left:12px;top:48px" width="344" height="196" viewBox="0 0 344 196">
+    <g fill="#1E1B4B" font-size="13">
+      <text x="0" y="25">Electronics</text><text x="0" y="69">Home</text>
+      <text x="0" y="113">Apparel</text><text x="0" y="157">Office</text>
+    </g>
+    <g fill="#7C3AED">
+      <rect x="88" y="8" width="190" height="26" rx="4"/>
+      <rect x="88" y="52" width="123" height="26" rx="4"/>
+      <rect x="88" y="96" width="109" height="26" rx="4"/>
+      <rect x="88" y="140" width="91" height="26" rx="4"/>
+    </g>
+    <g fill="#64748B" font-size="12">
+      <text x="284" y="25">162.0K</text><text x="217" y="69">104.9K</text>
+      <text x="203" y="113">92.6K</text><text x="185" y="157">77.2K</text>
+    </g>
+  </svg>
+</div>
+
+<div class="card" style="left:24px;top:496px;width:1152px;height:230px">
+  <h2>Top products by revenue</h2>
+  <table>
+    <tr><th>Product</th><th>Category</th><th class="num">Units</th><th class="num">Revenue</th></tr>
+    <tr><td>Noise-Cancelling Headphones</td><td>Electronics</td><td class="num">375</td><td class="num">$74,008</td></tr>
+    <tr><td>Ergonomic Chair</td><td>Office</td><td class="num">221</td><td class="num">$54,382</td></tr>
+    <tr><td>Air Purifier</td><td>Home</td><td class="num">335</td><td class="num">$49,602</td></tr>
+    <tr><td>Mechanical Keyboard</td><td>Electronics</td><td class="num">410</td><td class="num">$35,947</td></tr>
+  </table>
+</div>
+</body>
+</html>

@@ -22,6 +22,10 @@ ROOT = Path(__file__).resolve().parent.parent
 CONTRACTS = ROOT / "contracts"
 FIXTURES = CONTRACTS / "fixtures"
 API_FIXTURES = FIXTURES / "api"
+INTENT_FIXTURES = FIXTURES / "dashboard-intent"
+SYNTHETIC_FIXTURES = FIXTURES / "synthetic-data"
+SAMPLES = ROOT / "samples"
+REFERENCE_SIZE = (1200, 750)    # samples/reference-dashboard.png, CSS px at device scale 1
 
 SECRETS_EMPTY = ["GOOGLE_API_KEY", "DSS_ACCESS_CODE", "DSS_AGENT_TOKEN", "DSS_DB_PATH"]
 # .gitignore requirement -> accepted spellings. /data/ is anchored so deck/data/ stays tracked.
@@ -285,6 +289,359 @@ def check_prototype_html():
     return f"{rel(path)}: #dss-canvas and {len(p.cids)} data-cid elements with label and kind"
 
 
+# --- dashboard-intent and synthetic-data fixtures --------------------------------------------
+# Shapes from contracts/dashboard-intent.md (ReferenceSet, Assessment, Issue) and
+# contracts/synthetic-data.md (GenerationSpec, Proposal, SyntheticDataset, GenerationStatus).
+
+def _obj(props, required=None, extra=False):
+    return {"type": "object", "properties": props, "required": required or list(props),
+            "additionalProperties": extra}
+
+
+_STR = {"type": "string"}
+_ID = {"type": "string", "minLength": 1}
+_NULL_STR = {"type": ["string", "null"]}
+_INT12 = {"type": "integer", "minimum": -10**12, "maximum": 10**12}
+_NUM12 = {"type": "number", "minimum": -10**12, "maximum": 10**12}
+_DATE = {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"}
+_PROB = {"type": "number", "minimum": 0, "maximum": 1}
+_SCALAR = {"type": ["string", "number", "boolean"]}
+
+_GENERATORS = {
+    "sequence": {"start": _INT12, "step": _INT12, "prefix": {"type": "string", "maxLength": 32}},
+    "integer": {"min": _INT12, "max": _INT12},
+    "decimal": {"min": _NUM12, "max": _NUM12, "decimals": {"type": "integer", "minimum": 0, "maximum": 6}},
+    "choice": {"values": {"type": "array", "minItems": 1, "maxItems": 100, "uniqueItems": True,
+                          "items": _SCALAR}},
+    "boolean": {"true_probability": _PROB},
+    "date": {"start": _DATE, "end": _DATE},
+    "product": {"fields": {"type": "array", "minItems": 2, "maxItems": 2, "items": _STR},
+                "decimals": {"type": "integer", "minimum": 0, "maximum": 6}},
+    "lookup": {"field": _STR, "mapping": {"type": "object"}},
+}
+GENERATION_SPEC = _obj({
+    "schema_version": {"const": 1},
+    "row_count": {"type": "integer", "minimum": 1, "maximum": 100_000},
+    "seed": {"type": "integer", "minimum": 0, "maximum": 2**32 - 1},
+    "columns": {"type": "array", "minItems": 1, "maxItems": 40, "items": _obj({
+        "name": {"type": "string", "pattern": r"^[a-z][a-z0-9]*(_[a-z0-9]+)*$", "maxLength": 64},
+        "type": {"enum": ["integer", "number", "string", "boolean", "date"]},
+        "nullable_fraction": _PROB,
+        "generator": {"oneOf": [_obj({"kind": {"const": kind}, **props})
+                                for kind, props in _GENERATORS.items()]},
+    })},
+})
+_ASSUMPTIONS = {"type": "array", "maxItems": 20, "items": {"type": "string", "maxLength": 240}}
+FIXTURE_SCHEMAS = {
+    "ReferenceSet": _obj({
+        "id": _ID, "mode": {"enum": ["style", "recreate"]},
+        "instructions": {"type": "string", "maxLength": 2000},
+        "images": {"type": "array", "minItems": 1, "maxItems": 3,
+                   "items": _obj({"id": _ID, "name": _ID,
+                                  "file": {"type": "string", "pattern": r"^reference_[A-Za-z0-9_-]+\.(png|jpg)$"}})},
+        "summary": _STR}),
+    "Assessment": _obj({
+        "id": _NULL_STR, "state": {"enum": ["unchecked", "blocked", "ready", "stale"]},
+        "input_digest": _NULL_STR, "prototype_stale": {"type": "boolean"},
+        "issues": {"type": "array", "items": _obj({
+            "id": _ID, "requirement": _ID,
+            "status": {"enum": ["unsupported_product", "unsupported_app", "needs_data",
+                                "needs_clarification", "unknown"]},
+            "reason": _ID, "evidence": {"type": "array", "items": _STR},
+            "alternatives": {"type": "array", "items": _obj({"id": _ID, "label": _ID})},
+            "resolution": {"enum": ["unresolved", "accepted_alternative", "dropped"]}})},
+        "pending_comments": {"oneOf": [{"type": "null"}, _obj({
+            "id": _ID, "comments": {"type": "array", "minItems": 1, "maxItems": 20,
+                                    "items": _obj({"component_id": _ID, "text": _ID})}})]}}),
+    "GenerationRequest": _obj({
+        "generation_key": {"type": "string", "pattern": r"^[A-Za-z0-9_-]{1,64}$"},
+        "proposal_id": _NULL_STR, "spec": GENERATION_SPEC}),
+    "Proposal": _obj({"id": _ID, "reference_set_id": _ID, "spec": GENERATION_SPEC,
+                      "assumptions": _ASSUMPTIONS}),
+    "SyntheticDataset": _obj({
+        "source_id": _ID, "generation_key": {"type": "string", "pattern": r"^[A-Za-z0-9_-]{1,64}$"},
+        "synthetic": {"const": True}, "spec": GENERATION_SPEC, "assumptions": _ASSUMPTIONS,
+        "generator_version": _ID, "sha256": {"type": "string", "pattern": r"^[0-9a-f]{64}$"},
+        "bytes": {"type": "integer", "minimum": 1, "maximum": 50 * 2**20},
+        "created_at": {"type": "string", "format": "date-time"}}),
+    "GenerationStatus": _obj({
+        "generation_key": {"type": "string", "pattern": r"^[A-Za-z0-9_-]{1,64}$"}, "run_id": _ID,
+        "state": {"enum": ["queued", "generating", "loading", "succeeded", "failed"]},
+        "source_id": _NULL_STR, "retry_ready": {"type": "boolean"},
+        "error": {"oneOf": [{"type": "null"}, _obj({"code": _ID, "message": _ID})]}}),
+    "Source": _obj({
+        "id": _ID, "kind": {"enum": ["upload", "gcs", "bigquery", "research", "synthetic"]},
+        "name": _ID, "bq_table": {"type": "string", "pattern": r"^[^.\s]+\.[^.\s]+\.[^.\s]+$"},
+        "row_count": {"type": "integer", "minimum": 0},
+        "columns": {"type": "array", "items": _obj({
+            "name": _ID, "type": {"enum": ["string", "number", "date", "datetime", "boolean", "geo"]},
+            "sample": {"type": "array", "items": _STR}})}}),
+}
+FIXTURE_FILES = {   # fixture -> type (contracts/api.md 1.3/1.4 sections name them)
+    INTENT_FIXTURES / "reference_set.json": "ReferenceSet",
+    INTENT_FIXTURES / "feasibility.json": "Assessment",
+    INTENT_FIXTURES / "feasibility.alternatives.json": "Assessment",
+    INTENT_FIXTURES / "feasibility.pending.json": "Assessment",
+    INTENT_FIXTURES / "feasibility.stale.json": "Assessment",
+    SYNTHETIC_FIXTURES / "request.json": "GenerationRequest",
+    SYNTHETIC_FIXTURES / "proposal.json": "Proposal",
+    SYNTHETIC_FIXTURES / "dataset.json": "SyntheticDataset",
+    SYNTHETIC_FIXTURES / "job.succeeded.json": "GenerationStatus",
+    SYNTHETIC_FIXTURES / "job.failed.json": "GenerationStatus",
+    SYNTHETIC_FIXTURES / "source.json": "Source",
+}
+FORMULA_PREFIX = re.compile(r"^\s*[=+\-@\t\r]")
+SYNTHETIC_LABEL = "Synthetic sample data"
+_KIND_TYPES = {"sequence": {"integer", "string"}, "integer": {"integer"}, "decimal": {"number"},
+               "choice": {"integer", "number", "string", "boolean", "date"}, "boolean": {"boolean"},
+               "date": {"date"}, "product": {"number"}, "lookup": {"integer", "number", "string", "boolean", "date"}}
+
+
+def _typed(value, kind):
+    if kind == "string" or kind == "date":
+        return isinstance(value, str)
+    if kind == "boolean":
+        return isinstance(value, bool)
+    if kind == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def generation_spec_errors(spec):
+    """The synthetic-data.md rules JSON Schema can't express: types per generator, ranges,
+    dependencies (earlier columns only), lookup coverage, cell budget, formula-like strings."""
+    errors, seen = [], {}
+    columns = spec["columns"]
+    if spec["row_count"] * len(columns) > 1_000_000:
+        errors.append(f"{spec['row_count']} rows x {len(columns)} columns exceed 1,000,000 cells")
+    for i, col in enumerate(columns):
+        name, kind, gen = col["name"], col["type"], col["generator"]
+        where = f"columns/{i} ({name})"
+        if name in seen:
+            errors.append(f"{where}: duplicate name")
+        if kind not in _KIND_TYPES[gen["kind"]]:
+            errors.append(f"{where}: generator {gen['kind']} can't produce type {kind}")
+        if gen["kind"] in ("integer", "decimal") and gen["min"] > gen["max"]:
+            errors.append(f"{where}: min > max")
+        if gen["kind"] == "sequence" and kind == "integer" and gen["prefix"]:
+            errors.append(f"{where}: an integer sequence has an empty prefix")
+        if gen["kind"] == "date":
+            try:
+                start, end = dt.date.fromisoformat(gen["start"]), dt.date.fromisoformat(gen["end"])
+            except ValueError as e:
+                errors.append(f"{where}: {e}")
+            else:
+                if not dt.date(1900, 1, 1) <= start <= end <= dt.date(2100, 12, 31):
+                    errors.append(f"{where}: dates must satisfy 1900-01-01 <= start <= end <= 2100-12-31")
+        values = gen["values"] if gen["kind"] == "choice" else (
+            list(gen["mapping"].values()) if gen["kind"] == "lookup" else [])
+        for value in values:
+            if not _typed(value, kind):
+                errors.append(f"{where}: value {value!r} is not of type {kind}")
+            elif isinstance(value, str) and (len(value) > 120 or FORMULA_PREFIX.match(value)):
+                errors.append(f"{where}: string value {value[:20]!r} is too long or formula-like")
+        if gen["kind"] == "sequence" and FORMULA_PREFIX.match(gen["prefix"] or "x"):
+            errors.append(f"{where}: sequence prefix is formula-like")
+        if gen["kind"] in ("product", "lookup"):
+            if col["nullable_fraction"] != 0:
+                errors.append(f"{where}: a dependent column needs nullable_fraction 0")
+            refs = gen["fields"] if gen["kind"] == "product" else [gen["field"]]
+            for ref in refs:
+                source = seen.get(ref)
+                if source is None:
+                    errors.append(f"{where}: depends on {ref!r}, not an earlier column")
+                elif gen["kind"] == "product" and source["type"] not in ("integer", "number"):
+                    errors.append(f"{where}: product of non-numeric column {ref}")
+                elif gen["kind"] == "lookup":
+                    if source["type"] != "string" or source["generator"]["kind"] not in ("choice", "lookup"):
+                        errors.append(f"{where}: lookup needs an earlier string choice or lookup")
+                    else:
+                        g = source["generator"]
+                        keys = set(g["values"]) if g["kind"] == "choice" else set(g["mapping"].values())
+                        if set(gen["mapping"]) != keys:
+                            errors.append(f"{where}: mapping keys must cover exactly {sorted(keys)}")
+        seen[name] = col
+    return errors
+
+
+def fixture_errors(kind, obj, validators):
+    """Schema errors, then the per-type rules from the contracts."""
+    if (e := schema_error(validators[kind], obj)):
+        return [e]
+    errors = []
+    if "spec" in obj and kind in ("GenerationRequest", "Proposal", "SyntheticDataset"):
+        errors += [f"spec/{e}" for e in generation_spec_errors(obj["spec"])]
+    if kind == "GenerationRequest" and len(json.dumps(obj).encode()) > 64 * 1024:
+        errors.append("request body exceeds 64 KiB")
+    if kind == "GenerationStatus":
+        state = obj["state"]
+        if state == "succeeded" and (obj["source_id"] is None or obj["error"] or obj["retry_ready"]):
+            errors.append("succeeded needs source_id, no error and retry_ready false")
+        if state == "failed" and (obj["source_id"] is not None or not obj["error"]):
+            errors.append("failed needs an error and no source_id")
+        if state in ("queued", "generating", "loading") and (obj["retry_ready"] or obj["error"]):
+            errors.append("an in-flight job never permits retry and has no error")
+    if kind == "Source" and obj["kind"] == "synthetic" and obj["name"] != SYNTHETIC_LABEL:
+        errors.append(f"a synthetic source is named {SYNTHETIC_LABEL!r}")
+    if kind == "Assessment" and obj["state"] == "ready" and any(
+            i["resolution"] == "unresolved" for i in obj["issues"]):
+        errors.append("ready with an unresolved issue")
+    return errors
+
+
+def fixture_validators():
+    return {name: Draft202012Validator(schema, format_checker=FORMATS)
+            for name, schema in FIXTURE_SCHEMAS.items()}
+
+
+def check_intent_synthetic_fixtures():
+    validators = fixture_validators()
+    errors = []
+    for path, kind in FIXTURE_FILES.items():
+        try:
+            obj = json.loads(read_text(path))
+        except json.JSONDecodeError as e:
+            errors.append(f"{rel(path)}: not JSON: {e}")
+            continue
+        errors += [f"{rel(path)} ({kind}): {e}" for e in fixture_errors(kind, obj, validators)]
+    if errors:
+        raise CheckFailed("; ".join(errors))
+    return f"{len(FIXTURE_FILES)} dashboard-intent and synthetic-data fixtures match their contract shapes"
+
+
+def _mutate(path, change):
+    obj = json.loads(read_text(path))
+    change(obj)
+    return obj
+
+
+def _set(path, value):
+    """A change that sets obj[a][b]... = value (path is a tuple of keys/indexes)."""
+    def change(obj):
+        target = obj
+        for key in path[:-1]:
+            target = target[key]
+        target[path[-1]] = value
+    return change
+
+
+def check_fixture_error_cases():
+    """Each mutation breaks one contract rule and must be rejected (shape or rule)."""
+    validators = fixture_validators()
+    req, gen = SYNTHETIC_FIXTURES / "request.json", ("spec", "columns")
+    cases = [
+        ("Assessment state maybe", "Assessment", INTENT_FIXTURES / "feasibility.json", _set(("state",), "maybe")),
+        ("Issue status impossible", "Assessment", INTENT_FIXTURES / "feasibility.json",
+         _set(("issues", 0, "status"), "impossible")),
+        ("Issue resolution accepted", "Assessment", INTENT_FIXTURES / "feasibility.json",
+         _set(("issues", 0, "resolution"), "accepted")),
+        ("ready with an unresolved issue", "Assessment", INTENT_FIXTURES / "feasibility.json",
+         _set(("state",), "ready")),
+        ("pending batch of 21 comments", "Assessment", INTENT_FIXTURES / "feasibility.pending.json",
+         lambda o: o["pending_comments"].update(comments=o["pending_comments"]["comments"] * 11)),
+        ("ReferenceSet mode copy", "ReferenceSet", INTENT_FIXTURES / "reference_set.json", _set(("mode",), "copy")),
+        ("reference file is a path", "ReferenceSet", INTENT_FIXTURES / "reference_set.json",
+         _set(("images", 0, "file"), "../secrets.png")),
+        ("row_count 0", "GenerationRequest", req, _set(("spec", "row_count"), 0)),
+        ("row_count 100001", "GenerationRequest", req, _set(("spec", "row_count"), 100_001)),
+        ("seed above uint32", "GenerationRequest", req, _set(("spec", "seed"), 2**32)),
+        ("unknown generator kind", "GenerationRequest", req, _set(gen + (0, "generator"), {"kind": "python", "code": "1"})),
+        ("unknown field", "GenerationRequest", req, _set(gen + (0, "generator", "eval"), "x")),
+        ("formula-like choice", "GenerationRequest", req, _set(gen + (0, "generator", "values"), ["=HYPERLINK(1)", "West"])),
+        ("forward product dependency", "GenerationRequest", req,
+         _set(gen + (3, "generator", "fields"), ["quantity", "later_column"])),
+        ("dependent nullable product", "GenerationRequest", req, _set(gen + (3, "nullable_fraction"), 0.2)),
+        ("decimal min above max", "GenerationRequest", req, _set(gen + (2, "generator", "min"), 500)),
+        ("choice value of the wrong type", "GenerationRequest", req, _set(gen + (0, "generator", "values"), ["East", 7])),
+        ("cell budget", "GenerationRequest", req,
+         lambda o: o["spec"].update(row_count=100_000, columns=o["spec"]["columns"][:3] + [
+             {"name": f"c{i}", "type": "integer", "nullable_fraction": 0,
+              "generator": {"kind": "integer", "min": 0, "max": 1}} for i in range(8)])),
+        ("generation_key with a space", "GenerationRequest", req, _set(("generation_key",), "bad key")),
+        ("succeeded with an error", "GenerationStatus", SYNTHETIC_FIXTURES / "job.succeeded.json",
+         _set(("error",), {"code": "x", "message": "y"})),
+        ("failed with a source", "GenerationStatus", SYNTHETIC_FIXTURES / "job.failed.json",
+         _set(("source_id",), "s_000000000001")),
+        ("in-flight job ready to retry", "GenerationStatus", SYNTHETIC_FIXTURES / "job.failed.json",
+         lambda o: o.update(state="loading", error=None)),
+        ("dataset not synthetic", "SyntheticDataset", SYNTHETIC_FIXTURES / "dataset.json", _set(("synthetic",), False)),
+        ("dataset checksum not sha256", "SyntheticDataset", SYNTHETIC_FIXTURES / "dataset.json", _set(("sha256",), "abc")),
+        ("21 assumptions", "Proposal", SYNTHETIC_FIXTURES / "proposal.json", _set(("assumptions",), ["a"] * 21)),
+        ("synthetic source without the label", "Source", SYNTHETIC_FIXTURES / "source.json",
+         _set(("name",), "Sales data")),
+    ]
+    accepted = []
+    for name, kind, path, change in cases:
+        if not fixture_errors(kind, _mutate(path, change), validators):
+            accepted.append(name)
+    if accepted:
+        raise CheckFailed("accepted invalid input: " + ", ".join(accepted))
+    return f"{len(cases)} invalid reference, assessment and synthetic-data variants are rejected"
+
+
+# --- task 2.5 samples and reference bench ------------------------------------------------------
+
+def check_reference_samples():
+    errors = []
+    html = read_text(SAMPLES / "reference-dashboard.html")
+    if re.search(r"""(?:src|href)\s*=\s*["']?(?:https?:)?//|url\(\s*["']?(?:https?:)?//|@import""", html, re.I):
+        errors.append("reference-dashboard.html makes a network request")
+    png = SAMPLES / "reference-dashboard.png"
+    if not png.exists():
+        errors.append(f"{rel(png)} is missing")
+    else:
+        head = png.read_bytes()[:24]
+        size = tuple(int.from_bytes(head[i:i + 4], "big") for i in (16, 20))
+        if head[:8] != b"\x89PNG\r\n\x1a\n" or size != REFERENCE_SIZE:
+            errors.append(f"{rel(png)} is not a {REFERENCE_SIZE[0]}x{REFERENCE_SIZE[1]} PNG")
+        if png.stat().st_size > 5 * 2**20:
+            errors.append(f"{rel(png)} exceeds the 5 MiB reference limit")
+    expect = json.loads(read_text(SAMPLES / "reference-expectations.json"))
+    columns = read_text(SAMPLES / "ecommerce_sales.csv").split("\n", 1)[0].split(",")
+    hexes = [expect["theme"][k] for k in ("background", "accent", "band")]
+    if not all(re.match(r"^#[0-9A-F]{6}$", h) for h in hexes):
+        errors.append("reference-expectations.json theme colors are not #RRGGBB")
+    for item in expect["items"]:
+        fields = item.get("dimensions", []) + [m["field"] for m in item.get("metrics", [])]
+        fields += [item["date_dimension"]] if item.get("date_dimension") else []
+        unknown = [f for f in fields if f not in columns]
+        if unknown or item.get("band") not in (1, 2, 3) or not item.get("keywords"):
+            errors.append(f"expectation {item.get('id')}: unknown fields {unknown}, band or keywords")
+    gross = read_text(SAMPLES / "gross_net_sales.csv")
+    header = gross.split("\n", 1)[0].split(",")
+    if "\r" in gross or not {"gross_sales", "net_sales"} <= set(header) or "revenue" in header:
+        errors.append("gross_net_sales.csv needs LF endings, gross_sales and net_sales, and no revenue column")
+    if errors:
+        raise CheckFailed("; ".join(errors))
+    return (f"reference mock {REFERENCE_SIZE[0]}x{REFERENCE_SIZE[1]} PNG, "
+            f"{len(expect['items'])} expected items, gross/net CSV {len(gross.splitlines()) - 1} rows")
+
+
+BENCH_KEYS = {"run_date", "server_url", "git_revision", "live", "cases", "all_passed"}
+SECRET_PATTERNS = re.compile(r"AIza[0-9A-Za-z_-]{20,}|data:image/|ya29\.|-----BEGIN|\"(?:access_code|api_key|token)\"")
+
+
+def check_reference_bench():
+    benches = sorted((ROOT / "deck" / "data").glob("bench-references-*.json"))
+    if not benches:
+        return "no deck/data/bench-references-*.json yet (written by e2e_references.py)"
+    errors = []
+    for path in benches:
+        text = read_text(path)
+        bench = json.loads(text)
+        missing = BENCH_KEYS - set(bench)
+        if missing:
+            errors.append(f"{rel(path)}: missing {', '.join(sorted(missing))}")
+        if SECRET_PATTERNS.search(text):
+            errors.append(f"{rel(path)}: holds a secret-like value or an embedded image")
+        for name, case in bench.get("cases", {}).items():
+            if not {"passed", "seconds", "run_date"} <= set(case):
+                errors.append(f"{rel(path)}: case {name} lacks passed, seconds or run_date")
+    if errors:
+        raise CheckFailed("; ".join(errors))
+    return ", ".join(f"{rel(p)}: {len(json.loads(read_text(p))['cases'])} cases" for p in benches)
+
+
 # --- root files ----------------------------------------------------------------------------
 
 def conventions_env_names():
@@ -371,6 +728,10 @@ def main():
         run("events.sse", check_events_sse, validators)
     run("api JSON fixtures", check_api_json)
     run("prototype HTML", check_prototype_html)
+    run("intent/synthetic fixtures", check_intent_synthetic_fixtures)
+    run("intent/synthetic error cases", check_fixture_error_cases)
+    run("reference samples", check_reference_samples)
+    run("reference bench", check_reference_bench)
     run(".env.example", check_env_example)
     run(".gitignore", check_gitignore)
 
