@@ -1338,3 +1338,15 @@ context. Task status lives in docs/plan.md, not here.
 - Why: release 2.5's approved comparison: `order_date_month` drawn per day in the live report (b_36f20b42159c s015, b_91869163c217 s016); "Synthetic sample data" drawn twice on b_91869163c217 page 1 (background label + compiler `add_text` s010).
 - Side effect: tests/test_capabilities.py fails 2 tests (registry surface, option values) until 23.1 adds `option.time_series.date_granularity`.
 - Affected: backend 23.1, 23.2 (new); release 2.6 `Needs:` both; release 2.7 flips its e2e recipe-label check after 23.2. The final audit's ACCEPTED verdict covers tasks to 22.1 only.
+
+## 2026-10-23: Task 23.1 Time series on date buckets carry their granularity
+- Status: done
+- Plan check: off
+- What changed: spec DataField.date_granularity (optional, omitted when None); auto_layout.bucket_grain parses a Blueprint derived field's whole DATE/DATETIME/TIMESTAMP_TRUNC call and spec_value sets the grain on date-typed view fields; compile_recipe drops model `date_granularity` options and sets it only on a time_series whose date_dimension field has a grain. capabilities.json `option.time_series.date_granularity`. +27 tests (compiler, layout).
+- Checks: `uv run pytest tests/test_compiler.py tests/test_capabilities.py tests/test_recipe_contract.py tests/test_layout_auto.py tests/test_feasibility.py` PASS 292; Test (all) `uv run pytest` PASS 1599 (13 deselected); test_compiler + test_layout_auto rerun after review test edits PASS 47.
+- Decisions: grain set in auto_layout (no If-clause case: revise is component-scoped, New version copies the spec). Parser: balanced tokenizer, plain grain only (WEEK(MONDAY)/ISOWEEK/HOUR -> none), 3rd arg only for TIMESTAMP_TRUNC; view type must be DATE/DATETIME/TIMESTAMP. Product evidence: time-series-reference. Golden spec has no bucket: golden_recipe.jsonl unchanged.
+- Digest: spec.models.DataField.date_granularity day..year|None (absent in JSON when None); auto_layout.bucket_grain(sql)->grain|None; compiler emits add_chart.options.date_granularity only for time_series on such a field, drops model ones.
+- Tried and failed: none
+- Gotchas: existing builds (b_36f20b42159c, b_91869163c217) keep grain-less specs until their Blueprint is re-accepted: "Run recompiles the current spec".
+- Left open: P2 registry offers/accepts code-owned date_granularity; requirements._row_ops/_component_fulfills read component options, not the spec field grain, so feasibility can disagree with the compiler - src/dss/spec/requirements.py; P3 second TRUNC parser beside requirements._date_bucket - src/dss/spec/auto_layout.py
+- Next: Task 23.2. Start by `status --task 23.2`.

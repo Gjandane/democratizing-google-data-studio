@@ -87,6 +87,42 @@ def _wrap(text, size, width):
     return '\n'.join(lines)
 
 
+GRAINS = ('day', 'week', 'month', 'quarter', 'year')
+TRUNC_CALL = re.compile(r'\s*(DATE|DATETIME|TIMESTAMP)_TRUNC\s*\(', re.I)
+TOKEN = re.compile(r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"|`(?:\\.|[^`\\])*`|[(),]|[^'\"`(),]+")
+
+
+def bucket_grain(expression):
+    """The grain of a derivation that is one whole DATE_TRUNC/DATETIME_TRUNC/TIMESTAMP_TRUNC call
+    with a plain grain (TIMESTAMP_TRUNC may add a time zone), or None. Only the view's SQL counts,
+    never the field's name."""
+    call = TRUNC_CALL.match(expression)
+    if not call:
+        return None
+    depth, args, end = 1, [''], None
+    for token in TOKEN.finditer(expression, call.end()):
+        text = token.group()
+        if end is not None:
+            if text.strip():
+                return None  # the call is only part of the expression
+        elif text == '(':
+            depth += 1
+        elif text == ')':
+            depth -= 1
+            if not depth:
+                end = token.end()
+                continue
+        elif text == ',' and depth == 1:
+            args.append('')
+            continue
+        if end is None:
+            args[-1] += text
+    if end is None or len(args) not in (2, 3) or (len(args) == 3 and call[1].upper() != 'TIMESTAMP'):
+        return None
+    grain = args[1].strip().lower()
+    return grain if grain in GRAINS else None
+
+
 def _bottom(row):
     """Pixel y just below a block that ends before grid row `row` (its gutter excluded)."""
     return GRID.margin + (row - 1) * GRID.row_height - GRID.gutter
@@ -216,6 +252,12 @@ def spec_value(blueprint, design, outline, fields, *, build_id, archetype, spec_
                           'label': f.get('label') or f['name'].replace('_', ' ').title(), 'role': f['role'],
                           'default_agg': f.get('default_agg') or ('sum' if f['role'] == 'metric' else 'none')}
                          for f in fields]
+    # A time series on a bucket draws one point per bucket: the grain comes from the derivation
+    # the view builder compiles, and reaches the compiler through the spec.
+    grains = {d.name: bucket_grain(d.expression) for d in blueprint.derived_fields}
+    for f in datasource_fields:
+        if grains.get(f['name']) and f['type'] in ('DATE', 'DATETIME', 'TIMESTAMP'):
+            f['date_granularity'] = grains[f['name']]
     return {'spec_version': spec_version, 'build_id': build_id, 'title': design.title, 'archetype': archetype,
             'canvas': {'width': Canvas().width, 'height': pages[0]['height'] if pages else Canvas().height},
             'grid': GRID.model_dump(), 'theme': theme.model_dump(),

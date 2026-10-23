@@ -136,9 +136,16 @@ class DataField(Model):
     label: str
     role: Literal["dimension", "metric"]
     default_agg: Literal["sum", "avg", "count", "count_distinct", "min", "max", "none"] = "none"
+    # A *_TRUNC derived field's bucket grain, set by code layout from the view's derivation;
+    # the compiler emits it as a time series' options.date_granularity (recipe 1.2).
+    date_granularity: Literal["day", "week", "month", "quarter", "year"] | None = None
 
     def __getitem__(self, key):
         return getattr(self, key)
+
+    @model_serializer(mode='wrap')
+    def _serialize(self, handler):
+        return _without_none(handler, self, ('date_granularity',))
 
 class Datasource(Model):
     table: str = Field(pattern=r"^[^.\s]+\.[^.\s]+\.[^.\s]+$")

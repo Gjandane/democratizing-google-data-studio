@@ -26,6 +26,7 @@ def compile_recipe(spec: DashboardSpec, version: int) -> str:
     if any(reference_image(path) for _, path in image_paths(spec)):
         raise ValueError('Reference screenshots cannot be recipe images or backgrounds')
     project, dataset, table = spec.datasource.table.split(".")
+    grains = {f.name: f.date_granularity for f in spec.datasource.fields if f.date_granularity}
     lines = [dict(recipe_version="1.0", build_id=spec.build_id, version=version,
                   report_name=spec.title, canvas=spec.canvas.model_dump(),
                   datasource=dict(connector="bigQuery", project_id=project, dataset_id=dataset, table_id=table))]
@@ -57,7 +58,11 @@ def compile_recipe(spec: DashboardSpec, version: int) -> str:
                 optional = {key: getattr(c, key) for key in ("date_dimension", "breakdown") if getattr(c, key) is not None}
                 if c.sort is not None:
                     optional["sort"] = c.sort.model_dump()
-                op("add_chart", chart_type=c.type, dimensions=c.dimensions, metrics=[m.model_dump() for m in c.metrics], title=c.label, options=c.options, **optional, **args)
+                # The bucket grain is code's (spec datasource field), never a model-written option.
+                options = {key: value for key, value in c.options.items() if key != "date_granularity"}
+                if c.type == "time_series" and grains.get(c.date_dimension):
+                    options["date_granularity"] = grains[c.date_dimension]
+                op("add_chart", chart_type=c.type, dimensions=c.dimensions, metrics=[m.model_dump() for m in c.metrics], title=c.label, options=options, **optional, **args)
                 # A scorecard has no series swatch: the engine would skip `colors` with a warning.
                 if c.type != "scorecard":
                     op("set_style", component_id=c.id, style=dict(colors=c.colors if c.colors is not None else spec.theme.palette))

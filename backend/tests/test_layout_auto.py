@@ -203,3 +203,46 @@ def test_property_valid_blueprints_give_valid_specs(monkeypatch):
     cases = tuple(sorted(measured))
     fits = real(cases)
     assert all(fits), [c[0] for c, ok in zip(cases, fits) if not ok]
+
+
+@pytest.mark.parametrize('expression, grain', [
+    ('DATE_TRUNC(order_date, MONTH)', 'month'), ('date_trunc(`order_date`, day)', 'day'),
+    ('DATE_TRUNC(t0.order_date, WEEK)', 'week'), ('DATETIME_TRUNC(created, QUARTER)', 'quarter'),
+    ('TIMESTAMP_TRUNC(created_at, YEAR)', 'year'), ("TIMESTAMP_TRUNC(created_at, MONTH, 'UTC')", 'month'),
+    ('DATE_TRUNC(DATE(created_at), MONTH)', 'month'), ("DATE_TRUNC(PARSE_DATE('%Y(%m', s), YEAR)", 'year'),
+    ('order_date', None), ('DATE_TRUNC(order_date, WEEK(MONDAY))', None), ('DATE_TRUNC(order_date, ISOWEEK)', None),
+    ('DATE_TRUNC(order_date, HOUR)', None), ("DATE_TRUNC(order_date, MONTH, 'UTC')", None),
+    ('DATE_TRUNC(a, MONTH) - DATE_TRUNC(b, DAY)', None), ('DATE_ADD(DATE_TRUNC(a, MONTH), INTERVAL 1 DAY)', None),
+    ('DATE_TRUNC(order_date, MONTH', None), ("CASE WHEN x THEN 'DATE_TRUNC(a, MONTH)' END", None)])
+def test_bucket_grain_reads_only_a_whole_trunc_derivation(expression, grain):
+    from dss.spec.auto_layout import bucket_grain
+    assert bucket_grain(expression) == grain
+
+
+def test_bucket_derived_field_carries_its_grain_into_the_spec():
+    """23.1: the grain reaches the compiler through the spec: the datasource field built from the
+    Blueprint's DATE_TRUNC derivation records it; raw dates and name-only "buckets" get none."""
+    from dss.artifacts.models import DerivedField
+    blueprint, design, plan = golden_inputs()
+    derived = [DerivedField(name='order_date_month', expression='DATE_TRUNC(order_date, MONTH)', type='date', description='Month'),
+               DerivedField(name='order_date_week', expression='order_date', type='date', description='Not a bucket'),
+               DerivedField(name='label_year', expression="FORMAT_DATE('%Y', order_date)", type='string', description='Text'),
+               DerivedField(name='created_quarter', expression='TIMESTAMP_TRUNC(created_at, QUARTER)', type='datetime', description='Quarter'),
+               DerivedField(name='odd_month', expression='DATE_TRUNC(order_date, MONTH)', type='string', description='Not a date view field')]
+    blueprint = blueprint.model_copy(update={'derived_fields': blueprint.derived_fields + derived})
+    trend = next(r for r in blueprint.rows if r.component.type == 'time_series')
+    trend.component.date_dimension = 'order_date_month'
+    fields = FIELDS + [{'name': 'order_date_month', 'type': 'DATE', 'role': 'dimension'},
+                       {'name': 'order_date_week', 'type': 'DATE', 'role': 'dimension'},
+                       {'name': 'label_year', 'type': 'STRING', 'role': 'dimension'},
+                       {'name': 'created_quarter', 'type': 'TIMESTAMP', 'role': 'dimension'},
+                       {'name': 'odd_month', 'type': 'STRING', 'role': 'dimension'}]
+    spec = layout(blueprint, design, plan, fields, **IDENTITY, allowed=set(catalog()))
+    grains = {f.name: f.date_granularity for f in spec.datasource.fields}
+    assert (grains['order_date_month'], grains['created_quarter']) == ('month', 'quarter')
+    # A raw date, a name-only "bucket", text, and a TRUNC whose view field is not a date: no grain.
+    assert grains['order_date'] is grains['order_date_week'] is grains['label_year'] is grains['odd_month'] is None
+    saved = spec.model_dump_json(indent=2)
+    assert saved.count('"date_granularity"') == 2  # absent (not null) on every other field
+    from dss.spec.models import DashboardSpec
+    assert DashboardSpec.model_validate_json(saved) == spec

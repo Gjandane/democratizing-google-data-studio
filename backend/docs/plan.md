@@ -638,7 +638,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: invariant Blueprint ready => accept coverage passes for observations; no automatic drop or rebind of an observation; no relaxed publish coverage; 18.1 freshness and 18.2 binding rules intact; no added model call or repair; only reconciled observation meaning reaches the prompt (untrusted, no boxes or image text beyond labels).
 
 ## Phase 23: Live report defects (change 2026-10-23)
-- [ ] 23.1 Time series on date buckets carry their granularity
+- [x] 23.1 Time series on date buckets carry their granularity
   - Goal: the recipe tells the engine a time series' bucket grain, so release 2.5's "Revenue by month" (b_36f20b42159c op s015, synthetic b_91869163c217 op s016: `date_dimension: order_date_month`, `DATE_TRUNC(order_date, MONTH)`, `options: {}`) draws one point per month live instead of a daily axis with spikes on the 1st, once engine 12.1 applies the option. Recipe 1.2 added `time_series` `date_granularity` at the root, so tests/test_capabilities.py fails 2 tests (registry surface, option values) until this task adds the record.
   - Spec: docs/architecture.md#Recipe compiler; ../contracts/recipe.md#Ops
   - Files: src/dss/recipe/compiler.py, src/dss/spec/models.py, src/dss/spec/auto_layout.py, knowledge/datastudio/capabilities.json, tests/test_compiler.py, tests/test_capabilities.py, tests/test_layout_auto.py, tests/data/golden_recipe.jsonl

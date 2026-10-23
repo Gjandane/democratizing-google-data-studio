@@ -615,6 +615,39 @@
    }
   },
   {
+   "id": "option.time_series.date_granularity",
+   "kind": "option",
+   "label": "Time series date granularity",
+   "recipe": [
+    "add_chart.options.time_series.date_granularity"
+   ],
+   "requires": [
+    "chart.time_series"
+   ],
+   "values": [
+    "day",
+    "week",
+    "month",
+    "quarter",
+    "year"
+   ],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/time-series-reference"
+    ],
+    "verified": "2026-10-23"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops"
+    ],
+    "verified": "2026-10-23",
+    "note": "Set by code from the view's DATE_TRUNC/DATETIME_TRUNC/TIMESTAMP_TRUNC derivation of the date dimension, never from model output"
+   }
+  },
+  {
    "id": "geo.lat_long_points",
    "kind": "geo_granularity",
    "label": "Latitude/longitude points (bubble map)",

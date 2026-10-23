@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 
+import pytest
 from jsonschema import Draft202012Validator
 
 from dss.recipe.compiler import compile_recipe
@@ -159,3 +160,108 @@ def test_designed_recipe_uses_the_canvas_width_and_measured_boxes():
     assert list(charts) == [c.id for c in sorted(page.components, key=lambda c: (c.box.y, c.box.x))]
     label = next(o for o in ops if o.get('component_id') == SYNTHETIC_LABEL_ID)
     assert (label['op'], label['y'], label['w']) == ('add_text', 1224 + 16, 1440 - 48 - 32)
+
+
+def bucket_spec(grain='month', *, options=None, bar_on_bucket=False):
+    """The golden spec with its time series on a code-built `sale_date_<grain>` bucket field."""
+    from dss.spec.models import DashboardSpec
+    value = json.loads(Path('tests/data/golden_spec.json').read_text(encoding='utf-8'))
+    name = f'sale_date_{grain}'
+    value['datasource']['fields'].append({'name': name, 'type': 'DATE', 'label': grain.title(), 'role': 'dimension',
+                                          'default_agg': 'none', 'date_granularity': grain})
+    for c in (c for p in value['pages'] for c in p['components']):
+        if c['type'] == 'time_series':
+            c.update(date_dimension=name, sort={'field': name, 'order': 'asc'})
+            if options is not None:
+                c['options'] = options
+        if c['type'] == 'bar' and bar_on_bucket:
+            c['dimensions'] = [name]
+    return DashboardSpec.model_validate(value)
+
+
+def golden_spec():
+    from dss.spec.models import DashboardSpec
+    return DashboardSpec.model_validate_json(Path('tests/data/golden_spec.json').read_text(encoding='utf-8'))
+
+
+def charts(spec):
+    return {o['component_id']: o for o in lines(compile_recipe(spec, 1))[1:] if o['op'] == 'add_chart'}
+
+
+@pytest.mark.parametrize('function', ['DATE_TRUNC', 'DATETIME_TRUNC', 'TIMESTAMP_TRUNC'])
+@pytest.mark.parametrize('grain', ['day', 'week', 'month', 'quarter', 'year'])
+def test_time_series_on_a_bucket_carries_its_grain(function, grain):
+    """23.1 (release 2.5 b_36f20b42159c s015): the derivation's grain becomes the time series'
+    options.date_granularity, from the view SQL through the spec, so Data Studio draws one point per bucket."""
+    from dss.spec.auto_layout import bucket_grain
+    code = bucket_grain(f'{function}(sale_date, {grain.upper()})')
+    spec = bucket_spec(code)
+    text = compile_recipe(spec, 3)
+    trend = charts(spec)['p1_time_series']
+    assert (trend['date_dimension'], trend['options']) == (f'sale_date_{grain}', {'date_granularity': grain})
+    for value in lines(text)[1:]:
+        Draft202012Validator({**SCHEMA, '$ref': '#/$defs/op'}).validate(value)
+    # Only that op changed against the golden recipe.
+    golden = Path('tests/data/golden_recipe.jsonl').read_text(encoding='utf-8').split('\n')
+    changed = [i for i, (a, b) in enumerate(zip(golden, text.split('\n'))) if a != b]
+    assert len(golden) == len(text.split('\n')) and changed == [next(
+        i for i, line in enumerate(golden) if '"component_id":"p1_time_series","date_dimension"' in line)]
+
+
+def test_raw_dates_and_other_charts_on_a_bucket_get_no_grain():
+    golden = charts(golden_spec())
+    assert 'date_granularity' not in golden['p1_time_series']['options']  # raw sale_date
+    spec = bucket_spec(bar_on_bucket=True)
+    bar = charts(spec)['p1_bar']
+    assert bar['dimensions'] == ['sale_date_month'] and bar['options'] == {'orientation': 'horizontal', 'stacked': True}
+    assert all('date_granularity' not in o['options'] for cid, o in charts(spec).items() if cid != 'p1_time_series')
+
+
+def test_model_written_date_granularity_never_reaches_the_recipe():
+    """A revise patch or designer output can write options; the code grain overwrites or drops theirs."""
+    assert charts(bucket_spec(options={'date_granularity': 'day'}))['p1_time_series']['options'] == {'date_granularity': 'month'}
+    assert charts(bucket_spec(options={'date_granularity': 'month'}))['p1_time_series']['options'] == {'date_granularity': 'month'}
+    raw = golden_spec()
+    for c in (c for p in raw.pages for c in p.components):
+        if c.type in ('time_series', 'bar'):
+            c.options = {**c.options, 'date_granularity': 'month'}
+    compiled = charts(raw)
+    assert compiled['p1_time_series']['options'] == {}
+    assert compiled['p1_bar']['options'] == {'orientation': 'horizontal', 'stacked': True}
+    # A name that only looks like a bucket carries no grain: the spec field has none.
+    named = bucket_spec()
+    named.datasource.fields[-1].date_granularity = None
+    assert charts(named)['p1_time_series']['options'] == {}
+
+
+def test_bucket_compile_is_a_pure_function_of_the_spec():
+    spec = bucket_spec(options={'date_granularity': 'year'})
+    before = spec.model_dump_json()
+    assert compile_recipe(spec, 3) == compile_recipe(spec, 3)
+    assert spec.model_dump_json() == before  # the compiler rewrote no option in place
+    from dss.spec.models import DashboardSpec
+    assert compile_recipe(DashboardSpec.model_validate_json(before), 3) == compile_recipe(spec, 3)
+
+
+def test_decided_monthly_gap_publishes_a_monthly_time_series(blueprint_api, monkeypatch):
+    """22.1's release gap (b_48ef72ff1bff), decided with its date-bucket alternative, publishes a recipe
+    whose monthly time series carries date_granularity month (FakeLLM, FakeBigQuery, staged API)."""
+    from dss.spec.models import DashboardSpec
+    from test_blueprint import choose, confirm
+    from test_render import GAP_FIXES, accept, gap_build, gap_issues
+    build = gap_build(blueprint_api, monkeypatch, 'monthly')
+    confirm(build.client, build.app, build.bid)
+    for oid, fix in GAP_FIXES['monthly'].items():
+        current = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+        assert choose(build.client, build.bid, current, gap_issues(current, build)[oid], fix).status_code == 200
+    accept(build)
+    spec = DashboardSpec.model_validate_json((build.folder / 'spec.json').read_text(encoding='utf-8'))
+    assert {f.name: f.date_granularity for f in spec.datasource.fields if f.date_granularity} == {'order_date_month': 'month'}
+    recipe = build.client.post(f'/api/builds/{build.bid}/recipe')
+    assert recipe.status_code == 200, recipe.text
+    ops = lines((build.folder / 'recipe.jsonl').read_text(encoding='utf-8'))[1:]
+    series = [o for o in ops if o['op'] == 'add_chart' and o['chart_type'] == 'time_series']
+    # The release build's other trend stays on the raw order_date: no grain.
+    assert sorted((o['title'], o['date_dimension'], o['options'].get('date_granularity')) for o in series) == [
+        ('Revenue Trend Over Time', 'order_date', None), ('Revenue by month', 'order_date_month', 'month')]
+    assert not any('date_granularity' in o['options'] for o in ops if o['op'] == 'add_chart' and o['chart_type'] != 'time_series')
