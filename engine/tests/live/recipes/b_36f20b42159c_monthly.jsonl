@@ -1,0 +1,36 @@
+{"build_id":"b_36f20b42159c","canvas":{"height":243,"width":1200},"datasource":{"connector":"bigQuery","dataset_id":"dss_demo","project_id":"ai-projects-250716","table_id":"dash_b_36f20b42159c_v1_r_d336b4c5a6e7"},"recipe_version":"1.0","report_name":"Online Store Performance","version":1}
+{"id":"s001","op":"open_report"}
+{"id":"s002","name":"Executive Summary & Core Performance","op":"rename_page"}
+{"height":243,"id":"s003","op":"set_canvas","width":1200}
+{"h":243,"id":"s004","op":"set_background_image","path":"background_p1.png","w":1200,"x":0,"y":0}
+{"component_id":"p1_order_date","control_type":"date_range","h":36,"id":"s005","op":"add_control","w":280,"x":565,"y":33}
+{"component_id":"p1_customer_segment","control_type":"dropdown","field":"customer_segment","h":36,"id":"s006","op":"add_control","w":280,"x":883,"y":33}
+{"chart_type":"scorecard","component_id":"p1_total_revenue","dimensions":[],"h":64,"id":"s007","metrics":[{"agg":"sum","field":"revenue"}],"op":"add_chart","options":{"compact_numbers":true},"title":"Revenue","w":271,"x":107,"y":136}
+{"chart_type":"scorecard","component_id":"p1_total_orders","dimensions":[],"h":64,"id":"s008","metrics":[{"agg":"count_distinct","field":"order_id"}],"op":"add_chart","options":{"compact_numbers":true},"title":"Orders","w":272,"x":496,"y":136}
+{"chart_type":"scorecard","component_id":"p1_units_sold","dimensions":[],"h":64,"id":"s009","metrics":[{"agg":"sum","field":"quantity"}],"op":"add_chart","options":{"compact_numbers":true},"title":"Units sold","w":271,"x":886,"y":136}
+{"id":"s010","name":"Sales Trajectory & Category Contribution","op":"add_page"}
+{"height":1121,"id":"s011","op":"set_canvas","width":1200}
+{"h":1121,"id":"s012","op":"set_background_image","path":"background_p2.png","w":1200,"x":0,"y":0}
+{"component_id":"p2_order_date","control_type":"date_range","h":36,"id":"s013","op":"add_control","w":280,"x":565,"y":33}
+{"component_id":"p2_category","control_type":"dropdown","field":"category","h":36,"id":"s014","op":"add_control","w":280,"x":883,"y":33}
+{"chart_type":"time_series","component_id":"p2_revenue_trend_over_time","date_dimension":"order_date_month","dimensions":[],"h":260,"id":"s015","metrics":[{"agg":"sum","field":"revenue"}],"op":"add_chart","options":{"date_granularity":"month"},"sort":{"field":"order_date_month","order":"asc"},"title":"Revenue by month","w":1114,"x":43,"y":150}
+{"component_id":"p2_revenue_trend_over_time","id":"s016","op":"set_style","style":{"colors":["#7932E6","#280B54","#A855F7"]}}
+{"chart_type":"time_series","component_id":"p2_order_volume_trend_over_time","date_dimension":"order_date","dimensions":[],"h":260,"id":"s017","metrics":[{"agg":"count_distinct","field":"order_id"}],"op":"add_chart","options":{},"sort":{"field":"order_date","order":"asc"},"title":"Order Volume Trend Over Time","w":1114,"x":43,"y":464}
+{"component_id":"p2_order_volume_trend_over_time","id":"s018","op":"set_style","style":{"colors":["#7932E6","#280B54","#A855F7"]}}
+{"chart_type":"bar","component_id":"p2_revenue_by_category","dimensions":["category"],"h":300,"id":"s019","metrics":[{"agg":"sum","field":"revenue"}],"op":"add_chart","options":{"orientation":"horizontal","stacked":false},"sort":{"field":"revenue","order":"desc"},"title":"Revenue by category","w":530,"x":43,"y":778}
+{"component_id":"p2_revenue_by_category","id":"s020","op":"set_style","style":{"colors":["#7932E6","#280B54","#A855F7"]}}
+{"chart_type":"pie","component_id":"p2_revenue_share_by_category","dimensions":["category"],"h":300,"id":"s021","metrics":[{"agg":"sum","field":"revenue"}],"op":"add_chart","options":{"donut":true},"sort":{"field":"revenue","order":"desc"},"title":"Revenue Share by Category","w":530,"x":627,"y":778}
+{"component_id":"p2_revenue_share_by_category","id":"s022","op":"set_style","style":{"colors":["#7932E6","#280B54","#A855F7"]}}
+{"id":"s023","name":"Product & Regional Breakdown","op":"add_page"}
+{"height":893,"id":"s024","op":"set_canvas","width":1200}
+{"h":893,"id":"s025","op":"set_background_image","path":"background_p3.png","w":1200,"x":0,"y":0}
+{"component_id":"p3_order_date","control_type":"date_range","h":36,"id":"s026","op":"add_control","w":280,"x":565,"y":33}
+{"component_id":"p3_region","control_type":"dropdown","field":"region","h":36,"id":"s027","op":"add_control","w":280,"x":883,"y":33}
+{"chart_type":"bar","component_id":"p3_top_products_by_revenue","dimensions":["product_name"],"h":320,"id":"s028","metrics":[{"agg":"sum","field":"revenue"}],"op":"add_chart","options":{"orientation":"horizontal","stacked":false},"sort":{"field":"revenue","order":"desc"},"title":"Top Products by Revenue","w":530,"x":43,"y":116}
+{"component_id":"p3_top_products_by_revenue","id":"s029","op":"set_style","style":{"colors":["#7932E6","#280B54","#A855F7"]}}
+{"breakdown":"region","chart_type":"bar","component_id":"p3_revenue_by_country","dimensions":["country"],"h":320,"id":"s030","metrics":[{"agg":"sum","field":"revenue"}],"op":"add_chart","options":{"orientation":"horizontal","stacked":true},"sort":{"field":"revenue","order":"desc"},"title":"Revenue by Country","w":530,"x":627,"y":116}
+{"component_id":"p3_revenue_by_country","id":"s031","op":"set_style","style":{"colors":["#7932E6","#280B54","#A855F7"]}}
+{"chart_type":"table","component_id":"p3_product_performance_revenue_and_units_so","dimensions":["product_name","category"],"h":360,"id":"s032","metrics":[{"agg":"sum","field":"revenue"},{"agg":"sum","field":"quantity"}],"op":"add_chart","options":{"rows_per_page":10},"sort":{"field":"revenue","order":"desc"},"title":"Top products by revenue","w":1114,"x":43,"y":490}
+{"component_id":"p3_product_performance_revenue_and_units_so","id":"s033","op":"set_style","style":{"colors":["#7932E6","#280B54","#A855F7"]}}
+{"id":"s034","op":"save_report"}
+{"id":"s035","op":"get_link"}

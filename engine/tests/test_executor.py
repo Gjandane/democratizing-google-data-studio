@@ -2262,3 +2262,185 @@ def test_pie_slice_colors_switch_color_by_to_slice_order_first(tmp_path):
     found = [(position, control.texts) for position, control in style._swatches(editor, ctx, True)]
     assert editor.by_position
     assert found == [(i, [f"slice{i}"]) for i in range(9)]
+
+
+class TypeEditor:
+    """A chart dimension chip's field editor: Data type and its two-level menu.
+
+    Live 2026-10-23: the control reads "<type>" then its icon ligature; choosing a
+    submenu entry leaves both menus and the editor open until one Escape.
+    """
+
+    SUBMENUS = {"date_type_menu": ["Date", "Date & Time", "Year", "Year Quarter", "Year Month",
+                                   "ISO Year Week", "Quarter", "Month", "ISO Week"],
+                "geo_type_menu": ["Country", "Country subdivision (1st level)", "City"]}
+
+    def __init__(self, data_type="Date", missing=()):
+        self.type, self.missing = data_type, set(missing)
+        self.editor = self.menu = False
+        self.submenu = None
+        self.actions = []
+        self.keyboard = self
+
+    def press(self, key):
+        self.actions.append(("press", key))
+        self.editor = self.menu = False
+        self.submenu = None
+
+    def wait_for_timeout(self, timeout):
+        pass
+
+    def locator(self, selector):
+        return TypeNode(self, selector)
+
+
+class TypeNode:
+    def __init__(self, editor, selector, name=None):
+        self.editor, self.selector, self.name = editor, selector, name
+
+    @property
+    def first(self):
+        return self
+
+    def locator(self, selector):
+        assert (self.selector, selector) == ("dimension_group_any", "dimension_type_button")
+        return TypeNode(self.editor, selector)
+
+    def get_by_role(self, role, *, name, exact):
+        assert (self.selector, role, exact) == ("last_overlay", "menuitem", True)
+        return TypeNode(self.editor, "menuitem", name)
+
+    def wait_for(self, *, state, timeout):
+        assert self.selector == "data_type_control" and state == "visible"
+        if not self.editor.editor:
+            raise TimeoutError("field editor is closed")
+
+    def inner_text(self):
+        assert self.selector == "data_type_control" and self.editor.editor
+        return f"{self.editor.type}\narrow_drop_down"
+
+    def hover(self, *, timeout):
+        self.editor.actions.append(("hover", self.selector))
+        assert self.editor.menu
+        self.editor.submenu = [label for label in TypeEditor.SUBMENUS[self.selector]
+                               if label not in self.editor.missing]
+
+    def click(self, *, timeout):
+        editor = self.editor
+        editor.actions.append(("click", self.name or self.selector))
+        if self.selector == "dimension_type_button":
+            editor.editor = True
+        elif self.selector == "data_type_control":
+            editor.menu = True
+        elif self.name in (editor.submenu or []):
+            editor.type = self.name
+        else:
+            raise TimeoutError(f"menu item {self.name} not found")
+
+
+def _type_context(tmp_path):
+    ctx = cleanup_context(tmp_path)
+    ctx.selectors = {key: key for key in (
+        "dimension_group_any", "dimension_type_button", "data_type_control", "last_overlay",
+        "date_type_menu", "geo_type_menu")}
+    return ctx
+
+
+class Untouchable:
+    def __getattr__(self, name):
+        raise AssertionError(f"page.{name} used")
+
+
+@pytest.mark.parametrize("value", ["hour", "Month", "monthly", "", 3, ["month"]])
+def test_date_granularity_outside_the_contract_fails_before_any_ui_action(tmp_path, value):
+    # Recipe 1.2: day, week, month, quarter or year; checked like geo_type.
+    from dsengine.ops import OperationError, charts
+
+    op = _time_series(None, options={"date_granularity": value})
+    with pytest.raises(OperationError) as error:
+        charts.run(Untouchable(), op, cleanup_context(tmp_path))
+    assert str(error.value) == "date_granularity must be day, week, month, quarter or year"
+
+
+@pytest.mark.parametrize("op", [
+    _time_series(None), _time_series(None, options={}),
+    _time_series(None, options={"date_granularity": None}),
+    _time_series(None, options={"geo_type": "country"}),
+    Operation(id="s019", op="add_chart", chart_type="bar", dimensions=["order_date"],
+              metrics=[{"field": "revenue", "agg": "sum"}], options={"date_granularity": "x"}),
+])
+def test_without_date_granularity_the_date_type_is_left_as_inferred(tmp_path, op):
+    # Without the option nothing changes: 10.1/11.x replays never open the editor.
+    from dsengine.ops import charts
+
+    for change in (True, False):
+        charts._date_granularity(Untouchable(), _type_context(tmp_path), op, change=change)
+
+
+@pytest.mark.parametrize("value, label", [
+    ("day", "Date"), ("week", "ISO Year Week"), ("month", "Year Month"),
+    ("quarter", "Year Quarter"), ("year", "Year"),
+])
+def test_date_granularity_sets_the_date_dimension_type_and_reads_it_back(tmp_path, value, label):
+    # Release b_36f20b42159c s015: DATE_TRUNC(order_date, MONTH) drew a daily axis
+    # with a spike on each 1st; its type in the chart must be Year Month.
+    from dsengine.ops import charts
+
+    editor, ctx = TypeEditor(), _type_context(tmp_path)
+    op = _time_series(None, options={"date_granularity": value})
+    charts._date_granularity(editor, ctx, op, change=True)
+    assert editor.type == label
+    changed = [("click", "data_type_control"), ("hover", "date_type_menu"), ("click", label)]
+    assert editor.actions == [("click", "dimension_type_button"),
+                              *(changed if label != "Date" else []), ("press", "Escape")]
+    assert not (editor.editor or editor.menu or editor.submenu)
+
+    editor.actions = []
+    charts._date_granularity(editor, ctx, op, change=False)
+    assert editor.actions == [("click", "dimension_type_button"), ("press", "Escape")]
+
+
+def test_date_granularity_verify_fails_when_the_type_read_back_differs(tmp_path):
+    from dsengine.ops import OperationError, charts
+
+    editor = TypeEditor("Date")
+    op = _time_series(None, options={"date_granularity": "month"})
+    with pytest.raises(OperationError, match="^time series date dimension type is Date, not Year Month$"):
+        charts._date_granularity(editor, _type_context(tmp_path), op, change=False)
+    assert editor.actions == [("click", "dimension_type_button"), ("press", "Escape")]
+    assert editor.type == "Date"
+
+
+def test_date_granularity_missing_from_the_menu_closes_the_editor_and_its_menus(tmp_path):
+    # An open menu's backdrop intercepts every later click (task 11.3 gotcha).
+    from dsengine.ops import charts
+
+    editor = TypeEditor("Date", missing={"Year Month"})
+    op = _time_series(None, options={"date_granularity": "month"})
+    with pytest.raises(TimeoutError):
+        charts._date_granularity(editor, _type_context(tmp_path), op, change=True)
+    assert editor.actions[-1] == ("press", "Escape")
+    assert not (editor.editor or editor.menu or editor.submenu)
+
+
+def test_geo_type_and_date_granularity_share_one_data_type_path(tmp_path, monkeypatch):
+    from dsengine.ops import charts
+
+    geo = Operation(id="s004", op="add_chart", chart_type="geo_map", dimensions=["country"],
+                    metrics=[{"field": "revenue", "agg": "sum"}], options={"geo_type": "region"})
+    editor, ctx = TypeEditor("Text"), _type_context(tmp_path)
+    charts._geo_type(editor, ctx, geo, change=True)
+    # The read-back ignores the icon line, as for the date type.
+    assert editor.type == "Country subdivision (1st level)"
+    assert editor.actions == [("click", "dimension_type_button"), ("click", "data_type_control"),
+                              ("hover", "geo_type_menu"),
+                              ("click", "Country subdivision (1st level)"), ("press", "Escape")]
+
+    calls = []
+    monkeypatch.setattr(charts, "_data_type", lambda page, ctx, key, label, *, change, subject:
+                        calls.append((key, label, change)) or label)
+    charts._geo_type(editor, ctx, geo, change=False)
+    charts._date_granularity(editor, ctx, _time_series(None, options={"date_granularity": "year"}),
+                             change=True)
+    assert calls == [("geo_type_menu", "Country subdivision (1st level)", False),
+                     ("date_type_menu", "Year", True)]

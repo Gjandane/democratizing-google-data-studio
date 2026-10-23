@@ -99,6 +99,8 @@ selectors:
   dimension_type_button: '.left-half'
   data_type_control: 'role=button[name=/^Data type /]'
   geo_type_menu: 'role=menuitem[name=/^Geo$/]'
+  date_type_menu: 'role=menuitem[name=/^Date & Time$/] >> nth=0'
+  chart_x_axis_label: '.bottomAxisLabels text'
   add_control: 'role=button[name=/^Add\ a\ control$/]'
   date_range_control: 'role=menuitem[name=/^Date\ range\ control$/]'
   dropdown_control: 'role=menuitem[name=/^Drop\-down\ list$/]'
@@ -333,6 +335,27 @@ none: its picker shows No results without the usual Chart fields heading. Close
 that picker on rejection so later operations and saving remain usable. A compatible
 dimension's left icon exposes Data type -> Geo, with Country, Country subdivision
 (1st level), and City corresponding to country, region, and city.
+
+### Date dimension type (task 12.1, live 2026-10-23)
+
+A time series' date dimension chip (first in actionConceptList) has the same left
+type icon. It opens the field editor (Display name, Data type, Display Format);
+`data_type_control` (accessible name "Data type <type>") reads "<type>" then its
+icon ligature "arrow_drop_down" on a second line: read the first line. Its menu
+offers Numeric, Text, Date & Time, Boolean, Geo, Currency, URL, for a DATE column
+(`order_date_month` = DATE_TRUNC(order_date, MONTH) on the b_36f20b42159c view)
+and a TIMESTAMP one (order_items `created_at`) alike; both start as "Date" (the
+TIMESTAMP chip reads "created_at (Date)", the DATE one has no suffix). Hovering
+Date & Time (`date_type_menu`) opens a submenu: Date, Date & Time, Year, Year
+Quarter, Year Month, ISO Year Week, Date Hour, Date Hour Minute, Quarter, Month,
+ISO Week, Month Day, Day of Week, Day of Month, Hour, Minute. The submenu repeats
+"Date & Time", hence `nth=0` (the type menu opens first). `date_granularity` maps
+day -> Date, week -> ISO Year Week (there is no "Year Week"), month -> Year
+Month, quarter -> Year Quarter, year -> Year. Choosing one takes about 0.5 s and
+leaves both menus and the editor open; one Escape closes all three. The chip then
+reads "<field> (Year Month)"; the Date range dimension keeps its own type. The
+chart redraws per bucket: x-axis labels (`chart_x_axis_label`, in the chart
+iframe) go from "Jan 6, 2019" (or "Jan 1" within one year) to "Jan 2019".
 
 Add a control opens a menu containing Date range control and Drop-down list.
 Wait for the chosen menu item to disappear before clicking the drawing canvas;

@@ -483,3 +483,15 @@ context. Task status lives in docs/plan.md, not here.
 - What changed: plan.md Phase 12: 12.1 (M, time series date granularity); architecture.md Live editor conventions + decision log; essentials recipe 1.2. Contract recipe.md 1.2 (`time_series` option `date_granularity`) changed at the root.
 - Why: release 2.5 found a time series on a month bucket (`DATE_TRUNC` -> DATE) drawn per day, spikes on the 1st and zeros between (b_36f20b42159c s015); the engine is the only part that can set a chart's date type.
 - Affected: engine 12.1 (new); backend 23.1 emits the option; release 2.6 `Needs: engine 12.1`. The final audit's ACCEPTED verdict covers tasks to 11.3 only.
+
+## 2026-10-23: Task 12.1 Time series date granularity
+- Status: done
+- Plan check: off
+- What changed: charts.py `_data_type` (chip icon -> Data type -> submenu, first-line readback, Escape in finally) shared by `_geo_type` and new `_date_granularity`; `_granularity` checks the value before UI; run/verify call it for time_series. Selectors `date_type_menu`, `chart_x_axis_label`; editor.md/log.md; 19 offline + 7 contract tests; live case `recipes/date_granularity.jsonl`; `recipes/b_36f20b42159c_monthly.jsonl`.
+- Checks: diagnosis (frames scratch, menu dump): DATE `order_date_month` and TIMESTAMP `created_at` chips both start "Date"; menu Numeric/Text/Date & Time/Boolean/Geo/Currency/URL; Date & Time: Date, Date & Time, Year, Year Quarter, Year Month, ISO Year Week, Date Hour(+Minute), Quarter, Month, ISO Week, Month Day, Day of Week/Month, Hour, Minute. Live case before FAIL ('Date' != 'Year Month'), after PASS (x-axis "Jan 2019".."Aug 2026"). b_36f20b42159c view exists; monthly replay run_finished ok 35 failed 0 (copy + build's background_p*.png in one dir, `uv run dsengine run <copy>`); ../data/report-quality/engine-12.1-monthly.png Jan–Sep 2026 monthly, no zero days. `uv run pytest -m live tests/live/test_recipe_replay.py tests/live/test_charts_a.py` 10 passed (first run 9/1: s005 flake, passed alone); `uv run pytest` 228 passed.
+- Decisions: week -> "ISO Year Week" (menu has no "Year Week"). Geo readback now first line too (old full-text compare included "arrow_drop_down"). Option ignored on non-time_series. AGENTS.md: 1 gotcha, 1 updated.
+- Digest: charts.py `_data_type(page, ctx, menu_key, label, *, change, subject) -> str` (shared geo/date); `_granularity(op) -> str|None`; `_DATE_GRANULARITIES` day Date, week ISO Year Week, month Year Month, quarter Year Quarter, year Year; selectors date_type_menu, chart_x_axis_label.
+- Tried and failed: none
+- Gotchas: none beyond AGENTS.md.
+- Left open: P3 type readback after the menu click is read once, not polled - src/dsengine/ops/charts.py; P3 monthly fixture needs the build's backgrounds beside it (no test runs it) - tests/live/recipes/b_36f20b42159c_monthly.jsonl
+- Next: none in the engine plan; backend 23.1 emits `date_granularity`.

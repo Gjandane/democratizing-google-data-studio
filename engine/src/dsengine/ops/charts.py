@@ -35,6 +35,10 @@ _AGGREGATIONS = {
 
 _GEO_TYPES = {"country": "Country", "region": "Country subdivision (1st level)", "city": "City"}
 
+# Data type -> Date & Time labels (live 2026-10-23); the menu offers no "Year Week".
+_DATE_GRANULARITIES = {"day": "Date", "week": "ISO Year Week", "month": "Year Month",
+                       "quarter": "Year Quarter", "year": "Year"}
+
 
 def _dimensions(op: Any) -> tuple[list[str], list[str]]:
     dimensions = list(op.dimensions)
@@ -58,25 +62,61 @@ def _metric_groups(page: Any, ctx: OpContext, op: Any, metrics: list) -> list[tu
     return [(_locator(page, ctx, "metric_group_any"), metrics)]
 
 
+def _data_type(page: Any, ctx: OpContext, menu_key: str, label: str, *,
+               change: bool, subject: str) -> str:
+    """Set (change) or read the first dimension's Data type in the chart; return the type read.
+
+    menu_key: the Data type menu entry whose submenu offers label (Geo, Date & Time).
+    """
+    group = _locator(page, ctx, "dimension_group_any")
+    group.locator(ctx.selectors["dimension_type_button"]).first.click(timeout=ctx.timeout_ms())
+    control = _locator(page, ctx, "data_type_control")
+    try:
+        _wait_visible(control, ctx, f"{subject} data type is unavailable")
+        # The control reads "<type>\narrow_drop_down": the second line is its icon.
+        actual = control.inner_text().splitlines()[0].strip()
+        if change and actual != label:
+            control.click(timeout=ctx.timeout_ms())
+            _locator(page, ctx, menu_key).hover(timeout=ctx.timeout_ms())
+            _locator(page, ctx, "last_overlay").get_by_role("menuitem", name=label, exact=True).click(timeout=ctx.timeout_ms())
+            actual = control.inner_text().splitlines()[0].strip()
+    finally:
+        # One Escape closes the field editor with any type menus still open.
+        page.keyboard.press("Escape")
+    return actual
+
+
 def _geo_type(page: Any, ctx: OpContext, op: Any, *, change: bool) -> None:
     value = (getattr(op, "options", {}) or {}).get("geo_type")
     if value is None:
         return
     if not isinstance(value, str) or value not in _GEO_TYPES:
         raise OperationError("geo_type must be country, region or city")
-    group = _locator(page, ctx, "dimension_group_any")
-    group.locator(ctx.selectors["dimension_type_button"]).first.click(timeout=ctx.timeout_ms())
-    control = _locator(page, ctx, "data_type_control")
-    _wait_visible(control, ctx, "geo dimension data type is unavailable")
-    label = _GEO_TYPES[value]
-    if change and control.inner_text().strip() != label:
-        control.click(timeout=ctx.timeout_ms())
-        _locator(page, ctx, "geo_type_menu").hover(timeout=ctx.timeout_ms())
-        _locator(page, ctx, "last_overlay").get_by_role("menuitem", name=label, exact=True).click(timeout=ctx.timeout_ms())
-    actual = control.inner_text().strip()
-    page.keyboard.press("Escape")
-    if actual != label:
+    if _data_type(page, ctx, "geo_type_menu", _GEO_TYPES[value],
+                  change=change, subject="geo dimension") != _GEO_TYPES[value]:
         raise OperationError(f"geo dimension could not map to {value}")
+
+
+def _granularity(op: Any) -> str | None:
+    """A time series' date_granularity, checked before any UI action (recipe 1.2)."""
+    value = (getattr(op, "options", {}) or {}).get("date_granularity")
+    if op.chart_type != "time_series" or value is None:
+        return None
+    if not isinstance(value, str) or value not in _DATE_GRANULARITIES:
+        raise OperationError("date_granularity must be day, week, month, quarter or year")
+    return value
+
+
+def _date_granularity(page: Any, ctx: OpContext, op: Any, *, change: bool) -> None:
+    """Set or verify the date dimension's Date & Time type; without the option, leave it."""
+    value = _granularity(op)
+    if value is None:
+        return
+    label = _DATE_GRANULARITIES[value]
+    actual = _data_type(page, ctx, "date_type_menu", label, change=change,
+                        subject="time series date dimension")
+    if actual != label:
+        raise OperationError(f"time series date dimension type is {actual}, not {label}")
 
 
 def _locator(page: Any, ctx: OpContext, key: str) -> Any:
@@ -641,6 +681,7 @@ def _run_add_chart(page: Any, op: Any, ctx: OpContext) -> OpResult:
         geo_type = (getattr(op, "options", {}) or {}).get("geo_type")
         if geo_type is not None and (not isinstance(geo_type, str) or geo_type not in _GEO_TYPES):
             raise OperationError("geo_type must be country, region or city")
+    _granularity(op)
     inherent_sort = _inherent_sort(op, dimensions)
     target, clamped = _chart_box(op, ctx)
     if clamped:
@@ -701,6 +742,7 @@ def _run_add_chart(page: Any, op: Any, ctx: OpContext) -> OpResult:
         _set_fields(page, ctx, _locator(page, ctx, "pivot_columns_group"), columns, add_label="Add dimension")
     if op.chart_type == "geo_map":
         _geo_type(page, ctx, op, change=True)
+    _date_granularity(page, ctx, op, change=True)
 
     breakdown = getattr(op, "breakdown", None)
     if breakdown:
@@ -802,6 +844,7 @@ def _verify_add_chart(page: Any, op: Any, ctx: OpContext) -> None:
             raise OperationError("pivot column Setup fields did not match the recipe")
     if op.chart_type == "geo_map":
         _geo_type(page, ctx, op, change=False)
+    _date_granularity(page, ctx, op, change=False)
 
     for metric_group, group_metrics in _metric_groups(page, ctx, op, state["metrics"]):
         actual_fields = _field_names(metric_group, ctx)

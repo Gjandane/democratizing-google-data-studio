@@ -6,6 +6,12 @@ timestamp: 2026-10-18
 selectors: {}
 ---
 
+- 2026-10-23 task 12.1: added `date_type_menu` (Data type menu entry "Date &
+  Time", first match: its submenu repeats the name) and `chart_x_axis_label`
+  (x-axis tick labels in the chart iframe, for live readback), after dumping a
+  time series date chip's field editor, type menu and Date & Time submenu for a
+  DATE (b_36f20b42159c view `order_date_month`) and a TIMESTAMP (order_items
+  `created_at`) field, then applying Year Month to each.
 - 2026-10-22 task 11.3: added `color_by_position` (pie Color by > Slice order
   radio, value `position`), `series_select` (time series Series > Select metric
   combobox), `series_color` (template: `{n}` is the series number) and

@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 import struct
 import traceback
@@ -58,6 +59,37 @@ def _scorecard_value(page, ctx, component):
     return None
 
 
+def _date_type(page, ctx):
+    """The date dimension chip's Data type, read in its field editor."""
+    ctx.locator(page, "dimension_group_any").locator(
+        ctx.selectors["dimension_type_button"]).first.click()
+    control = ctx.locator(page, "data_type_control")
+    control.wait_for(state="visible")
+    found = control.inner_text().splitlines()[0].strip()
+    page.keyboard.press("Escape")
+    return found
+
+
+_MONTH = re.compile(r"[A-Z][a-z]{2} \d{4}")  # "Jan 2019"; days read "Jan 6, 2019" or "Jan 1"
+_AXIS = "(body, key) => [...body.querySelectorAll(key)].map(e => e.textContent.trim()).filter(Boolean)"
+
+
+def _x_axis_labels(page, ctx, component):
+    """The rendered x-axis labels, once they are all months or the op budget runs low."""
+    body = component.frame_locator(ctx.selectors["chart_iframe"]).locator(
+        ctx.selectors["chart_frame_body"])
+    found = []
+    while ctx.remaining_s() > 3:  # leave the op's own cleanup some budget
+        try:
+            found = body.evaluate(_AXIS, ctx.selectors["chart_x_axis_label"], timeout=1000)
+        except Exception:
+            found = []  # the chart iframe is created lazily
+        if found and all(_MONTH.fullmatch(label) for label in found):
+            break
+        page.wait_for_timeout(250)
+    return found
+
+
 def _write_png(path, width, height):
     # A plain RGB PNG at the backend's per_section size, without an image dependency.
     def chunk(kind, data):
@@ -110,6 +142,9 @@ def _replay(name, tmp_path, capsys, monkeypatch):
         if "rows_per_page" in (getattr(op, "options", None) or {}):
             readback[op.id]["rows_per_page"] = (
                 ctx.locator(page, "rows_per_page_control").inner_text().strip())
+        if "date_granularity" in (getattr(op, "options", None) or {}):
+            readback[op.id]["date_type"] = _date_type(page, ctx)
+            readback[op.id]["x_axis"] = _x_axis_labels(page, ctx, component)
 
     def read_control(page, op, ctx):
         control_verify(page, op, ctx)
@@ -316,6 +351,18 @@ def test_series_swatches_take_the_palette_in_order(tmp_path, capsys, monkeypatch
         assert ("info", f"{op_id}: colors applied {count} of 4") in logs, logs
     unsupported = [message for level, message in logs if "unsupported style key colors" in message]
     assert unsupported == ["s010: unsupported style key colors for this component"], logs
+
+
+def test_time_series_date_granularity_draws_one_point_per_month(tmp_path, capsys, monkeypatch):
+    # Release 2.5 b_36f20b42159c s015 "Revenue by month": the DATE_TRUNC(order_date,
+    # MONTH) bucket kept the inferred Date type and drew a daily axis, a spike on
+    # each 1st and zeros between. date_granularity month sets Year Month (recipe 1.2).
+    ops, readback = _replay("date_granularity.jsonl", tmp_path, capsys, monkeypatch)
+    _assert_readback(ops, readback)
+    found = readback["s002"]
+    assert found["date_type"] == "Year Month", found
+    assert found["dimensions"] == ["created_at (Year Month)"], found
+    assert found["x_axis"] and all(_MONTH.fullmatch(label) for label in found["x_axis"]), found
 
 
 def test_page_one_is_renamed_and_saved_beside_an_added_page(tmp_path, capsys, monkeypatch):

@@ -1,0 +1,5 @@
+{"recipe_version":"1.0","build_id":"b_000000000012","version":1,"report_name":"Engine date granularity","canvas":{"width":1200,"height":900},"datasource":{"connector":"bigQuery","project_id":"bigquery-public-data","dataset_id":"thelook_ecommerce","table_id":"order_items"}}
+{"id":"s001","op":"open_report"}
+{"id":"s002","op":"add_chart","component_id":"p1_revenue_by_month","chart_type":"time_series","x":24,"y":24,"w":900,"h":300,"dimensions":[],"date_dimension":"created_at","metrics":[{"field":"sale_price","agg":"sum"}],"sort":{"field":"created_at","order":"asc"},"title":"Revenue by month","options":{"date_granularity":"month"}}
+{"id":"s003","op":"save_report"}
+{"id":"s004","op":"get_link"}

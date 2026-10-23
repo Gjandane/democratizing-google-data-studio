@@ -1,11 +1,16 @@
 """Black-box conformance against the sibling contract, never a copied schema."""
 
 import json
+import re
 import shlex
 import subprocess
 from pathlib import Path
 
+import pytest
 from jsonschema import Draft202012Validator, FormatChecker
+
+from dsengine.ops import OperationError, charts
+from dsengine.recipe import load_recipe
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACTS = ROOT.parent / "contracts"
@@ -128,3 +133,69 @@ def test_rename_page_requires_a_nonempty_name(tmp_path):
         assert result.returncode == 2
         assert f"line 3: invalid op {problem}" in result.stderr, result.stderr
         assert "invalid op" in result.stderr
+
+
+def _contract_granularities():
+    """The time_series date_granularity values recipe.md lists, in its order."""
+    text = (CONTRACTS / "recipe.md").read_text(encoding="utf-8")
+    listed = re.search(r"`time_series`:\s+`date_granularity` \(([^)]*)\)", text)
+    assert listed, "recipe.md no longer lists time_series date_granularity"
+    return re.findall(r"`(\w+)`", listed.group(1))
+
+
+def _sample_time_series(records):
+    return next(record for record in records if record.get("chart_type") == "time_series")
+
+
+def test_date_granularity_check_accepts_exactly_the_contract_values():
+    # Contract 1.2: the engine checks the value before any UI action, like geo_type.
+    values = _contract_granularities()
+    assert values == ["day", "week", "month", "quarter", "year"]
+    assert list(charts._DATE_GRANULARITIES) == values
+    recipe = load_recipe(SAMPLE)
+    op = next(op for op in recipe.ops if getattr(op, "chart_type", None) == "time_series")
+    for value in values:
+        op.options = {"date_granularity": value}
+        assert charts._granularity(op) == value
+    for value in ("hour", "Monthly", ""):
+        op.options = {"date_granularity": value}
+        with pytest.raises(OperationError,
+                           match="^date_granularity must be day, week, month, quarter or year$"):
+            charts._granularity(op)
+
+
+@pytest.mark.parametrize("value", ["day", "week", "month", "quarter", "year"])
+def test_time_series_date_granularity_validates_prints_and_dry_runs(tmp_path, value):
+    records = [json.loads(line) for line in SAMPLE.read_text(encoding="utf-8").splitlines()]
+    _sample_time_series(records)["options"] = {"date_granularity": value}
+    assert records[0]["recipe_version"] == "1.0"  # 1.2 adds the option; the header stays
+    path = tmp_path / "granularity.jsonl"
+    path.write_text("\n".join(json.dumps(record) for record in records), encoding="utf-8")
+    result = run_cli("validate", path)
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+    result = run_cli("print", path)
+    assert result.returncode == 0, result.stderr
+    line = next(line for line in result.stdout.splitlines() if "--type time_series" in line)
+    assert shlex.split(line)[-2:] == ["--options", json.dumps({"date_granularity": value},
+                                                              separators=(",", ":"))]
+    result = run_cli("run", path, "--dry-run")
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout.splitlines()[-1])["skipped"] == len(records) - 1
+
+
+def test_sample_time_series_without_date_granularity_keeps_its_inferred_type(tmp_path):
+    # Without the option nothing changes: no option to print, no type change to make.
+    records = [json.loads(line) for line in SAMPLE.read_text(encoding="utf-8").splitlines()]
+    assert "options" not in _sample_time_series(records)
+    result = run_cli("print", SAMPLE)
+    line = next(line for line in result.stdout.splitlines() if "--type time_series" in line)
+    assert "--options" not in line
+    recipe = load_recipe(SAMPLE)
+    op = next(op for op in recipe.ops if getattr(op, "chart_type", None) == "time_series")
+    assert charts._granularity(op) is None
+
+    class Untouchable:
+        def __getattr__(self, name):
+            raise AssertionError(f"page.{name} used")
+
+    charts._date_granularity(Untouchable(), None, op, change=True)

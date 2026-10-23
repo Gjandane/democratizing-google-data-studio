@@ -208,7 +208,7 @@ tasks and require a separately specified scope/contract revision. Task statuses 
   - Review focus: background/border_color/show_title/font_size paths unchanged; color readback compares rgb, not hex text.
 
 ## Phase 12: Live report defects (change 2026-10-23)
-- [ ] 12.1 Time series date granularity
+- [x] 12.1 Time series date granularity
   - Goal: a time series on a date-bucket field draws one point per bucket in the live report. Release 2.5 found build b_36f20b42159c's "Revenue by month" (../data/builds/b_36f20b42159c/v1/recipe.jsonl op s015, `date_dimension: order_date_month` = `DATE_TRUNC(order_date, MONTH)`, a DATE column) drawn on a daily axis, a spike on the 1st of each month and zeros between, while the prototype shows the monthly line; synthetic build b_91869163c217 op s016 uses the same field. Recipe 1.2 adds `options.date_granularity`; backend 23.1 emits it.
   - Spec: ../contracts/recipe.md#Ops; docs/architecture.md#Live editor conventions
   - Files: src/dsengine/ops/charts.py, knowledge/datastudio-ui/editor.md, knowledge/datastudio-ui/log.md, tests/test_executor.py, tests/test_contract.py, tests/live/test_recipe_replay.py, tests/live/recipes/*.jsonl
