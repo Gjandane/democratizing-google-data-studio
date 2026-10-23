@@ -500,8 +500,10 @@ RECREATE = json.loads((Path(__file__).parent / 'data/recreate_definitions.json')
 OBSERVED = ['o2', 'o3', 'o4', 'o5', 'o6']
 
 
-def recreate_build(blueprint_api, monkeypatch, matching=True):
-    """Staged build whose Blueprint answers the recreate fixture; KPIs that name its metrics or not."""
+def recreate_build(blueprint_api, monkeypatch, matching=True, data=RECREATE, synthetic=False, designer=None, designed=True):
+    """Staged build whose Blueprint answers the recreate fixture `data`; KPIs that name its metrics or
+    not; a synthetic (screenshot-only) source or the uploaded one; `designer` answers the designer node
+    (`designed` False: Config.designed_pages off)."""
     from types import SimpleNamespace
     from test_blueprint import artifact, fixture
     from test_references import Capture, output
@@ -511,18 +513,18 @@ def recreate_build(blueprint_api, monkeypatch, matching=True):
     context = fixture('context')
     context['datasets'][0]['source_id'] = sid
     if not matching:
-        context['kpis'] = RECREATE['unmatched_kpis']
+        context['kpis'] = data['unmatched_kpis']
     artifact(folder, Context.model_validate(context))
     ids = dict(zip(('revenue', 'orders', 'units'), [k['id'] for k in context['kpis']]))
     outline = fixture('outline')
     template = outline['sections'][0]['questions'][0]
     outline['sections'] = [{'id': 's1', 'title': 'Store performance', 'purpose': 'Recreate the reference.', 'questions': [
         {**template, 'id': qid, 'text': text, 'kpi_refs': [ids[k] for k in dict.fromkeys(
-            r['kpi'] for r in RECREATE['rows'] if r['question_id'] == qid)]} for qid, text in RECREATE['questions'].items()]}]
+            r['kpi'] for r in data['rows'] if r['question_id'] == qid)]} for qid, text in data['questions'].items()]}]
     artifact(folder, Outline.model_validate(outline))
     value['rows'] = [{'question_id': r['question_id'], 'section_id': 's1', 'page': 1, 'note': '', 'status': 'ok',
-                      'issue_ids': [], 'component': r['component']} for r in RECREATE['rows']]
-    value['derived_fields'] = [*value['derived_fields'], RECREATE['derived_field']]
+                      'issue_ids': [], 'component': r['component']} for r in data['rows']]
+    value['derived_fields'] = [*value['derived_fields'], data['derived_field']]
     llm.replies = [json.dumps(value)]
     bq.created, bq.deleted = [], []
     bq.dry_run = lambda sql: bq.sql.append(sql) or [SimpleNamespace(name=n, field_type=t, mode='NULLABLE')
@@ -530,12 +532,18 @@ def recreate_build(blueprint_api, monkeypatch, matching=True):
     bq.create_view = lambda table, sql: bq.created.append(table)
     bq.delete_view = lambda table: bq.deleted.append(table) or True
     bq.aggregate = lambda sql: [{'region': 'West', 'order_month': '2026-01-01', 'm0': 10}]
-    monkeypatch.setattr(background, 'capture', lambda html, path, width, height: path.write_bytes(b'PNG'))
+    monkeypatch.setattr(background, 'capture', lambda html, path, width, height, scale=None: path.write_bytes(b'PNG'))
     monkeypatch.setattr(references, 'decode', lambda _: None)
-    build = SimpleNamespace(client=client, app=app, bid=bid, folder=folder, llm=llm, value=value, context=context,
-                            vision=Capture(response=output(items=RECREATE['items']), requests=[]), extraction=None)
+    if synthetic:
+        from dss.spec.models import SYNTHETIC_LABEL
+        with app.state.db.connect() as conn:
+            conn.execute("UPDATE sources SET kind='synthetic', name=? WHERE id=?", (SYNTHETIC_LABEL, sid))
+    if not designed:
+        monkeypatch.setattr(app.state.settings, 'defaults', app.state.settings.defaults.model_copy(update={'designed_pages': False}))
+    build = SimpleNamespace(client=client, app=app, bid=bid, folder=folder, llm=llm, value=value, context=context, data=data,
+                            vision=Capture(response=output(items=data['items']), requests=[]), extraction=None)
     monkeypatch.setattr(app.state.models, 'llm_for', lambda action: {
-        'reference_extract': build.vision, 'capability_check': build.extraction}.get(action) or llm)
+        'reference_extract': build.vision, 'capability_check': build.extraction, 'designer': designer}.get(action) or llm)
     return build
 
 
@@ -548,9 +556,12 @@ def upload_recreate(build, instructions=''):
     wait(build.app)
     reference = build.client.get(f'/api/builds/{build.bid}/reference-images').json()
     # One extraction reply for exactly the new sources; code reconciles every definition.
-    items = [{'source_id': f'{reference["id"]}:{oid}', **RECREATE['extraction'][oid]} for oid in OBSERVED]
+    extraction = build.data['extraction']
+    items = [{'source_id': f'{reference["id"]}:{oid}', **extraction[oid]} for oid in OBSERVED]
     if instructions:
-        items.append({'source_id': reference['id'] + ':instructions', **RECREATE['extraction']['instructions']})
+        records = extraction['instructions']
+        items += [{'source_id': reference['id'] + ':instructions', **record}
+                  for record in (records if isinstance(records, list) else [records])]
     from test_references import Capture
     build.extraction = Capture(response=json.dumps({'requirements': items}), requests=[])
     return reference['id']
@@ -683,6 +694,92 @@ def test_recreate_draft_and_changed_kpis_never_authorize(blueprint_api, monkeypa
     assert changed['state'] == 'blocked' and any('screenshot shows sum' in r and 'avg' in r for r in reasons), reasons
     assert build.extraction.calls == 1
     observations(build)
+
+
+RECREATE_DESIGNED = json.loads((Path(__file__).parent / 'data/recreate_designed.json').read_text(encoding='utf-8'))
+TITLES = {'Revenue', 'Orders', 'Units sold', 'Revenue by month', 'Revenue by region'}
+
+
+def spans(app, run_id):
+    with app.state.db.connect() as conn:
+        trace = conn.execute('SELECT * FROM traces WHERE run_id=?', (run_id,)).fetchone()
+    return trace, json.loads(trace['spans_json'])
+
+
+@pytest.mark.parametrize('case', ['designed', 'code', 'synthetic'])
+def test_recreate_accept_publishes_with_planner_titles(blueprint_api, monkeypatch, case):
+    """Release 2.5 b_7ca302e800cc, b_dfb67c24f176: every recreate accept failed publish coverage. The
+    planner titled the observed charts its own way, the extractor cited observation ids as
+    components, and the month SQL ended in a space; designed pages were not the cause."""
+    from test_designer import DesignerLLM
+    designer = DesignerLLM() if case != 'code' else None
+    build = recreate_build(blueprint_api, monkeypatch, data=RECREATE_DESIGNED, synthetic=case == 'synthetic',
+                           designer=designer, designed=case != 'code')
+    rid = upload_recreate(build, RECREATE_DESIGNED['instructions'])
+    assessment = feasibility_check(build.client, build.app, build.bid)
+    assert assessment['state'] == 'ready', assessment['issues']
+    assert build.extraction.calls == 1
+    accept(build)
+    spec = DashboardSpec.model_validate_json((build.folder / 'spec.json').read_text(encoding='utf-8'))
+    assert spec.datasource.synthetic == (case == 'synthetic')
+    assert all(p.design for p in spec.pages) if designer else not any(p.design for p in spec.pages)
+    if designer:
+        assert designer.calls == len(spec.pages)  # no added model call
+        # The designer laid its cards out around the observed titles.
+        assert all(f'>{c.label}<' in p.design.html for p in spec.pages for c in p.components)
+    components = [c for p in spec.pages for c in p.components]
+    assert {c.label for c in components} == TITLES and len(components) == len(RECREATE_DESIGNED['rows'])
+    kpi = {'Revenue': 'kpi:net_revenue', 'Orders': 'kpi:orders', 'Units sold': 'kpi:units_sold'}
+    assert_bound(build, lambda mapping: [kpi[mapping['label']], rid + ':instructions'])
+    from dss.spec import requirements as req
+    ledger = req.load(build.folder)
+    # Every image row keeps its provenance and binds only real components (no cited item ids).
+    assert all(set(r.component_ids) <= {c.id for c in components} for r in ledger.requirements)
+    month = next(r for r in ledger.requirements if r.text.startswith('Revenue by month ='))
+    assert [e['fulfilled_by'] for e in ledger.verification[month.id] if 'fulfilled_by' in e] == [['p1_monthly_revenue_trend']]
+    with build.app.state.db.connect() as conn:
+        run_id = conn.execute("SELECT run_id FROM traces WHERE node='prototype' ORDER BY started_at DESC").fetchone()[0]
+    trace, recorded = spans(build.app, run_id)
+    assert next(s for s in recorded if s['node'] == 'layout')['observed_titles'] == len(TITLES)
+    assert all('coverage_errors' not in s for s in recorded)
+    fresh = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+    assert fresh['state'] == 'ready' and not fresh['prototype_stale'], fresh
+    executes(build.client, build.app, build.bid, monkeypatch)
+
+
+def test_failed_publish_coverage_records_its_errors_in_the_publish_span(blueprint_api, monkeypatch):
+    """Release 2.5 b_48ef72ff1bff: a Blueprint with no month bucket cannot recreate the monthly chart;
+    publish still refuses it, and the trace now says which requirements failed."""
+    data = json.loads(json.dumps(RECREATE_DESIGNED))
+    trend = next(r for r in data['rows'] if r['component']['type'] == 'time_series')
+    trend['component'].update(date_dimension='order_date', sort={'field': 'order_date', 'order': 'asc'})
+    build = recreate_build(blueprint_api, monkeypatch, data=data, designed=False)
+    upload_recreate(build, data['instructions'])
+    assert feasibility_check(build.client, build.app, build.bid)['state'] == 'ready'
+    from test_blueprint import confirm
+    from test_context_node import wait
+    if build.client.get(f'/api/builds/{build.bid}/blueprint').json() is None:
+        confirm(build.client, build.app, build.bid)
+    accepted = build.client.post(f'/api/builds/{build.bid}/blueprint/accept')
+    assert accepted.status_code == 202, accepted.text
+    wait(build.app)
+    trace, recorded = spans(build.app, accepted.json()['run_id'])
+    assert (trace['status'], trace['error']) == ('error', 'invalid_request')
+    publish = next(s for s in recorded if s['node'] == 'publish')
+    errors = publish['coverage_errors']
+    from dss.spec import requirements as req
+    ledger = req.load(build.folder)
+    monthly = {r.id for r in ledger.requirements if 'by month' in r.text}
+    assert {e['path'] for e in errors} == {'requirements.' + rid for rid in monthly} and len(monthly) == 2
+    assert all(set(e) == {'path', 'message'} and e['message'].startswith('Candidate spec does not fulfill') for e in errors)
+    # Nothing was dropped or relaxed to pass: the other observations kept their titles, the stage stays.
+    observations(build)
+    assert build.client.get(f'/api/builds/{build.bid}').json()['stage'] == 'blueprint'
+    with build.app.state.db.connect() as conn:
+        finished = [json.loads(r[0]) for r in conn.execute(
+            "SELECT payload_json FROM events WHERE run_id=? AND kind='run.finished'", (accepted.json()['run_id'],))]
+    assert finished == [{'run_id': accepted.json()['run_id'], 'node': 'prototype', 'status': 'error',
+                         'error': 'Candidate no longer fulfills the active requirements'}]  # run.finished shape unchanged
 
 
 def test_html_contract_geometry_layers(dashboard):

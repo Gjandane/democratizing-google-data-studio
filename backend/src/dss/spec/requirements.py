@@ -919,9 +919,9 @@ def _normalize_presentation(ledger, snapshot):
     known = {c['id'] for p in (snapshot['spec'] or {}).get('pages', [])
              for c in (*p.get('components', []), *p.get('decorations', []))}
     for r in ledger.requirements:
-        if r.source.kind == 'message':
-            # Only a real spec item is a binding; a cited requirement id is not one
-            # and would make the request unfulfillable by any candidate.
+        if r.source.kind != 'comment':
+            # Only a real spec item is a binding; a cited requirement or observation id
+            # (an image item's `o2`) is not one and would make it unfulfillable by any candidate.
             r.component_ids = [cid for cid in r.component_ids if cid in known]
         if removal(r):
             continue  # Normalized once, while its component still existed.
@@ -1368,8 +1368,34 @@ def copy_version(db, build_id, folder, destination):
     save(destination, updated)
 
 
-def coverage_errors(snapshot, ledger, checker, *, bindings=None):
-    """Verify original intent against the candidate, never against a reduced model ledger."""
+def observed_labels(snapshot, ledger, checker):
+    """{component id: label} titling recreate observations' charts with the label the screenshot
+    shows (architecture.md#Recreate definition reconciliation). A Blueprint may name the observed
+    "Revenue" scorecard "Total Revenue"; code gives the title to the first chart that fulfils the
+    observation in every other respect and that no other observation's title claims. Empty unless
+    the titled candidate breaks no requirement the untitled one fulfils. Pure: no model call."""
+    titles, bindings = {}, {}
+    before = {e['path'] for e in coverage_errors(snapshot, ledger, checker, bindings=bindings, titles=titles)}
+    titled = {r.id for r in ledger.requirements if r.source.kind == 'image' and any(p.path == 'label' for p in r.properties)}
+    claimed = {cid for rid, ids in bindings.items() if rid in titled for cid in ids}
+    labels = {}
+    for rid, (label, ids) in titles.items():
+        if free := [cid for cid in ids if cid not in claimed]:
+            claimed.add(free[0])
+            labels[free[0]] = label
+    if not labels:
+        return {}
+    spec = json.loads(json.dumps(snapshot['spec']))
+    for c in (c for p in spec.get('pages', []) for c in p.get('components', [])):
+        c['label'] = labels.get(c['id'], c.get('label'))
+    after = {e['path'] for e in coverage_errors({**snapshot, 'spec': spec}, ledger, checker)}
+    return labels if after < before else {}
+
+
+def coverage_errors(snapshot, ledger, checker, *, bindings=None, titles=None):
+    """Verify original intent against the candidate, never against a reduced model ledger.
+    `bindings` collects {requirement id: fulfilling component ids}; `titles` {requirement id:
+    (label, component ids)} for image observations those charts fulfil all but their title."""
     errors = []
     assessment = evaluate(snapshot, ledger, checker)
     for issue in assessment.issues:
@@ -1432,9 +1458,18 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None):
                                 and not _choice(row, 'unknown', snapshot, ledger, checker)):
                             return override
             return need
-        matches = [c for c in candidates if _component_fulfills(c, active, needs, checker, snapshot) and
-                   all(_recipe_fulfills(compiled_need(n, c), checker,
-                       [op for op in ops if op.get('component_id') in (None, c['id'])]) for n in needs)]
+        def fulfills(c, row):
+            return _component_fulfills(c, row, needs, checker, snapshot) and all(_recipe_fulfills(
+                compiled_need(n, c), checker, [op for op in ops if op.get('component_id') in (None, c['id'])]) for n in needs)
+        matches = [c for c in candidates if fulfills(c, active)]
+        title = [p for p in properties if p.path == 'label']
+        if (titles is not None and not matches and not r.component_ids and r.source.kind == 'image'
+                and len(title) == 1 and isinstance(title[0].value, str)):
+            # The screenshot's chart title is the only proof left to the label: name the charts that
+            # fulfil everything else (observed_labels decides which one carries it).
+            rest = active.model_copy(update={'properties': [p for p in properties if p.path != 'label']})
+            if ids := [c['id'] for c in candidates if fulfills(c, rest)]:
+                titles[r.id] = (title[0].value, ids)
         decoration_proven = (r.component_ids and set(r.component_ids) <= decorations.keys() and properties
                              and all(_in_design(designs[cid], properties) if cid in designs else
                                      _properties_match(decorations[cid], properties) for cid in r.component_ids))
@@ -1597,7 +1632,7 @@ def _date_bucket(snapshot, field, grain, source=None):
         return False
     derived = next((f for f in metadata.get('fields', []) if f['name'] == field), None)
     grain = {'daily': 'day'}.get(grain.lower(), grain.lower().removesuffix('ly'))
-    match = re.fullmatch(r'(?:date|timestamp|datetime)_trunc\s*\(\s*(?:`?t\d+`?\s*\.\s*)?`?([a-z_][a-z0-9_]*)`?\s*,\s*' + re.escape(grain) + r'\s*\)', derived['sql'], re.I) if derived else None
+    match = re.fullmatch(r'(?:date|timestamp|datetime)_trunc\s*\(\s*(?:`?t\d+`?\s*\.\s*)?`?([a-z_][a-z0-9_]*)`?\s*,\s*' + re.escape(grain) + r'\s*\)', derived['sql'].strip(), re.I) if derived else None
     return bool(match and (source is None or match[1] == source))
 
 

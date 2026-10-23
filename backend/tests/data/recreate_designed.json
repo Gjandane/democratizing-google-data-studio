@@ -1,0 +1,35 @@
+{
+  "about": "Task 21.1 (release 2.5 b_7ca302e800cc, b_dfb67c24f176): the recreate fixture of 18.2 in the live shapes that failed at publish. The capability_check model adds each observation's chart title as a label property and may cite the observation id as a component id; the instructions come back one record per clause; the planner titles charts its own way ('Total Revenue'); the derived month SQL ends in a space. Items are boxes in 0-1000 units; extraction is keyed by observation id, instructions is a list of records.",
+  "items": [
+    {"kind": "decoration", "label": "Store performance", "box": {"x": 0, "y": 0, "w": 1000, "h": 90}, "chart_candidate": "text", "metric_label": null, "unit": null, "aggregation": null, "date_grain": null, "confidence": "high"},
+    {"kind": "chart", "label": "Revenue", "box": {"x": 20, "y": 120, "w": 300, "h": 140}, "chart_candidate": "scorecard", "metric_label": "Revenue", "unit": "USD", "aggregation": "sum", "date_grain": null, "confidence": "high"},
+    {"kind": "chart", "label": "Orders", "box": {"x": 346, "y": 120, "w": 300, "h": 140}, "chart_candidate": "scorecard", "metric_label": "Orders", "unit": null, "aggregation": "count_distinct", "date_grain": null, "confidence": "high"},
+    {"kind": "chart", "label": "Units sold", "box": {"x": 672, "y": 120, "w": 300, "h": 140}, "chart_candidate": "scorecard", "metric_label": "Units sold", "unit": null, "aggregation": "sum", "date_grain": null, "confidence": "high"},
+    {"kind": "chart", "label": "Revenue by month", "box": {"x": 20, "y": 290, "w": 630, "h": 330}, "chart_candidate": "time_series", "metric_label": "Revenue", "unit": "USD", "aggregation": "sum", "date_grain": "month", "confidence": "high"},
+    {"kind": "chart", "label": "Revenue by region", "box": {"x": 672, "y": 290, "w": 300, "h": 330}, "chart_candidate": "bar", "metric_label": "Revenue", "unit": "USD", "aggregation": "sum", "date_grain": null, "confidence": "high"}
+  ],
+  "extraction": {
+    "o2": {"text": "Revenue scorecard", "needs": [{"capability": "chart.scorecard"}, {"capability": "argument.title"}], "mappings": [{"label": "Revenue", "field": "revenue", "unit": "USD", "aggregation": "sum"}], "component_ids": ["o2"], "properties": [{"path": "label", "value": "Revenue"}]},
+    "o3": {"text": "Orders scorecard", "needs": [{"capability": "chart.scorecard"}, {"capability": "argument.title"}], "mappings": [{"label": "Orders", "field": "order_id", "aggregation": "count_distinct"}], "properties": [{"path": "label", "value": "Orders"}]},
+    "o4": {"text": "Units sold scorecard", "needs": [{"capability": "chart.scorecard"}, {"capability": "argument.title"}], "mappings": [{"label": "Units sold", "field": "quantity", "aggregation": "sum"}], "properties": [{"path": "label", "value": "Units sold"}]},
+    "o5": {"text": "Revenue by month time series chart", "needs": [{"capability": "chart.time_series", "fields": {"date_field": "order_date"}}, {"capability": "argument.title"}], "mappings": [{"label": "Revenue", "field": "revenue", "unit": "USD", "aggregation": "sum", "date_grain": "month"}], "component_ids": ["o5"], "properties": [{"path": "label", "value": "Revenue by month"}]},
+    "o6": {"text": "Revenue by region bar chart", "needs": [{"capability": "chart.bar"}, {"capability": "argument.title"}], "mappings": [{"label": "Revenue", "field": "revenue", "unit": "USD", "aggregation": "sum"}, {"label": "region", "field": "region"}], "properties": [{"path": "label", "value": "Revenue by region"}]},
+    "instructions": [
+      {"text": "Revenue = SUM(revenue) in USD", "needs": [{"capability": "argument.metric_agg", "value": "sum"}], "mappings": [{"label": "Revenue", "field": "revenue", "unit": "USD", "aggregation": "sum"}]},
+      {"text": "Orders = COUNT(DISTINCT order_id)", "needs": [{"capability": "argument.metric_agg", "value": "count_distinct"}], "mappings": [{"label": "Orders", "field": "order_id", "aggregation": "count_distinct"}]},
+      {"text": "Units sold = SUM(quantity)", "needs": [{"capability": "argument.metric_agg", "value": "sum"}], "mappings": [{"label": "Units sold", "field": "quantity", "aggregation": "sum"}]},
+      {"text": "Revenue by month = SUM(revenue) by month of order_date", "needs": [{"capability": "argument.metric_agg", "value": "sum"}, {"capability": "argument.date_dimension"}], "mappings": [{"label": "Revenue", "field": "revenue", "unit": "USD", "aggregation": "sum", "date_grain": "month"}]}
+    ]
+  },
+  "instructions": "Recreate this dashboard with my sales data. Definitions: Revenue = SUM(revenue) in USD; Orders = COUNT(DISTINCT order_id); Units sold = SUM(quantity); Revenue by month = SUM(revenue) by month of order_date.",
+  "unmatched_kpis": [],
+  "derived_field": {"name": "order_month", "expression": "DATE_TRUNC(order_date, MONTH) ", "type": "date", "description": "Month of the order date"},
+  "rows": [
+    {"question_id": "q1", "kpi": "revenue", "component": {"type": "scorecard", "label": "Total Revenue", "dimensions": [], "metrics": [{"field": "revenue", "agg": "sum"}], "date_dimension": null, "breakdown": null, "sort": null, "options": {"compact_numbers": true}}},
+    {"question_id": "q1", "kpi": "orders", "component": {"type": "scorecard", "label": "Total Orders", "dimensions": [], "metrics": [{"field": "order_id", "agg": "count_distinct"}], "date_dimension": null, "breakdown": null, "sort": null, "options": {"compact_numbers": true}}},
+    {"question_id": "q1", "kpi": "units", "component": {"type": "scorecard", "label": "Units Sold", "dimensions": [], "metrics": [{"field": "quantity", "agg": "sum"}], "date_dimension": null, "breakdown": null, "sort": null, "options": {"compact_numbers": true}}},
+    {"question_id": "q2", "kpi": "revenue", "component": {"type": "time_series", "label": "Monthly Revenue Trend", "dimensions": [], "metrics": [{"field": "revenue", "agg": "sum"}], "date_dimension": "order_month", "breakdown": null, "sort": {"field": "order_month", "order": "asc"}, "options": {}}},
+    {"question_id": "q3", "kpi": "revenue", "component": {"type": "bar", "label": "Total Revenue by Region", "dimensions": ["region"], "metrics": [{"field": "revenue", "agg": "sum"}], "date_dimension": null, "breakdown": null, "sort": {"field": "revenue", "order": "desc"}, "options": {}}}
+  ],
+  "questions": {"q1": "What were revenue, orders and units sold?", "q2": "How does revenue trend by month?", "q3": "Which regions bring the most revenue?"}
+}

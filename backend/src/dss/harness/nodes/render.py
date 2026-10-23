@@ -63,6 +63,10 @@ async def perform(harness, build_id, run_id, payload, trace):
                 bindings = {}
                 errors = req.coverage_errors(snapshot, ledger, checker, bindings=bindings)
                 if errors:
+                    # The trace keeps what failed (change 2026-10-23); stored ledger text, minus any secret.
+                    secrets = _secrets(config)
+                    errors = [e for e in errors if not any(s and s in e['path'] + e['message'] for s in secrets)][:req.MAX_ISSUES]
+                    trace.spans[-1]['coverage_errors'] = errors
                     raise RunError('invalid_request', 'Candidate no longer fulfills the active requirements', 422, {'errors': errors})
                 ledger = req.revalidate_decisions(snapshot, ledger, checker)
                 ledger.verification = req.verification(snapshot, ledger, checker)
@@ -90,6 +94,10 @@ async def perform(harness, build_id, run_id, payload, trace):
     await harness.emit(build_id, run_id, 'prototype.updated', {'spec_version': spec.spec_version})
     await harness.emit(build_id, run_id, 'stage.changed', {'stage': 'prototype'})
     return 'Prototype is ready.'
+
+
+def _secrets(config):
+    return tuple(s.get_secret_value() for s in (config.google_api_key, config.access_code, config.agent_token))
 
 
 def _view_doc(folder, table, connected, sources, derived):
@@ -147,11 +155,23 @@ async def accept(harness, build_id, run_id, payload, trace):
                           allowed=allowed_types() & catalog().keys())
         except LayoutError as exc:
             raise RunError('invalid_request', 'The Blueprint could not be laid out', 422, {'errors': exc.errors[:20]}) from None
+        from dss.spec import requirements as req
+        from dss.spec.capabilities import Checker, load_registry
+        from dss.spec.validate import validate_spec
+        # A recreate observation's chart carries the title its screenshot shows (before the designer
+        # lays its cards out), when nothing else that chart fulfils depends on the planner's title.
+        snapshot = {**req.inputs(harness.db, build_id, folder), 'spec': spec.model_dump(mode='json')}
+        if labels := req.observed_labels(snapshot, req.load(folder), Checker(load_registry())):
+            titled = spec.model_copy(deep=True)
+            for component in (c for page in titled.pages for c in page.components):
+                component.label = labels.get(component.id, component.label)
+            if not validate_spec(titled, allowed=allowed_types() & catalog().keys()):
+                spec = titled
+                trace.spans[-1]['observed_titles'] = len(labels)
         notes = []
         if config.designed_pages:
             from dss.harness.nodes import designer
-            from dss.spec import requirements as req
-            secrets = tuple(s.get_secret_value() for s in (config.google_api_key, config.access_code, config.agent_token))
+            secrets = _secrets(config)
             # Until design.html verifies decoration requirements, pages with bound decorations keep their kit.
             bound = {cid for r in req.load(folder).requirements for cid in r.component_ids}
             keep = {page.index for page in spec.pages if any(d.id in bound for d in page.decorations)}

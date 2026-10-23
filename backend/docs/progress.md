@@ -1289,3 +1289,15 @@ context. Task status lives in docs/plan.md, not here.
 - What changed: the architect, at the program root, added Phase 21 task 21.1 (coverage errors in the publish span; recreate and screenshot-only accepts publish with designed pages on and off) and a Designed pages coverage-fallback rule in architecture.md (+ decision row, essentials, stamp).
 - Why: release 2.5 (2026-10-23): recreate and synthetic accepts fail publish coverage on 4 builds (b_7ca302e800cc, b_48ef72ff1bff, b_52b7b7be7e02, b_dfb67c24f176) with the `errors` list not visible; style mode publishes; 18.1 and 18.2 confirmed working live. User chose this fix (card); deadline no longer binding (program.md).
 - Tasks affected: 21.1 (new); release 2.5 and 2.6 `Needs: backend 21.1`.
+
+## 2026-10-23: Task 21.1 Recreate and screenshot-only builds publish with designed pages
+- Status: done
+- Plan check: off
+- What changed: requirements.observed_labels (code titles an observed chart with its screenshot title), applied in render.accept before the designer; _date_bucket strips SQL; non-comment sources drop non-spec component_ids; publish span `coverage_errors`. Fixture tests/data/recreate_designed.json + 4 tests in test_render.py.
+- Checks: `uv run pytest tests/test_render.py tests/test_feasibility.py tests/test_designer.py tests/test_references.py tests/test_api_contract.py` PASS 319; Test (all) `uv run pytest` PASS 1548. New tests fail 4/4 with src/ stashed.
+- Decisions: Cause (replay of copies of the 4 builds; designed pages off failed the same): extractor `label` properties vs planner titles ("Total Revenue"), `DATE_TRUNC(order_date, MONTH) ` trailing space, image rows citing `o2` as component id. Not designer, so the Designed-pages coverage fallback (`designer_fallback` reason coverage) is NOT built. Titling applies only if the titled spec's coverage errors are a strict subset and validate_spec passes; layout span `observed_titles: n`. Span errors: secret-filtered, cap 20, same list as RunError. AGENTS.md: diagnosis gotcha.
+- Digest: requirements.observed_labels(snapshot, ledger, checker)->{cid: label}; coverage_errors(..., titles=None); publish span coverage_errors [{path,message}]<=20; layout span observed_titles; test_render.recreate_build(..., data, synthetic, designer, designed)
+- Tried and failed: none
+- Gotchas: b_48ef72ff1bff and b_dfb67c24f176 still fail publish after the fix: genuine plan gaps (Blueprint has no month bucket field; bar where the screenshot shows a table). Feasibility says ready because nothing checks Blueprint rows against observations before accept, and the blueprint planner doesn't see the observations.
+- Left open: P3 Blueprint doc keeps planner titles while the prototype shows observed ones, no note - render.py; P3 observed_labels guards (strict subset, claimed, validate fail) untested - requirements.py; P3 same-metric observations titled first come first served - requirements.py.
+- Next: release 2.6 (program root) re-runs the live recreate flows.

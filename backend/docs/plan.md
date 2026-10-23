@@ -612,7 +612,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: tuning stays in the prompt and skill; no code change to pass the visual check without a recorded reason.
 
 ## Phase 21: Recreate publication (change 2026-10-23)
-- [ ] 21.1 Recreate and screenshot-only builds publish with designed pages
+- [x] 21.1 Recreate and screenshot-only builds publish with designed pages
   - Goal: resolve release 2.5's blocker: every recreate-mode blueprint accept (b_7ca302e800cc r_db7feccb917b, b_48ef72ff1bff r_3245ba9235d0, b_52b7b7be7e02 r_79a663bc8b0e, b_dfb67c24f176) fails at publish with `422 invalid_request` "Candidate no longer fulfills the active requirements" (render.py coverage_errors) while style mode publishes; find the cause (the designed pages of 20.x or the bindings of 18.2), fix it, and make the next coverage failure diagnosable.
   - Spec: docs/architecture.md#Designed pages; docs/architecture.md#Recreate definition reconciliation
   - Files: src/dss/spec/requirements.py, src/dss/harness/nodes/render.py, src/dss/harness/nodes/designer.py, tests/test_render.py, tests/test_feasibility.py, tests/test_designer.py, tests/data/recreate_designed.json
