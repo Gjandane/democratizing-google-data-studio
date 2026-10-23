@@ -449,3 +449,39 @@ context. Task status lives in docs/plan.md, not here.
 - Tasks affected: engine 12.1, backend 23.1, 23.2 (new); release 2.6 (gated), 2.7 (new), 4.3 (depends on 2.7).
 - Change requests: none logged before this entry.
 - Next: build engine 12.1 in engine/ (signed-in Chrome; not alongside release live runs) and backend 23.1 then 23.2 in backend/ (offline, can run in parallel); then release 2.6, 2.7 here.
+
+## 2026-10-24: Task 2.6 Manual acceptance: screenshot recreation with synthetic data
+- Status: partial
+- Plan check: off
+- What changed: nothing committed yet (docs/acceptance.md row and docs/img/ shot not written). Live run of b_697880743b4f started 2026-10-23T16:26Z (14 ops).
+- Checks: b_7beb08e5076c (recreate mode): reference extracted, schema proposed then edited to country, region, year (DATE 2000-2019), access_pct, urban_pct, rural_pct, people_without_access; 2,000 rows, seed 42, CSV downloaded sha256 eb6e5770...; outline + design prefilled from the screenshot. b_697880743b4f (style mode, user choice on a card): same CSV bytes; prototype redesigned by a page comment (headline, region card, 78 % + legend, small SVG globe, right panel, bottom panel); one "Synthetic sample data" label in prototype and background. Live run result, report link, screenshot: not read yet.
+- Decisions: user chose a style-mode build after recreate mode could not take any comment (scope cap). Kept dropdown + date range as live stand-ins for the region list and year slider (removal comments map to no capability).
+- Tried and failed: recreate comments (20-issue cap counts dropped issues; then 12k-token extraction cap, persists after Remove references); 7-comment batch -> revise "model call failed" x3; time_series -> bar type change "patch rejected after one repair"; globe-enlarge comment -> scope cap (discarded, build ready).
+- Gotchas: frontend dead end after Remove references with all issues dropped (Regenerate disabled, no Check feasibility) - use the Blueprint step's Regenerate; recipe drops date_granularity for a base DATE `year` column (both time series `options {}`): check the live report for spikes.
+- Left open: everything below.
+- Next: read `run_finished` of data/builds/b_697880743b4f/v1/events.jsonl (failed: 0?); screenshot the report (AGENTS.md CDP gotcha); if time series spike, apply the task's If (block naming backend: date_granularity missing for a base DATE yearly column); else write the acceptance row + capability matrix + change requests (area chart, checkbox list, slider, 100 % stacked bar, per-chart filter, single-bar highlight, recreate comment scope cap), STOP card, review, done, commit.
+- Update: live run finished `partial` (13 ok, 1 failed), report https://datastudio.google.com/reporting/4ae14f40-7a93-4d07-b969-f38f160f8e2e; per the task's If, diagnose the failed op with the screencast gotcha and block naming engine, the op and the last frame (or rerun once if it is a known flake).
+
+## 2026-10-24: Task 2.6 Manual acceptance: screenshot recreation with synthetic data
+- Status: blocked
+- Plan check: off
+- What changed: nothing committed (no acceptance row, no docs/img shot). Diagnosis of b_697880743b4f v1 only; the screencast rerun made a second report https://datastudio.google.com/reporting/d8bf3ffb-f9b7-4925-bbc5-34859bc2e836.
+- Checks: events.jsonl `run_finished` partial, ok 13, failed 1 (report https://datastudio.google.com/reporting/4ae14f40-7a93-4d07-b969-f38f160f8e2e); `dsengine run --screencast` rerun: same op fails again (2/2). Raw:
+  `{"op_id": "s011", "op": "set_style", "status": "failed", "message": "operation timed out", "duration_ms": 20202}`
+  s011 = set_style colors on s010 time_series with `breakdown: region` (6 series). Last frame (16:48:15Z): Time series properties > Style open, "Color by: Series order", Series "Select series: North America" dropdown, no per-series color step reached. s006/s009 log "colors applied 2 of 5".
+  Spikes: s008 and s010 draw a daily axis Jan 1 2000..2019 with zero lines between, one spike per Jan 1 (both charts, frame above). recipe.jsonl s008/s010 `options: {}`; docs/blueprint.md asks `date_granularity: year` on both; data-profile: `year` DATE, distinct~20, all YYYY-01-01. batchedDataV2 returns 20 / 6 / 120 rows (data fine).
+  Label: "Synthetic sample data" once in the report (bottom strip).
+- Decisions: no rerun through the UI (failure reproduced, not a flake). Capability matrix (for the rerun's acceptance row): headline, 78 % KPI + caption, globe (small abstract SVG), color legend = background decoration; region checkbox list -> dropdown (s007); year slider -> date_range (s012); year bar chart with 2011 highlight -> time_series s010 by region; four country area charts -> one time_series s008 avg urban/rural; rural/urban split -> live bar s005 (horizontal stacked by region, not 100 %, 6 rows in 164 px); every chart/control box sits on its background panel.
+- Change request: area chart (country area charts) not in recipe 1.2.
+- Change request: checkbox list control (region list) not in recipe 1.2.
+- Change request: slider control (year slider) not in recipe 1.2.
+- Change request: 100 % stacked bar (rural/urban split) not in recipe 1.2.
+- Change request: per-chart filter (one chart per country) not in recipe 1.2.
+- Change request: single-bar highlight (2011) not in recipe 1.2.
+- Blocked because: (a) every way forward edits a part (engine set_style, backend compiler); release never edits engine/ or backend/.
+- Question: Plan an engine fix for set_style colors on a time series with a breakdown and a backend fix so a base DATE column with one value per year (or month) gets `date_granularity`, then rerun 2.6?
+- Options: A engine task (s011: set series colors with "Select series", or skip unsupported keys with a log instead of timing out) + backend task (grain from the data profile when every value is a bucket start, or keep the Blueprint's grain for base DATE columns), then 2.6 reruns / B accept 2.6 with failed 1 and spikes as recorded findings (needs a plan change to Done when) / Recommend: A, the report is wrong (spikes) and Done when needs failed 0.
+- Tried and failed: report view tab stayed blank 3x (45-60 s waits, wheel) though data loaded; the screencast frames showed the painted charts.
+- Gotchas: in AGENTS.md (blank view tab).
+- Left open: second report d8bf3ffb... (diagnosis run) can be deleted by the user; recreate comment scope cap (earlier entry).
+- Next: architect plans the engine + backend fixes (run at the program root); then 2.6 reruns from a new build (CSV sha256 eb6e5770... reusable) and writes the row with the matrix above.
