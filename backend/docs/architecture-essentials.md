@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:808c82cd13f9 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:d7e619050a09 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 Read every build session. docs/architecture.md wins if they disagree.
 
@@ -20,42 +20,38 @@ tests/          offline fakes; tests/live/ explicitly marked live
 ## Conventions
 - Vocabulary: ../harness-architecture.md. One API action = one ADK Workflow = one trace.
 - api.md 2.0: connect -> context -> outline -> design -> blueprint -> prototype. Code profiles,
-  validates, lays out 1-5 pages and writes files. Models return validated JSON, using compact
-  profiles/upstream frontmatter, never rows/history; node-specific repair limits and budgets:
-  architecture.md#Working memory assembly (chars/4 offline only).
-- Artifact edits stale downstream work; confirmation preserves edits. Atomic OKF writes emit
-  artifact/docs updates; question IDs never recycle. Schema-returning dry runs establish types.
-- Only consolidate writes runtime semantic memory; git knowledge is the seed. OKF requires
-  nonempty `type`, folder index/log. Config: ../.env + settings; contract env names/error codes.
-- Engine argument list/cwd, worker-thread reads, whole-tree cleanup; Playwright sync in a worker
-  thread. Provider: response_json_schema, guarded raw output, sanitized errors, callable context.
-  Gemini: planner 120 s, worker 30 s; one retry on 429/500/503, never 504.
+  validates, lays out 1-5 pages, writes files. Models return validated JSON from compact
+  profiles/frontmatter, never rows/history; repair limits, budgets: architecture.md#Working memory assembly.
+- Artifact edits stale downstream work; confirm preserves edits. Atomic OKF writes emit updates;
+  question IDs never recycle; dry runs establish types. Only consolidate writes semantic memory
+  (git knowledge = seed); OKF needs `type`, folder index/log. Config: ../.env + settings.
+- Engine argument list/cwd, whole-tree cleanup; Playwright sync in a worker thread. Provider:
+  response_json_schema, guarded raw output, sanitized errors. Gemini: planner 120 s, worker 30 s;
+  one retry on 429/500/503, never 504.
 - Types: `DSS_ALLOWED_TYPES`; sort `{field, order}`. COUNT variants allow dimensions; dropdown
   uses one dimension. Chart colors override theme (no scorecards); accents affect only their target.
 - Cloud: SPA/$PORT, code cookie/header, fail-closed startup; backup API every 30 s when dirty;
-  agent token, model-only settings, 60 s retry deadline. Preview needs no engine; run recompiles
-  current spec; flat job assets. Dev routes require DSS_DEV=1.
-- Blueprint accept publishes its owned candidate view/spec/artifacts atomically; never clean a
-  published view. Backgrounds: background.write_pages, render(page=n), not the stacked canvas; 3x, <2 MB.
-- Designed pages: planner HTML, sanitized; Chromium measures slots -> component `box`, width
-  1200-1920; one repair, then kit fallback; a page whose design breaks publish coverage falls
-  back too (architecture.md#Designed pages).
-  Heading wraps/text fitting: architecture.md#Implementation conventions.
-- Feasibility: structured Blueprint rows; extraction only for Other, comments, references.
-  Images are not data. User-approved Other fail-open limitation and contract gap: PRD Later;
-  emitted unsupported requirements still block (architecture.md#Outline).
+  agent token, 60 s retry. Run recompiles the current spec; dev routes need DSS_DEV=1.
+- Accept publishes its candidate view/spec/artifacts atomically; never clean a published view.
+  Backgrounds: background.write_pages per page, 3x, <2 MB.
+- Designed pages: sanitized planner HTML; Chromium measures slots -> `box`; schema 1200-1920,
+  prompt 1200 (engine misplaces > ~1380 px); one repair, then kit; coverage fallback unbuilt.
+  Text fit: architecture.md#Implementation conventions.
+- Feasibility: structured Blueprint rows; extraction only for Other, comments, references;
+  images are not data. Other fail-open gap: PRD Later; unsupported still blocks.
 - Replans publish freshness with proof; comments need explicit recovery. Recreate reuses confirmed
-  KPIs/user instructions with provenance; conflicts block.
+  KPIs/instructions with provenance; conflicts block; Blueprint ready => observations pass accept
+  coverage (architecture.md#Blueprint observation coverage).
 - Synthetic: opt-in schema/count/seed -> stdlib CSV -> typed BQ intake; protected page-1 footer.
-- Tests offline unless marked live; fixture keys/types exact. Research <=20 fetches, no retries.
+- Tests offline unless marked live. Research <=20 fetches, no retries.
 
 ## Never do
 - No LangGraph, no vector store, no embeddings, no pandas.
 - Never expose credentials to frontend/logs/prompts, or put rows/history in prompts.
 - Never copy a live SQLite file byte by byte or open it on the GCS volume; use the backup API.
 - Never write semantic memory outside the consolidate node.
-- Never let an LLM produce HTML other than the sanitized designed-page layer, a whole spec, an artifact file, SQL DDL text that bypasses the
-  view builder, or recipe lines.
+- Never let an LLM produce HTML outside the sanitized design layer, a whole spec, an artifact
+  file, SQL DDL that bypasses the view builder, or recipe lines.
 - Never edit ../contracts/; a needed change is a blocked task.
 
 ## Contracts
@@ -87,4 +83,4 @@ tests/          offline fakes; tests/live/ explicitly marked live
 | pytest | pypi | >=8.0 | tests | 2026-10-22 (9.1.1) |
 | pytest-asyncio | pypi | >=0.23 | async tests | 2026-10-22 (1.4.0) |
 | setuptools | pypi | * | build backend, console scripts (user-approved, 1.1) | 2026-10-22 (84.2.1) |
-| lucide-static | npm | * | icon SVGs vendored into render/icons/ (ISC; not installed; user-approved 2026-10-22) | 2026-10-22 (1.61.0) |
+| lucide-static | npm | * | icons vendored in render/icons/ (ISC) | 2026-10-22 (1.61.0) |

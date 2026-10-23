@@ -1,5 +1,5 @@
 # Plan: backend
-Target: POC · Audit: done 2026-10-21 (final re-audit: DEFECTS, one P1; task 16.1; details in docs/audit-reaudit-2026-10-21.md)
+Target: POC · Audit: done 2026-10-23 (final re-audit: DEFECTS, one P1; task 22.1; details in docs/progress.md "2026-10-23: Audit (final)")
 
 Markers: [ ] to do, [~] in progress, [x] done, [!] blocked. Only blueprint.py changes them.
 Sizes: S small, M a normal session, L needs a whole fresh session (never run unattended).
@@ -623,3 +623,16 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: the cause is a designed page that hides a requirement's proof and the fix isn't local to coverage -> apply the Designed pages coverage fallback (architecture.md): that page goes back to the code layout and kit, with a `designer_fallback{page, reason: coverage}` span and the standard fallback message.
   - If: the fix needs an API or contract shape change -> block naming it (a program-root question).
   - Review focus: no relaxed coverage, automatic drops or bypass of the 18.1 freshness and 18.2 binding rules; span text guarded like other spans (no secrets, no raw model output); no added model call; candidate publication and rollback unchanged.
+
+## Phase 22: Audit fixes (final audit 2026-10-23)
+- [ ] 22.1 Blueprint feasibility covers recreate observations
+  - Goal: a recreate Blueprint that reports ready publishes at accept; a gap between the Blueprint rows and the screenshot's observations shows at the Blueprint as an Issue with an alternative instead of a 422 at accept with no recovery (b_48ef72ff1bff: observed monthly series, no month bucket; b_dfb67c24f176: observed table, bar row).
+  - Spec: docs/architecture.md#Blueprint observation coverage; docs/architecture.md#Recreate definition reconciliation
+  - Files: src/dss/harness/context.py, src/dss/harness/nodes/blueprint.py, src/dss/spec/feasibility.py, src/dss/spec/requirements.py, prompts/v1/blueprint.md, tests/test_blueprint.py, tests/test_feasibility.py, tests/test_render.py, tests/test_context.py, tests/data/recreate_blueprint_gaps.json
+  - Depends on: 21.1
+  - Size: M
+  - Done when: offline fixtures in tests/data/recreate_blueprint_gaps.json rebuilt from read-only copies of ../data/builds/b_48ef72ff1bff and b_dfb67c24f176 (sqlite via the backup API from `?mode=ro`; never modify the originals) reproduce both gaps through the staged API with FakeLLM and FakeBigQuery: on the current code the Blueprint is ready and accept fails coverage (tests fail before the fix); after it, each gap is an Issue on the Assessment naming the observation, with the observed-type and date-bucket alternatives where the catalog and schema allow; the decision makes the Blueprint ready without a model call, and accept publishes (stage prototype, every observation bound to a real component with its provenance, none dropped, recipe compiles, fake engine done); accept before deciding returns `409 feasibility_blocked`; the blueprint context carries the observations section (no boxes, bytes or rows) within its 14k budget (tests/test_context.py), and a FakeLLM that drafts matching rows from it is ready on first draft; an unfulfilled observation goes through the one existing row repair, never a second; the 18.2 and 21.1 recreate fixtures, style mode and data mode publish unchanged; the 100 ms recomputation oracle passes with 24 observations; `uv run pytest tests/test_blueprint.py tests/test_feasibility.py tests/test_render.py tests/test_context.py tests/test_references.py tests/test_api_contract.py` and `uv run pytest` pass.
+  - If: the date-bucket alternative needs a view-builder change outside Files -> edit that file too and say why in the entry; never write SQL from a model.
+  - If: an observation can't be checked against rows without the laid-out spec -> record the case in the entry and use needs_clarification for it; never report it ready.
+  - If: the fix needs an API or contract shape change -> block naming it (a program-root question).
+  - Review focus: invariant Blueprint ready => accept coverage passes for observations; no automatic drop or rebind of an observation; no relaxed publish coverage; 18.1 freshness and 18.2 binding rules intact; no added model call or repair; only reconciled observation meaning reaches the prompt (untrusted, no boxes or image text beyond labels).

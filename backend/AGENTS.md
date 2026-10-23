@@ -41,7 +41,6 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Starlette StaticFiles normalizes paths with OS separators: normalize backslashes before checking the API boundary for SPA fallback on Windows.
 - Uvicorn's graceful-shutdown timeout excludes lifespan teardown; backup I/O has a separate deadline (architecture.md#Implementation conventions).
 - httpx string headers must be ASCII; use byte header values when testing non-ASCII credentials at the server boundary.
-<!-- blueprint-solution:end -->
 - Config does not strip root .env values and GCP_PROJECT_ID there has leading whitespace; live tests pass a stripped project through PUT /api/settings (or DSS_LIVE_GCP_PROJECT).
 - Bash heredocs (even quoted 'EOF') in this shell can collapse backslashes in Python source (\0 became a NUL byte); write code with backslashes via the Write/Edit tools.
 - Developer API count_tokens rejects system_instruction/tools/generation_config; llm.count_tokens folds them into contents, which counts ~5% under the billed prompt_token_count (live: 8245 vs 8695).
@@ -50,17 +49,15 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Live worker calls sometimes hit the 30 s deadline (llm_unavailable): rerun once before diagnosing; extraction shapes also vary between runs.
 - SQLite's connection context manager does not close the handle: use `contextlib.closing` when inspecting backup snapshots, or Windows can block temporary-file cleanup.
 - Windows system Python defaults text I/O to cp1252: pass `encoding="utf-8"` when reading and writing source/tests, or Unicode fixtures become mojibake.
-- The 100 ms feasibility timing oracle hit 104.9 ms in a full run, then passed unchanged in isolation and a serial full rerun; avoid overlapping check runs before diagnosing a timing failure.
+- Timing flakes (100 ms feasibility oracle at 104.9 ms; periodic-backup test saw `backups=[]`) passed unchanged in isolation and serial reruns: avoid overlapping runs and retry before diagnosing.
 - Bold Georgia's W measures about 1.126em in Chromium; a 1em-per-character header estimate can clip an allowed 80-character title.
-- The periodic-backup test once saw `backups=[]` in a full run, then passed unchanged in isolation and a serial rerun; retry before diagnosing this timing assertion.
 - The shape-only `api/design.json` contract fixture uses a font outside the current theme presets; use a preset font when exercising Design confirmation.
 - The live outline_other/comment extractor varies its record shape per run (breakdown as field key or value, dimension mapping agg "none", needs-less record, decoration hex as need or property): normalize in code and confirm a staged live flow with 2+ consecutive passing runs.
 - tests/test_blueprint.artifact() calls asyncio.run: staged API tests that use it (or recreate_build in test_render) must be plain `def`, not `async def`.
-- The engine's `run_finished.report_url` opens the report's last page; open `https://datastudio.google.com/reporting/<id>` (no `/page/...`) to inspect page 1.
-- requirements.coverage_errors verifies needs against compiled recipe ops: a compiler op change also moves revise/thin_slice/agent_server tests that index recipe lines or expect set_style per chart (19.2 touched 5 such files).
-- The b_a8ace098d03b live replay can stall after the s021 time_series timeout on a leftover Custom color dialog and never save (failed 22, report_url null): rerun once; find a report's full id in engine Chrome at datastudio.google.com/navigation/reporting.
+- The engine's `run_finished.report_url` opens the report's last page; open `https://datastudio.google.com/reporting/<id>` (no `/page/...`) to inspect page 1. Find a report's full id in engine Chrome at datastudio.google.com/navigation/reporting.
+- coverage_errors checks needs against compiled recipe ops: a compiler op change also breaks tests that index recipe lines or expect set_style per chart (19.2: 5 files).
 - tests/live/test_staged_flow.observe_revisions wraps revise.revised(document, comments, batch, allowed) positionally and default runs skip it: keep that signature (a new kwarg breaks every live revise).
-- designed_pages is on by default: test flows whose fake answers every node with one reply (ContextLLM) send it to the designer too, fall back on page 1 and add designer/validate/designer_fallback spans and +2 model calls to the prototype run.
-- The Data Studio editor (1920 window) zooms canvases wider than ~1380 px to fit; the engine then fails every add_chart/add_control box check and set_background_image times out (1440/1560 failed, 1200 ok 37/37).
+- designed_pages is on by default: a one-reply fake (ContextLLM) also answers the designer, falls back on page 1 and adds designer/validate/designer_fallback spans and +2 model calls.
 - To replay a live test build with `dsengine run`, run the live test with DSS_LIVE_KEEP=1 (test_designed_dashboard_sample_csv) so its BigQuery source/view survive; delete them afterwards.
 - A publish 422 "Candidate no longer fulfills" lists its failing requirements in the trace's `publish` span (`coverage_errors`); to diagnose a release build, copy it (sqlite backup API from `?mode=ro`), lay out its Blueprint and call `requirements.coverage_errors` on the copy.
+<!-- blueprint-solution:end -->

@@ -38,7 +38,8 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 
 9. Designed pages (change 2026-10-22, user): the planner, guided by a dashboard-design skill,
    writes each page's background HTML/CSS (header, titles, cards, icons) around one empty slot
-   per spec component, and picks the page width (1200-1920). Code sanitizes it, measures the
+   per spec component, and picks the page width (1200-1920; the prompt asks 1200 because the
+   Data Studio editor zooms wider canvases, 20.5). Code sanitizes it, measures the
    slots in Chromium to place the native Data Studio components, screenshots the rest as the
    background, and falls back to the code layout and kit per page. Target look:
    docs/change-2026-10-22-reference.webp.
@@ -207,3 +208,30 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
   safely return `invalid_request` without publishing. An unchanged fresh rerun passed; the
   original input is unavailable and the cause unconfirmed. First-attempt success is not
   guaranteed (P2, audit re-audit 2026-10-20).
+- The designer schema accepts canvas widths up to 1920 while the engine misplaces components
+  above ~1380 px; only the prompt asks 1200. Clamp in code or fix the engine at the program
+  root (P2, audit 2026-10-23; designer.py FirstPage).
+- Live `test_staged_flow_sample_csv` is stale since designed pages became default: page 1 has a
+  `design` decoration, not band/panel/title, so its decoration comment step raises
+  StopIteration (tests/live/test_staged_flow.py:250); the flow itself reaches prototype
+  (P3, audit 2026-10-23).
+- A comment on a component (not on `p<n>_design`) asking for an icon or card color gets no
+  redesign route (P2, 20.4 left open; audit 2026-10-23).
+- Coverage proves heading text in `design.html` by substring ("Sales" matches "Sales
+  Overview"); non-comment rows lose component ids absent from the spec at every merge, also
+  before a spec exists; `observed_labels` guards (strict subset, validate failure) are untested;
+  the Blueprint doc keeps planner titles while the prototype shows observed ones; same-metric
+  observations are titled first come first served (P3, 21.1 left open; audit 2026-10-23).
+- Designed-page sanitizer/measure gaps: non-slot elements outside the page give no error; a root
+  `display:none/contents` reports 0x0 slots without the cause; `layout.minimum_box` duplicates
+  `design_page.minimum`; the 2x background fallback is not re-checked against the 2 MB limit;
+  code-laid specs validate at widths 1201-1920; the revision repair turn carries two HTML copies
+  (P3, 20.1/20.2/20.4 left open; audit 2026-10-23).
+- Smaller open items: Extracted.component_ids > 24 untested against the live Gemini schema;
+  staged 13-row/6-page negatives stop at evaluate; a legit quoted list label is cut to its first
+  fragment; an instruction naming a missing field reports needs_clarification, not needs_data;
+  two KPIs with the same measure count as one match; the prototype still renders scorecard
+  colors (dead path); an empty page-1 name fails compile (P3, 16.1-19.4 left open; audit
+  2026-10-23).
+- Engine-side: the s021/s025 time_series "Too Many Rows" timeout cascade on the b_a8ace098d03b
+  replay, and canvas placement above ~1380 px (program root; audit 2026-10-23).

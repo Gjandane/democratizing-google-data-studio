@@ -334,7 +334,8 @@ Final-audit corrections (2026-10-19):
   section -> page by `page_structure`), the catalog summary (allowed types with slot limits and
   options from `knowledge/catalog/*.md` frontmatter, `DSS_ALLOWED_TYPES`, the recipe's lack of
   chart filters: filtering is a derived field), and the join facts code found (columns with equal
-  names and types across sources). Output: ViewSources, extra derived fields, and rows: every
+  names and types across sources), and in recreate mode the active image observations
+  (#Blueprint observation coverage). Output: ViewSources, extra derived fields, and rows: every
   selected question 1-3 rows; at most 2 supporting controls per page; at most 12 rows per page.
 - Code feasibility, per row (the requirement records are the rows: no text extraction): type in
   the catalog, the registry and `DSS_ALLOWED_TYPES`; dimension/metric counts and date dimension
@@ -366,6 +367,44 @@ Final-audit corrections (2026-10-19):
   `409 feasibility_blocked`; decisions update rows without a model call; a fake omitting a
   question -> repair, then an issue; a redraft sends only changed questions; 13 rows on a page ->
   issue; zero ok rows -> `409 artifact_invalid`.
+
+### Blueprint observation coverage
+- Problem (final audit 2026-10-23): in recreate mode the Blueprint planner never sees the image
+  observations and Blueprint feasibility never checks rows against them, so a Blueprint reports
+  ready and accept then fails publish coverage (`422 invalid_request`, "Candidate no longer
+  fulfills") with no recovery: b_48ef72ff1bff (observed monthly series, no month bucket field)
+  and b_dfb67c24f176 (observed table, bar row).
+- Inputs and outputs: the active supported image observation requirements after
+  #Recreate definition reconciliation (reconciled meaning only: kind, chart candidate, metric
+  label/field, aggregation, unit, date grain, label; no boxes, image bytes or rows) -> (a) a
+  compact `observations` section in the blueprint context; (b) per observation, a verdict on the
+  Blueprint rows: fulfilled by named rows, or an Issue on the Assessment.
+- Rules:
+  - Fulfilled means at least one ok row meets the same observation checks publish coverage
+    applies to a component (chart type, metric field and aggregation, dimension, date grain,
+    label as #Recreate definition reconciliation binds them). Invariant: when Blueprint
+    feasibility is ready for every observation, accept's publish coverage raises no error for
+    them on the candidate (code-laid or designed).
+  - Unfulfilled observations join the existing one row repair with their errors (no extra model
+    call); what still fails becomes an Issue with code-built alternatives where code can build
+    one: the observed chart type replaces the row's type when the catalog accepts the row's
+    fields for it; a derived date-bucket field at the observed grain added to the view (built and
+    dry-run by the view builder); otherwise needs_data or needs_clarification per #Recreate
+    definition reconciliation. Drop is an explicit user decision recorded with provenance;
+    code never drops or rebinds an observation by itself.
+  - Accept with an unresolved observation issue -> `409 feasibility_blocked`, like other rows.
+    Style mode, data mode and builds without observations: unchanged behavior and bytes.
+- Edge cases: two observations one row satisfies (both bound to it); an observation whose
+  metric is unsupported keeps its existing unsupported verdict; a reference replaced or removed
+  after drafting marks the Blueprint check stale (existing freshness rules), never ready.
+- Budget: the observations section fits the blueprint's 14k input (drop order: observation
+  labels before fields); no new model call or repair; the deterministic recomputation oracle
+  (<= 100 ms) still holds with 24 observations.
+- Oracle: offline fixtures rebuilt from read-only copies of b_48ef72ff1bff and b_dfb67c24f176:
+  before the fix the Blueprint is ready and accept fails coverage; after it the Blueprint shows
+  the gap as an Issue with its alternative, the decision makes it ready, and accept publishes
+  with every observation bound to a real component (recipe compiles, fake engine done). The
+  21.1 and 18.2 recreate fixtures still publish unchanged.
 
 ### Multi-page feasibility scope
 - The Outline limit is 24 selected questions, not 24 rendered components. A question may have
@@ -681,6 +720,11 @@ Final-audit corrections (2026-10-19):
   to actual component ids; decoration-only flattening cannot satisfy a live-chart requirement.
   Style-only images still introduce no chart/data requirements. Legacy message/comment behavior
   is preserved; this does not restore the removed interview flow or create a new parser API.
+- Accept titles an observed chart with its screenshot title in code (21.1,
+  `requirements.observed_labels`), only when the titled candidate's coverage errors are a strict
+  subset of the untitled one's and the spec validates; date-bucket SQL is compared trimmed; a
+  non-comment observation's component ids not in the spec are ignored. The Blueprint check
+  before accept: #Blueprint observation coverage.
 - Budget: existing extraction/model/repair limits and <=100 ms recomputation oracle unchanged;
   definition reuse and revalidation add no model call. No new dependency or contract shape.
 - Oracle: offline staged API fixtures with supported image observations and a connected schema
@@ -834,6 +878,9 @@ Final-audit corrections (2026-10-19):
   - Icons: `<i data-icon="<name>">` -> the vendored Lucide SVG inline (`render/icons/`, ISC
     licence kept beside them); an unknown name is a measure error unless the model drew its own
     sanitized inline `<svg>` (the user's fallback).
+  - Width: the schema accepts 1200-1920, but the designer prompt asks for 1200: the Data Studio
+    editor zooms canvases wider than about 1380 px to fit and the engine then misplaces every
+    component (20.5: 1440/1560 failed, 1200 ok). Code does not yet clamp it (PRD Later).
   - Order: page 1 first; it sets `canvas_width` (1200-1920) and the shared stylesheet; pages
     2-n then run in parallel with both as input. Each page: one repair turn with the sanitizer
     and measure errors, then that page falls back to the code layout and kit (trace span and
@@ -850,10 +897,10 @@ Final-audit corrections (2026-10-19):
     unless the new type's minimum no longer fits its slot, which regenerates the page.
   - Coverage: a decoration requirement on a designed page (a heading text, a hex color) is
     verified by its presence in the sanitized `design.html`; components keep their recipe checks.
-    If a page's design is what makes publish coverage fail (the same candidate with that page
-    code-laid passes), that page falls back to the code layout and kit (`designer_fallback`,
-    reason `coverage`) before publish; a coverage failure records its errors in the `publish`
-    span (change 2026-10-23).
+    A coverage failure records its errors in the `publish` span (change 2026-10-23). Specified
+    but not built: a page whose design alone breaks publish coverage falls back to the code
+    layout and kit (`designer_fallback`, reason `coverage`); 21.1 found the recreate failures
+    came from titles, SQL text and stale component ids, not designs, so it built no fallback.
   - Determinism: the model runs only in the prototype action and in revise regeneration, never
     in GET, recompile or new versions; the same spec gives the same prototype, PNG and recipe
     bytes.
@@ -1053,3 +1100,6 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-22 | Backgrounds at device scale 3 (each PNG < 2 MB, no minimum size); feasibility rejects colors on scorecards as unsupported_app | keep 2x; per-page scale to an exact 1920 x 1080; pad files to 200 KB; leave scorecard color comments pending | user target >= 1920 x 1080 (2x page 1 is 1064 tall); bytes don't add sharpness; renderer, compiler and engine must agree on scorecard colors | change backgrounds 3x and scorecard colors |
 | 2026-10-22 | Designed pages: the planner writes each page's background HTML around measured component slots; code sanitizes, measures, screenshots and falls back to the kit per page; width 1200-1920 via `set_canvas`; page regenerated on geometry/heading comments; vendored Lucide icons | design JSON rendered by an upgraded code kit; AI grid + code-drawn cards; code-only revise moves; a 1920 canvas for every build; native Data Studio text for headings | user wants AI-designed backgrounds and layouts with native charts placed in them (reference image); recipe 1.1 already has `set_canvas`; measured slots keep charts inside their cards | change designed backgrounds (user, after 19.3) |
 | 2026-10-23 | Recreate publish failures are diagnosed from the `publish` span's coverage errors; a designed page that breaks coverage falls back to the code layout | expose errors in the API (contract change); accept recreate unproven live | release 2.5 recreate/synthetic accepts fail coverage with no visible errors; user chose a backend fix over a limit | change recreate publication (program root) |
+| 2026-10-23 | Designer prompt asks for canvas width 1200 (schema still 1200-1920) | 1440-1920 designed canvases; block wide designs | the Data Studio editor zooms canvases wider than ~1380 px and the engine misplaces every component (20.5); user chose the prompt | task 20.5 |
+| 2026-10-23 | Recreate accept titles observed charts in code; the Designed-pages coverage fallback stays specified but unbuilt | build the fallback; send observations to a model again | 21.1 replays: failures came from titles, SQL text and stale ids, not designs | task 21.1 |
+| 2026-10-23 | Blueprint feasibility checks rows against recreate observations, and the planner sees them | leave the gap to publish coverage; Later list | feasibility said ready while accept failed with no recovery (b_48ef72ff1bff, b_dfb67c24f176); PRD goal 6 gate at blueprint | final audit 2026-10-23 (user) |
