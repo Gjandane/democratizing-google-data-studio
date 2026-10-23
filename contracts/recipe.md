@@ -1,8 +1,10 @@
 # Contract: recipe and engine events
-Version 1.1 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
+Version 1.2 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
 (`--timeout`, `error_code: timeout`, background file name); 1.1 (2026-10-22, change report quality)
 `rename_page` op, scorecard value sizing and `colors` series order stated. Header `recipe_version`
-stays "1.0" (the op is additive).
+stays "1.0" (the op is additive); 1.2 (2026-10-23, change live date buckets) `time_series` option
+`date_granularity` and its rule; header still "1.0" (the option is additive, and engines before it
+ignore unknown options).
 Provider: backend writes recipes (its recipe compiler); engine writes events. Consumers: engine
 reads recipes; backend reads events; release validates both. Machine-readable schema:
 `contracts/recipe.schema.json` (JSON Schema 2020-12, `$defs`: `header`, `op`, `event`).
@@ -45,7 +47,13 @@ UTF-8 JSON Lines, one JSON object per line, no blank lines.
 - `options` by chart type (all optional): `bar`: `orientation` (`vertical`\|`horizontal`),
   `stacked` (bool); `pie`: `donut` (bool); `pivot_table`: `row_dimensions`, `column_dimensions`
   (lists, which replace `dimensions`); `geo_map`: `geo_type` (`country`\|`region`\|`city`);
-  `table`: `rows_per_page` (int); `scorecard`: `compact_numbers` (bool).
+  `table`: `rows_per_page` (int); `scorecard`: `compact_numbers` (bool); `time_series`:
+  `date_granularity` (`day`\|`week`\|`month`\|`quarter`\|`year`).
+- Time series granularity: with `date_granularity` the engine sets the chart's date dimension
+  (`date_dimension`) to that granularity in the chart (Data type -> Date & Time), so a bucket
+  field such as `DATE_TRUNC(order_date, MONTH)` draws one point per bucket instead of a daily axis
+  with zeros between the buckets. Without it the field keeps the type Data Studio infers (a DATE
+  column draws per day). The backend sets it from the view's derivation, never from model output.
 - Scorecards (engine behaviour, no argument): the value is sized to the box like the prototype,
   `clamp(16, h - 28, 36)` px (Data Studio's largest offered size not above it), and the metric
   name is hidden when `title` is set, since the title carries the label.

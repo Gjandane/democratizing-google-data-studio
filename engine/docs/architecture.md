@@ -183,6 +183,10 @@ These conventions consolidate the verified build decisions and selector traps fr
   series swatches and ignore the rest; a component with no series swatch (scorecard) skips the
   key with a message. `rename_page` renames the current page with the same Manage pages rename
   step `add_page` uses.
+- `time_series` `date_granularity` (recipe 1.2): set the date dimension's type in the chart
+  through the chip's left type icon (Data type -> Date & Time), the same menu path `geo_type`
+  uses, and read the applied type back; without the option the field's type is left as Data
+  Studio infers it.
 - Read text through logical blocks and BR elements to preserve blank lines; neither textContent
   nor innerText alone is a reliable whitespace oracle.
 - Live recipes use `DSS_TEST_TABLE`; shared contract fixtures contain an unavailable placeholder
@@ -208,3 +212,4 @@ These conventions consolidate the verified build decisions and selector traps fr
 | 2026-10-21 | Poll review controls every 250 ms within the existing deadline, rechecking the optional checkbox until acknowledgement is enabled | check checkbox once at dialog visibility; rely on retry | audit probe proved the checkbox renders after the dialog while the button stays disabled, consuming the shared attempt budget | final re-audit, task 7.1 |
 | 2026-10-21 | Placement ops reach boxes below the viewport fold at 100% zoom, read back in canvas coordinates | backend caps page height at the viewport; zoom out the editor | tall per_section pages are the staged design; 100% zoom keeps the ±4 px readback | change tall canvas (user choice), task 9.1 |
 | 2026-10-22 | Scorecard value sized from the box (prototype rule), `rename_page` op, palette colors applied to the swatches a chart has | new recipe font-size argument; accept "Untitled Page"; skip palettes longer than the swatch list | user flagged scorecard size on release 2.4; all 16 palette ops of b_a8ace098d03b were skipped; additive op keeps recipe_version 1.0 files valid | change report quality (user choice), tasks 11.1-11.3 |
+| 2026-10-23 | `date_granularity` sets a time series' date type in the chart, through the shared Data type menu path | infer the grain from the field name; change the field type in the data source; set Missing data to line breaks | a DATE_TRUNC bucket is a DATE column that Data Studio draws per day, spikes on the 1st and zeros between (release 2.5, b_36f20b42159c s015); a chart-level type changes only that chart | change live report defects (program root) |

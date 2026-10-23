@@ -654,6 +654,8 @@ Final-audit corrections (2026-10-19):
 - Enforce an unremovable Synthetic sample data decoration in the deterministic spec/render/
   background/compile path for synthetic source participation. Its box is reserved by layout,
   read-only to revise; image-based styling cannot hide it. UI also labels sources/prototype.
+  The background PNG is the report's one copy of the label: the recipe places no text op for it
+  (change 2026-10-23: a native text op over the background label drew it twice, overlapping).
   Keep source provenance authoritative when validating model output or old copied specs.
 - Budgets/oracle are contract sections Generator request/Acceptance oracle; offline generator
   tests cover deterministic bytes and relationships, API tests fake model/BQ/storage; one live
@@ -957,6 +959,13 @@ Final-audit corrections (2026-10-19):
   one `set_style` per chart with the theme palette, none for scorecards (no series swatch);
   then `save_report`,
   `get_link`. Boxes from Layout. Op ids `s001`... Deterministic: same spec -> byte-identical file.
+- Date buckets (recipe 1.2, change 2026-10-23): a `time_series` whose `date_dimension` is a
+  `DATE_TRUNC`/`DATETIME_TRUNC`/`TIMESTAMP_TRUNC` derived field of the view gets
+  `options.date_granularity` = that field's grain (day, week, month, quarter, year), so Data
+  Studio draws one point per bucket like the prototype; any other date dimension gets none. The
+  grain comes from the code-built derivation (Blueprint derived fields / derived-fields.md),
+  reaches the compiler through the spec (`compile_recipe(spec, version)` stays pure), and a
+  `date_granularity` from model output is never trusted (code overwrites or drops it).
   Every `set_canvas` takes `spec.canvas.width` (1200-1920 on designed builds) and the page
   height, so the report's canvas matches the designed background (change 2026-10-22).
 - Oracle: every line validates against the schema; golden spec -> golden recipe file; ids sequential.
@@ -1110,3 +1119,5 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-23 | Designer prompt asks for canvas width 1200 (schema still 1200-1920) | 1440-1920 designed canvases; block wide designs | the Data Studio editor zooms canvases wider than ~1380 px and the engine misplaces every component (20.5); user chose the prompt | task 20.5 |
 | 2026-10-23 | Recreate accept titles observed charts in code; the Designed-pages coverage fallback stays specified but unbuilt | build the fallback; send observations to a model again | 21.1 replays: failures came from titles, SQL text and stale ids, not designs | task 21.1 |
 | 2026-10-23 | Blueprint feasibility checks rows against recreate observations, and the planner sees them | leave the gap to publish coverage; Later list | feasibility said ready while accept failed with no recovery (b_48ef72ff1bff, b_dfb67c24f176); PRD goal 6 gate at blueprint | final audit 2026-10-23 (user) |
+| 2026-10-23 | Time series on a date bucket carry recipe 1.2 `date_granularity` from the code-built derivation | cast buckets to text; engine infers from names; bar/table bucket axes too | Data Studio reads a DATE_TRUNC bucket as a daily DATE: spikes on the 1st, zeros between (release 2.5, b_36f20b42159c s015); bar/table bucket labels stay readable (first day) | change live report defects (program root) |
+| 2026-10-23 | The synthetic label is drawn once, by the background; the compiler places no label text | keep the native text and hide the label in the background (synthetic-data.md change); align both copies | synthetic-data.md 1.2 puts the final label in the background pipeline; two renderers never align (b_91869163c217 page 1 drew it twice) | change live report defects (program root) |

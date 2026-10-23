@@ -478,3 +478,8 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: P3 breakdown time series can fail instead of skip if no Line color shows - style.py; P3 `_series_color` reads ctx.selectors directly (KeyError not OperationError) - style.py; P3 `colors: []` warns on pies, logs 0 of 0 on bars - style.py.
 - Next: none in plan (11.3 was the last open task).
+
+## 2026-10-23: Change live report defects (program)
+- What changed: plan.md Phase 12: 12.1 (M, time series date granularity); architecture.md Live editor conventions + decision log; essentials recipe 1.2. Contract recipe.md 1.2 (`time_series` option `date_granularity`) changed at the root.
+- Why: release 2.5 found a time series on a month bucket (`DATE_TRUNC` -> DATE) drawn per day, spikes on the 1st and zeros between (b_36f20b42159c s015); the engine is the only part that can set a chart's date type.
+- Affected: engine 12.1 (new); backend 23.1 emits the option; release 2.6 `Needs: engine 12.1`. The final audit's ACCEPTED verdict covers tasks to 11.3 only.

@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:6b6113e82509 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:7d1ca5fb1ff6 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 Read every build session. docs/architecture.md wins if they disagree.
 
@@ -58,7 +58,7 @@ tests/          offline fakes; tests/live/ explicitly marked live
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
 | ../contracts/api.md | 2.0 | provides | `uv run pytest tests/test_api_contract.py` |
-| ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.1 | provides recipes; consumes events | `uv run pytest tests/test_recipe_contract.py` |
+| ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.2 | provides recipes; consumes events | `uv run pytest tests/test_recipe_contract.py` |
 | ../contracts/conventions.md | 1.2 | consumes | manual: env names, ports, paths and IDs match (1.2 renames the Cloud Run service only) |
 | ../contracts/dashboard-intent.md | 1.2 | provides | `uv run pytest tests/test_api_contract.py tests/test_feasibility.py` |
 | ../contracts/synthetic-data.md | 1.2 | provides | `uv run pytest tests -k synthetic` |

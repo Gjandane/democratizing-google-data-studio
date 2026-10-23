@@ -1332,3 +1332,9 @@ context. Task status lives in docs/plan.md, not here.
 - Decisions: the reviewer's three P3s and 22.1's two Left open items are known limitations (POC bar), not tasks.
 - Mechanical checks: lint 0 errors, 10 historical warnings.
 - Next: backend done for v2.6; release 2.6 from the program root (open a session at the repo root).
+
+## 2026-10-23: Change live report defects (program)
+- What changed: plan.md Phase 23: 23.1 (S, time series on date buckets carry `date_granularity`), 23.2 (S, synthetic label drawn once, by the background); architecture.md#Recipe compiler and #Synthetic data + two decision rows; essentials recipe 1.2. Contract recipe.md 1.2 changed at the root.
+- Why: release 2.5's approved comparison: `order_date_month` drawn per day in the live report (b_36f20b42159c s015, b_91869163c217 s016); "Synthetic sample data" drawn twice on b_91869163c217 page 1 (background label + compiler `add_text` s010).
+- Side effect: tests/test_capabilities.py fails 2 tests (registry surface, option values) until 23.1 adds `option.time_series.date_granularity`.
+- Affected: backend 23.1, 23.2 (new); release 2.6 `Needs:` both; release 2.7 flips its e2e recipe-label check after 23.2. The final audit's ACCEPTED verdict covers tasks to 22.1 only.

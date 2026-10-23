@@ -88,7 +88,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Goal: test whether the current version can recreate the user's "Access to electricity" screenshot (data/references/electricity-access.jpg, gitignored) from fake data through the local UI: the AI codes the HTML prototype, its decoration layer (headline, panels, region list box, legend, the globe as an SVG illustration) renders to `background_p<n>.png`, and the recipe places live charts on that background (change 2026-10-21: the user's capability test; runs right after 2.3, before 2.4 and 2.5).
   - Files: docs/acceptance.md, docs/img/*.png
   - Depends on: 2.3
-  - Needs: backend 21.1
+  - Needs: backend 21.1; engine 12.1; backend 23.1; backend 23.2
   - Size: M
   - Done when: with `./start.sh` running and the signed-in Chrome profile, through http://localhost:5173 with no CSV: reference mode with the screenshot; synthetic schema proposed, then edited to the fake data (default: country, region, year 2000-2019, access_pct, urban_pct, rural_pct, people_without_access; the user may change it on the card), row count set, CSV generated and downloaded; outline and design prefilled from the reference; prototype; recipe; live run whose `run_finished` in data/builds/<id>/v<n>/events.jsonl has `failed: 0`, and the `https://datastudio.google.com/` link. docs/acceptance.md gets a row "Screenshot + synthetic data (user screenshot)" with the date, build id, link, the "Synthetic sample data" label seen in the prototype and in the report, and a capability matrix: each screenshot element (headline, region checkbox list, 78 % KPI and caption, globe, color legend, year bar chart with 2011 highlighted, year slider, rural/urban split bar, four country area charts) marked live chart (its type), background decoration, substituted (by what) or missing, plus whether each chart box sits on its background panel; the user's verdict; one cropped screenshot of the finished report (not the source image) in docs/img/. `uv run --project integration python integration/check_contracts.py` passes.
   - STOP: show the screenshot, the prototype and the finished report side by side with the matrix; the user confirms the verdict on a card. PASS means the pipeline ran end to end; substituted or missing elements are recorded findings, not failures.
@@ -96,6 +96,16 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: an element can't be reproduced (no area chart, checkbox list, slider, 100 % stacked bar, per-chart filter or single-bar highlight in contracts/recipe.md 1.0; the globe missing from the background) -> mark it in the matrix and log one `- Change request:` line per element in the progress entry; never patch a part.
   - If: a step fails inside a part (synthetic schema, generation, reference intake, prototype, recipe) -> block this task naming the part, the step and the API error body.
   - If: the live run has failed ops -> diagnose with the screencast gotcha (AGENTS.md) and block naming engine, the op and the last frame.
+  - If: a time series on a date bucket still draws per day (spikes on the bucket's first day), or the "Synthetic sample data" label shows twice -> the change 2026-10-23 fixes (engine 12.1, backend 23.1, 23.2) didn't hold: block naming the part, the build id and the op (`date_granularity` missing in the recipe = backend; present but not applied = engine).
+- [ ] 2.7 Synthetic label recipe check follows backend 23.2
+  - Goal: integration/e2e_references.py's synthetic case still asserts "recipe places the 'Synthetic sample data' text"; after backend 23.2 the background is the label's only copy in the report (contracts/synthetic-data.md), so that check fails on the next run, including 4.3's hosted run. Flip it: the recipe places no label text, and the prototype and its background layer still say the label (the existing check).
+  - Files: integration/e2e_references.py
+  - Depends on: 2.5
+  - Size: S
+  - Needs: backend 23.2
+  - Done when: with the parts started by `./start.sh` and the engine in dry-run (`DSS_ENGINE_DRY_RUN=1`, AGENTS.md Known gotchas), `uv run --project integration python integration/e2e_references.py --cases synthetic` exits 0 with the flipped check (rerun once on a live-model failure, per the gotcha), and the same check run over a recipe preview that still holds the label text fails (shown once in the progress entry, not kept as code); deck/data/bench-references-local.json unchanged; `uv run --project integration python integration/check_contracts.py` passes.
+  - If: the synthetic case fails at a step before the recipe -> block naming the part, the step and the API error body; never weaken another check.
+  - Review focus: only the recipe-label assertion changes; the prototype/background label check and every other case stay as they are.
 
 ## Phase 3: GitHub
 - [ ] 3.1 README: pitch, features and simplified architecture
@@ -139,7 +149,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Goal: the same rules as 2.5 hold on the hosted service, plus the persisted synthetic CSV across a service restart.
   - Spec: contracts/dashboard-intent.md#Required oracle cases; contracts/dashboard-intent.md#Scope; contracts/synthetic-data.md#Acceptance oracle
   - Files: deck/data/bench-references-hosted.json
-  - Depends on: 4.2; 2.5
+  - Depends on: 4.2; 2.5; 2.7
   - Size: M
   - Done when: with `dss-agent` running locally against the URL, `uv run --project integration python integration/e2e_references.py --server https://dss-frontend-872000338860.asia-southeast1.run.app --live` exits 0 with the same cases as 2.5, and records the tested git revision and the Cloud Run revision; after a restart of the service (a new revision from `bash deploy/deploy.sh`), the synthetic CSV downloaded again has the same checksum; manual: the screenshot + synthetic source clicked through the hosted UI reaches the Data Studio link with the "Synthetic sample data" label; results, timing and run date go to deck/data/bench-references-hosted.json with no secrets or private images.
   - STOP: the user watches the hosted click-through and approves the result on a card.
