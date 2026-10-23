@@ -406,3 +406,18 @@ context. Task status lives in docs/plan.md, not here.
 - Decisions: two STOPs (engine 11.1 scorecard look, backend 19.1 sharpness) because both are visual judgments; evidence screenshots go to data/report-quality/ (git-ignored). Contract fixture recipe.sample.jsonl unchanged (inserting an op would renumber it); the parts' own tests cover `rename_page`. POC: delta audit optional, not run.
 - Left open: release 2.6 screenshots and README images show the fixes only if these land first.
 - Next: engine/ 11.1 -> 11.2 -> 11.3 (one Chrome; not during release 2.5 live runs); backend/ 19.1 any time, 19.2 after engine 11.2.
+
+## 2026-10-23: Task 2.5 Reference, refusal and synthetic end-to-end, local
+- Status: blocked
+- Plan check: off
+- What changed: 05:08 stash already applied (uncommitted, kept in the tree, not restored: the ruling doesn't invalidate it). e2e_references.py: Revenue assumption regex also takes "after deducting/net of discounts" (run 1 said "net sales ... after deducting discounts"); recreate refuses any drop (a check turns observations into rows like "Top products by revenue table"); RECREATE_TEXT adds `Quantity = SUM(quantity)` (the backend's own suggested instruction). AGENTS.md: 1 gotcha.
+- Checks: check_contracts PASS 13/13. Live on 8ca0819 (dirty), engine signed in: refusal PASS b_b21118d626bf; style PASS b_23cecc246dcb (recovery after replan now compiles: 18.1 fixed); revenue PASS b_f66d9d8046e7 (run 1 FAIL on regex only); recreate FAIL x2, synthetic FAIL x2, all at POST /blueprint/accept. Full command exit 1; --after-restart and comparison STOP not reached.
+- Decisions: blocked per the task's If (gate fails inside a part).
+- Tried and failed: none in the driver; failure repeats at the same step.
+- Gotchas: in AGENTS.md.
+- Left open: P2/P3 from the 2026-10-22 entry stand.
+- Blocked because: (a) the fix is in backend/ (release never edits parts).
+- Question: Which backend task makes a recreate-mode prototype publish pass the coverage check (render.py:66) after the designer node (20.3)?
+- Options: A backend task: expose the coverage `errors` in the API error and fix recreate coverage with designed pages, then rerun 2.5 / B accept recreate without a live build / Recommend: A; B leaves recreate unproven.
+- Evidence: b_7ca302e800cc: 0 decisions, check -> ready, prototype_stale false; accept run r_db7feccb917b run.finished "Candidate no longer fulfills the active requirements" (422 invalid_request, `errors` not exposed); spans view, layout, designer p1-3, validate 0 errors, render, publish. Same on b_48ef72ff1bff (r_3245ba9235d0), b_dfb67c24f176, b_52b7b7be7e02 (r_79a663bc8b0e, 4 pages). Style mode publishes; recreate-mode only. 18.2 works: every image observation bound, no drops.
+- Next: after the backend fix, `./start.sh`, `POST /api/engine/login`, `e2e_references.py --live --cases recreate,synthetic`, restart, `--after-restart`, comparison STOP card.
