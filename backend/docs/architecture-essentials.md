@@ -1,17 +1,17 @@
-<!-- essentials-of: docs/architecture.md sha256:7d1ca5fb1ff6 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:ff6c6ac1c29b (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 Read every build session. docs/architecture.md wins if they disagree.
 
 ## Stack
 - Python 3.12/uv; FastAPI/uvicorn (no reload), SSE; ADK 2.x Workflow/LlmAgent; Gemini planner
-  `gemini-4-argon` (blueprint, designer), worker `gemini-3.8-flash` (others), overridable in settings.
+  `gemini-4-argon` (blueprint, designer), worker `gemini-3.8-flash` (rest), set in settings.
   SQLite/FTS5; BigQuery/ADC; Playwright Chromium; httpx. Cloud Run: one instance, local dss-agent.
 
 ## Folder map
 ```text
 src/dss/        api/, agent/, artifacts/ (models, okf, state), harness/ (graph, nodes, context,
                 llm, guardrails, tracing), memory/, data/ (bigquery, profile, research), spec/,
-                render/ (prototype, background, kits, design_page, icons/), recipe/, ops/
+                render/ (prototype, background, kits, design_page, icons/, art/), recipe/, ops/
 skills/         procedural memory; prompts/v1/ versioned system prompts
 knowledge/      OKF seed: catalog/, archetypes/, datastudio/ (fonts.md), themes/, index.md, log.md
 tests/          offline fakes; tests/live/ explicitly marked live
@@ -34,8 +34,8 @@ tests/          offline fakes; tests/live/ explicitly marked live
   agent token, 60 s retry. Run recompiles the current spec; dev routes need DSS_DEV=1.
 - Accept publishes its candidate view/spec/artifacts atomically; never clean a published view.
   Backgrounds: background.write_pages per page, 3x, <2 MB.
-- Designed pages: sanitized planner HTML; Chromium measures slots -> `box`; schema 1200-1920,
-  prompt 1200 (engine misplaces > ~1380 px); one repair, then kit; coverage fallback unbuilt.
+- Designed pages: sanitized planner HTML; Chromium measures slots -> `box`; prompt width 1200
+  (> ~1380 px misplaces); one repair, then kit; reference images in; `data-art` art.
   Text fit: architecture.md#Implementation conventions.
 - Feasibility: structured Blueprint rows; extraction only for Other, comments, references;
   images are not data. Other fail-open gap: PRD Later; unsupported still blocks.
@@ -58,8 +58,8 @@ tests/          offline fakes; tests/live/ explicitly marked live
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
 | ../contracts/api.md | 2.0 | provides | `uv run pytest tests/test_api_contract.py` |
-| ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.2 | provides recipes; consumes events | `uv run pytest tests/test_recipe_contract.py` |
-| ../contracts/conventions.md | 1.2 | consumes | manual: env names, ports, paths and IDs match (1.2 renames the Cloud Run service only) |
+| ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.3 | provides recipes; consumes events | `uv run pytest tests/test_recipe_contract.py` |
+| ../contracts/conventions.md | 1.3 | consumes | manual: env names, ports, paths and IDs match |
 | ../contracts/dashboard-intent.md | 1.2 | provides | `uv run pytest tests/test_api_contract.py tests/test_feasibility.py` |
 | ../contracts/synthetic-data.md | 1.2 | provides | `uv run pytest tests -k synthetic` |
 
@@ -82,5 +82,6 @@ tests/          offline fakes; tests/live/ explicitly marked live
 | httpx | pypi | >=0.27 | TestClient; dss-agent client | 2026-10-22 (0.28.1) |
 | pytest | pypi | >=8.0 | tests | 2026-10-22 (9.1.1) |
 | pytest-asyncio | pypi | >=0.23 | async tests | 2026-10-22 (1.4.0) |
-| setuptools | pypi | * | build backend, console scripts (user-approved, 1.1) | 2026-10-22 (84.2.1) |
-| lucide-static | npm | * | icons vendored in render/icons/ (ISC) | 2026-10-22 (1.61.0) |
+| setuptools | pypi | * | build backend (user-approved, 1.1) | 2026-10-22 (84.2.1) |
+| lucide-static | npm | * | icons in render/icons/ (ISC) | 2026-10-22 (1.61.0) |
+| Natural Earth 110m | data | 5.1.2 | art source (PD) | 2026-10-24 (5.1.2) |

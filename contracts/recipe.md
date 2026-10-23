@@ -1,10 +1,13 @@
 # Contract: recipe and engine events
-Version 1.2 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
+Version 1.3 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
 (`--timeout`, `error_code: timeout`, background file name); 1.1 (2026-10-22, change report quality)
 `rename_page` op, scorecard value sizing and `colors` series order stated. Header `recipe_version`
 stays "1.0" (the op is additive); 1.2 (2026-10-23, change live date buckets) `time_series` option
 `date_granularity` and its rule; header still "1.0" (the option is additive, and engines before it
-ignore unknown options).
+ignore unknown options); 1.3 (2026-10-24, change reference fidelity) chart type `area`,
+control type `fixed_size_list`, `bar`/`area` option `stacked_percent`, and the `colors` rule for a
+chart with a `breakdown`; header still "1.0", but engines before 1.3 reject the new enum values, so
+the backend emits them only after the engine supports them (plan gates).
 Provider: backend writes recipes (its recipe compiler); engine writes events. Consumers: engine
 reads recipes; backend reads events; release validates both. Machine-readable schema:
 `contracts/recipe.schema.json` (JSON Schema 2020-12, `$defs`: `header`, `op`, `event`).
@@ -34,22 +37,25 @@ UTF-8 JSON Lines, one JSON object per line, no blank lines.
 | `rename_page` | `name` | renames the current page (the backend names page 1 with it; `open_report` leaves it "Untitled Page") |
 | `go_to_page` | `index` (1-based) | makes that page current |
 | `add_chart` | `component_id`, `chart_type`, `x`, `y`, `w`, `h`, `dimensions` (list of field names), `metrics` (list of `{field, agg}`), `date_dimension`?, `breakdown`?, `sort`? (`{field, order: asc\|desc}`), `title`?, `options`? (object) | adds the chart, sets its fields, places it at the box |
-| `add_control` | `component_id`, `control_type` (`date_range`\|`dropdown`), `x`, `y`, `w`, `h`, `field`? (dropdown) | adds the control at the box |
+| `add_control` | `component_id`, `control_type` (`date_range`\|`dropdown`\|`fixed_size_list`), `x`, `y`, `w`, `h`, `field`? (dropdown, fixed_size_list) | adds the control at the box; `fixed_size_list` is Data Studio's "Fixed-size list" (every value of `field` listed with a checkbox, sized to the box) |
 | `add_text` | `component_id`, `text`, `x`, `y`, `w`, `h`, `font_size`?, `color`?, `bold`?, `align`? (`left`\|`center`\|`right`) | adds a text box |
 | `add_image` | `component_id`, `path`, `x`, `y`, `w`, `h` | uploads and places an image |
-| `set_style` | `component_id`, `style` (object: `colors`? list, `show_title`?, `font_size`?, `background`?, `border_color`?) | styles an existing component; `colors` apply in order to the chart's series swatches, extra colors ignored; unsupported keys are skipped with a message |
+| `set_style` | `component_id`, `style` (object: `colors`? list, `show_title`?, `font_size`?, `background`?, `border_color`?) | styles an existing component; `colors` apply in order to the chart's series swatches, extra colors ignored; on a chart with a `breakdown` they apply in order to the breakdown values Data Studio lists ("Select series"); unsupported keys, and colors the UI offers no swatch for, are skipped with a message within the op's time, never a timeout |
 | `save_report` | — | makes sure the report is saved in the user's account ("Edit and share" if shown) |
 | `get_link` | — | reads the report's view URL; returned in `run_finished.report_url` |
 
-- `chart_type`: `scorecard`, `time_series`, `bar`, `pie`, `table`, `pivot_table`, `geo_map`,
-  `scatter`.
+- `chart_type`: `scorecard`, `time_series`, `area`, `bar`, `pie`, `table`, `pivot_table`,
+  `geo_map`, `scatter`. `area` is Data Studio's area chart over `date_dimension` (like
+  `time_series`), one area per metric or per `breakdown` value.
 - `agg`: `sum`, `avg`, `count`, `count_distinct`, `min`, `max`, `none`.
 - `options` by chart type (all optional): `bar`: `orientation` (`vertical`\|`horizontal`),
-  `stacked` (bool); `pie`: `donut` (bool); `pivot_table`: `row_dimensions`, `column_dimensions`
+  `stacked` (bool), `stacked_percent` (bool: Data Studio's "100% stacked"; implies `stacked`);
+  `area`: `stacked` (bool), `stacked_percent` (bool), `date_granularity` (as `time_series`);
+  `pie`: `donut` (bool); `pivot_table`: `row_dimensions`, `column_dimensions`
   (lists, which replace `dimensions`); `geo_map`: `geo_type` (`country`\|`region`\|`city`);
   `table`: `rows_per_page` (int); `scorecard`: `compact_numbers` (bool); `time_series`:
   `date_granularity` (`day`\|`week`\|`month`\|`quarter`\|`year`).
-- Time series granularity: with `date_granularity` the engine sets the chart's date dimension
+- Time series granularity (`time_series` and `area`): with `date_granularity` the engine sets the chart's date dimension
   (`date_dimension`) to that granularity in the chart (Data type -> Date & Time), so a bucket
   field such as `DATE_TRUNC(order_date, MONTH)` draws one point per bucket instead of a daily axis
   with zeros between the buckets. Without it the field keeps the type Data Studio infers (a DATE

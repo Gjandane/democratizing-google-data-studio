@@ -1,5 +1,5 @@
 # Conventions (shared by every part)
-Version 1.2 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
+Version 1.3 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
 (added DSS_ALLOWED_TYPES, DSS_CONSOLIDATE_EVERY, DSS_ENGINE_TIMEOUT_S, background_p<n>.png, engine lock).
 1.1 (2026-10-19) Cloud Run deployment: one hosted service, access code, local build agent, DB backup
 (added PORT, DSS_STATIC_DIR, DSS_ACCESS_CODE, DSS_ENGINE_MODE, DSS_AGENT_SERVER,
@@ -9,6 +9,8 @@ fail-closed start, backup cadence).
 1.2 (2026-10-20) Cloud Run service renamed `dss` -> `dss-frontend` (keeps the submitted URL
 https://dss-frontend-872000338860.asia-southeast1.run.app; the full image replaces the earlier
 static-frontend revision of that service). No other name, path or behaviour changed.
+1.3 (2026-10-24, change reference fidelity) `DSS_ALLOWED_TYPES` default adds `area` and
+`fixed_size_list` (recipe 1.3); no name added.
 Only the architect at the program root edits this file. Parts read it; they never edit it.
 
 ## Ports and URLs
@@ -40,7 +42,7 @@ values. Names:
 | `DSS_CDP_PORT` | `9222` | engine | Chrome remote debugging port |
 | `DSS_TEMPLATE_REPORT_ID` | (empty) | engine | optional blank template report for the Linking API, if a blank create URL doesn't work (engine spike decides) |
 | `DSS_ENGINE_CMD` | `uv run --project ../engine dsengine` | backend | how the backend starts the engine |
-| `DSS_ALLOWED_TYPES` | `scorecard,time_series,bar,pie,table,pivot_table,geo_map,scatter,text,image,date_range,dropdown` | backend | component types the spec node may use and the validator accepts; narrow it if engine ops slip |
+| `DSS_ALLOWED_TYPES` | `scorecard,time_series,area,bar,pie,table,pivot_table,geo_map,scatter,text,image,date_range,dropdown,fixed_size_list` | backend | component types the spec node may use and the validator accepts; narrow it if engine ops slip |
 | `DSS_CONSOLIDATE_EVERY` | `5` | backend | consolidation runs after this many builds reach `done` (demo: `1`) |
 | `DSS_DEV` | (empty) | backend | `1` mounts the `/api/dev/*` test helpers; never set on Cloud Run |
 | `DSS_ENGINE_TIMEOUT_S` | `600` | backend, engine | whole-run timeout for `dsengine run` |

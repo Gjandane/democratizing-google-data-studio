@@ -74,7 +74,7 @@
           "properties": {
             "op": { "const": "add_chart" },
             "component_id": { "$ref": "#/$defs/componentId" },
-            "chart_type": { "enum": ["scorecard", "time_series", "bar", "pie", "table", "pivot_table", "geo_map", "scatter"] },
+            "chart_type": { "enum": ["scorecard", "time_series", "area", "bar", "pie", "table", "pivot_table", "geo_map", "scatter"] },
             "dimensions": { "type": "array", "items": { "type": "string", "minLength": 1 } },
             "metrics": { "type": "array", "items": { "$ref": "#/$defs/metric" } },
             "date_dimension": { "type": ["string", "null"] },
@@ -94,7 +94,7 @@
           "properties": {
             "op": { "const": "add_control" },
             "component_id": { "$ref": "#/$defs/componentId" },
-            "control_type": { "enum": ["date_range", "dropdown"] },
+            "control_type": { "enum": ["date_range", "dropdown", "fixed_size_list"] },
             "field": { "type": ["string", "null"] }
           },
           "required": ["component_id", "control_type"]

@@ -117,3 +117,6 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
 - Multi-instance Cloud Run with a managed database (change 2026-10-19).
 - CI running every part's tests (program, next version).
 - Connect stage: a GCS source added with 201 shows in the list without a reload (frontend; release 2.4 P2, change 2026-10-22).
+- Slider control (Data Studio sliders take number fields only; the year slider also needs a numeric year), per-chart filters (one chart per country) and a single highlighted bar (2011): release 2.6 change requests, deferred (change 2026-10-24).
+- A user-set designer output cap with a warning when a page design is cut off: declined on the card (change 2026-10-24); the designer used 769-3,002 of its 16k output.
+- Frontend dead end after Remove references with every issue dropped (Regenerate disabled, no Check feasibility): release 2.6 gotcha, not yet planned (change 2026-10-24).

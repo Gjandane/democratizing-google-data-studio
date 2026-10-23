@@ -488,3 +488,8 @@ context. Task status lives in docs/plan.md, not here.
 - Docs: implementation-notes.md Conventions gain the Phase 14 decisions (artifact editor save model, run_id lock after a 202, blueprint issue slots and refetch, page tabs) and the disabled-fieldset jsdom trap, moved from AGENTS.md Known gotchas; node names now api.md 2.0. Essentials Conventions gain one line on the editor save model. PRD Later gains the Phase 14 Left open items, the four reviewer P3 and the backend issues seen live in 14.5 (for the backend part and release). Other new gotchas (heredocs, pane upload, frontend-live) are environment quirks and stay.
 - Release checklist (POC): AGENTS.md Commands run the mock demo in under 5 minutes; core flow verified live in 14.5 (notes -> build done) and by `npm test`; known limitations in PRD `## Later`; core screens match staged-ui.md and the UI design section at 1280/1440 (reviewer, Phase 14 screenshots).
 - Next: nothing left to build in frontend. Program: engine and backend final audits are due; then the integration audit at the program root.
+
+## 2026-10-24: Change reference fidelity (program root)
+- What changed: plan Phase 15: 15.1 Blueprint labels for area, 100% stacked bar and fixed-size list (S); essentials conventions row 1.3 (no change the frontend reads).
+- Why: recipe 1.3 (program change reference fidelity) adds component types the Blueprint table would show as raw ids.
+- Tasks affected: 15.1 new, independent of the other parts' tasks.

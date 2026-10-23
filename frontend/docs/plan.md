@@ -241,3 +241,12 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Needs: backend 15.11
   - Done when: `npm test` and `npm run typecheck` pass: the blocked ratio row from blueprint.json shows its issue with Use this alternative / Drop this requirement and Accept stays disabled until ready; Regenerate and Accept post their actions; page tabs read `data-page-name` from ../contracts/fixtures/api/prototype.multipage.html and pins stay on their page; manual (live, backend on 8000 with `DSS_ENGINE_DRY_RUN=1`): the sample CSV goes notes -> context -> outline (one Other) -> design per_section -> blueprint -> accept -> a 2+ page prototype -> one comment -> build `done`, with screenshots/14.5-{context,outline,design,blueprint,prototype}-1280.png checked against docs/staged-ui.md and the UI design section.
   - Review focus: ../contracts/api.md 2.0 (blueprint, Prototype HTML) and dashboard-intent.md 1.2; Feasibility panel reuse per docs/reference-ui.md; stale states after editing an earlier step.
+
+## Phase 15: Reference fidelity (change 2026-10-24)
+- [ ] 15.1 Blueprint labels for area charts, 100% stacked bars and fixed-size lists
+  - Goal: the Blueprint table names recipe 1.3's new types instead of showing raw ids: today `chartType()` falls back to the type id with the Shapes icon for `area` and `fixed_size_list`, and a `bar` with `stacked_percent` reads as a plain bar.
+  - Files: src/features/workspace/blueprint/BlueprintTable.tsx, tests/blueprint.test.tsx
+  - Depends on: 14.5
+  - Size: S
+  - Done when: tests/blueprint.test.tsx, failing before: a row of type `area` shows "Area chart" with a lucide area-chart icon, `fixed_size_list` shows "Fixed-size list control" with a list-checks icon, a `bar` with `options.stacked_percent: true` shows "Bar chart (100% stacked)" (horizontal + 100% reads "Bar chart (horizontal, 100% stacked)"), and every existing type keeps its label; `npm test` and `npm run typecheck` pass.
+  - Review focus: labels only; no new API field (types come from ../contracts/recipe.md 1.3 through the blueprint's existing `type`/`options`).
