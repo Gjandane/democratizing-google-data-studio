@@ -1350,3 +1350,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: existing builds (b_36f20b42159c, b_91869163c217) keep grain-less specs until their Blueprint is re-accepted: "Run recompiles the current spec".
 - Left open: P2 registry offers/accepts code-owned date_granularity; requirements._row_ops/_component_fulfills read component options, not the spec field grain, so feasibility can disagree with the compiler - src/dss/spec/requirements.py; P3 second TRUNC parser beside requirements._date_bucket - src/dss/spec/auto_layout.py
 - Next: Task 23.2. Start by `status --task 23.2`.
+
+## 2026-10-23: Task 23.2 Synthetic label drawn once
+- Status: done
+- Plan check: off
+- What changed: compiler.compile_recipe no longer emits the page-1 `add_text` for `p1_synthetic_sample_data`; background_p1.png (decoration layer) is the report's one copy of "Synthetic sample data". require_synthetic_label still guards compile. Tests: test_synthetic_label.py (recipe has no label op, page-1 set_background_image kept; real Chromium PNG footer pixels == decoration-layer label for code and designed layouts; golden real-data recipe unchanged), test_render.py recreate accept, test_compiler.py.
+- Checks: `uv run pytest tests/test_synthetic_label.py tests/test_render.py tests/test_compiler.py` PASS (114 passed, 2 deselected; new tests failed before the change); Test (all) `uv run pytest` PASS (1601 passed, 13 deselected).
+- Decisions: edited tests/test_compiler.py (outside Files): its two label tests asserted the removed op; now assert no label op. No If-path fix needed: designed, revision and copied-version paths already draw the label in the background (existing tests assert it).
+- Digest: compile_recipe emits no op for SYNTHETIC_LABEL_ID; background_p1.png is the label's only report copy. test_synthetic_label.assert_background_only_label(recipe_lines, spec), designed() fixture loader.
+- Tried and failed: none
+- Gotchas: golden_recipe.jsonl is version 3 (compile_recipe(golden, 3)); golden_spec has a logo, so write_pages needs its asset folder.
+- Left open: P3 real-data background check restates write_pages - tests/test_synthetic_label.py; P3 recreate test compiles a fresh recipe rather than reading a published one - tests/test_render.py
+- Next: release 2.7 updates e2e_references.py recipe-label check; backend plan complete.

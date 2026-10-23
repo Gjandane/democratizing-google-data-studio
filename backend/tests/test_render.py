@@ -736,6 +736,11 @@ def test_recreate_accept_publishes_with_planner_titles(blueprint_api, monkeypatc
     spec = DashboardSpec.model_validate_json((build.folder / 'spec.json').read_text(encoding='utf-8'))
     assert spec.datasource.synthetic == (case == 'synthetic')
     assert all(p.design for p in spec.pages) if designer else not any(p.design for p in spec.pages)
+    # 23.2: the page-1 background draws the provenance label; the recipe never draws it again.
+    from dss.recipe.compiler import compile_recipe
+    from dss.spec.models import SYNTHETIC_LABEL
+    assert (SYNTHETIC_LABEL in render(spec, layer='decoration', page=1)) == (case == 'synthetic')
+    assert SYNTHETIC_LABEL not in compile_recipe(spec, 1)
     if designer:
         assert designer.calls == len(spec.pages)  # no added model call
         # The designer laid its cards out around the observed titles.

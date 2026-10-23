@@ -134,12 +134,12 @@ async def test_staged_27_components_compile_and_fake_engine_run_done(staged_flow
     assert seen == [compile_recipe(spec, 1)]
 
 
-def test_synthetic_label_is_emitted_once_on_page_one():
+def test_synthetic_label_is_drawn_by_the_page_one_background_only():
+    """23.2: background_p1.png carries the label; a native text op drew it twice, overlapping."""
     spec = with_synthetic_label(three_pages(), True)
     ops = lines(compile_recipe(spec, 1))[1:]
-    labels = [o for o in ops if o.get('component_id') == SYNTHETIC_LABEL_ID]
-    assert len(labels) == 1 and labels[0]['op'] == 'add_text'
-    assert ops.index(labels[0]) < next(i for i, o in enumerate(ops) if o['op'] == 'add_page')
+    assert not [o for o in ops if o.get('component_id') == SYNTHETIC_LABEL_ID]
+    assert [o['path'] for o in ops if o['op'] == 'set_background_image'] == ['background_p1.png', 'background_p2.png', 'background_p3.png']
 
 
 def test_designed_recipe_uses_the_canvas_width_and_measured_boxes():
@@ -156,10 +156,9 @@ def test_designed_recipe_uses_the_canvas_width_and_measured_boxes():
     assert [(o['x'], o['y'], o['w'], o['h']) for o in ops if o['op'] == 'set_background_image'] == [(0, 0, 1440, page.height)]
     charts = {o['component_id']: {k: o[k] for k in 'xywh'} for o in ops if o['op'] == 'add_chart'}
     assert charts == {c.id: c.box.model_dump() for c in page.components}
-    # Charts are emitted in reading order of their boxes; the code-drawn footer text follows.
+    # Charts are emitted in reading order of their boxes; the footer label is background pixels.
     assert list(charts) == [c.id for c in sorted(page.components, key=lambda c: (c.box.y, c.box.x))]
-    label = next(o for o in ops if o.get('component_id') == SYNTHETIC_LABEL_ID)
-    assert (label['op'], label['y'], label['w']) == ('add_text', 1224 + 16, 1440 - 48 - 32)
+    assert not [o for o in ops if o.get('component_id') == SYNTHETIC_LABEL_ID]
 
 
 def bucket_spec(grain='month', *, options=None, bar_on_bucket=False):

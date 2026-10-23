@@ -43,12 +43,71 @@ def test_label_spec_html_recipe_and_reserved_box(sample):
         html = render(spec, layer=layer)
         assert SYNTHETIC_LABEL in html and f'data-cid="{SYNTHETIC_LABEL_ID}"' in html
         assert 'color:#0F172A' in html and 'background:#FFFFFF' in html
-    recipe = [json.loads(line) for line in compile_recipe(spec, 1).split('\n')[:-1]]
-    native = next(op for op in recipe[1:] if op.get('component_id') == SYNTHETIC_LABEL_ID)
-    assert native['op'] == 'add_text' and native['text'] == SYNTHETIC_LABEL
-    assert native['y'] == bounds['y'] + 16 and native['color'] == '#0F172A'
+    recipe = recipe_lines(spec)
+    assert_background_only_label(recipe, spec)
     assert recipe[0]['canvas']['height'] == spec.canvas.height
     assert recipe[4]['op'] == 'set_background_image'  # 19.2: rename_page is s002
+
+
+def recipe_lines(spec):
+    return [json.loads(line) for line in compile_recipe(spec, 1).split('\n')[:-1]]
+
+
+def assert_background_only_label(recipe, spec):
+    """Change 2026-10-23 (release 2.5 b_91869163c217 s010): background_p1.png is the report's one
+    copy of the label, so no recipe op draws it again over the background."""
+    ops = recipe[1:]
+    assert not [op for op in ops if op.get('component_id') == SYNTHETIC_LABEL_ID]
+    assert not [op for op in ops if SYNTHETIC_LABEL in json.dumps(op)]
+    first = ops[:next((i for i, op in enumerate(ops) if op['op'] == 'add_page'), len(ops))]
+    assert [(op['path'], op['x'], op['y'], op['w'], op['h']) for op in first if op['op'] == 'set_background_image'] == [
+        ('background_p1.png', 0, 0, spec.canvas.width, spec.pages[0].height)]
+
+
+def designed():
+    return DashboardSpec.model_validate_json(Path('tests/data/designed_spec.json').read_text(encoding='utf-8'))
+
+
+@pytest.mark.parametrize('layout', ['code', 'designed'])
+def test_background_png_is_the_one_label(sample, tmp_path, layout):
+    """The decoration layer and background_p1.png draw the label in its reserved page-1 footer; the
+    recipe places nothing for it."""
+    import base64
+    from playwright.sync_api import sync_playwright
+    from dss.render import background
+    from dss.spec.layout import layout_box
+    spec = with_synthetic_label(sample, True) if layout == 'code' else designed()
+    page = spec.pages[0]
+    assert spec.datasource.synthetic and (page.design is not None) == (layout == 'designed')
+    assert_background_only_label(recipe_lines(spec), spec)
+    label = next(d for d in page.decorations if d.id == SYNTHETIC_LABEL_ID)
+    bounds = layout_box(spec, page, label)
+    # The footer is the page's last strip, below every other item.
+    assert bounds['y'] + bounds['h'] + spec.grid.margin == page.height
+    assert all(layout_box(spec, page, c)['y'] + layout_box(spec, page, c)['h'] <= bounds['y'] for c in page.components)
+    html = render(spec, layer='decoration', page=1)
+    assert html.count(f'data-cid="{SYNTHETIC_LABEL_ID}"') == 1
+    scales = background.write_pages(spec, tmp_path)
+    scale = scales['background_p1.png']
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        try:
+            view = browser.new_page(viewport={'width': spec.canvas.width, 'height': page.height}, device_scale_factor=scale)
+            view.set_content(html, wait_until='load')
+            view.evaluate('document.fonts.ready')
+            element = view.locator(f'[data-cid="{SYNTHETIC_LABEL_ID}"]')
+            assert element.inner_text() == SYNTHETIC_LABEL
+            drawn = element.bounding_box()
+            assert drawn == dict(x=bounds['x'], y=bounds['y'], width=bounds['w'], height=bounds['h'])
+            expected = element.screenshot()
+            encoded = base64.b64encode((tmp_path / 'background_p1.png').read_bytes()).decode()
+            view.set_content(f'<body style="margin:0"><img style="display:block;width:{spec.canvas.width}px" '
+                             f'src="data:image/png;base64,{encoded}"></body>')
+            view.locator('img').wait_for()
+            # The PNG's footer pixels are the label as the decoration layer draws it.
+            assert view.screenshot(clip=drawn) == expected
+        finally:
+            browser.close()
 
 
 @pytest.mark.parametrize('change', ['remove', 'move', 'text', 'opacity', 'color', 'size', 'logo', 'component_overlap', 'decoration_overlap'])
@@ -109,10 +168,21 @@ def test_image_theme_cannot_hide_label(sample):
     assert 'border-radius:0px' in label_html and 'opacity:1' in label_html
 
 
-def test_real_data_has_no_label(sample):
+def test_real_data_has_no_label(sample, tmp_path, monkeypatch):
     assert not validate_spec(sample)
     assert SYNTHETIC_LABEL not in render(sample)
     assert SYNTHETIC_LABEL not in compile_recipe(sample, 1)
+    # A real-data build's recipe and background input are unchanged by the label change.
+    data = Path('tests/data')
+    golden = DashboardSpec.model_validate_json((data / 'golden_spec.json').read_text(encoding='utf-8'))
+    assert not golden.datasource.synthetic
+    assert compile_recipe(golden, 3) == (data / 'golden_recipe.jsonl').read_text(encoding='utf-8')
+    captured = []
+    monkeypatch.setattr('dss.render.background.capture', lambda html, path, *a, **k: (captured.append(html), path.write_bytes(b'PNG')))
+    from dss.render import background
+    background.write_pages(sample, tmp_path)
+    assert captured == [render(sample, layer='decoration', folder=tmp_path, page=p.index) for p in sample.pages]
+    assert SYNTHETIC_LABEL not in ''.join(captured)
 
 
 def test_source_participation_tracks_base_and_joins(client, app, build_id, tmp_path):
@@ -152,7 +222,8 @@ def test_old_spec_api_compile_and_versions_restore_label(client, app, build_id, 
     assert SYNTHETIC_LABEL in client.get(f'/api/builds/{build_id}/prototype').text
     compiled = client.post(f'/api/builds/{build_id}/recipe')
     assert compiled.status_code == 200, compiled.text
-    assert SYNTHETIC_LABEL in (folder / 'recipe.jsonl').read_text()
+    # The rebuilt background carries the label; the recipe draws no second copy over it.
+    assert SYNTHETIC_LABEL not in (folder / 'recipe.jsonl').read_text(encoding='utf-8')
     assert (folder / 'background_p1.png').read_bytes() == b'labelled image'
     # Compilation must not invalidate the saved feasibility proof for the next run.
     assert client.post(f'/api/builds/{build_id}/recipe').status_code == 200

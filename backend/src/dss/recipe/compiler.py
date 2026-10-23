@@ -17,10 +17,11 @@ def _recipe_validators():
 def compile_recipe(spec: DashboardSpec, version: int) -> str:
     """Compile the current spec without consulting settings or mutating the spec."""
     from dss.spec.layout import require_synthetic_label
-    from dss.spec.models import SYNTHETIC_LABEL_ID, SYNTHETIC_LABEL
     # A legacy/constructed/mutated model must obey the same color rules as new model output,
     # including theme colors flattened into the background rather than emitted as ops.
     Theme.model_validate(spec.theme.model_dump(warnings=False))
+    # The label is a page-1 decoration, so background_p1.png is its one copy: no op draws it
+    # again over the background (change 2026-10-23).
     require_synthetic_label(spec)
     # Logos are flattened into background_p<n>.png, so they are checked like image components.
     if any(reference_image(path) for _, path in image_paths(spec)):
@@ -66,14 +67,6 @@ def compile_recipe(spec: DashboardSpec, version: int) -> str:
                 # A scorecard has no series swatch: the engine would skip `colors` with a warning.
                 if c.type != "scorecard":
                     op("set_style", component_id=c.id, style=dict(colors=c.colors if c.colors is not None else spec.theme.palette))
-        # The reserved label lives on page 1 only (require_synthetic_label checks it).
-        label = next((d for d in page.decorations if d.id == SYNTHETIC_LABEL_ID), None)
-        if spec.datasource.synthetic and label is not None:
-            bounds = layout_box(spec, page, label)
-            # Native text also makes provenance visible in recipe preview and editable reports.
-            op('add_text', component_id=label.id, text=SYNTHETIC_LABEL, x=bounds['x']+16,
-               y=bounds['y']+16, w=bounds['w']-32, h=bounds['h']-32,
-               font_size=16, color='#0F172A')
     op("save_report")
     op("get_link")
     if len(lines) > 1000:
