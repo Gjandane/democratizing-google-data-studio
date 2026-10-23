@@ -1288,4 +1288,4 @@ context. Task status lives in docs/plan.md, not here.
 ## 2026-10-23: Change recreate publication
 - What changed: the architect, at the program root, added Phase 21 task 21.1 (coverage errors in the publish span; recreate and screenshot-only accepts publish with designed pages on and off) and a Designed pages coverage-fallback rule in architecture.md (+ decision row, essentials, stamp).
 - Why: release 2.5 (2026-10-23): recreate and synthetic accepts fail publish coverage on 4 builds (b_7ca302e800cc, b_48ef72ff1bff, b_52b7b7be7e02, b_dfb67c24f176) with the `errors` list not visible; style mode publishes; 18.1 and 18.2 confirmed working live. User chose this fix (card); deadline no longer binding (program.md).
-- Tasks affected: 21.1 (new); release 2.5 `Needs: backend 21.1`.
+- Tasks affected: 21.1 (new); release 2.5 and 2.6 `Needs: backend 21.1`.

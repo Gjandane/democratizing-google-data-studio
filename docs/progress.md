@@ -425,6 +425,6 @@ context. Task status lives in docs/plan.md, not here.
 ## 2026-10-23: Change recreate publication
 - What changed: program root ruling on 2.5's block (entry 2026-10-23). Backend plan Phase 21, task 21.1 (coverage errors in the `publish` trace span; recreate and screenshot-only accepts publish with designed pages; fallback rule if a designed page breaks coverage); backend architecture.md#Designed pages coverage bullet + decision row, essentials, stamp. Release 2.5: `Needs: backend 21.1`, resume `If:` rewritten (stash 2026-10-23 09:30, full five-case rerun, read `coverage_errors` on a repeat), reopened. docs/program.md: deadline no longer binding, roadmap line, decision row; AGENTS.md program block deadline line.
 - Why: since 18.2/20.x every recreate-mode accept fails publish coverage (422 "Candidate no longer fulfills the active requirements") with the errors invisible; style mode publishes. The deadline (2026-10-23 01:05 MPST) passed with 2.5 blocked; user kept the full scope and chose the backend fix (cards) over a designed-pages switch or a recorded limit.
-- Tasks affected: backend 21.1 (new, M); release 2.5 (waits on it). 2.6 stays ready (Depends on 2.3 only); 3.x and 4.x unchanged.
+- Tasks affected: backend 21.1 (new, M); release 2.5 (waits on it). release 2.6 also `Needs: backend 21.1` (its screenshot + synthetic accept is the same failing path); 3.x and 4.x unchanged.
 - Change requests: none logged before this entry.
 - Next: build backend 21.1 in backend/, then release 2.5 here.
