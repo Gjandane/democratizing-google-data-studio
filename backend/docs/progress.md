@@ -1417,3 +1417,28 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md
 - Left open: P3 no limit on the number of art tags per page (each inlines 40-73 KB) - src/dss/render/design_page.py
 - Next: Task 24.5 The designer sees the reference. Start by reading designer.design/regenerate and context.designer_context for where image parts and the reference summary go.
+
+## 2026-10-25: Task 24.5 The designer sees the reference
+- Status: partial (STOP pending; uncommitted work in the tree)
+- Plan check: off
+- What changed: designer.reference(folder)->Reference(images ((mime, bytes),...), notes {mode, summary, palette, type, spacing}); design()/regenerate() take reference=; every request: REFERENCE_TASK text, then inline images; span images: n. context.designer_context(reference=notes): droppable 'reference' section; prompt + skill end with a `## Reference` part, stripped without a reference. render.py accept and revise.py redesign pass designer.reference(folder) (outside Files: designer has no folder).
+- Checks: 8 new tests in test_designer/test_context fail on old code, pass; `uv run pytest` 1662 passed, 2 failed (revise 100 ms timing, agent_client) both pass alone and on file rerun. Live (.blueprint/qa/task-24.5/live_245.py, style, CSV eb6e5770): run 1 faked a split bar/slider; skill tightened ("Nothing fake", match slots by meaning); run 2: 3 pages, images: 1, no fallback, p1 out 1,974/16k; ../data/report-quality/backend-24.5-reference.png.
+- Decisions: no-reference requests byte-identical (test pins sha256 c42eceff...); notes exclude observation items and instructions; unreadable/unnamed image files skipped.
+- Tried and failed: none
+- Gotchas: style mode imports no charts, so the reference's slider/split bar/list have no slots.
+- Left open: review not run.
+- Next: show the user .blueprint/qa/task-24.5/reference/20261025-001939-30a57d57/side-by-side.png for the STOP; optionally `DSS_245_MODE=recreate uv run python .blueprint/qa/task-24.5/live_245.py`; then review, record, done, commit.
+
+## 2026-10-25: Task 24.5 The designer sees the reference
+- Status: blocked
+- Plan check: off
+- What changed: nothing committed. The built work (reference images and notes in every designer request, a Reference section in the skill and prompt, render.py/revise.py passing designer.reference(folder)) is set aside: `git stash apply 75157888f8d9a04a22ea136e00aa018cdb21a6cd`.
+- Checks: before the restore: 8 new tests PASS; `uv run pytest` 1662 passed, 2 timing flakes that pass on rerun. Live style run 2: 3 pages, images: 1, no fallback, p1 out 1,974/16k; .blueprint/qa/task-24.5/reference/20261025-001939-30a57d57/side-by-side.png. Review not run.
+- Decisions: STOP not approved; the user chose block + re-plan over approve + change request.
+- Tried and failed: one-stage designer with the image (style mode) follows the reference's regions, but the slider, split bar and small multiples are missing (no slots).
+- Gotchas: AGENTS.md (style mode slots).
+- Left open: review.
+- Blocked because: (b) needs a plan/architecture change: the user wants a two-stage "perfect recreation" route.
+- Question: Should a reference build first run feasibility, then send Argon the feasibility report (available charts, filters), recreate instructions and the image to write a recreation prompt (like ../electricity-dashboard-prompt.md), and have Flash 3.8 code the page HTML from that prompt?
+- Options: A yes, as new tasks built on the stash (Argon still needs its image parts and no-reference guard) / B yes, replacing the stash / Recommend: A. Limits: HTML stays a sanitized static background with slots (no scripts or d3); Flash's 30 s deadline vs up to 16k of HTML; 12k input budget.
+- Next: run /blueprint-solution-architect to resolve 24.5's block.
