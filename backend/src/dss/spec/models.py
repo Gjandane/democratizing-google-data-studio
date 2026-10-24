@@ -2,7 +2,13 @@
 from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_serializer
 
-TYPES = ("scorecard", "time_series", "bar", "pie", "table", "pivot_table", "geo_map", "scatter", "text", "image", "date_range", "dropdown")
+CHART_TYPES = ("scorecard", "time_series", "area", "bar", "pie", "table", "pivot_table", "geo_map", "scatter")
+CONTROL_TYPES = ("date_range", "dropdown", "fixed_size_list")
+TYPES = (*CHART_TYPES, "text", "image", *CONTROL_TYPES)
+# Controls bound through `field` (a Blueprint row's single dimension), not `dimensions`.
+FIELD_CONTROLS = ("dropdown", "fixed_size_list")
+# Charts drawn over `date_dimension`: one date-grain rule (options.date_granularity) for both.
+DATE_AXIS_TYPES = ("time_series", "area")
 SYNTHETIC_LABEL_ID = 'p1_synthetic_sample_data'
 SYNTHETIC_LABEL = 'Synthetic sample data'
 
@@ -91,7 +97,7 @@ class Sort(Model):
 
 class Component(Model):
     id: str = Field(pattern=r"^p[1-9][0-9]*_[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
-    type: Literal["scorecard", "time_series", "bar", "pie", "table", "pivot_table", "geo_map", "scatter", "text", "image", "date_range", "dropdown"]
+    type: Literal[TYPES]
     label: str
     grid: Cell  # the code layout's cell; on a designed page the fallback if the design is dropped
     box: Box | None = None
@@ -137,7 +143,7 @@ class DataField(Model):
     role: Literal["dimension", "metric"]
     default_agg: Literal["sum", "avg", "count", "count_distinct", "min", "max", "none"] = "none"
     # A *_TRUNC derived field's bucket grain, set by code layout from the view's derivation;
-    # the compiler emits it as a time series' options.date_granularity (recipe 1.2).
+    # the compiler emits it as a time series' or area's options.date_granularity (recipe 1.2/1.3).
     date_granularity: Literal["day", "week", "month", "quarter", "year"] | None = None
 
     def __getitem__(self, key):

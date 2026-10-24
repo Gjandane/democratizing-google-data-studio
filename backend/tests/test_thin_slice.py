@@ -190,7 +190,7 @@ def test_failure_and_partial(thin, monkeypatch, flag, stage, status):
 def test_all_recipe_mappings():
     spec = DashboardSpec.model_validate_json((ROOT / "tests/data/thin_spec.json").read_text())
     template = spec.pages[0].components[0].model_dump()
-    from dss.spec.models import Component, TYPES
+    from dss.spec.models import CHART_TYPES, CONTROL_TYPES, Component, TYPES
     spec.pages[0].components = []
     for kind in TYPES:
         data = {**template, "id": "p1_" + kind, "type": kind, "text": "A note", "image_path": "logo.png", "field": "region"}
@@ -202,11 +202,11 @@ def test_all_recipe_mappings():
     creations = [op for op in lines[1:] if op["op"].startswith("add_")]
     assert len(creations) == len(TYPES)
     for kind, op in zip(TYPES, creations):
-        expected = "add_control" if kind in ("date_range", "dropdown") else "add_text" if kind == "text" else "add_image" if kind == "image" else "add_chart"
+        expected = "add_control" if kind in CONTROL_TYPES else "add_text" if kind == "text" else "add_image" if kind == "image" else "add_chart"
         assert op["op"] == expected
         if expected == "add_chart":
             assert op["chart_type"] == kind
-    assert len([op for op in lines if op.get("op") == "set_style"]) == 7  # 19.2: the scorecard has none
+    assert len([op for op in lines if op.get("op") == "set_style"]) == len(CHART_TYPES) - 1 == 8  # 19.2: the scorecard has none
 
 
 def test_wrapper_timeout_releases_engine(thin, monkeypatch):

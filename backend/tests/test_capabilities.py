@@ -25,15 +25,20 @@ def variants():
 def chart_options():
     """{chart_type: {key: enumerated values or None}} parsed from recipe.md's options line."""
     para = RECIPE_MD.split("- `options` by chart type (all optional):", 1)[1].split("\n- ", 1)[0]
-    found = {}
-    for chunk in para.strip().rstrip(".").split(";"):
+    found, alias = {}, {}
+    # Chart types are separated by `;` outside parentheses (recipe 1.3 notes use `;` inside them).
+    for chunk in re.split(r";(?![^()]*\))", para.strip().rstrip(".")):
         ctype, rest = re.match(r"\s*`(\w+)`:(.*)", chunk, re.S).groups()
         keys = re.findall(r"`(\w+)`", re.sub(r"\([^)]*\)", "", rest))
         found[ctype] = {}
         for key in keys:
             paren = re.search(r"\(([^)]*)\)", rest[rest.index(f"`{key}`"):])[1]
+            if same := re.fullmatch(r"as `(\w+)`", paren.strip()):
+                alias[ctype, key] = same[1]  # `(as `time_series`)`: that type's values for the same key
             # `(`a`\|`b`)` enumerates values; otherwise the first word is the type: bool, int or lists
-            found[ctype][key] = re.findall(r"`(\w+)`", paren) if "\\|" in paren else paren.split(",")[0].strip()
+            found[ctype][key] = re.findall(r"`(\w+)`", paren) if "\\|" in paren else re.match(r"\s*(\w+)", paren)[1]
+    for (ctype, key), other in alias.items():
+        found[ctype][key] = found[other][key]
     return found
 
 
@@ -269,12 +274,52 @@ def test_native_support_without_app_evidence_is_unsupported_app(registry):
 
 
 def test_documented_product_exclusion_is_unsupported_product(registry):
+    # 24.1: the fixed-size list became app-supported (recipe 1.3); shapes have no recipe op.
     raw = _raw()
-    record = next(r for r in raw["capabilities"] if r["id"] == "control.fixed_size_list")
+    record = next(r for r in raw["capabilities"] if r["id"] == "element.shape")
     record["native_product"] = {"status": "unsupported", "evidence": ["https://docs.cloud.google.com/data-studio/date-range-control"], "verified": "2026-10-20"}
     checker = Checker(Registry.model_validate(raw), allowed=ALL)
-    assert checker.capability("control.fixed_size_list").status == "unsupported_product"
-    assert Checker(registry, allowed=ALL).capability("control.fixed_size_list").status == "unsupported_app"
+    assert checker.capability("element.shape").status == "unsupported_product"
+    assert Checker(registry, allowed=ALL).capability("element.shape").status == "unsupported_app"
+
+
+RECIPE_13 = {"chart.area": "add_chart.chart_type=area", "option.area.stacked": "add_chart.options.area.stacked",
+             "option.area.stacked_percent": "add_chart.options.area.stacked_percent",
+             "option.area.date_granularity": "add_chart.options.area.date_granularity",
+             "option.bar.stacked_percent": "add_chart.options.bar.stacked_percent",
+             "control.fixed_size_list": "add_control.control_type=fixed_size_list"}
+
+
+@pytest.mark.parametrize("cid", RECIPE_13)
+def test_recipe_13_records_are_app_supported(registry, cid):
+    """24.1: release 2.6's area charts, rural/urban split bar and region list stop being stand-ins."""
+    cap = registry.get(cid)
+    assert cap.recipe == [RECIPE_13[cid]]
+    assert cap.app.status == cap.native_product.status == "supported"
+    assert "../contracts/recipe.md#Ops" in cap.app.evidence
+    assert [evidence_kind(e) for e in cap.native_product.evidence] == ["official"]
+    assert cap.native_product.verified.isoformat() == cap.app.verified.isoformat() == "2026-10-24"
+    checker = Checker(registry, allowed=ALL)
+    assert checker.capability(cid).ok
+    assert checker.capability("option.area.date_granularity", "month").ok
+    assert checker.capability("option.area.date_granularity", "hour").status == "unsupported_app"
+    narrow = Checker(registry, allowed=ALL - {"area", "fixed_size_list"})
+    assert narrow.capability(cid).status == ("supported" if cid == "option.bar.stacked_percent" else "unsupported_app")
+
+
+def test_recipe_13_components_check(registry):
+    checker = Checker(registry, allowed=ALL)
+    area = {"id": "p1_area", "type": "area", "date_dimension": "order_date", "breakdown": "region",
+            "metrics": [{"field": "revenue", "agg": "sum"}], "options": {"stacked": True, "stacked_percent": True}}
+    bar = {"id": "p1_bar", "type": "bar", "dimensions": ["region"], "metrics": [{"field": "revenue", "agg": "sum"}],
+           "options": {"stacked_percent": True}}
+    listed = {"id": "p1_list", "type": "fixed_size_list", "field": "region"}
+    assert [checker.component(c) for c in (area, bar, listed)] == [[], [], []]
+    for bad in ({**area, "options": {"stacked_percent": "yes"}}, {**area, "options": {"orientation": "vertical"}},
+                {**bar, "options": {"stacked_percent": None}}, {**listed, "colors": ["#172554"]},
+                {**listed, "options": {"stacked": True}}):
+        assert checker.component(bad), bad
+    assert SALES["order_date"] in registry.get("chart.area").data[0].types
 
 
 def test_missing_data_is_needs_data_and_ambiguity_needs_clarification(registry):

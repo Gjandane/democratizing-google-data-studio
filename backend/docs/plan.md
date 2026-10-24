@@ -658,7 +658,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: provenance still unremovable (spec, prototype, background); no layout or footer change; release's e2e_references.py recipe-label check is updated by release 2.7, not here.
 
 ## Phase 24: Reference fidelity (change 2026-10-24)
-- [ ] 24.1 Recipe 1.3 types: area, 100% stacked bar, fixed-size list
+- [x] 24.1 Recipe 1.3 types: area, 100% stacked bar, fixed-size list
   - Goal: the blueprint, prototype and recipe can use Data Studio's area chart, 100 % stacked bar and fixed-size list, so release 2.6's urban/rural area charts, rural/urban split bar and region checkbox list stop being stand-ins (time series, stacked bar, dropdown). Recipe 1.3 added them at the root, so tests/test_capabilities.py fails 2 tests (registry surface, option values) until this task adds the records.
   - Spec: docs/architecture.md#Recipe compiler; docs/architecture.md#Prototype renderer; ../contracts/recipe.md#Ops
   - Files: knowledge/catalog/area.md, knowledge/catalog/fixed_size_list.md, knowledge/catalog/bar.md, knowledge/catalog/index.md, knowledge/catalog/log.md, knowledge/datastudio/capabilities.json, src/dss/spec/models.py, src/dss/spec/validate.py, src/dss/spec/auto_layout.py, src/dss/recipe/compiler.py, src/dss/render/prototype.py, skills/blueprint.md, tests/test_capabilities.py, tests/test_compiler.py, tests/test_render.py, tests/test_spec_validate.py, tests/data/golden_recipe.jsonl

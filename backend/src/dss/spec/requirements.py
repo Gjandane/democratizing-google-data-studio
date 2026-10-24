@@ -17,6 +17,7 @@ from dss.db import new_id
 from dss.harness.guardrails import RunError
 from dss.data.bigquery import snake_names
 from dss.spec import capabilities, references
+from dss.spec.models import CONTROL_TYPES, DATE_AXIS_TYPES
 
 MAX_REQUIREMENTS = 40
 MAX_ISSUES = 20
@@ -1545,7 +1546,7 @@ def _row_ops(component, palette):
     """The ops the compiler emits for one laid-out Blueprint row, plus the page ops every recipe has."""
     ops = [{'op': name} for name in ('open_report', 'rename_page', 'set_canvas', 'set_background_image', 'save_report', 'get_link')]
     c, cid = component, component['id']
-    if c['type'] in ('date_range', 'dropdown'):
+    if c['type'] in CONTROL_TYPES:
         ops.append({'op': 'add_control', 'component_id': cid, 'control_type': c['type'], **({'field': c['field']} if c.get('field') else {})})
     elif c['type'] == 'text':
         ops.append({'op': 'add_text', 'component_id': cid, 'text': c.get('text') or c['label']})
@@ -1708,7 +1709,7 @@ def _component_fulfills(component, requirement, needs, checker, snapshot, *, der
             # Recipe 1.0 exposes no bucketing option: prove it in the selected
             # derived date dimension, never by a chart label or planner prose.
             date_field = component.get('date_dimension')
-            if (component['type'] != 'time_series' and date_field not in component.get('dimensions', [])) or not _date_bucket(snapshot, date_field, mapping.date_grain, derived=derived):
+            if (component['type'] not in DATE_AXIS_TYPES and date_field not in component.get('dimensions', [])) or not _date_bucket(snapshot, date_field, mapping.date_grain, derived=derived):
                 return False
         # Unit is a source-defined metric meaning kept in the ledger; recipe 1.0
         # has no display-unit setting. Never infer a currency conversion here.

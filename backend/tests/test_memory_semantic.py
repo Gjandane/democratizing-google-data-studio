@@ -32,7 +32,7 @@ def test_seed_bundle(tmp_path):
         assert m['min_metrics'] <= m['max_metrics']
         assert m['min_w'] > 0 and m['min_h'] > 0
     assert len(nav.list_folder()) == 3
-    assert len(nav.list_folder('catalog')) == 12
+    assert len(nav.list_folder('catalog')) == len(TYPES) == 14  # 24.1: area, fixed_size_list
     assert {c.metadata['archetype'] for c in nav.search(type='Dashboard Archetype')} == {'executive','storytelling','operational','analytical'}
     assert nav.search(text='headline')
     assert len(nav.search(type='Chart Type', tags=['catalog','pie'], text='PROPORTIONS')) == 1

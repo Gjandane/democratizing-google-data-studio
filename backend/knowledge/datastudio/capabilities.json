@@ -68,6 +68,41 @@
    }
   },
   {
+   "id": "chart.area",
+   "kind": "chart_type",
+   "label": "Area chart",
+   "recipe": [
+    "add_chart.chart_type=area"
+   ],
+   "component_type": "area",
+   "data": [
+    {
+     "name": "date_field",
+     "types": [
+      "DATE",
+      "DATETIME",
+      "TIMESTAMP"
+     ]
+    }
+   ],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/area-chart-reference"
+    ],
+    "verified": "2026-10-24"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops",
+     "../contracts/recipe.schema.json",
+     "knowledge/catalog/area.md"
+    ],
+    "verified": "2026-10-24"
+   }
+  },
+  {
    "id": "chart.bar",
    "kind": "chart_type",
    "label": "Bar chart",
@@ -307,21 +342,31 @@
    "id": "control.fixed_size_list",
    "kind": "control_type",
    "label": "Fixed-size list control",
-   "recipe": [],
+   "recipe": [
+    "add_control.control_type=fixed_size_list"
+   ],
+   "component_type": "fixed_size_list",
+   "data": [
+    {
+     "name": "control_field",
+     "types": []
+    }
+   ],
    "native_product": {
     "status": "supported",
     "evidence": [
      "https://docs.cloud.google.com/data-studio/drop-down-list-and-fixed-size-list-control"
     ],
-    "verified": "2026-10-20"
+    "verified": "2026-10-24"
    },
    "app": {
-    "status": "unsupported",
+    "status": "supported",
     "evidence": [
-     "../contracts/recipe.md#Ops"
+     "../contracts/recipe.md#Ops",
+     "../contracts/recipe.schema.json",
+     "knowledge/catalog/fixed_size_list.md"
     ],
-    "verified": "2026-10-20",
-    "note": "The recipe offers only date_range and dropdown controls; other control types are unregistered"
+    "verified": "2026-10-24"
    }
   },
   {
@@ -449,6 +494,32 @@
      "../contracts/recipe.md#Ops"
     ],
     "verified": "2026-10-20"
+   }
+  },
+  {
+   "id": "option.bar.stacked_percent",
+   "kind": "option",
+   "label": "100% stacked bars",
+   "recipe": [
+    "add_chart.options.bar.stacked_percent"
+   ],
+   "requires": [
+    "chart.bar"
+   ],
+   "value_type": "bool",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/bar-chart-and-column-chart-reference"
+    ],
+    "verified": "2026-10-24"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops"
+    ],
+    "verified": "2026-10-24"
    }
   },
   {
@@ -645,6 +716,91 @@
     ],
     "verified": "2026-10-23",
     "note": "Set by code from the view's DATE_TRUNC/DATETIME_TRUNC/TIMESTAMP_TRUNC derivation of the date dimension, never from model output"
+   }
+  },
+  {
+   "id": "option.area.stacked",
+   "kind": "option",
+   "label": "Stacked areas",
+   "recipe": [
+    "add_chart.options.area.stacked"
+   ],
+   "requires": [
+    "chart.area"
+   ],
+   "value_type": "bool",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/area-chart-reference"
+    ],
+    "verified": "2026-10-24"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops"
+    ],
+    "verified": "2026-10-24"
+   }
+  },
+  {
+   "id": "option.area.stacked_percent",
+   "kind": "option",
+   "label": "100% stacked areas",
+   "recipe": [
+    "add_chart.options.area.stacked_percent"
+   ],
+   "requires": [
+    "chart.area"
+   ],
+   "value_type": "bool",
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/area-chart-reference"
+    ],
+    "verified": "2026-10-24"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops"
+    ],
+    "verified": "2026-10-24"
+   }
+  },
+  {
+   "id": "option.area.date_granularity",
+   "kind": "option",
+   "label": "Area chart date granularity",
+   "recipe": [
+    "add_chart.options.area.date_granularity"
+   ],
+   "requires": [
+    "chart.area"
+   ],
+   "values": [
+    "day",
+    "week",
+    "month",
+    "quarter",
+    "year"
+   ],
+   "native_product": {
+    "status": "supported",
+    "evidence": [
+     "https://docs.cloud.google.com/data-studio/area-chart-reference"
+    ],
+    "verified": "2026-10-24"
+   },
+   "app": {
+    "status": "supported",
+    "evidence": [
+     "../contracts/recipe.md#Ops"
+    ],
+    "verified": "2026-10-24",
+    "note": "Set by code like the time series' grain (a *_TRUNC derivation of the date dimension), never from model output"
    }
   },
   {

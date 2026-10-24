@@ -8,7 +8,7 @@ from jsonschema import Draft202012Validator
 from dss.recipe.compiler import compile_recipe
 from dss.spec.layout import box, with_synthetic_label
 from dss.spec.models import SYNTHETIC_LABEL_ID
-from test_render import three_pages, staged_flow  # noqa: F401  (fixture)
+from test_render import recipe_13_spec, three_pages, staged_flow  # noqa: F401  (fixture)
 from test_blueprint import blueprint_api  # noqa: F401  (fixture)
 from test_context_node import context_api  # noqa: F401  (fixture)
 
@@ -264,3 +264,103 @@ def test_decided_monthly_gap_publishes_a_monthly_time_series(blueprint_api, monk
     assert sorted((o['title'], o['date_dimension'], o['options'].get('date_granularity')) for o in series) == [
         ('Revenue Trend Over Time', 'order_date', None), ('Revenue by month', 'order_date_month', 'month')]
     assert not any('date_granularity' in o['options'] for o in ops if o['op'] == 'add_chart' and o['chart_type'] != 'time_series')
+
+
+def validate_all(text):
+    header, *ops = lines(text)
+    Draft202012Validator({**SCHEMA, '$ref': '#/$defs/header'}).validate(header)
+    for value in ops:
+        Draft202012Validator({**SCHEMA, '$ref': '#/$defs/op'}).validate(value)
+    return ops
+
+
+def test_recipe_13_types_compile_to_their_ops():
+    """24.1: release 2.6's urban/rural area, rural/urban split bar and region checkbox list compile as
+    Data Studio's area chart, 100% stacked bar and fixed-size list instead of stand-ins."""
+    spec = recipe_13_spec()
+    ops = validate_all(compile_recipe(spec, 3))
+    by_id = {o['component_id']: o for o in ops if o['op'] in ('add_chart', 'add_control')}
+    area, split, listed = by_id['p1_access_over_time'], by_id['p1_split'], by_id['p1_regions']
+    assert (area['op'], area['chart_type'], area['date_dimension'], area['dimensions'], area['options']) == (
+        'add_chart', 'area', 'sale_date', [], {'stacked_percent': True})
+    assert area['metrics'] == [{'field': 'urban', 'agg': 'sum'}, {'field': 'rural', 'agg': 'sum'}]
+    assert (split['chart_type'], split['options']) == ('bar', {'stacked_percent': True})
+    page = spec.pages[0]
+    box_of = {c.id: box(spec.canvas, spec.grid, c.grid, height=page.height) for c in page.components}
+    assert listed == {'id': listed['id'], 'op': 'add_control', 'component_id': 'p1_regions', 'control_type': 'fixed_size_list',
+                      'field': 'region', **box_of['p1_regions']}
+    # Areas take the palette like any series chart; a control takes no style.
+    assert {o['component_id'] for o in ops if o['op'] == 'set_style'} == {'p1_access_over_time', 'p1_split'}
+    assert compile_recipe(recipe_13_spec(), 3) == compile_recipe(spec, 3)
+
+
+@pytest.mark.parametrize('grain', ['day', 'week', 'month', 'quarter', 'year'])
+def test_area_on_a_bucket_gets_the_time_series_grain(grain):
+    """One date-grain rule: an area on a DATE_TRUNC bucket draws one point per bucket like a time series."""
+    from dss.spec.auto_layout import bucket_grain
+    spec = recipe_13_spec(bucket=bucket_grain(f'DATE_TRUNC(sale_date, {grain.upper()})'))
+    ops = validate_all(compile_recipe(spec, 3))
+    area = next(o for o in ops if o.get('chart_type') == 'area')
+    assert (area['date_dimension'], area['options']) == (f'sale_{grain}', {'stacked_percent': True, 'date_granularity': grain})
+    # A model-written grain never reaches the recipe: code overwrites it on a bucket and drops it on a raw date.
+    spec.pages[0].components[0].options['date_granularity'] = 'day' if grain != 'day' else 'year'
+    assert charts(spec)['p1_access_over_time']['options'] == {'stacked_percent': True, 'date_granularity': grain}
+    raw = recipe_13_spec(area_options={'stacked': True, 'date_granularity': 'month'})
+    assert charts(raw)['p1_access_over_time']['options'] == {'stacked': True}
+    assert all('date_granularity' not in o['options'] for o in charts(spec).values() if o['chart_type'] != 'area')
+
+
+def test_blueprint_rows_use_recipe_13_types(monkeypatch):
+    """The planner sees the new types; a Blueprint row has no field slot, so a fixed-size list's one
+    dimension becomes its field (like a dropdown's) in feasibility, layout and publish coverage ops."""
+    from dss.artifacts.models import BlueprintRow
+    from dss.harness.nodes.blueprint import catalog_summary
+    from dss.spec import feasibility, requirements as req
+    from dss.spec.capabilities import Checker, load_registry
+    from dss.spec.models import TYPES
+    monkeypatch.setenv('DSS_ALLOWED_TYPES', ','.join(TYPES))
+    summary = {entry['type']: entry for entry in catalog_summary()}
+    assert (summary['fixed_size_list']['min_dimensions'], summary['fixed_size_list']['max_dimensions']) == (1, 1)
+    assert 'field' not in summary['fixed_size_list']['slot_roles']
+    assert [o['key'] for o in summary['area']['options']] == ['stacked', 'stacked_percent', 'date_granularity']
+    assert 'stacked_percent' in [o['key'] for o in summary['bar']['options']]
+    fields = {'region': {'role': 'dimension', 'type': 'STRING'}, 'sale_date': {'role': 'dimension', 'type': 'DATE'},
+              'urban': {'role': 'metric', 'type': 'FLOAT64'}, 'rural': {'role': 'metric', 'type': 'FLOAT64'}}
+    metrics = [{'field': 'urban', 'agg': 'sum'}, {'field': 'rural', 'agg': 'sum'}]
+    def row(**component):
+        base = {'label': 'X', 'dimensions': [], 'metrics': [], 'date_dimension': None, 'breakdown': None, 'sort': None, 'options': {}}
+        return BlueprintRow(question_id=None, section_id='s1', page=1, note='', status='ok', issue_ids=[], component={**base, **component})
+    rows = [row(type='fixed_size_list', dimensions=['region']),
+            row(type='area', date_dimension='sale_date', metrics=metrics, options={'stacked_percent': True}),
+            row(type='bar', dimensions=['region'], metrics=metrics, options={'stacked_percent': True})]
+    checker = Checker(load_registry(), allowed=TYPES)
+    assert [feasibility.component_errors(r.component, fields, checker) for r in rows] == [[], [], []]
+    assert feasibility.component_errors(row(type='fixed_size_list').component, fields, checker) == [
+        ('needs_data', 'A fixed_size_list needs one dimension field', [])]
+    assert feasibility.component_errors(row(type='area', metrics=metrics).component, fields, checker) == [
+        ('needs_data', 'A date dimension is required', [])]
+    laid = feasibility.laid_out(rows)
+    assert (laid[0]['field'], laid[0]['dimensions']) == ('region', [])
+    assert {'op': 'add_control', 'component_id': 'row_0', 'control_type': 'fixed_size_list', 'field': 'region'} in req._row_ops(laid[0], ['#123456'])
+    area = next(o for o in req._row_ops(laid[1], ['#123456']) if o['op'] == 'add_chart')
+    assert (area['chart_type'], area['date_dimension'], area['options']) == ('area', 'sale_date', {'stacked_percent': True})
+
+
+# sha256 of compile_recipe for specs without recipe 1.3 types, recorded with the pre-24.1 compiler.
+RECIPE_12_BYTES = {
+    'golden_spec': '6356b8c82948c8c40ee216638417f906fce8f756aeb782ff81104f0fa69e290f',
+    'designed_spec': '02e3442501edf71168b8205f8af6411e7295580f531e20b84b53088a55fb73fb',
+    'golden_layout_spec': 'b05f0312346e294ee99cbe23fd3902866bd6e94af62323e716610fb6a0b49467',
+    'thin_spec': '10389be7565932392da471bf033244845519c147a2e71f3c582b631fb3eb5270',
+    'three_pages': 'd3ca7e5862c483336fc62971406015478bc59f807350f78c8bcfad30e9170927',
+    'bucket_month': 'af975e6f728929dae4956981e53edf7d4236d46af8aa62950a8aee85f824ef7b'}
+
+
+def test_specs_without_recipe_13_types_compile_byte_identically():
+    from hashlib import sha256
+    from dss.spec.models import DashboardSpec
+    specs = {name: (DashboardSpec.model_validate_json(Path(f'tests/data/{name}.json').read_text(encoding='utf-8')), 3)
+             for name in ('golden_spec', 'designed_spec', 'golden_layout_spec', 'thin_spec')}
+    specs.update(three_pages=(three_pages(), 2), bucket_month=(bucket_spec('month'), 3))
+    assert {name: sha256(compile_recipe(spec, v).encode()).hexdigest() for name, (spec, v) in specs.items()} == RECIPE_12_BYTES
+    assert compile_recipe(golden_spec(), 3).encode('utf-8') == Path('tests/data/golden_recipe.jsonl').read_bytes()

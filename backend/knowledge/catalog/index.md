@@ -6,6 +6,7 @@ type: Index
 
 - [scorecard](scorecard.md)
 - [time_series](time_series.md)
+- [area](area.md)
 - [bar](bar.md)
 - [pie](pie.md)
 - [table](table.md)
@@ -16,3 +17,4 @@ type: Index
 - [image](image.md)
 - [date_range](date_range.md)
 - [dropdown](dropdown.md)
+- [fixed_size_list](fixed_size_list.md)

@@ -25,7 +25,7 @@ slot_roles:
 
 # bar
 
-Compare categories. Use one optional breakdown for grouped or stacked bars; prefer sorted bars for rankings.
+Compare categories. Use one optional breakdown for grouped or stacked bars; prefer sorted bars for rankings. Options: orientation, stacked, stacked_percent (each bar's parts sum to 100 %, Data Studio's "100% stacked"; shows a split such as rural vs urban share).
 
 Counts are conservative POC binding limits, not a complete product capability claim. Minimum sizes use grid columns and rows, not pixels. Date_dimension, breakdown, and field are separate slots, excluded from dimension counts. Metrics use explicit aggregations; count may count nonnumeric fields, while sum/avg require numeric fields.
 

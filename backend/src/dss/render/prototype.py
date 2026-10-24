@@ -12,7 +12,7 @@ import re
 from dss.data.bigquery import quoted, table_uri
 from dss.render import design_page
 from dss.spec.layout import decoration_text_style, decoration_text_errors, layout_box
-from dss.spec.models import reference_image
+from dss.spec.models import CONTROL_TYPES, DATE_AXIS_TYPES, reference_image
 from dss.spec.validate import catalog
 
 
@@ -31,7 +31,7 @@ def script_json(value):
 def dimensions(component):
     fields = list(component.dimensions)
     # Other chart types bind a date for filtering, not for their grouping axis.
-    if component.type == 'time_series' and component.date_dimension:
+    if component.type in DATE_AXIS_TYPES and component.date_dimension:
         fields.insert(0, component.date_dimension)
     fields += [f for f in (component.breakdown, component.field) if f]
     return list(dict.fromkeys(fields))
@@ -59,7 +59,9 @@ def aggregate_sql(spec, component):
     sql = f'SELECT {", ".join(select)} FROM {quoted(table_uri(spec.datasource.table))}'
     if dims:
         sql += ' GROUP BY ' + ', '.join(group)
-    # Absent sort: time series by date ascending, others by the first metric descending.
+    # Absent sort: date axes by date ascending, a fixed-size list by value ascending (reading
+    # order), others by the first metric descending.
+    ascending = component.type in (*DATE_AXIS_TYPES, 'fixed_size_list')
     sort = component.sort
     order = sort.field if sort else None
     aliases = {m.field: 'm' + str(i) for i, m in enumerate(component.metrics)}
@@ -71,9 +73,9 @@ def aggregate_sql(spec, component):
         expression = (f'COUNT(DISTINCT {quoted(order)})' if agg == 'count_distinct' else
                       f'{"ANY_VALUE" if agg == "none" else agg.upper()}({quoted(order)})')
     else:
-        order = aliases.get(order, order) if order else (dims[0] if component.type == 'time_series' and dims else 'm0' if component.metrics else dims[0])
+        order = aliases.get(order, order) if order else (dims[0] if component.type in DATE_AXIS_TYPES and dims else 'm0' if component.metrics else dims[0])
         expression = quoted(order)
-    direction = (sort.order if sort else 'asc' if component.type == 'time_series' else 'desc').upper()
+    direction = (sort.order if sort else 'asc' if ascending else 'desc').upper()
     if direction not in ('ASC', 'DESC'):
         raise ValueError('Invalid sort direction')
     sql += f' ORDER BY {expression} {direction}'
@@ -210,19 +212,38 @@ def chart_option(item, rows, theme, width):
         axis = list(dict.fromkeys(str(r.get(dims[0], '')) for r in rows))
         base['xAxis']['data'] = axis
         base['series'] = []
+        # Recipe 1.3: an area stacks all its series; "100% stacked" (bar or area) stacks every
+        # series and scales each x to 100.
+        percent = bool(item.options.get('stacked_percent'))
         for group in groups:
             subset = {str(r.get(dims[0], '')): r for r in rows if group is None or str(r.get(item.breakdown, '')) == group}
             for i, metric in enumerate(item.metrics):
-                series = {'type': 'line' if item.type == 'time_series' else 'bar',
+                series = {'type': 'bar' if item.type == 'bar' else 'line',
                     'name': metric.field if group is None else f'{group} / {metric.field}',
                     'data': [subset.get(label, {}).get('m' + str(i)) for label in axis]}
-                if item.options.get('stacked'):
+                if item.type == 'area':
+                    series['areaStyle'] = {}
+                if percent or (item.type == 'area' and item.options.get('stacked')):
+                    series['stack'] = 'total'
+                elif item.options.get('stacked'):
                     series['stack'] = metric.field
                 base['series'].append(series)
+        if percent:
+            # A non-numeric value (min/max/none of a text field) is a gap, never a failed render.
+            number = lambda v: float(v) if isinstance(v, (int, float, Decimal)) and not isinstance(v, bool) else None
+            for s in base['series']:
+                s['data'] = [number(v) for v in s['data']]
+            totals = [sum(abs(s['data'][x] or 0) for s in base['series']) for x in range(len(axis))]
+            for s in base['series']:
+                s['data'] = [None if v is None else 100 * v / totals[x] if totals[x] else 0
+                             for x, v in enumerate(s['data'])]
+            base['yAxis'].update(max=100, axisLabel={'formatter': '{value}%'})
     return base
 
 
 PROTOTYPE_CSS = '*{box-sizing:border-box}.item{position:absolute;overflow:hidden;padding:16px}.component{display:flex;flex-direction:column;gap:4px;padding:8px}.label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:600;flex:none}.chart{flex:1;min-height:0}.value{font-size:36px;font-weight:700}.component.scorecard{padding:6px 12px;gap:0}.scorecard .label{font-size:12px;line-height:12px}.scorecard .value{font-size:clamp(16px,calc(var(--box-height) - 28px),36px);line-height:1.1}.empty{margin:auto}.data-summary{overflow:auto;font-size:12px}table{border-collapse:collapse}th,td{text-align:left;padding:6px}select,input{font:inherit;min-height:24px;max-width:100%}.component.text{padding:8px;font-size:14px;line-height:20px}.component.date_range,.component.dropdown{padding:0;flex-direction:row;align-items:center;gap:4px}.date_range label{display:flex;align-items:center;gap:4px;font-size:12px}.date_range input{width:100px}.dropdown select{width:100%}img{width:100%;height:100%;object-fit:contain}.title{font-size:28px;font-weight:700}.subtitle{font-size:18px}.decoration{white-space:pre-wrap}'
+# Added only to pages that draw a fixed-size list, so older prototypes keep their bytes.
+LIST_CSS = '.component.fixed_size_list{padding:4px 8px;gap:0}.fixed_size_list ul{list-style:none;margin:0;padding:0;overflow-y:auto;flex:1;min-height:0}.fixed_size_list label{display:flex;align-items:center;gap:6px;font-family:inherit;font-size:12px;line-height:20px}.fixed_size_list input{flex:none;margin:0;min-height:0}.fixed_size_list span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
 
 
 def design_root(spec, page, item, b):
@@ -255,6 +276,8 @@ def render(spec, *, layer=None, data=None, folder=None, page=None):
     if not pages:
         raise ValueError('Unknown page')
     css = PROTOTYPE_CSS
+    if any(c.type == 'fixed_size_list' for p in pages for c in p.components):
+        css += LIST_CSS
     if any(p.design is not None for p in pages):
         # Code rules never reach inside a design root: it renders as design_page measured it.
         css = f'@scope (#dss-canvas) to (.{design_page.ROOT}){{{css}}}'
@@ -304,7 +327,7 @@ def render(spec, *, layer=None, data=None, folder=None, page=None):
                         parts.append('<div style="display:flow-root">' + escape(item.text or '') + '</div>')
                 else:
                     label_html = escape(label, quote=True)
-                    if item.type not in ('text', 'date_range', 'dropdown'):
+                    if item.type not in ('text', *CONTROL_TYPES):
                         parts.append(f'<div class="label" title="{label_html}">{escape(label)}</div>')
                     rows = data.get(item.id, [])
                     if item.type == 'text':
@@ -318,6 +341,12 @@ def render(spec, *, layer=None, data=None, folder=None, page=None):
                         parts.append('<div class="empty">No data</div>')
                     elif item.type == 'dropdown':
                         parts.append(f'<select aria-label="{label_html}"><option>{escape(label)} — All</option>' + ''.join(f'<option>{escape(str(r.get(item.field, "")))}</option>' for r in rows) + '</select>')
+                    elif item.type == 'fixed_size_list':
+                        # Every value with an unchecked checkbox, scrolling inside the box (no filter applied).
+                        values = ['null' if r.get(item.field) is None else str(r.get(item.field)) for r in rows]
+                        parts.append(f'<ul aria-label="{label_html}">' + ''.join(
+                            f'<li><label><input type="checkbox"><span title="{escape(v, quote=True)}">{escape(v)}</span></label></li>'
+                            for v in values) + '</ul>')
                     elif item.type == 'scorecard':
                         value = rows[0].get('m0')
                         accent_style = f' style="color:{css_value(item.colors[0])}"' if item.colors is not None else ''

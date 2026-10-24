@@ -19,6 +19,7 @@ from dss.harness.nodes.style_extract import provider_schema
 from dss.spec import requirements as req
 from dss.spec import feasibility
 from dss.spec.capabilities import Checker, load_registry
+from dss.spec.models import FIELD_CONTROLS
 from dss.spec.validate import allowed_types, catalog, label_text
 
 MAX_OUTPUT_TOKENS = 6000
@@ -68,7 +69,7 @@ def catalog_summary():
                 options.append({'key': cap.recipe[0].rsplit('.', 1)[-1], 'values': cap.values, 'value_type': cap.value_type})
         entry = {**{k: v for k, v in rule.items() if k.startswith(('min_', 'max_')) or
                     k in ('requires_date_dimension', 'slot_roles')}, 'type': kind, 'options': options}
-        if kind == 'dropdown':
+        if kind in FIELD_CONTROLS:
             # Blueprint rows have no field slot: the filter field is the row's single
             # dimension (feasibility requires exactly one; layout maps it to field).
             roles = {k: v for k, v in entry['slot_roles'].items() if k != 'field'}

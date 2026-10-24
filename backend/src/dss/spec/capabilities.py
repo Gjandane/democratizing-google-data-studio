@@ -13,7 +13,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 from dss.config import BACKEND_DIR
-from dss.spec.models import Component, Metric, Sort
+from dss.spec.models import CHART_TYPES, CONTROL_TYPES, Component, Metric, Sort
 
 REGISTRY_PATH = BACKEND_DIR / "knowledge/datastudio/capabilities.json"
 # Native product evidence: official documentation only. Documentation silence means unknown.
@@ -23,8 +23,6 @@ CONTRACT = ("../contracts/recipe.md", "../contracts/recipe.schema.json", "../con
 # App exclusions may also cite this backend's own code, knowledge or tests.
 LOCAL = ("src/dss/", "knowledge/", "tests/")
 SCORECARD_COLORS = "Scorecards take no colors (no series swatch in Data Studio): use another chart type to set colors"
-CHART_TYPES = ("scorecard", "time_series", "bar", "pie", "table", "pivot_table", "geo_map", "scatter")
-CONTROL_TYPES = ("date_range", "dropdown")
 
 Status = Literal["supported", "unsupported", "unknown"]
 Outcome = Literal["supported", "unsupported_product", "unsupported_app", "needs_data", "needs_clarification", "unknown"]

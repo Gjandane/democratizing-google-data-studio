@@ -6,7 +6,7 @@ from dotenv import dotenv_values
 from pydantic import ValidationError
 from dss.config import BACKEND_DIR
 from dss.memory.semantic import parse_concept
-from dss.spec.models import DashboardSpec, image_paths, reference_image
+from dss.spec.models import FIELD_CONTROLS, DashboardSpec, image_paths, reference_image
 from dss.spec.layout import box, minimum_box, overlaps, synthetic_errors, decoration_text_errors
 
 
@@ -177,8 +177,8 @@ def _validate_page(spec, p, page, rules, allowed, fields, ids, refs, error):
                         error(path + ".grid." + axis, f"Minimum {axis} is {rule['min_' + axis]}")
             if rule['requires_date_dimension'] and not item.date_dimension:
                 error(path + ".date_dimension", "A date dimension is required")
-            if item.type == "dropdown" and not item.field:
-                error(path + ".field", "A dropdown field is required")
+            if item.type in FIELD_CONTROLS and not item.field:
+                error(path + ".field", f"A {item.type} field is required")
             if item.type == "image" and not item.image_path:
                 error(path + ".image_path", "An image path is required")
             for slot in ("dimensions", "metrics", "date_dimension", "breakdown", "field"):

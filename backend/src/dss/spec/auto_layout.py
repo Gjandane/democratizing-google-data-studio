@@ -12,20 +12,19 @@ import re
 from dss.artifacts.design import presets
 from dss.render import kits
 from dss.spec.layout import synthetic_decoration
-from dss.spec.models import Canvas, Cell, DashboardSpec, Grid, Theme
+from dss.spec.models import CONTROL_TYPES as CONTROLS, FIELD_CONTROLS, Canvas, Cell, DashboardSpec, Grid, Theme
 from dss.spec.validate import catalog, validate_spec
 
 GRID = Grid()
-CONTROLS = ('date_range', 'dropdown')
-FULL_WIDTH = ('time_series', 'table', 'pivot_table')
+FULL_WIDTH = ('time_series', 'area', 'table', 'pivot_table')
 CONTROL_ROWS = 3
 SCORECARDS_PER_ROW = 4
 SCORECARD_ROWS = {'comfortable': 5, 'compact': 4}
 # Default grid rows per chart type; the catalog's min_h still wins if it is larger.
 CHART_ROWS = {
-    'comfortable': {'time_series': 14, 'bar': 14, 'pie': 14, 'scatter': 14, 'geo_map': 16,
+    'comfortable': {'time_series': 14, 'area': 14, 'bar': 14, 'pie': 14, 'scatter': 14, 'geo_map': 16,
                     'table': 16, 'pivot_table': 16, 'text': 6, 'image': 8},
-    'compact': {'time_series': 11, 'bar': 11, 'pie': 11, 'scatter': 11, 'geo_map': 12,
+    'compact': {'time_series': 11, 'area': 11, 'bar': 11, 'pie': 11, 'scatter': 11, 'geo_map': 12,
                 'table': 12, 'pivot_table': 12, 'text': 4, 'image': 6}}
 OTHER_ROWS = 12
 HEADING_SIZE = 20
@@ -187,8 +186,8 @@ def _component(prefix, row, cell, used):
              'metrics': [m.model_dump() for m in c.metrics], 'date_dimension': c.date_dimension,
              'breakdown': c.breakdown, 'sort': c.sort.model_dump() if c.sort else None,
              'options': copy.deepcopy(c.options), 'question_ref': row.question_id}
-    if c.type == 'dropdown' and len(c.dimensions) == 1:
-        # Blueprint has no field slot: its single dropdown dimension is add_control.field.
+    if c.type in FIELD_CONTROLS and len(c.dimensions) == 1:
+        # Blueprint has no field slot: its single dropdown/list dimension is add_control.field.
         value['field'], value['dimensions'] = c.dimensions[0], []
     if c.type == 'pivot_table' and not c.dimensions:
         # Feasibility counts pivot row/column options as its dimensions; the

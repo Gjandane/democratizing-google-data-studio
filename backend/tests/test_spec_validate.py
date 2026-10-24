@@ -385,3 +385,46 @@ def test_canvas_width_bounds_are_inclusive(width):
     spec['canvas']['width'] = width
     errors = validate_spec(spec, allowed=catalog())
     assert not any(e['path'] == 'canvas.width' for e in errors)
+
+
+def recipe_13():
+    from test_render import recipe_13_spec
+    return recipe_13_spec().model_dump(warnings=False)
+
+
+def test_recipe_13_types_are_allowed_by_default_and_narrowing_rejects_them(monkeypatch):
+    """24.1: with DSS_ALLOWED_TYPES unset (env and root .env) the catalog allows area and fixed_size_list;
+    a list without them (the pre-1.3 default) rejects them and keeps the 100% stacked bar."""
+    monkeypatch.delenv('DSS_ALLOWED_TYPES', raising=False)
+    monkeypatch.setattr('dss.spec.validate.dotenv_values', lambda path: {})
+    from dss.spec.models import TYPES
+    from dss.spec.validate import allowed_types
+    assert allowed_types() == set(TYPES) == set(catalog()) >= {'area', 'fixed_size_list'}
+    assert validate_spec(recipe_13()) == []
+    monkeypatch.setenv('DSS_ALLOWED_TYPES', 'scorecard,time_series,bar,pie,table,pivot_table,geo_map,scatter,text,image,date_range,dropdown')
+    message = 'Component type is not allowed by the catalog and DSS_ALLOWED_TYPES'
+    assert validate_spec(recipe_13()) == [{'path': 'pages.0.components.0.type', 'message': message},
+                                          {'path': 'pages.0.components.2.type', 'message': message}]
+
+
+@pytest.mark.parametrize('mutation, path, message', [
+    ('list_without_field', 'pages.0.components.2.field', 'A fixed_size_list field is required'),
+    ('list_on_a_metric', 'pages.0.components.2.field', 'Field role is not allowed in this slot'),
+    ('list_with_metrics', 'pages.0.components.2.metrics', 'Expected 0..0 metrics'),
+    ('list_too_short', 'pages.0.components.2.grid.h', 'Minimum h is 4'),
+    ('area_without_date', 'pages.0.components.0.date_dimension', 'A date dimension is required'),
+    ('area_on_a_string', 'pages.0.components.0.date_dimension', 'Date dimension must have a date or timestamp type'),
+    ('area_with_dimensions', 'pages.0.components.0.dimensions', 'Expected 0..0 dimensions'),
+    ('area_narrow', 'pages.0.components.0.grid.w', 'Minimum w is 6')])
+def test_recipe_13_slot_rules(mutation, path, message):
+    spec = recipe_13()
+    area, _, listed = spec['pages'][0]['components']
+    if mutation == 'list_without_field': listed['field'] = None
+    if mutation == 'list_on_a_metric': listed['field'] = 'revenue'
+    if mutation == 'list_with_metrics': listed['metrics'] = [{'field': 'revenue', 'agg': 'sum'}]
+    if mutation == 'list_too_short': listed['grid']['h'] = 3
+    if mutation == 'area_without_date': area['date_dimension'] = None
+    if mutation == 'area_on_a_string': area['date_dimension'] = 'region'
+    if mutation == 'area_with_dimensions': area['dimensions'] = ['region']
+    if mutation == 'area_narrow': area['grid']['w'] = 5
+    assert validate_spec(spec, allowed=catalog()) == [{'path': path, 'message': message}]

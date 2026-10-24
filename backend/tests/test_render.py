@@ -1437,3 +1437,126 @@ def test_designed_background_over_2mb_at_3x_falls_back_to_2x(tmp_path, monkeypat
     code = three_pages()
     assert background.write_pages(code, tmp_path) == {name: 3 for name in background.names(code)}
     assert [scale for *_, scale in calls] == [3, 3, 3]
+
+
+def recipe_13_spec(*, area_options=None, bucket=None):
+    """24.1 (release 2.6's stand-ins): a 100% stacked area of urban/rural over sale_date, a 100%
+    stacked rural/urban split bar by region and a region fixed-size list. `bucket` puts the area on
+    a code-built `sale_<grain>` DATE_TRUNC field."""
+    from dss.spec.validate import catalog, validate_spec
+    value = json.loads(Path('tests/data/thin_spec.json').read_text(encoding='utf-8'))
+    fields = value['datasource']['fields']
+    fields += [{'name': 'sale_date', 'type': 'DATE', 'label': 'Sale Date', 'role': 'dimension', 'default_agg': 'none'},
+               {'name': 'urban', 'type': 'FLOAT64', 'label': 'Urban', 'role': 'metric', 'default_agg': 'sum'},
+               {'name': 'rural', 'type': 'FLOAT64', 'label': 'Rural', 'role': 'metric', 'default_agg': 'sum'}]
+    date = 'sale_date'
+    if bucket:
+        date = f'sale_{bucket}'
+        fields.append({'name': date, 'type': 'DATE', 'label': bucket.title(), 'role': 'dimension',
+                       'default_agg': 'none', 'date_granularity': bucket})
+    metrics = [{'field': 'urban', 'agg': 'sum'}, {'field': 'rural', 'agg': 'sum'}]
+    value['pages'][0]['components'] = [
+        {'id': 'p1_access_over_time', 'type': 'area', 'label': 'Urban and rural access',
+         'grid': {'col': 1, 'row': 6, 'w': 12, 'h': 14}, 'date_dimension': date, 'metrics': metrics,
+         'options': {'stacked_percent': True} if area_options is None else area_options},
+        {'id': 'p1_split', 'type': 'bar', 'label': 'Rural vs urban split', 'grid': {'col': 1, 'row': 21, 'w': 6, 'h': 14},
+         'dimensions': ['region'], 'metrics': metrics[::-1], 'options': {'stacked_percent': True}},
+        {'id': 'p1_regions', 'type': 'fixed_size_list', 'label': 'Region', 'grid': {'col': 7, 'row': 21, 'w': 3, 'h': 6},
+         'field': 'region'}]
+    assert validate_spec(value, allowed=catalog()) == []
+    return DashboardSpec.model_validate(value)
+
+
+AREA_ROWS = [{'sale_date': '2026-01-01', 'm0': 30, 'm1': 10}, {'sale_date': '2026-02-01', 'm0': 1, 'm1': 3},
+             {'sale_date': '2026-03-01', 'm0': None, 'm1': 5}, {'sale_date': '2026-04-01', 'm0': 0, 'm1': 0}]
+SPLIT_ROWS = [{'region': 'North', 'm0': 600, 'm1': 200}, {'region': 'South', 'm0': 50.5, 'm1': 49.5}]
+LIST_ROWS = [{'region': 'East'}, {'region': 'North'}, {'region': None}, {'region': 'South <b>'}]
+
+
+def test_recipe_13_aggregates_group_on_the_date_axis_and_the_list_field():
+    spec = recipe_13_spec()
+    area, split, listed = spec.pages[0].components
+    assert aggregate_sql(spec, area) == ('SELECT `sale_date`, SUM(`urban`) AS `m0`, SUM(`rural`) AS `m1` FROM '
+        '`sample-project.dss_demo.small_sales` GROUP BY `sale_date` ORDER BY `sale_date` ASC LIMIT 50')
+    assert aggregate_sql(spec, listed) == ('SELECT `region` FROM `sample-project.dss_demo.small_sales` '
+                                           'GROUP BY `region` ORDER BY `region` ASC LIMIT 50')
+    assert aggregate_sql(spec, split).endswith('GROUP BY `region` ORDER BY `m0` DESC LIMIT 50')
+    area.breakdown = 'region'
+    assert 'GROUP BY `sale_date`, `region` ORDER BY `sale_date` ASC' in aggregate_sql(spec, area)
+
+
+@pytest.mark.parametrize('options, stack, percent', [({}, None, False), ({'stacked': True}, 'total', False),
+                                                     ({'stacked_percent': True}, 'total', True),
+                                                     ({'stacked': True, 'stacked_percent': True}, 'total', True)])
+def test_area_draws_filled_series_stacked_and_normalised_per_date(options, stack, percent):
+    spec = recipe_13_spec(area_options=options)
+    area = spec.pages[0].components[0]
+    option = chart_option(area, AREA_ROWS, spec.theme, 900)
+    series = option['series']
+    assert option['xAxis']['data'] == ['2026-01-01', '2026-02-01', '2026-03-01', '2026-04-01']
+    assert [(s['type'], s['areaStyle'], s.get('stack'), s['name']) for s in series] == [
+        ('line', {}, stack, 'urban'), ('line', {}, stack, 'rural')]
+    if percent:
+        # Each date's parts sum to 100; a missing value stays a gap and an all-zero date stays 0.
+        assert [s['data'] for s in series] == [[75.0, 25.0, None, 0], [25.0, 75.0, 100.0, 0]]
+        assert option['yAxis']['max'] == 100
+    else:
+        assert [s['data'] for s in series] == [[30, 1, None, 0], [10, 3, 5, 0]] and 'max' not in option['yAxis']
+    # One filled area per breakdown value with one metric.
+    area.breakdown, area.metrics = 'region', area.metrics[:1]
+    rows = [{'sale_date': '2026-01-01', 'region': r, 'm0': v} for r, v in (('North', 3), ('South', 1))]
+    assert [(s['name'], s['data'], s.get('stack')) for s in chart_option(area, rows, spec.theme, 900)['series']] == [
+        ('North / urban', [75.0 if percent else 3], stack), ('South / urban', [25.0 if percent else 1], stack)]
+
+
+def test_hundred_percent_bar_segments_fill_each_bar():
+    spec = recipe_13_spec()
+    split = spec.pages[0].components[1]
+    option = chart_option(split, SPLIT_ROWS, spec.theme, 550)
+    series = option['series']
+    assert [(s['type'], s['stack'], s['name']) for s in series] == [('bar', 'total', 'rural'), ('bar', 'total', 'urban')]
+    for x in range(len(SPLIT_ROWS)):
+        assert sum(s['data'][x] for s in series) == pytest.approx(100)
+    assert [s['data'][0] for s in series] == [75.0, 25.0] and option['yAxis']['max'] == 100
+    # BigQuery NUMERIC (Decimal) counts; a non-numeric value is a gap, never a failed render.
+    from decimal import Decimal
+    rows = [{'region': 'North', 'm0': Decimal('3'), 'm1': 1.0}, {'region': 'South', 'm0': 'n/a', 'm1': 2}]
+    assert [s['data'] for s in chart_option(split, rows, spec.theme, 550)['series']] == [[75.0, None], [25.0, 100.0]]
+    # Plain stacked bars keep their raw values and per-metric stacks.
+    split.options = {'stacked': True}
+    assert [(s['data'], s['stack']) for s in chart_option(split, SPLIT_ROWS, spec.theme, 550)['series']] == [
+        ([600, 50.5], 'rural'), ([200, 49.5], 'urban')]
+
+
+def test_fixed_size_list_renders_unchecked_values_at_its_box():
+    import re
+    spec = recipe_13_spec()
+    page = spec.pages[0]
+    data = {'p1_access_over_time': AREA_ROWS, 'p1_split': SPLIT_ROWS, 'p1_regions': LIST_ROWS}
+    html = render(spec, data=data)
+    parsed = ContractParser(html)
+    assert set(parsed.items) == {i.id for i in page.decorations + page.components}
+    for item in page.components:
+        b = box(spec.canvas, spec.grid, item.grid, height=page.height)
+        assert all(f'{prop}:{b[key]}px' in parsed.items[item.id]['style']
+                   for prop, key in (('left', 'x'), ('top', 'y'), ('width', 'w'), ('height', 'h')))
+        assert parsed.items[item.id]['class'] == f'item component {item.type}'
+    listed = html.split('data-cid="p1_regions"', 1)[1].split('</ul>', 1)[0]
+    assert '<ul aria-label="Region">' in listed and '<select' not in listed and 'class="label"' not in listed
+    assert listed.count('<li><label><input type="checkbox"><span title=') == 4 and 'checked' not in listed
+    assert re.findall(r'<span title="([^"]*)">([^<]*)</span>', listed) == [
+        ('East', 'East'), ('North', 'North'), ('null', 'null'), ('South &lt;b&gt;', 'South &lt;b&gt;')]
+    assert '.fixed_size_list ul{list-style:none;margin:0;padding:0;overflow-y:auto' in html
+    assert ContractParser(render(spec, data=data, layer='decoration')).items['p1_regions']['style'].endswith('display:none')
+    empty = render(spec, data={**data, 'p1_regions': []}).split('data-cid="p1_regions"', 1)[1].split('</div>', 2)
+    assert '<div class="empty">No data' in empty[0] + '</div>' + empty[1]
+    charts = json.loads(html.split('const charts=', 1)[1].split(';', 1)[0])
+    assert {c['id']: [s['type'] for s in c['option']['series']] for c in charts} == {
+        'chart_p1_access_over_time': ['line', 'line'], 'chart_p1_split': ['bar', 'bar']}
+
+
+def test_recipe_13_types_leave_older_prototypes_unchanged():
+    from hashlib import sha256
+    golden = DashboardSpec.model_validate_json(Path('tests/data/golden_spec.json').read_text(encoding='utf-8'))
+    assert tuple(sha256(render(golden, layer=layer).encode()).hexdigest() for layer in (None, 'decoration')) == GOLDEN_PROTOTYPE
+    assert 'fixed_size_list' not in render(golden) and 'fixed_size_list' not in render(designed_spec())

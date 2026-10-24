@@ -5,7 +5,7 @@ from functools import lru_cache
 from jsonschema import Draft202012Validator, ValidationError
 from dss.config import BACKEND_DIR
 from dss.spec.layout import layout_box
-from dss.spec.models import Component, DashboardSpec, Theme, image_paths, reference_image
+from dss.spec.models import CONTROL_TYPES, DATE_AXIS_TYPES, Component, DashboardSpec, Theme, image_paths, reference_image
 
 
 @lru_cache(maxsize=1)
@@ -44,10 +44,10 @@ def compile_recipe(spec: DashboardSpec, version: int) -> str:
         placed = [(c, layout_box(spec, page, c)) for c in page.components]
         for c, bounds in sorted(placed, key=lambda item: (item[1]["y"], item[1]["x"])):
             Component.model_validate(c.model_dump(warnings=False))
-            if c.colors is not None and c.type in ("date_range", "dropdown", "text", "image"):
+            if c.colors is not None and c.type in (*CONTROL_TYPES, "text", "image"):
                 raise ValueError("Only chart components support colors")
             args = dict(component_id=c.id, **bounds)
-            if c.type in ("date_range", "dropdown"):
+            if c.type in CONTROL_TYPES:
                 op("add_control", control_type=c.type, **args, **({"field": c.field} if c.field else {}))
             elif c.type == "text":
                 op("add_text", text=c.text or c.label, **args)
@@ -59,9 +59,10 @@ def compile_recipe(spec: DashboardSpec, version: int) -> str:
                 optional = {key: getattr(c, key) for key in ("date_dimension", "breakdown") if getattr(c, key) is not None}
                 if c.sort is not None:
                     optional["sort"] = c.sort.model_dump()
-                # The bucket grain is code's (spec datasource field), never a model-written option.
+                # The bucket grain is code's (spec datasource field), never a model-written option;
+                # one rule for every chart drawn over a date dimension (time series, area).
                 options = {key: value for key, value in c.options.items() if key != "date_granularity"}
-                if c.type == "time_series" and grains.get(c.date_dimension):
+                if c.type in DATE_AXIS_TYPES and grains.get(c.date_dimension):
                     options["date_granularity"] = grains[c.date_dimension]
                 op("add_chart", chart_type=c.type, dimensions=c.dimensions, metrics=[m.model_dump() for m in c.metrics], title=c.label, options=options, **optional, **args)
                 # A scorecard has no series swatch: the engine would skip `colors` with a warning.

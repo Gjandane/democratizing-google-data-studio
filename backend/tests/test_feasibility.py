@@ -276,7 +276,7 @@ def test_extraction_keeps_provenance_and_mapping(thin, monkeypatch):
 
 @pytest.mark.parametrize("capability,status", [
     ("feature.telepathy", "unknown"), ("animation.temporal_playback", "unsupported_app"),
-    ("extension.community_visualization", "unsupported_app"), ("control.fixed_size_list", "unsupported_app"),
+    ("extension.community_visualization", "unsupported_app"), ("element.shape", "unsupported_app"),
     ("geo.lat_long_points", "unsupported_app"), ("chart.time_series", "needs_data")])
 def test_code_classifies_support_scopes(thin, monkeypatch, capability, status):
     client, app, bid, folder = thin
@@ -304,13 +304,14 @@ def test_native_product_exclusion_is_distinct(thin, monkeypatch):
     """The seed has no proven product exclusions; exercise the registry's supported state shape."""
     client, app, bid, folder = thin
     raw = capabilities.load_registry().model_dump(mode="json")
-    cap = next(c for c in raw["capabilities"] if c["id"] == "control.fixed_size_list")
+    # 24.1: the fixed-size list became app-supported (recipe 1.3); shapes have no recipe op.
+    cap = next(c for c in raw["capabilities"] if c["id"] == "element.shape")
     cap["native_product"]["status"] = "unsupported"
     registry = capabilities.Registry.model_validate(raw)
     monkeypatch.setattr("dss.harness.nodes.capability_check.load_registry", lambda: registry)
     monkeypatch.setattr("dss.api.feasibility.load_registry", lambda: registry)
     sid = user(app, bid, "A product-excluded feature")
-    use_model(monkeypatch, app, extracted(sid, "control.fixed_size_list"))
+    use_model(monkeypatch, app, extracted(sid, "element.shape"))
     _, a = check(client, app, bid)
     assert a["state"] == "blocked" and a["issues"][0]["status"] == "unsupported_product"
 

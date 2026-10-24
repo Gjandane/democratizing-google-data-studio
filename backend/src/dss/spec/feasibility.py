@@ -9,7 +9,7 @@ from copy import deepcopy
 from dss.artifacts.models import Blueprint, BlueprintRow, BlueprintComponent, Context, DerivedField, Outline, ViewSources
 from dss.harness.nodes import view
 from dss.spec import requirements as req
-from dss.spec.capabilities import CONTROL_TYPES
+from dss.spec.models import CONTROL_TYPES, DATE_AXIS_TYPES, FIELD_CONTROLS
 from dss.spec.validate import catalog
 
 
@@ -42,7 +42,7 @@ def choices(snapshot, ledger, checker):
 def component_errors(component, fields, checker, rules=None):
     """`rules`: the catalog, read once per diagnostics pass."""
     c = component.model_dump()
-    if component.type == 'dropdown' and len(component.dimensions) == 1:
+    if component.type in FIELD_CONTROLS and len(component.dimensions) == 1:
         c['field'], c['dimensions'] = component.dimensions[0], []
     errors = [(v.status, v.reason, list(v.evidence)) for v in checker.component(c)]
     if errors:
@@ -53,18 +53,18 @@ def component_errors(component, fields, checker, rules=None):
     dimensions = component.dimensions
     if component.type == 'pivot_table' and any(k in component.options for k in ('row_dimensions', 'column_dimensions')):
         dimensions = component.options.get('row_dimensions', []) + component.options.get('column_dimensions', [])
-    # Blueprint has no separate field slot: its single dropdown dimension maps
+    # Blueprint has no separate field slot: its single dropdown/list dimension maps
     # to add_control.field, and is excluded from catalog dimension counts.
-    counted_dimensions = [] if component.type == 'dropdown' else dimensions
+    counted_dimensions = [] if component.type in FIELD_CONTROLS else dimensions
     for slot, values in (('dimensions', counted_dimensions), ('metrics', component.metrics)):
         if not rule['min_' + slot] <= len(values) <= rule['max_' + slot]:
             errors.append(('unsupported_app', f"Expected {rule['min_' + slot]}..{rule['max_' + slot]} {slot}", []))
     if rule['requires_date_dimension'] and not component.date_dimension:
         errors.append(('needs_data', 'A date dimension is required', []))
-    slots = {'dimensions': [] if component.type == 'dropdown' else dimensions, 'metrics': component.metrics,
+    slots = {'dimensions': [] if component.type in FIELD_CONTROLS else dimensions, 'metrics': component.metrics,
              'date_dimension': [component.date_dimension] if component.date_dimension else [],
              'breakdown': [component.breakdown] if component.breakdown else [],
-             'field': dimensions if component.type == 'dropdown' else []}
+             'field': dimensions if component.type in FIELD_CONTROLS else []}
     for slot, values in slots.items():
         for value in values:
             name = value.field if slot == 'metrics' else value
@@ -84,8 +84,8 @@ def component_errors(component, fields, checker, rules=None):
     bound = set(dimensions) | {m.field for m in component.metrics} | set(slots['date_dimension']) | set(slots['breakdown'])
     if component.sort and component.sort.field not in bound:
         errors.append(('needs_data', 'Sort field must be among the row fields', []))
-    if component.type == 'dropdown' and len(dimensions) != 1:
-        errors.append(('needs_data', 'A dropdown needs one dimension field', []))
+    if component.type in FIELD_CONTROLS and len(dimensions) != 1:
+        errors.append(('needs_data', f'A {component.type} needs one dimension field', []))
     return errors
 
 
@@ -187,7 +187,7 @@ def diagnostics(snapshot, ledger, checker):
         for status, message, evidence in component_errors(row.component, fields, checker, rules):
             offers = []
             date = fields.get(row.component.date_dimension)
-            if row.component.type == 'time_series' and (not date or date['type'] not in ('DATE', 'DATETIME', 'TIMESTAMP')):
+            if row.component.type in DATE_AXIS_TYPES and (not date or date['type'] not in ('DATE', 'DATETIME', 'TIMESTAMP')):
                 for kind in ('scorecard', 'table', 'scatter'):
                     dimensions = []
                     if kind == 'table':
@@ -369,7 +369,7 @@ def _observation_offers(snapshot, ledger, checker, bp, fields, connected, contex
             field, added = new_field
             derived += [field] if added else []
             old = component.get('date_dimension') or meaning.get('date_field')
-            update['date_dimension'] = field.name if (row.component.date_dimension or (new_type or row.component.type) == 'time_series') else None
+            update['date_dimension'] = field.name if (row.component.date_dimension or (new_type or row.component.type) in DATE_AXIS_TYPES) else None
             update['dimensions'] = [field.name if d == old else d for d in row.component.dimensions]
             if row.component.sort and row.component.sort.field == old:
                 update['sort'] = row.component.sort.model_copy(update={'field': field.name})

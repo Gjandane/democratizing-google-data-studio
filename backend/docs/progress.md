@@ -1368,3 +1368,15 @@ context. Task status lives in docs/plan.md, not here.
 - Why: user audit of release 2.6 (b_697880743b4f, b_7beb08e5076c traces): the screenshot reached only reference_extract on the worker model (gemini-3.8-flash; 4,096 output, <= 24 items); the designer (gemini-4-argon) got title, theme and slot ids only (~3-4k in, 769-3,002 of 16k out) under a skill that forces a light KPI-row page, so the globe came out as blobs while Argon shown the image directly recreated it (electricity-dashboard.html, 135 KB, 122 KB of it inline script/world data the sanitizer strips); capability_check refused at 12.7k of its 12k input budget (one output 3,839 of 4,000), blocking "enlarge the globe"; Data Studio has a fixed-size list, area chart and 100% stacked bar natively but recipe 1.2 had none; s011 breakdown colors timed out and yearly DATE charts spiked. User chose on cards: image to Argon, reference wins, static globe art, recipe 1.3 (fixed-size list, area, 100% stacked), trim + 24k comment check, plan both 2.6 block fixes; the cap warning was not chosen.
 - Tasks affected: 24.1-24.5 new. tests/test_capabilities.py now fails 2 tests (registry surface, option values) on the 1.3 schema until 24.1 adds the records, so 24.1 goes first.
 - Next: build 24.1 in backend/.
+
+## 2026-10-24: Task 24.1 Recipe 1.3 types: area, 100% stacked bar, fixed-size list
+- Status: done
+- Plan check: off
+- What changed: area and fixed_size_list in models, catalog, registry (6 records app-supported) and compiler; area shares the time-series date grain; prototype draws filled/100 % areas, 100 % bars, an unchecked checkbox list.
+- Checks: `uv run pytest tests/test_capabilities.py tests/test_compiler.py tests/test_render.py tests/test_spec_validate.py tests/test_recipe_contract.py` PASS 402; Test (all) `uv run pytest` PASS 1633; screenshots .blueprint/qa/task-24.1/{percent,stacked,plain}.png checked.
+- Decisions: outside Files for Blueprint rows: capabilities, feasibility, nodes/blueprint, requirements use FIELD_CONTROLS/DATE_AXIS_TYPES; 4 tests retargeted (TYPES != golden's 12; fixed_size_list no longer app-unsupported). Minimums: area = time_series, list = dropdown width x 4 rows. 100 % = value / sum(abs) per x, non-numeric -> gap; list sorted ascending; LIST_CSS only with a list. AGENTS.md: .env gotcha.
+- Digest: models.CHART_TYPES/CONTROL_TYPES/TYPES +area,fixed_size_list; FIELD_CONTROLS (field=one Blueprint dim); DATE_AXIS_TYPES share options.date_granularity; option stacked_percent bar/area; test_render.recipe_13_spec(area_options,bucket); test_compiler.RECIPE_12_BYTES
+- Tried and failed: none
+- Gotchas: root .env DSS_ALLOWED_TYPES is pre-1.3: the app rejects the new types until .env adds them.
+- Left open: P3 KPI grain inheritance only for chart.time_series - src/dss/spec/requirements.py:870; P3 slim designer filter slots fit no list - skills/dashboard-design.md:25; P3 list shows null as 'null', dropdown 'None' - src/dss/render/prototype.py; skills/reference-extract.md candidates lack the new types.
+- Next: Task 24.2. Start with `status`.

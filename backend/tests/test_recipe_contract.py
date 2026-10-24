@@ -15,7 +15,7 @@ from dss.harness.nodes.compile import perform
 from dss.main import create_app
 from dss.recipe.compiler import compile_recipe, preview, print_line
 from dss.render.prototype import aggregate_sql
-from dss.spec.models import DashboardSpec, Sort, TYPES
+from dss.spec.models import DashboardSpec, Sort, TYPES as ALL_TYPES
 from dss.spec.validate import validate_spec
 from fakes import fake_models
 
@@ -24,6 +24,9 @@ SCHEMA = json.loads((ROOT.parent / 'contracts/recipe.schema.json').read_text(enc
 GOLDEN = ROOT / 'tests/data/golden_recipe.jsonl'
 # Recorded from the engine's own `dsengine print`, not from this backend's formatter.
 RECORDED = json.loads((ROOT / 'tests/data/recipe_preview.json').read_text(encoding='utf-8'))
+# golden_spec.json holds one component per recipe 1.2 type; 1.3's area and fixed_size_list are
+# exercised by test_render.recipe_13_spec, so the golden recipe keeps its bytes (24.1).
+TYPES = tuple(t for t in ALL_TYPES if t not in ('area', 'fixed_size_list'))
 
 
 @pytest.fixture
