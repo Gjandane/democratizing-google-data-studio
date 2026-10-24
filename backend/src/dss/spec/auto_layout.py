@@ -122,6 +122,23 @@ def bucket_grain(expression):
     return grain if grain in GRAINS else None
 
 
+def base_grains(sources, selection):
+    """{view field: grain} for source DATE columns whose intake profile (data.profile bucket_start)
+    puts every value on a bucket start. The view shows a join's first column of a name and every
+    union branch's (a missing one is NULL), as view.blueprint_sql builds it, so a union keeps the
+    finest grain its branches share; a column profiled before the fact existed gives none."""
+    from dss.data.bigquery import snake_names
+    from dss.harness.nodes.view import selected_sources
+    starts = ('month', 'quarter', 'year')  # finest first
+    found = {}
+    for source in selected_sources(sources, selection):
+        for name, column in zip(snake_names([c['name'] for c in source['columns']]), source['columns']):
+            if selection.union or name not in found:
+                found.setdefault(name, []).append(column.get('bucket_start'))
+    return {name: min(grains, key=starts.index) for name, grains in found.items()
+            if all(grain in starts for grain in grains)}
+
+
 def _bottom(row):
     """Pixel y just below a block that ends before grid row `row` (its gutter excluded)."""
     return GRID.margin + (row - 1) * GRID.row_height - GRID.gutter
@@ -228,8 +245,10 @@ def _page(index, name, rows, design, theme, kit, rules, heading, synthetic):
             'decorations': decorations, 'components': components}
 
 
-def spec_value(blueprint, design, outline, fields, *, build_id, archetype, spec_version=1, synthetic=False):
-    """The unvalidated spec dict. `fields` are the view's {name, type, role[, label, default_agg]}."""
+def spec_value(blueprint, design, outline, fields, *, build_id, archetype, spec_version=1, synthetic=False,
+               sources=()):
+    """The unvalidated spec dict. `fields` are the view's {name, type, role[, label, default_agg]};
+    `sources` the connected sources with their intake profile columns."""
     preset = next((p for p in presets() if p.id == design.preset_id), None)
     if preset is None:
         raise ValueError('Design names an unknown theme preset')
@@ -252,11 +271,15 @@ def spec_value(blueprint, design, outline, fields, *, build_id, archetype, spec_
                           'default_agg': f.get('default_agg') or ('sum' if f['role'] == 'metric' else 'none')}
                          for f in fields]
     # A time series on a bucket draws one point per bucket: the grain comes from the derivation
-    # the view builder compiles, and reaches the compiler through the spec.
+    # the view builder compiles, or from a base DATE column's code-computed profile, and reaches
+    # the compiler through the spec.
+    starts = base_grains(sources, blueprint.view_sources) if sources else {}
     grains = {d.name: bucket_grain(d.expression) for d in blueprint.derived_fields}
     for f in datasource_fields:
         if grains.get(f['name']) and f['type'] in ('DATE', 'DATETIME', 'TIMESTAMP'):
             f['date_granularity'] = grains[f['name']]
+        elif f['name'] not in grains and starts.get(f['name']) and f['type'] == 'DATE':
+            f['date_granularity'] = starts[f['name']]
     return {'spec_version': spec_version, 'build_id': build_id, 'title': design.title, 'archetype': archetype,
             'canvas': {'width': Canvas().width, 'height': pages[0]['height'] if pages else Canvas().height},
             'grid': GRID.model_dump(), 'theme': theme.model_dump(),
@@ -265,10 +288,10 @@ def spec_value(blueprint, design, outline, fields, *, build_id, archetype, spec_
 
 
 def layout(blueprint, design, outline, fields, *, build_id, archetype, spec_version=1, synthetic=False,
-           allowed=None):
+           allowed=None, sources=()):
     """Lay out and validate, including every ok row's question_ref; raise LayoutError otherwise."""
     value = spec_value(blueprint, design, outline, fields, build_id=build_id, archetype=archetype,
-                       spec_version=spec_version, synthetic=synthetic)
+                       spec_version=spec_version, synthetic=synthetic, sources=sources)
     refs = [r.question_id for r in blueprint.rows if r.status == 'ok' and r.question_id]
     errors = validate_spec(value, allowed=allowed, question_refs=refs)
     if errors:

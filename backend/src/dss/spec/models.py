@@ -142,7 +142,8 @@ class DataField(Model):
     label: str
     role: Literal["dimension", "metric"]
     default_agg: Literal["sum", "avg", "count", "count_distinct", "min", "max", "none"] = "none"
-    # A *_TRUNC derived field's bucket grain, set by code layout from the view's derivation;
+    # A *_TRUNC derived field's bucket grain, or a base DATE column's profiled bucket start
+    # (month, quarter, year), set by code layout from the view's derivation or the intake profile;
     # the compiler emits it as a time series' or area's options.date_granularity (recipe 1.2/1.3).
     date_granularity: Literal["day", "week", "month", "quarter", "year"] | None = None
 

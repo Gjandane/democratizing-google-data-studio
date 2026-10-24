@@ -118,3 +118,34 @@ def test_profile_truncates_values_and_preserves_flexible_names():
     service.aggregates['row_count'] = 0
     with pytest.raises(Exception, match='Source could not be loaded'):
         profile_table(service, 'test-project.demo.sales')
+
+
+def test_date_bucket_start_is_one_aggregate_per_date_column():
+    """24.2 (release 2.6 b_697880743b4f `year`, every value YYYY-01-01): the coarsest bucket start every
+    value of a DATE column sits on comes from its own aggregate in the one profile query, never from the
+    (possibly truncated) value list or the column's name."""
+    jan_firsts = [(f'{2000 + i}-01-01', 100 - i) for i in range(24)]
+    schema = [bigquery.SchemaField(name, 'DATE') for name in ('year', 'quarter_start', 'month_start', 'odd', 'empty')]
+    schema += [bigquery.SchemaField('stamp', 'TIMESTAMP'), bigquery.SchemaField('date_text', 'STRING'),
+               bigquery.SchemaField('days', 'DATE', mode='REPEATED')]
+    aggregates = {'row_count': 300,
+                  **{f'c{i}': {**stats(jan_firsts, distinct=300), 'bucket_start': level}
+                     for i, level in enumerate((3, 2, 1, 0, None))},
+                  'c5': stats([('2026-01-01 00:00:00', 300)]), 'c6': stats([('2026-01-01', 300)]),
+                  'c7': stats([('[]', 300)])}
+    service = FakeBigQuery(schema, aggregates)
+    profile = profile_table(service, 'test-project.demo.sales')
+    facts = {c['name']: c.get('bucket_start', 'absent') for c in profile['columns']}
+    # The value lists show only Jan 1 and are truncated: each fact is its aggregate's (0 or all null: none).
+    assert facts == {'year': 'year', 'quarter_start': 'quarter', 'month_start': 'month', 'odd': None, 'empty': None,
+                     'stamp': 'absent', 'date_text': 'absent', 'days': 'absent'}
+    assert not profile['columns'][0]['values_complete']
+    sql = service.client.query.call_args.args[0]
+    assert service.client.query.call_count == 1 and sql.count('AS bucket_start') == 5
+    assert ('MIN(CASE WHEN `year` = DATE_TRUNC(`year`, YEAR) THEN 3 WHEN `year` = DATE_TRUNC(`year`, QUARTER) THEN 2 '
+            'WHEN `year` = DATE_TRUNC(`year`, MONTH) THEN 1 WHEN `year` IS NOT NULL THEN 0 END) AS bucket_start') in sql
+    # Aggregate metadata only: the prompt form is unchanged and an older aggregate shape has no fact.
+    assert prompt_text(profile) == prompt_text({**profile, 'columns': [
+        {k: v for k, v in c.items() if k != 'bucket_start'} for c in profile['columns']]})
+    del aggregates['c0']['bucket_start']
+    assert profile_table(service, 'test-project.demo.sales')['columns'][0]['bucket_start'] is None

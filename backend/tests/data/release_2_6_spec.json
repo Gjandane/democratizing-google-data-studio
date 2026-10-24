@@ -1,0 +1,316 @@
+{
+  "spec_version": 5,
+  "build_id": "b_697880743b4f",
+  "title": "Access to electricity has improved around the world in the last 20 years",
+  "archetype": "executive",
+  "canvas": {
+    "width": 1200,
+    "height": 892
+  },
+  "grid": {
+    "columns": 12,
+    "row_height": 20,
+    "gutter": 16,
+    "margin": 24
+  },
+  "theme": {
+    "background": "#EFF3F8",
+    "surface": "#FFFFFF",
+    "text": "#152B42",
+    "muted": "#4B6074",
+    "accent": "#2563EB",
+    "palette": [
+      "#0B2559",
+      "#2B6CB0",
+      "#5A8FD4",
+      "#8FB4E8",
+      "#C8DBF6"
+    ],
+    "font_family": "Arial",
+    "radius": 8
+  },
+  "datasource": {
+    "table": "sample-project.dss_demo.dash_b_697880743b4f_v1_r_e1f5ee8c0456",
+    "fields": [
+      {
+        "name": "country",
+        "type": "STRING",
+        "label": "Country",
+        "role": "dimension",
+        "default_agg": "none"
+      },
+      {
+        "name": "region",
+        "type": "STRING",
+        "label": "Region",
+        "role": "dimension",
+        "default_agg": "none"
+      },
+      {
+        "name": "year",
+        "type": "DATE",
+        "label": "Year",
+        "role": "dimension",
+        "default_agg": "none"
+      },
+      {
+        "name": "access_pct",
+        "type": "NUMERIC",
+        "label": "Access Pct",
+        "role": "metric",
+        "default_agg": "sum"
+      },
+      {
+        "name": "urban_pct",
+        "type": "NUMERIC",
+        "label": "Urban Pct",
+        "role": "metric",
+        "default_agg": "sum"
+      },
+      {
+        "name": "rural_pct",
+        "type": "NUMERIC",
+        "label": "Rural Pct",
+        "role": "metric",
+        "default_agg": "sum"
+      },
+      {
+        "name": "people_without_access",
+        "type": "INT64",
+        "label": "People Without Access",
+        "role": "metric",
+        "default_agg": "sum"
+      },
+      {
+        "name": "urban_rural_gap",
+        "type": "FLOAT64",
+        "label": "Urban Rural Gap",
+        "role": "metric",
+        "default_agg": "sum"
+      }
+    ],
+    "synthetic": true
+  },
+  "pages": [
+    {
+      "index": 1,
+      "name": "Access to electricity has improved around the world in the last 20 years",
+      "height": 892,
+      "decorations": [
+        {
+          "id": "p1_design",
+          "kind": "design",
+          "grid": {
+            "col": 1,
+            "row": 1,
+            "w": 12,
+            "h": 43
+          },
+          "text": null,
+          "style": {}
+        },
+        {
+          "id": "p1_synthetic_sample_data",
+          "kind": "text",
+          "grid": {
+            "col": 1,
+            "row": 40,
+            "w": 12,
+            "h": 4
+          },
+          "text": "Synthetic sample data",
+          "style": {
+            "background": "#FFFFFF",
+            "color": "#0F172A",
+            "font_size": 16,
+            "font_weight": 400,
+            "border_radius": 0,
+            "opacity": 1
+          }
+        }
+      ],
+      "components": [
+        {
+          "id": "p1_year_range",
+          "type": "date_range",
+          "label": "Year Range",
+          "grid": {
+            "col": 1,
+            "row": 11,
+            "w": 3,
+            "h": 3
+          },
+          "box": {
+            "x": 855,
+            "y": 722,
+            "w": 300,
+            "h": 32
+          },
+          "dimensions": [],
+          "metrics": [],
+          "date_dimension": "year",
+          "breakdown": null,
+          "sort": null,
+          "options": {},
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": null,
+          "question_ref": null
+        },
+        {
+          "id": "p1_region_filter",
+          "type": "dropdown",
+          "label": "Region Filter",
+          "grid": {
+            "col": 4,
+            "row": 11,
+            "w": 3,
+            "h": 3
+          },
+          "box": {
+            "x": 37,
+            "y": 177,
+            "w": 276,
+            "h": 32
+          },
+          "dimensions": [],
+          "metrics": [],
+          "date_dimension": null,
+          "breakdown": null,
+          "sort": null,
+          "options": {},
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": "region",
+          "question_ref": null
+        },
+        {
+          "id": "p1_population_without_electricity_access_ov",
+          "type": "time_series",
+          "label": "Population Without Electricity Access Over Time by Region",
+          "grid": {
+            "col": 1,
+            "row": 19,
+            "w": 12,
+            "h": 14
+          },
+          "box": {
+            "x": 309,
+            "y": 489,
+            "w": 846,
+            "h": 210
+          },
+          "dimensions": [],
+          "metrics": [
+            {
+              "field": "people_without_access",
+              "agg": "sum"
+            }
+          ],
+          "date_dimension": "year",
+          "breakdown": "region",
+          "sort": null,
+          "options": {
+            "date_granularity": "year"
+          },
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": null,
+          "question_ref": "q5"
+        },
+        {
+          "id": "p1_urban_vs_rural_electrification_trajector",
+          "type": "time_series",
+          "label": "Access to electricity in urban vs rural areas.",
+          "grid": {
+            "col": 1,
+            "row": 33,
+            "w": 12,
+            "h": 14
+          },
+          "box": {
+            "x": 609,
+            "y": 221,
+            "w": 568,
+            "h": 210
+          },
+          "dimensions": [],
+          "metrics": [
+            {
+              "field": "urban_pct",
+              "agg": "avg"
+            },
+            {
+              "field": "rural_pct",
+              "agg": "avg"
+            }
+          ],
+          "date_dimension": "year",
+          "breakdown": null,
+          "sort": null,
+          "options": {
+            "date_granularity": "year"
+          },
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": null,
+          "question_ref": "q6"
+        },
+        {
+          "id": "p1_urban_vs_rural_access_rates_and_gap_by_r",
+          "type": "bar",
+          "label": "Location: Rural / Urban",
+          "grid": {
+            "col": 1,
+            "row": 47,
+            "w": 6,
+            "h": 14
+          },
+          "box": {
+            "x": 609,
+            "y": 41,
+            "w": 568,
+            "h": 164
+          },
+          "dimensions": [
+            "region"
+          ],
+          "metrics": [
+            {
+              "field": "rural_pct",
+              "agg": "avg"
+            },
+            {
+              "field": "urban_pct",
+              "agg": "avg"
+            }
+          ],
+          "date_dimension": null,
+          "breakdown": null,
+          "sort": {
+            "field": "region",
+            "order": "asc"
+          },
+          "options": {
+            "orientation": "horizontal",
+            "stacked": true
+          },
+          "colors": null,
+          "text": null,
+          "image_path": null,
+          "field": null,
+          "question_ref": "q7"
+        }
+      ],
+      "design": {
+        "html": "<style>.dss-design-p1{background:#EFF3F8;color:#152B42;font-family:Arial, sans-serif;margin:0;padding:24px;box-sizing:border-box}.dss-design-p1 *,.dss-design-p1 *::before,.dss-design-p1 *::after{box-sizing:border-box}.dss-design-p1 .page-wrap{display:flex;flex-direction:column;gap:20px;width:100%}.dss-design-p1 .top-grid{display:grid;grid-template-columns:300px 1fr 600px;gap:20px;align-items:stretch}.dss-design-p1 .left-col{display:flex;flex-direction:column;gap:20px;justify-content:space-between}.dss-design-p1 .headline{font-size:26px;font-weight:400;line-height:1.3;color:#152B42;margin:0}.dss-design-p1 .headline-accent{color:#2563EB;font-weight:700}.dss-design-p1 .filter-card{background:#FFFFFF;border-radius:14px;padding:10px 12px;box-shadow:0 4px 16px rgba(15,23,42,.05);border:1px solid #E2E8F0;width:300px}.dss-design-p1 .region-slot{width:276px;height:32px}.dss-design-p1 .callout-box{background:#FFFFFF;border-radius:14px;padding:18px;box-shadow:0 4px 16px rgba(15,23,42,.05);border:1px solid #E2E8F0;display:flex;flex-direction:column;gap:14px}.dss-design-p1 .stat-row{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.dss-design-p1 .stat-big{font-size:48px;font-weight:700;color:#0B2559;line-height:1}.dss-design-p1 .stat-pct{font-size:22px;font-weight:700;color:#2563EB}.dss-design-p1 .stat-desc{font-size:14px;color:#4B6074;line-height:1.4;margin:0}.dss-design-p1 .legend-block{display:flex;flex-direction:column;gap:8px;padding-top:10px;border-top:1px solid #EFF3F8}.dss-design-p1 .legend-title{font-size:12px;color:#4B6074;margin:0;font-weight:700}.dss-design-p1 .legend-scale{display:flex;align-items:center;gap:6px}.dss-design-p1 .legend-lbl{font-size:12px;color:#4B6074}.dss-design-p1 .sq{width:16px;height:16px;border-radius:3px;display:inline-block}.dss-design-p1 .sq-1{background:#C8DBF6}.dss-design-p1 .sq-2{background:#8FB4E8}.dss-design-p1 .sq-3{background:#5A8FD4}.dss-design-p1 .sq-4{background:#2B6CB0}.dss-design-p1 .sq-5{background:#0B2559}.dss-design-p1 .center-col{display:flex;align-items:center;justify-content:center;background:radial-gradient(circle,rgba(255,255,255,.95) 0%,rgba(200,219,246,.45) 48%,rgba(239,243,248,0) 72%);border-radius:16px;min-height:380px;padding:8px}.dss-design-p1 .globe-svg{width:212px;height:212px;display:block}.dss-design-p1 .right-panel{background:#FFFFFF;border-radius:16px;padding:16px;box-shadow:0 4px 16px rgba(15,23,42,.05);border:1px solid #E2E8F0;display:flex;flex-direction:column;gap:16px}.dss-design-p1 .slot-bar{width:568px;height:164px}.dss-design-p1 .slot-urban-ts{width:568px;height:210px}.dss-design-p1 .bottom-panel{background:#FFFFFF;border-radius:16px;padding:20px;box-shadow:0 4px 16px rgba(15,23,42,.05);border:1px solid #E2E8F0;display:grid;grid-template-columns:240px 1fr;gap:24px;align-items:center}.dss-design-p1 .bottom-left{display:flex;flex-direction:column;gap:14px;align-items:flex-start}.dss-design-p1 .zap-tile{width:48px;height:48px;border-radius:12px;background:color-mix(in srgb,#2563EB 12%,white);color:#2563EB;display:flex;align-items:center;justify-content:center}.dss-design-p1 .bottom-label{font-size:16px;font-weight:700;color:#152B42;line-height:1.4;margin:0}.dss-design-p1 .bottom-sub{font-size:13px;color:#4B6074;line-height:1.4;margin:0}.dss-design-p1 .bottom-right{display:flex;flex-direction:column;gap:14px}.dss-design-p1 .slot-pop-ts{width:100%;min-width:568px;height:210px}.dss-design-p1 .year-wrap{display:flex;justify-content:flex-end;padding-top:8px;border-top:1px solid #EFF3F8}.dss-design-p1 .slot-year{width:300px;height:32px}</style><div class=\"page-wrap\"><div class=\"top-grid\"><div class=\"left-col\"><h1 class=\"headline\"><span class=\"headline-accent\">Access to electricity</span> has improved around the world in the last 20 years</h1><div class=\"filter-card\"><div class=\"region-slot\" data-slot=\"p1_region_filter\"></div></div><div class=\"callout-box\"><div><div class=\"stat-row\"><span class=\"stat-big\">78</span><span class=\"stat-pct\">%</span></div><p class=\"stat-desc\">have access to electricity worldwide in 2011</p></div><div class=\"legend-block\"><p class=\"legend-title\">Population with access to electricity</p><div class=\"legend-scale\"><span class=\"legend-lbl\">&lt;20%</span><span class=\"sq sq-1\"></span><span class=\"sq sq-2\"></span><span class=\"sq sq-3\"></span><span class=\"sq sq-4\"></span><span class=\"sq sq-5\"></span><span class=\"legend-lbl\">&gt;80%</span></div></div></div></div><div class=\"center-col\"><svg class=\"globe-svg\" viewBox=\"0 0 220 220\"><circle cx=\"110\" cy=\"110\" r=\"104\" fill=\"#E3EEFA\" opacity=\"0.6\"></circle><circle cx=\"110\" cy=\"110\" r=\"92\" fill=\"#F5F9FF\" stroke=\"#BFD4EE\" stroke-width=\"1.5\"></circle><ellipse cx=\"110\" cy=\"110\" rx=\"44\" ry=\"92\" fill=\"none\" stroke=\"#D2E2F5\" stroke-width=\"1\"></ellipse><ellipse cx=\"110\" cy=\"110\" rx=\"74\" ry=\"92\" fill=\"none\" stroke=\"#D2E2F5\" stroke-width=\"1\"></ellipse><line x1=\"18\" y1=\"110\" x2=\"202\" y2=\"110\" stroke=\"#D2E2F5\" stroke-width=\"1\"></line><path d=\"M 26 72 Q 110 88 194 72\" fill=\"none\" stroke=\"#D2E2F5\" stroke-width=\"1\"></path><path d=\"M 26 148 Q 110 132 194 148\" fill=\"none\" stroke=\"#D2E2F5\" stroke-width=\"1\"></path><path d=\"M 38 62 C 52 46, 78 48, 86 64 C 92 76, 76 92, 62 96 C 48 100, 34 80, 38 62 Z\" fill=\"#0B2559\"></path><path d=\"M 64 106 C 78 104, 88 118, 84 142 C 80 162, 68 176, 58 168 C 50 160, 54 116, 64 106 Z\" fill=\"#2B6CB0\"></path><path d=\"M 102 52 C 118 46, 138 50, 142 64 C 146 74, 128 82, 112 80 C 100 78, 94 60, 102 52 Z\" fill=\"#0B2559\"></path><path d=\"M 102 88 C 118 86, 134 98, 132 122 C 130 144, 116 158, 104 148 C 94 138, 92 94, 102 88 Z\" fill=\"#8FB4E8\"></path><path d=\"M 122 124 C 132 122, 138 134, 132 152 C 126 164, 114 162, 114 148 C 114 136, 116 126, 122 124 Z\" fill=\"#5A8FD4\"></path><path d=\"M 138 58 C 160 52, 184 68, 186 92 C 188 110, 168 118, 150 110 C 136 104, 126 64, 138 58 Z\" fill=\"#0B2559\"></path><path d=\"M 146 94 C 162 92, 178 104, 174 118 C 170 128, 152 126, 144 114 C 138 104, 140 96, 146 94 Z\" fill=\"#2B6CB0\"></path><path d=\"M 156 144 C 170 140, 184 148, 182 162 C 180 174, 164 176, 154 166 C 148 158, 148 146, 156 144 Z\" fill=\"#0B2559\"></path></svg></div><div class=\"right-panel\"><div class=\"slot-bar\" data-slot=\"p1_urban_vs_rural_access_rates_and_gap_by_r\"></div><div class=\"slot-urban-ts\" data-slot=\"p1_urban_vs_rural_electrification_trajector\"></div></div></div><div class=\"bottom-panel\"><div class=\"bottom-left\"><div class=\"zap-tile\"><i data-icon=\"zap\"><svg class=\"lucide lucide-zap\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z\"></path></svg></i></div><p class=\"bottom-label\">Population / People without access to electricity</p><p class=\"bottom-sub\">Regional distribution over time and year range selection</p></div><div class=\"bottom-right\"><div class=\"slot-pop-ts\" data-slot=\"p1_population_without_electricity_access_ov\"></div><div class=\"year-wrap\"><div class=\"slot-year\" data-slot=\"p1_year_range\"></div></div></div></div></div>",
+        "source": "revise",
+        "model": "gemini-4-argon"
+      }
+    }
+  ]
+}

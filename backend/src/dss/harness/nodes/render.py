@@ -152,7 +152,7 @@ async def accept(harness, build_id, run_id, payload, trace):
                           build_id=build_id, archetype=build['archetype'],
                           spec_version=max(previous, (recorded['spec_version'] or 0) if recorded else 0) + 1,
                           synthetic=synthetic_participation(harness.db, build_id, folder),
-                          allowed=allowed_types() & catalog().keys())
+                          allowed=allowed_types() & catalog().keys(), sources=connected)
         except LayoutError as exc:
             raise RunError('invalid_request', 'The Blueprint could not be laid out', 422, {'errors': exc.errors[:20]}) from None
         from dss.spec import requirements as req

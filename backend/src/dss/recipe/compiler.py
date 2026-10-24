@@ -59,8 +59,9 @@ def compile_recipe(spec: DashboardSpec, version: int) -> str:
                 optional = {key: getattr(c, key) for key in ("date_dimension", "breakdown") if getattr(c, key) is not None}
                 if c.sort is not None:
                     optional["sort"] = c.sort.model_dump()
-                # The bucket grain is code's (spec datasource field), never a model-written option;
-                # one rule for every chart drawn over a date dimension (time series, area).
+                # The bucket grain is code's (spec datasource field: a TRUNC derivation's or a base
+                # DATE column's profiled bucket start), never a model-written option; one rule for
+                # every chart drawn over a date dimension (time series, area).
                 options = {key: value for key, value in c.options.items() if key != "date_granularity"}
                 if c.type in DATE_AXIS_TYPES and grains.get(c.date_dimension):
                     options["date_granularity"] = grains[c.date_dimension]

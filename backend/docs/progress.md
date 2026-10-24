@@ -1380,3 +1380,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: root .env DSS_ALLOWED_TYPES is pre-1.3: the app rejects the new types until .env adds them.
 - Left open: P3 KPI grain inheritance only for chart.time_series - src/dss/spec/requirements.py:870; P3 slim designer filter slots fit no list - skills/dashboard-design.md:25; P3 list shows null as 'null', dropdown 'None' - src/dss/render/prototype.py; skills/reference-extract.md candidates lack the new types.
 - Next: Task 24.2. Start with `status`.
+
+## 2026-10-24: Task 24.2 Base DATE columns on bucket starts carry their grain
+- Status: done
+- Plan check: off
+- What changed: profile_table adds one `MIN(CASE ...)` aggregate per non-REPEATED DATE column -> column `bucket_start` month|quarter|year|None; auto_layout.base_grains maps view fields to profiled source columns and spec_value records the grain on DATE fields; accept passes `sources=connected`. +10 tests, release 2.6 spec/recipe fixtures.
+- Checks: `uv run pytest tests/test_profile.py tests/test_compiler.py tests/test_layout_auto.py` PASS 70; new tests failed before (9/9 with src stashed; wiring test fails without render.py kwarg); Test (all) `uv run pytest` PASS 1642 (13 deselected) before review fixes; rerun after: 1642 passed, 1 failed = test_recreate_blueprint_recompute_speed_with_24_observations timing flake (109 ms vs 100), PASS alone. Live read-only profile of release 2.6 source: `year` -> year.
+- Decisions: outside Files: render.py (accept passes sources; the only layout caller), models.py comment. Join = first source's column, union = finest common grain. Fixtures tests/data/release_2_6_{spec.json,recipe.jsonl} with project renamed `sample-project`. prompt_text unchanged.
+- Digest: profile column `bucket_start` ('month'|'quarter'|'year'|None, DATE only, absent on old profiles); auto_layout.base_grains(sources, view_sources)->{field: grain}; layout/spec_value(..., sources=()) set DataField.date_granularity on base DATE fields.
+- Tried and failed: none
+- Gotchas: existing builds keep grain-less specs until re-intake and re-accept (old profiles lack the fact).
+- Left open: none
+- Next: Task 24.3. Start by `status --task 24.3`.

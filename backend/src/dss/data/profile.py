@@ -11,6 +11,8 @@ from dss.data.bigquery import invalid, quoted, table_uri
 NUMBERS = {'INTEGER', 'INT64', 'FLOAT', 'FLOAT64', 'NUMERIC', 'BIGNUMERIC'}
 DATES = {'DATE', 'TIMESTAMP', 'DATETIME', 'TIME'}
 DATE_FORMATS = ('%Y-%m-%d', '%m/%d/%Y', '%Y/%m/%d', '%d-%b-%Y')
+# The coarsest bucket start every non-null value of a DATE column sits on (bucket_start below).
+BUCKET_STARTS = {1: 'month', 2: 'quarter', 3: 'year'}
 
 
 def expressions(field):
@@ -35,7 +37,14 @@ def expressions(field):
              f'MIN({ordered}) AS min_value' if ordered else 'NULL AS min_value',
              f'MAX({ordered}) AS max_value' if ordered else 'NULL AS max_value',
              f'COUNTIF({name} IS NOT NULL AND {date} IS NULL) AS invalid_dates' if date else '0 AS invalid_dates']
-    return api_type, date is not None, 'STRUCT(' + ', '.join(stats) + ')'
+    bucketed = kind == 'DATE' and not nested
+    if bucketed:
+        # One aggregate over every row (3 year, 2 quarter, 1 month, 0 none; nulls ignored), so the
+        # grain never comes from a truncated value list or the column's name (change 2026-10-24).
+        stats.append(f'MIN(CASE WHEN {name} = DATE_TRUNC({name}, YEAR) THEN 3 '
+                     f'WHEN {name} = DATE_TRUNC({name}, QUARTER) THEN 2 WHEN {name} = DATE_TRUNC({name}, MONTH) THEN 1 '
+                     f'WHEN {name} IS NOT NULL THEN 0 END) AS bucket_start')
+    return api_type, date is not None, bucketed, 'STRUCT(' + ', '.join(stats) + ')'
 
 
 def profile_table(service, table):
@@ -50,14 +59,14 @@ def profile_table(service, table):
         raise invalid('Source has no columns')
     fields = [expressions(field) for field in schema]
     sql = ('SELECT COUNT(*) AS row_count,\n' + ',\n'.join(
-        f'  {stats} AS c{i}' for i, (_, _, stats) in enumerate(fields)) + f'\nFROM {quoted(table)}')
+        f'  {stats} AS c{i}' for i, (*_, stats) in enumerate(fields)) + f'\nFROM {quoted(table)}')
     row = next(iter(service.client.query(sql, location=service.config.bq_location,
                                           timeout=10).result(timeout=10)))
     count = row['row_count']
     if not count:
         raise invalid('Source has zero data rows')
     columns = []
-    for i, (field, (api_type, string_date, _)) in enumerate(zip(schema, fields)):
+    for i, (field, (api_type, string_date, bucketed, _)) in enumerate(zip(schema, fields)):
         stats = row[f'c{i}']
         values = sorted(({'value': str(v['value']), 'count': int(v['count'])}
                          for v in stats['value_counts'] or [] if v['value'] is not None),
@@ -74,6 +83,9 @@ def profile_table(service, table):
                         'max': str(stats['max_value']) if stats['max_value'] is not None and (not string_date or date_like) else None,
                         'values': [{'value': v['value'][:60], 'count': v['count']} for v in shown],
                         'values_complete': complete, 'sample': [v['value'][:60] for v in samples]})
+        if bucketed:
+            # None: some value is off a month start, or the column is all null.
+            columns[-1]['bucket_start'] = BUCKET_STARTS.get(stats.get('bucket_start'))
     return {'row_count': count, 'columns': columns}
 
 

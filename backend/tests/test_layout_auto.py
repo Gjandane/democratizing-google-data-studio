@@ -246,3 +246,65 @@ def test_bucket_derived_field_carries_its_grain_into_the_spec():
     assert saved.count('"date_granularity"') == 2  # absent (not null) on every other field
     from dss.spec.models import DashboardSpec
     assert DashboardSpec.model_validate_json(saved) == spec
+
+
+def profiled_source(level):
+    """The golden source as intake profiles it (FakeBigQuery, one aggregate query); `level` is its
+    `order_date` bucket aggregate (3 year, 2 quarter, 1 month, 0 another value, None all null)."""
+    from google.cloud import bigquery
+    from dss.data.profile import profile_table
+    from test_profile import FakeBigQuery, stats
+    service = FakeBigQuery([bigquery.SchemaField('order_date', 'DATE'), bigquery.SchemaField('region', 'STRING')],
+                           {'row_count': 10, 'c0': {**stats([('2024-01-01', 10)]), 'bucket_start': level},
+                            'c1': stats([('East', 10)])})
+    return {'id': 's_a1b2c3d4e5f6', 'columns': profile_table(service, 'test-project.demo.sales')['columns']}
+
+
+@pytest.mark.parametrize('level, grain', [(3, 'year'), (2, 'quarter'), (1, 'month'), (0, None), (None, None)])
+def test_base_date_column_on_bucket_starts_carries_its_grain(level, grain):
+    """24.2 (release 2.6 b_697880743b4f s008/s010: a yearly `year` DATE drew daily spikes): a time series
+    and an area on a source DATE column whose profile puts every value on a bucket start compile with
+    that grain, from the intake aggregate through the spec; a model-written grain is never trusted."""
+    import json
+    from dss.recipe.compiler import compile_recipe
+    blueprint, design, plan = golden_inputs()
+    trend = next(r for r in blueprint.rows if r.component.type == 'time_series')
+    area = trend.model_copy(deep=True)
+    area.component.type, area.component.label = 'area', 'Revenue area'
+    trend.component.options = {'date_granularity': 'day'}
+    blueprint = blueprint.model_copy(update={'rows': blueprint.rows + [area]})
+    spec = layout(blueprint, design, plan, FIELDS, **IDENTITY, allowed=set(catalog()), sources=[profiled_source(level)])
+    assert {f.name: f.date_granularity for f in spec.datasource.fields if f.date_granularity} == (
+        {'order_date': grain} if grain else {})
+    charts = [json.loads(line) for line in compile_recipe(spec, 1).splitlines()[1:]]
+    charts = [o for o in charts if o['op'] == 'add_chart']
+    assert sorted((o['chart_type'], o['options'].get('date_granularity')) for o in charts if o.get('date_dimension')) == [
+        ('area', grain), ('time_series', grain)]
+    assert not any('date_granularity' in o['options'] for o in charts if not o.get('date_dimension'))
+
+
+def test_profiles_without_the_bucket_fact_lay_out_as_before():
+    blueprint, design, plan = golden_inputs()
+    old = profiled_source(3)
+    old['columns'] = [{k: v for k, v in c.items() if k != 'bucket_start'} for c in old['columns']]
+    spec = layout(blueprint, design, plan, FIELDS, **IDENTITY, allowed=set(catalog()), sources=[old])
+    assert spec.model_dump_json(indent=2) == GOLDEN.read_text(encoding='utf-8')
+
+
+def test_base_grains_follow_the_view_projection():
+    """A join shows the first source's column of a name; a union shows every branch's (a missing
+    one is NULL), so it keeps the finest grain they share. Names are the view's snake_case names."""
+    from dss.artifacts.models import Join, JoinKey, ViewSources
+    from dss.spec.auto_layout import base_grains
+
+    def source(sid, **grains):
+        return {'id': sid, 'columns': [{'name': n.replace('_', ' ').title() if n == 'order_date' else n, 'bq_type': 'DATE',
+                                        **({} if g == 'old' else {'bucket_start': g})} for n, g in grains.items()]}
+    a = source('s_a', order_date='year', shipped='month', paid=None, legacy='old')
+    b = source('s_b', order_date='month', shipped='year', paid='year', legacy='year', closed='quarter')
+    union = ViewSources(base='s_a', joins=[], union=['s_b'])
+    assert base_grains([a, b], union) == {'order_date': 'month', 'shipped': 'month', 'closed': 'quarter'}
+    join = ViewSources(base='s_a', joins=[Join(source_id='s_b', on=[JoinKey(left='order_date', right='order_date')])], union=[])
+    assert base_grains([a, b], join) == {'order_date': 'year', 'shipped': 'month', 'closed': 'quarter'}
+    assert base_grains([a, b], ViewSources(base='s_b', joins=[], union=[])) == {
+        'order_date': 'month', 'shipped': 'year', 'paid': 'year', 'legacy': 'year', 'closed': 'quarter'}

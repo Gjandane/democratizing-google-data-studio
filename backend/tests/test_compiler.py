@@ -8,7 +8,7 @@ from jsonschema import Draft202012Validator
 from dss.recipe.compiler import compile_recipe
 from dss.spec.layout import box, with_synthetic_label
 from dss.spec.models import SYNTHETIC_LABEL_ID
-from test_render import recipe_13_spec, three_pages, staged_flow  # noqa: F401  (fixture)
+from test_render import blueprint_flow, recipe_13_spec, three_pages, staged_flow  # noqa: F401  (fixture)
 from test_blueprint import blueprint_api  # noqa: F401  (fixture)
 from test_context_node import context_api  # noqa: F401  (fixture)
 
@@ -264,6 +264,59 @@ def test_decided_monthly_gap_publishes_a_monthly_time_series(blueprint_api, monk
     assert sorted((o['title'], o['date_dimension'], o['options'].get('date_granularity')) for o in series) == [
         ('Revenue Trend Over Time', 'order_date', None), ('Revenue by month', 'order_date_month', 'month')]
     assert not any('date_granularity' in o['options'] for o in ops if o['op'] == 'add_chart' and o['chart_type'] != 'time_series')
+
+
+def test_release_26_yearly_date_column_draws_one_point_per_year():
+    """24.2: release 2.6 b_697880743b4f (spec/recipe copies, project renamed) drew s008/s010 on its `year`
+    DATE (every value YYYY-01-01) as a daily axis: the model's `date_granularity: year` was rightly dropped
+    and its profile predates the bucket fact. With the fact the code grain reaches only those two ops."""
+    from dss.artifacts.models import ViewSources
+    from dss.spec.auto_layout import base_grains
+    from dss.spec.models import DashboardSpec
+    spec = DashboardSpec.model_validate_json(Path('tests/data/release_2_6_spec.json').read_text(encoding='utf-8'))
+    release = lines(Path('tests/data/release_2_6_recipe.jsonl').read_text(encoding='utf-8'))
+    assert lines(compile_recipe(spec, 1)) == release  # a profile without the fact compiles as before
+    source = {'id': 's_728c05b5e9af', 'columns': [{'name': f.name, 'bq_type': f.type,
+                                                   **({'bucket_start': 'year'} if f.name == 'year' else {})}
+                                                  for f in spec.datasource.fields]}
+    grains = base_grains([source], ViewSources(base='s_728c05b5e9af', joins=[], union=[]))
+    assert grains == {'year': 'year'}
+    for field in spec.datasource.fields:
+        field.date_granularity = grains.get(field.name)
+    compiled = lines(compile_recipe(spec, 1))
+    assert len(compiled) == len(release)
+    changed = [(old['id'], new) for old, new in zip(release, compiled) if old != new]
+    assert changed == [(old['id'], {**old, 'options': {'date_granularity': 'year'}})
+                       for old in release if old.get('id') in ('s008', 's010')]
+    # The model's matching grain is the code value; a different one never reaches the recipe.
+    for c in (c for page in spec.pages for c in page.components if c.type == 'time_series'):
+        c.options = {'date_granularity': 'month'}
+    assert lines(compile_recipe(spec, 1)) == compiled
+
+
+@pytest.fixture
+def bucketed_source(blueprint_api):
+    """The connected source's stored intake profile records `order_date` on month starts."""
+    client, app, bid, sid, *_ = blueprint_api
+    with app.state.db.connect() as conn:
+        columns = json.loads(conn.execute('SELECT columns_json FROM sources WHERE id=?', (sid,)).fetchone()[0])
+        date = next(c for c in columns if c['name'] == 'order_date')
+        assert date['bq_type'] == 'DATE'
+        date['bucket_start'] = 'month'
+        conn.execute('UPDATE sources SET columns_json=? WHERE id=?', (json.dumps(columns), sid))
+
+
+def test_accept_publishes_a_profiled_bucket_start(bucketed_source, blueprint_flow):
+    """24.2 live path: blueprint/accept hands layout the connected sources' stored profiles, so the
+    published spec and recipe carry a base DATE column's grain (staged API, FakeBigQuery)."""
+    from dss.spec.models import DashboardSpec
+    client, app, bid, folder, bq, run_id = blueprint_flow
+    spec = DashboardSpec.model_validate_json((folder / 'spec.json').read_text(encoding='utf-8'))
+    assert {f.name: f.date_granularity for f in spec.datasource.fields if f.date_granularity} == {'order_date': 'month'}
+    assert client.post(f'/api/builds/{bid}/recipe').status_code == 200
+    ops = lines((folder / 'recipe.jsonl').read_text(encoding='utf-8'))[1:]
+    assert [(o['date_dimension'], o['options']) for o in ops if o['op'] == 'add_chart' and o['chart_type'] == 'time_series'] == [
+        ('order_date', {'date_granularity': 'month'})]
 
 
 def validate_all(text):

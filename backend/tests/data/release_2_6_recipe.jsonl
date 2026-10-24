@@ -1,0 +1,15 @@
+{"build_id":"b_697880743b4f","canvas":{"height":892,"width":1200},"datasource":{"connector":"bigQuery","dataset_id":"dss_demo","project_id":"sample-project","table_id":"dash_b_697880743b4f_v1_r_e1f5ee8c0456"},"recipe_version":"1.0","report_name":"Access to electricity has improved around the world in the last 20 years","version":1}
+{"id":"s001","op":"open_report"}
+{"id":"s002","name":"Access to electricity has improved around the world in the last 20 years","op":"rename_page"}
+{"height":892,"id":"s003","op":"set_canvas","width":1200}
+{"h":892,"id":"s004","op":"set_background_image","path":"background_p1.png","w":1200,"x":0,"y":0}
+{"chart_type":"bar","component_id":"p1_urban_vs_rural_access_rates_and_gap_by_r","dimensions":["region"],"h":164,"id":"s005","metrics":[{"agg":"avg","field":"rural_pct"},{"agg":"avg","field":"urban_pct"}],"op":"add_chart","options":{"orientation":"horizontal","stacked":true},"sort":{"field":"region","order":"asc"},"title":"Location: Rural / Urban","w":568,"x":609,"y":41}
+{"component_id":"p1_urban_vs_rural_access_rates_and_gap_by_r","id":"s006","op":"set_style","style":{"colors":["#0B2559","#2B6CB0","#5A8FD4","#8FB4E8","#C8DBF6"]}}
+{"component_id":"p1_region_filter","control_type":"dropdown","field":"region","h":32,"id":"s007","op":"add_control","w":276,"x":37,"y":177}
+{"chart_type":"time_series","component_id":"p1_urban_vs_rural_electrification_trajector","date_dimension":"year","dimensions":[],"h":210,"id":"s008","metrics":[{"agg":"avg","field":"urban_pct"},{"agg":"avg","field":"rural_pct"}],"op":"add_chart","options":{},"title":"Access to electricity in urban vs rural areas.","w":568,"x":609,"y":221}
+{"component_id":"p1_urban_vs_rural_electrification_trajector","id":"s009","op":"set_style","style":{"colors":["#0B2559","#2B6CB0","#5A8FD4","#8FB4E8","#C8DBF6"]}}
+{"breakdown":"region","chart_type":"time_series","component_id":"p1_population_without_electricity_access_ov","date_dimension":"year","dimensions":[],"h":210,"id":"s010","metrics":[{"agg":"sum","field":"people_without_access"}],"op":"add_chart","options":{},"title":"Population Without Electricity Access Over Time by Region","w":846,"x":309,"y":489}
+{"component_id":"p1_population_without_electricity_access_ov","id":"s011","op":"set_style","style":{"colors":["#0B2559","#2B6CB0","#5A8FD4","#8FB4E8","#C8DBF6"]}}
+{"component_id":"p1_year_range","control_type":"date_range","h":32,"id":"s012","op":"add_control","w":300,"x":855,"y":722}
+{"id":"s013","op":"save_report"}
+{"id":"s014","op":"get_link"}
