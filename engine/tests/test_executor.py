@@ -1,5 +1,6 @@
 import io
 import json
+import re
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -2031,14 +2032,18 @@ def test_rename_page_retry_renames_the_page_current_at_first_attempt(tmp_path):
 _PALETTE = ["#2456A6", "#C27D00", "#22B9C7", "#993878"]
 
 
+_STYLE_SELECTORS = {key: key for key in (
+    "style_tab", "style_background", "style_colors", "color_by_position", "series_select",
+    "option_overlay", "dropdown_option", "series_color_any", "series_empty_slot", "color_hex",
+    "custom_color")}
+_STYLE_SELECTORS.update(series_color="seriesColor{n}", series_color_all="seriesColorAll")
+
+
 def _palette_context(tmp_path, *ops):
     ctx = cleanup_context(tmp_path)
     ctx.events = EventWriter(io.StringIO())
     ctx.recipe.ops = list(ops)
-    ctx.selectors = {key: key for key in (
-        "style_tab", "style_background", "style_colors", "color_by_position", "series_select",
-        "option_overlay", "dropdown_option")}
-    ctx.selectors.update(series_color="seriesColor{n}", series_color_all="seriesColorAll")
+    ctx.selectors = dict(_STYLE_SELECTORS)
     ctx.op_deadline = executor.time.monotonic() + 10
     ctx.run_deadline = ctx.op_deadline
     return ctx
@@ -2062,8 +2067,8 @@ def _fake_swatches(monkeypatch, editor):
         editor.clicks.append((button, color))
         editor.colors[button] = style.rgb(color)
 
-    monkeypatch.setattr(style, "_swatches", lambda page, ctx, prepare, series=None: iter(
-        list(enumerate(range(len(editor.colors))))))
+    monkeypatch.setattr(style, "_swatches", lambda page, ctx, prepare, series=None: (
+        (i, i, i == len(editor.colors) - 1) for i in range(len(editor.colors))))
     monkeypatch.setattr(style, "_color_button", lambda control, ctx: control)
     monkeypatch.setattr(style, "_preview", lambda control, ctx: editor.colors[control])
     monkeypatch.setattr(style, "set_color", set_color)
@@ -2124,27 +2129,57 @@ def test_colors_on_a_component_without_series_swatches_skip_with_a_message(
         ("warn", "s002: unsupported style key colors for this component")]
 
 
+class FakeClock:
+    """time.monotonic for the ops: it moves only when the fake editor waits or works."""
+
+    def __init__(self, monkeypatch, now=1000.0):
+        self.now = now
+        monkeypatch.setattr(executor.time, "monotonic", lambda: self.now)
+
+    def advance(self, seconds):
+        self.now += seconds
+
+
 class SeriesEditor:
     """A time series Style tab: Select metric shows one series' Line color at a time.
 
-    Each wait is a tick. The option list takes a tick to close, the Line color cell
-    follows a pick `lag` ticks after the combobox text, and picks in `ignore` are lost.
+    Each wait is a tick (and moves `clock` by its timeout). The option list takes a
+    tick to close, the Line color cell follows a pick `lag` ticks after the combobox
+    text, picks in `ignore` are lost, and picks in `dead` never show a cell.
+    With a breakdown (`series_order` False) Color by shows, and Line colors show only
+    once it is Series order (`switches`); with `opens` False the list never opens,
+    and until tick `unnamed` it lists empty "Series #n" slots in place of the values.
     """
 
-    def __init__(self, labels, lag=0, ignore=()):
+    def __init__(self, labels, lag=0, ignore=(), *, clock=None, series_order=None,
+                 switches=True, opens=True, dead=(), unnamed=0):
         self.labels, self.lag, self.ignore = labels, lag, list(ignore)
+        self.clock, self.series_order, self.switches, self.opens = clock, series_order, switches, opens
+        self.dead, self.unnamed, self.keyboard = list(dead), unnamed, self
         self.selected = labels[min(1, len(labels) - 1)]
         self.shown, self.pending = self.cell(self.selected), None
         self.open, self.closing, self.tick = False, 0, 0
         self.picks, self.colors = [], {}
 
+    def press(self, key, *, delay=None):
+        # Its own keyboard: Escape closes an open option list.
+        if key == "Escape" and self.open:
+            self.open, self.closing = False, 1
+
+    def listed(self):
+        if self.tick >= self.unnamed:
+            return list(self.labels)
+        return self.labels[:1] + [f"Series #{n}" for n in range(1, len(self.labels))]
+
     def cell(self, label):
-        if label == "All metrics":
+        if label in {"All metrics", "All series"}:
             return "seriesColorAll"
         return f"seriesColor{max(1, self.labels.index(label))}"
 
     def wait_for_timeout(self, timeout):
         self.tick += 1
+        if self.clock:
+            self.clock.advance(timeout / 1000)
         self.closing = max(0, self.closing - 1)
         if self.pending and self.tick >= self.pending[0]:
             self.shown, self.pending = self.pending[1], None
@@ -2163,7 +2198,21 @@ class SeriesNode:
             return 1
         if self.selector == "dropdown_option":
             return len(editor.labels) if editor.open or editor.closing else 0
-        return int(editor.shown == self.selector)  # 0 for style_colors and color_by_position
+        if self.selector == "series_empty_slot":
+            listed = editor.listed() if editor.open or editor.closing else []
+            return sum(bool(re.fullmatch(r"Series #\d+", label)) for label in listed)
+        if self.selector == "color_by_position":
+            return int(editor.series_order is not None)
+        if editor.series_order is False:
+            return 0  # Color by Dimension values: no Line color at all
+        if self.selector == "series_color_any":
+            return int(bool(editor.shown))
+        return int(editor.shown == self.selector)  # 0 for style_colors
+
+    def check(self, *, timeout):
+        assert self.selector == "color_by_position"
+        if self.editor.switches:
+            self.editor.series_order = True
 
     def nth(self, index):
         return SeriesNode(self.editor, self.selector, index)
@@ -2176,20 +2225,20 @@ class SeriesNode:
         return self.count() > 0
 
     def locator(self, key):
-        assert self.selector == "option_overlay" and key == "dropdown_option"
+        assert self.selector == "option_overlay" and key in {"dropdown_option", "series_empty_slot"}
         return SeriesNode(self.editor, key)
 
     def inner_text(self, *, timeout=None):
         return self.editor.selected + "\t"
 
     def evaluate_all(self, expression):
-        return list(self.editor.labels)
+        return self.editor.listed()
 
     def click(self, *, timeout):
         editor = self.editor
         if self.selector == "series_select":
             assert not editor.open and not editor.closing, "reopened a closing option list"
-            editor.open = True
+            editor.open = editor.opens
             return
         assert editor.open
         label = editor.labels[self.index]
@@ -2199,6 +2248,9 @@ class SeriesNode:
             editor.ignore.remove(label)
             return
         editor.selected = label
+        if label in editor.dead:
+            editor.shown, editor.pending = None, None
+            return
         editor.pending = (editor.tick + editor.lag, editor.cell(label))
 
 
@@ -2215,21 +2267,194 @@ def test_time_series_colors_each_series_line_color_in_select_metric_order(
     from dsengine.ops import style
 
     editor, ctx = SeriesEditor(labels, lag, ignore), _palette_context(tmp_path)
+    _series_colors(monkeypatch, editor)
+
+    series = len(labels) - (len(labels) > 1)
+    assert style._apply_colors(editor, ctx, _PALETTE, hint) == (series, None)
+    assert editor.picks == picks
+    expected = [style.rgb(c) for c in _PALETTE[:series]]
+    assert [editor.colors[f"seriesColor{n}"] for n in range(1, series + 1)] == expected
+    assert style._read_colors(editor, ctx, len(_PALETTE), hint) == expected + [None] * (4 - series)
+
+
+def _series_colors(monkeypatch, editor, seconds=0.0):
+    """Color a SeriesEditor's shown Line color; each coloring takes `seconds` of its clock."""
+    from dsengine.ops import style
 
     def set_color(page, button, color, ctx):
         assert editor.shown == button.selector, "colored a Line color that is not shown"
+        if editor.clock:
+            editor.clock.advance(seconds)
         editor.colors[button.selector] = style.rgb(color)
 
     monkeypatch.setattr(style, "set_color", set_color)
     monkeypatch.setattr(style, "_color_button", lambda control, ctx: control)
     monkeypatch.setattr(style, "_preview", lambda control, ctx: editor.colors.get(control.selector))
 
-    series = len(labels) - (len(labels) > 1)
-    assert style._apply_colors(editor, ctx, _PALETTE, hint) == series
-    assert editor.picks == picks
-    expected = [style.rgb(c) for c in _PALETTE[:series]]
-    assert [editor.colors[f"seriesColor{n}"] for n in range(1, series + 1)] == expected
-    assert style._read_colors(editor, ctx, len(_PALETTE), hint) == expected + [None] * (4 - series)
+
+# Release 2.6 b_697880743b4f s010/s011 (live Style tab 2026-10-24): a time series
+# by region, six values, then empty slots; the palette has five colors.
+_BREAKDOWN = ["All series", "North America", "Asia", "Africa", "South America", "Europe",
+              "Oceania", "Series #7", "Series #8", "Series #9", "Series #10"]
+_RELEASE_PALETTE = ["#0B2559", "#2B6CB0", "#5A8FD4", "#8FB4E8", "#C8DBF6"]
+
+
+def test_breakdown_colors_switch_color_by_to_series_order_and_follow_select_series(
+        tmp_path, monkeypatch):
+    # Color by Dimension values shows no Line color; Series order shows each series'.
+    from dsengine.ops import style
+
+    editor, ctx = SeriesEditor(_BREAKDOWN, series_order=False), _palette_context(tmp_path)
+    _series_colors(monkeypatch, editor)
+
+    assert style._apply_colors(editor, ctx, _RELEASE_PALETTE) == (5, None)
+    assert editor.series_order
+    assert editor.picks == _BREAKDOWN[1:6]
+    expected = [style.rgb(c) for c in _RELEASE_PALETTE]
+    assert [editor.colors.get(f"seriesColor{n}") for n in range(1, 7)] == expected + [None]
+    assert style._read_colors(editor, ctx, 5) == expected
+
+
+def test_breakdown_colors_stop_where_the_op_budget_leaves_verify_its_readback(tmp_path, monkeypatch):
+    # The deadline is checked before each series step: a step starts only with
+    # time for itself and for verify's readback of every applied series.
+    from dsengine.ops import style
+
+    clock = FakeClock(monkeypatch)
+    editor, ctx = SeriesEditor(_BREAKDOWN, clock=clock, series_order=True), _palette_context(tmp_path)
+    ctx.op_deadline = ctx.run_deadline = clock.now + 12
+    _series_colors(monkeypatch, editor, seconds=3)
+
+    assert style._apply_colors(editor, ctx, _RELEASE_PALETTE) == (2, "too little op time left")
+    assert editor.picks == _BREAKDOWN[1:3]
+    assert ctx.remaining_s() >= style._VERIFY_BASE_S + 2 * style._READBACK_S
+    assert style._read_colors(editor, ctx, 2) == [style.rgb(c) for c in _RELEASE_PALETTE[:2]]
+
+
+_THREE = ["All series", "Complete", "Shipped", "Returned", "Series #4", "Series #5"]
+
+
+@pytest.mark.parametrize("labels, unnamed, applied", [
+    (_THREE, 0, 3),
+    # Live 2026-10-24: right after Color by changed, the open list read "Series #1"..
+    # "Series #10" and named the values 2.3 s later (here 6 ticks).
+    (_THREE, 6, 3),
+    # No value is ever named: past the wait, the slots take the colors.
+    (["All series", "Series #1", "Series #2"], 0, 2),
+])
+def test_breakdown_colors_stop_before_the_empty_series_slots(tmp_path, monkeypatch, labels, unnamed,
+                                                            applied):
+    # Live 2026-10-24: "Series #7".."Series #10" padded six values, and
+    # "Series #10" showed no Line color within 2.4 s.
+    from dsengine.ops import style
+
+    clock = FakeClock(monkeypatch)
+    editor = SeriesEditor(labels, clock=clock, series_order=True, unnamed=unnamed)
+    ctx = _palette_context(tmp_path)
+    ctx.op_deadline = ctx.run_deadline = clock.now + 20
+    _series_colors(monkeypatch, editor)
+
+    assert style._apply_colors(editor, ctx, _RELEASE_PALETTE) == (applied, None)
+    assert editor.picks == labels[1:1 + applied]
+    expected = [style.rgb(c) for c in _RELEASE_PALETTE[:applied]]
+    assert style._read_colors(editor, ctx, len(_RELEASE_PALETTE)) == expected + [None] * (5 - applied)
+
+
+def test_breakdown_colors_past_the_last_value_are_ignored_not_skipped_for_time(tmp_path, monkeypatch):
+    # Live 2026-10-24: six colors on status' five values warned "1 of 6 colors
+    # skipped (too little op time left)" though no sixth series existed.
+    from dsengine.ops import style
+
+    clock = FakeClock(monkeypatch)
+    editor, ctx = SeriesEditor(_THREE, clock=clock, series_order=True), _palette_context(tmp_path)
+    ctx.op_deadline = ctx.run_deadline = clock.now + 14
+    _series_colors(monkeypatch, editor, seconds=3)
+
+    assert style._apply_colors(editor, ctx, _RELEASE_PALETTE) == (3, None)
+    assert ctx.remaining_s() < style._VERIFY_BASE_S + 4 * style._READBACK_S + style._STEP_MIN_S
+
+
+def test_a_series_without_a_line_color_skips_the_rest_inside_the_op_budget(tmp_path, monkeypatch):
+    from dsengine.ops import style
+
+    clock = FakeClock(monkeypatch)
+    labels = ["All series", "Complete", "Shipped", "Returned", "Cancelled"]
+    editor = SeriesEditor(labels, clock=clock, series_order=True, dead=["Returned"])
+    ctx = _palette_context(tmp_path)
+    _series_colors(monkeypatch, editor, seconds=1)
+
+    assert style._apply_colors(editor, ctx, _PALETTE) == (2, "series 3 Line color did not show")
+    assert editor.picks[:2] == labels[1:3] and set(editor.picks[2:]) == {"Returned"}
+    assert ctx.remaining_s() >= style._VERIFY_BASE_S + 2 * style._READBACK_S
+    assert not editor.open  # no list left open over later clicks
+
+
+class BreakdownPage(SeriesEditor):
+    """A SeriesEditor as the executor's owned page."""
+
+    mouse = None
+
+    def set_viewport_size(self, _size):
+        pass
+
+    def set_default_timeout(self, _timeout):
+        pass
+
+    def screenshot(self, *, path, **_kwargs):
+        Path(path).write_bytes(b"fake screenshot")
+
+    def close(self):
+        pass
+
+
+@pytest.mark.parametrize("trouble, reason", [
+    ({"opens": False}, "series list did not open"),
+    ({"switches": False}, "series colors did not appear"),
+])
+def test_breakdown_colors_without_a_series_list_skip_inside_the_op_budget(
+        tmp_path, monkeypatch, trouble, reason):
+    # Release 2.6 b_697880743b4f s011 waited all 20 s for swatches a breakdown time
+    # series never shows, then timed out on retry (fake clock: waits move it).
+    from types import SimpleNamespace
+    from dsengine.ops import style
+
+    clock = FakeClock(monkeypatch)
+    page = BreakdownPage(_BREAKDOWN, clock=clock, series_order=False, **trouble)
+    chart = Operation(id="s002", op="add_chart", component_id="chart", chart_type="time_series",
+                      breakdown="region", date_dimension="year", dimensions=[],
+                      metrics=[{"field": "people_without_access", "agg": "sum"}])
+    recipe = make_recipe(tmp_path)
+    recipe.ops = [Operation(id="s001", op="open_report"), chart,
+                  Operation(id="s003", op="set_style", component_id="chart",
+                            style={"colors": _RELEASE_PALETTE}),
+                  Operation(id="s004", op="save_report"), Operation(id="s005", op="get_link")]
+    handler = FakeHandler([])
+
+    @contextmanager
+    def attach(_config):
+        yield FakeBrowserContext(page)
+
+    monkeypatch.setattr(executor, "load_selectors", lambda: dict(_STYLE_SELECTORS))
+    monkeypatch.setattr(executor, "build_url", lambda _header: "https://datastudio.google.com/reporting/create?test=1")
+    monkeypatch.setattr(executor.chrome, "check", lambda _config: {"signed_in": True})
+    monkeypatch.setattr(executor.chrome, "ensure_browser", lambda _config: None)
+    monkeypatch.setattr(executor.chrome.ChromeConfig, "from_env",
+                        lambda: ChromeConfig(tmp_path / "profile", 9222))
+    monkeypatch.setattr(executor.chrome, "attached", attach)
+    monkeypatch.setattr(executor, "handler_for", lambda name: style if name == "set_style" else handler)
+    monkeypatch.setattr(style, "component_for", lambda page, op, ctx: (
+        SimpleNamespace(click=lambda **kwargs: None), chart))
+    stream = io.StringIO()
+
+    assert executor.run_recipe(recipe, EventWriter(stream)) == 0
+
+    records = read_events(stream)
+    finished = {e["op_id"]: e for e in records if e["event"] == "op_finished"}
+    assert (finished["s003"]["status"], finished["s003"]["message"]) == ("ok", "")
+    assert finished["s003"]["duration_ms"] < executor.PER_OP_TIMEOUT_S * 1000
+    assert [(e["level"], e["message"]) for e in records if e["event"] == "log"] == [
+        ("info", "s003: colors applied 0 of 5"), ("warn", f"s003: 5 of 5 colors skipped ({reason})")]
+    assert records[-1]["status"] == "ok"
 
 
 class PieEditor:
@@ -2259,9 +2484,10 @@ def test_pie_slice_colors_switch_color_by_to_slice_order_first(tmp_path):
     editor, ctx = PieEditor(), _palette_context(tmp_path)
     assert list(style._swatches(editor, ctx, prepare=False)) == []
     assert not editor.by_position  # verify never changes the chart
-    found = [(position, control.texts) for position, control in style._swatches(editor, ctx, True)]
+    found = [(position, control.texts, last)
+             for position, control, last in style._swatches(editor, ctx, True)]
     assert editor.by_position
-    assert found == [(i, [f"slice{i}"]) for i in range(9)]
+    assert found == [(i, [f"slice{i}"], i == 8) for i in range(9)]
 
 
 class TypeEditor:

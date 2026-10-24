@@ -133,6 +133,8 @@ selectors:
   series_select: '[data-webdriver-cell-key="seriesSelect"] [role="combobox"]'
   series_color: '[data-webdriver-cell-key="seriesColor{n}"] ng2-color-picker-button'
   series_color_all: '[data-webdriver-cell-key="seriesColorAll"] ng2-color-picker-button'
+  series_color_any: '[data-webdriver-cell-key^="seriesColor"] ng2-color-picker-button'
+  series_empty_slot: 'role=option[name=/^Series #\d+$/]'
   rows_per_page_control: 'role=combobox[name=/Rows per page/]'
 ---
 
@@ -312,6 +314,19 @@ list is "All metrics" (cell `seriesColorAll`, one shared color), then each metri
 in order. The combobox text changes before the cell does, and a quick reopen hits
 the still-closing list: wait for the list to close and for the series' own cell.
 A scorecard has no series swatch (`set_style colors` skips it).
+A time series with a breakdown (task 13.1, live 2026-10-24, b_697880743b4f view,
+`region`, 6 values) has Color by too, default Dimension values: Series > Select
+series then shows no Line color at all (cells `seriesType<n>` etc., no
+`seriesColor<n>`). Series order (`color_by_position`) brings `seriesColor<n>` back
+within 0.3-2.6 s (`series_color_any` matches any series' Line color). The list
+then reads "All series", the breakdown values in order ("North America", "Asia",
+...), then empty slots "Series #7".."Series #10" (10 entries after "All series";
+with Dimension values the list read "Series #1".."Series #10"). A pick shows its
+cell in 0.3-0.6 s; "Series #10" showed none within 2.4 s. `series_empty_slot`
+(within `option_overlay`) matches those empty slots; colors stop before them.
+Right after the switch the chart redraws and the list (opened 0.4 s later) read
+"Series #1".."Series #10"; the open list renamed them to the values (status:
+Shipped, Complete, Processing, Cancelled, Returned) 2.3 s later, without reopening.
 Rendered colors: chart iframe legend symbols (`chart_legend_symbol`) in series
 order. Two daily metrics over order_items can render "Too Many Rows" (no legend)
 and slow later ops on that page.

@@ -220,7 +220,7 @@ tasks and require a separately specified scope/contract revision. Task statuses 
   - Review focus: recipe 1.2 rule (absent option = no type change); one Data type menu path shared with geo_type; selectors only from knowledge/datastudio-ui; no fixed sleeps over 1 s; per-op budgets unchanged; the live case asserts the read-back type and the axis labels, not op status alone.
 
 ## Phase 13: Reference fidelity (change 2026-10-24)
-- [ ] 13.1 Breakdown series colors end inside their budget
+- [x] 13.1 Breakdown series colors end inside their budget
   - Goal: `set_style colors` on a chart with a `breakdown` colors its breakdown values instead of timing out. Release 2.6 build b_697880743b4f op s011 (`set_style` colors on s010, a time_series by `region`, 6 series) failed "operation timed out" (20202 ms) twice; the last frame shows Style > "Color by: Series order" with the "Select series: North America" dropdown open and no per-series color step reached; s006/s009 logged "colors applied 2 of 5". Recipe 1.3 states the rule.
   - Spec: ../contracts/recipe.md#Ops; docs/architecture.md#Live editor conventions
   - Files: src/dsengine/ops/style.py, knowledge/datastudio-ui/editor.md, knowledge/datastudio-ui/log.md, tests/test_executor.py, tests/live/test_recipe_replay.py, tests/live/recipes/*.jsonl

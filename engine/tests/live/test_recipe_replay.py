@@ -101,8 +101,9 @@ def _write_png(path, width, height):
                      + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
 
 
-def _replay(name, tmp_path, capsys, monkeypatch):
-    """Run a recipe fixture on DSS_TEST_TABLE and read boxes and Setup fields back per op."""
+def _replay(name, tmp_path, capsys, monkeypatch, own_source=False):
+    """Run a recipe fixture on DSS_TEST_TABLE (own_source: on the table its header names)
+    and read boxes and Setup fields back per op."""
     load_dotenv(ENGINE_ROOT.parent / ".env")
     project, dataset, table = os.environ.get(
         "DSS_TEST_TABLE", "bigquery-public-data.thelook_ecommerce.order_items"
@@ -112,7 +113,8 @@ def _replay(name, tmp_path, capsys, monkeypatch):
     header = records[0]
     header["build_id"] = f"b_{uuid.uuid4().hex[:12]}"
     header["report_name"] = f"{header['report_name']} {header['build_id']}"
-    header["datasource"].update(project_id=project, dataset_id=dataset, table_id=table)
+    if not own_source:
+        header["datasource"].update(project_id=project, dataset_id=dataset, table_id=table)
     recipe_path = tmp_path / name
     recipe_path.write_text("\n".join(json.dumps(row) for row in records) + "\n", encoding="utf-8")
 
@@ -351,6 +353,50 @@ def test_series_swatches_take_the_palette_in_order(tmp_path, capsys, monkeypatch
         assert ("info", f"{op_id}: colors applied {count} of 4") in logs, logs
     unsupported = [message for level, message in logs if "unsupported style key colors" in message]
     assert unsupported == ["s010: unsupported style key colors for this component"], logs
+
+
+def _logs(tmp_path):
+    events = [json.loads(line) for line in
+              (tmp_path / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    return [(event["level"], event["message"]) for event in events if event["event"] == "log"]
+
+
+def test_breakdown_series_take_the_palette_in_select_series_order(tmp_path, capsys, monkeypatch):
+    # Release 2.6 b_697880743b4f s011: `set_style colors` on a time series by
+    # region waited all 20 s for swatches it never shows, then timed out. Colors
+    # apply in order to the breakdown values Select series lists (recipe 1.3).
+    palette = ["#0B2559", "#2B6CB0", "#5A8FD4"]
+    read = []
+    read_colors = style._read_colors
+
+    def recorded(page, ctx, count, series=None):
+        # verify's own readback of each series' Line color (Select series).
+        read.append(read_colors(page, ctx, count, series))
+        return read[-1]
+
+    monkeypatch.setattr(style, "_read_colors", recorded)
+    ops, readback = _replay("breakdown_colors.jsonl", tmp_path, capsys, monkeypatch)
+    _assert_readback(ops, readback)
+    assert read and read[-1] == [style.rgb(c) for c in palette], read
+    logs = _logs(tmp_path)
+    assert [message for _, message in logs if "colors applied" in message] == [
+        "s003: colors applied 3 of 3"], logs
+    assert not [message for level, message in logs if level == "warn"], logs
+
+
+def test_release_breakdown_colors_end_inside_their_budget(tmp_path, capsys, monkeypatch):
+    # Release 2.6 b_697880743b4f on its own view (dss_demo): s011 colors s010, a
+    # time series by region (six series), with five colors; it timed out twice.
+    _write_png(tmp_path / "background_p1.png", 1200, 892)
+    ops, readback = _replay("b_697880743b4f.jsonl", tmp_path, capsys, monkeypatch, own_source=True)
+    _assert_readback(ops, readback)
+    logs = _logs(tmp_path)
+    applied = [int(found[1]) for found in (
+        re.fullmatch(r"s011: colors applied (\d) of 5", message) for _, message in logs) if found]
+    # One attempt (a retry logs again); colors skipped only for the op's time.
+    assert len(applied) == 1 and applied[0] >= 1, logs
+    skipped = [message for level, message in logs if level == "warn" and message.startswith("s011")]
+    assert all(message.endswith("colors skipped (too little op time left)") for message in skipped), logs
 
 
 def test_time_series_date_granularity_draws_one_point_per_month(tmp_path, capsys, monkeypatch):

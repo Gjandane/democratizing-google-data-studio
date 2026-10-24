@@ -6,6 +6,13 @@ timestamp: 2026-10-18
 selectors: {}
 ---
 
+- 2026-10-24 task 13.1: added `series_color_any` (any series' Line color cell,
+  `seriesColor` prefix, includes `seriesColorAll`), after Style-tab dumps of a
+  breakdown time series (b_697880743b4f view, `region`): under Color by > Dimension
+  values no series Line color exists; `color_by_position` (value `position`) is
+  that chart's "Series order" too, and brings the per-series cells back. Added
+  `series_empty_slot` (Select series options "Series #7".."Series #10" that pad
+  the six region values).
 - 2026-10-23 task 12.1: added `date_type_menu` (Data type menu entry "Date &
   Time", first match: its submenu repeats the name) and `chart_x_axis_label`
   (x-axis tick labels in the chart iframe, for live readback), after dumping a
