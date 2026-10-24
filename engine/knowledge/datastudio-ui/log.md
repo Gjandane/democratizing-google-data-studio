@@ -6,6 +6,13 @@ timestamp: 2026-10-18
 selectors: {}
 ---
 
+- 2026-10-24 task 13.2: added `area_chart`, `stacked_area_chart`,
+  `percent_stacked_area_chart`, `percent_stacked_bar_chart`,
+  `percent_stacked_vertical_bar_chart` (Chart gallery button names),
+  `component_area` (`simple-areachart`), `area_stack_switch` ("Show stack") and
+  `percent_stack_switch` ("100% stacking", areas and bars), after dumping the
+  gallery's accessibility tree and the Setup/Style controls of each inserted area
+  variant and a 100% stacked bar on order_items.
 - 2026-10-24 task 13.1: added `series_color_any` (any series' Line color cell,
   `seriesColor` prefix, includes `seriesColorAll`), after Style-tab dumps of a
   breakdown time series (b_697880743b4f view, `region`): under Color by > Dimension

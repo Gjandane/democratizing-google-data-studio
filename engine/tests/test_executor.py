@@ -2670,3 +2670,181 @@ def test_geo_type_and_date_granularity_share_one_data_type_path(tmp_path, monkey
                              change=True)
     assert calls == [("geo_type_menu", "Country subdivision (1st level)", False),
                      ("date_type_menu", "Year", True)]
+
+
+# Recipe 1.3 (task 13.2): area charts and 100% stacking.
+def _area(**options):
+    return Operation(id="s002", op="add_chart", component_id="p1_area", chart_type="area",
+                     x=24, y=100, w=560, h=280, dimensions=[], date_dimension="created_at",
+                     metrics=[{"field": "sale_price", "agg": "sum"}], breakdown="status",
+                     options=options)
+
+
+def _bar(metrics=2, **options):
+    return Operation(id="s005", op="add_chart", component_id="p1_split", chart_type="bar",
+                     x=24, y=420, w=560, h=280, dimensions=["status"],
+                     metrics=[{"field": "sale_price", "agg": "sum"},
+                              {"field": "order_id", "agg": "count"}][:metrics],
+                     options=options)
+
+
+@pytest.mark.parametrize("op, stacking, key, variant", [
+    (_area(), (False, False), "area_chart", "Area"),
+    (_area(stacked=False), (False, False), "area_chart", "Area"),
+    (_area(stacked=True), (True, False), "stacked_area_chart", "Stacked area"),
+    (_area(stacked_percent=True), (True, True), "percent_stacked_area_chart", "100% stacked area"),
+    (_area(stacked=False, stacked_percent=True), (True, True), "percent_stacked_area_chart",
+     "100% stacked area"),
+    (_bar(), None, "bar_chart", None),
+    (_bar(orientation="vertical", stacked=True), (True, False), "stacked_vertical_bar_chart",
+     "Stacked bar"),
+    (_bar(orientation="horizontal", stacked_percent=True), (True, True),
+     "percent_stacked_bar_chart", "100% stacked bar"),
+    (_bar(orientation="vertical", stacked_percent=True), (True, True),
+     "percent_stacked_vertical_bar_chart", "100% stacked bar"),
+    (_bar(stacked_percent=False), (False, False), "bar_chart", "Bar"),
+])
+def test_area_and_bar_variants_map_to_their_gallery_buttons(op, stacking, key, variant):
+    from dsengine.ops import charts
+    from dsengine.selectors import load_selectors
+
+    assert charts._stacking(op) == stacking
+    assert charts._gallery_key(op, stacking) == key
+    assert key in load_selectors()
+    if variant:
+        assert charts._variant(op, stacking) == variant
+
+
+@pytest.mark.parametrize("options", [{"stacked_percent": "true"}, {"stacked_percent": 1},
+                                     {"stacked": "yes"}, {"stacked_percent": None}])
+@pytest.mark.parametrize("make", [_area, _bar])
+def test_non_bool_stacking_fails_before_any_ui_action(tmp_path, make, options):
+    from dsengine.ops import OperationError, charts
+
+    with pytest.raises(OperationError, match="^stacked and stacked_percent must be true or false$"):
+        charts.run(Untouchable(), make(**options), cleanup_context(tmp_path))
+
+
+def test_area_shares_the_time_series_date_dimension_and_granularity_path(tmp_path, monkeypatch):
+    from dsengine.ops import OperationError, charts
+
+    op = _area(date_granularity="month")
+    assert charts._dimensions(op) == (["created_at"], [])
+    assert charts._granularity(op) == "month"
+    calls = []
+    monkeypatch.setattr(charts, "_data_type", lambda page, ctx, key, label, *, change, subject:
+                        calls.append((key, label, change, subject)) or "Date")
+    with pytest.raises(OperationError, match="^area date dimension type is Date, not Year Month$"):
+        charts._date_granularity(Untouchable(), _type_context(tmp_path), op, change=False)
+    assert calls == [("date_type_menu", "Year Month", False, "area date dimension")]
+    for value in ("hour", 3):
+        with pytest.raises(OperationError, match="^date_granularity must be"):
+            charts.run(Untouchable(), _area(date_granularity=value), cleanup_context(tmp_path))
+
+
+class StackSwitch:
+    def __init__(self, ui, key):
+        self.ui, self.key = ui, key
+
+    def count(self):
+        return 1
+
+    def nth(self, index):
+        return self
+
+    def is_visible(self):
+        return self.key in self.ui.shown
+
+    def wait_for(self, *, state, timeout):
+        assert self.is_visible()
+
+    def get_attribute(self, name):
+        assert name == "aria-checked"
+        return "true" if self.ui.on.get(self.key) else "false"
+
+    def click(self, *, timeout):
+        self.ui.clicks.append(self.key)
+        self.ui.on[self.key] = not self.ui.on.get(self.key)
+        if self.key != "percent_stack_switch":
+            # 100% stacking shows only while stacked (live 2026-10-24).
+            (self.ui.shown.add if self.ui.on[self.key] else self.ui.shown.discard)(
+                "percent_stack_switch")
+
+
+class StackUI:
+    def __init__(self, stack_key, stacked, percent, *, hidden=False):
+        self.on = {stack_key: stacked, "percent_stack_switch": percent}
+        self.shown = set() if hidden else {stack_key} | ({"percent_stack_switch"} if stacked else set())
+        self.clicks = []
+
+    def locator(self, selector):
+        return StackSwitch(self, selector)
+
+
+def _stack_context(tmp_path):
+    ctx = cleanup_context(tmp_path)
+    ctx.events = EventWriter(io.StringIO())
+    ctx.selectors = {key: key for key in ("stacked_switch", "area_stack_switch",
+                                          "percent_stack_switch")}
+    return ctx
+
+
+@pytest.mark.parametrize("op, found", [
+    (_area(), (False, False)), (_area(stacked=True), (True, False)),
+    (_area(stacked_percent=True), (True, True)), (_bar(stacked_percent=True), (True, True)),
+    (_bar(stacked=True), (True, False)),
+])
+def test_stacking_is_read_back_from_the_style_switches_and_logged(tmp_path, op, found):
+    from dsengine.ops import charts
+
+    ctx = _stack_context(tmp_path)
+    key = "stacked_switch" if op.chart_type == "bar" else "area_stack_switch"
+    assert charts._read_stacking(StackUI(key, *found), ctx, op) == found
+    charts._verify_stacking(StackUI(key, *found), ctx, op, found)
+    log = read_events(ctx.events.stream)[-1]
+    assert (log["level"], log["message"]) == ("info", f"{op.id}: {charts._variant(op, found)}")
+
+
+def test_stacking_switches_are_set_in_order_and_only_while_shown(tmp_path):
+    from dsengine.ops import charts
+
+    ctx = _stack_context(tmp_path)
+    ui = StackUI("area_stack_switch", False, False)
+    charts._set_stacking(ui, ctx, _area(stacked_percent=True), (True, True))
+    assert ui.clicks == ["area_stack_switch", "percent_stack_switch"]
+    assert charts._read_stacking(ui, ctx, _area()) == (True, True)
+
+    ui = StackUI("stacked_switch", True, True)
+    charts._set_stacking(ui, ctx, _bar(stacked=False), (False, False))
+    assert ui.clicks == ["stacked_switch"]  # 100% stacking hides once unstacked
+    assert charts._read_stacking(ui, ctx, _bar()) == (False, False)
+
+
+def test_one_series_hides_stacking_and_reads_back_as_unknown(tmp_path):
+    from dsengine.ops import charts
+
+    ctx = _stack_context(tmp_path)
+    ui = StackUI("stacked_switch", False, False, hidden=True)
+    single = _bar(metrics=1, stacked_percent=True)
+    charts._set_stacking(ui, ctx, single, (True, True))
+    assert ui.clicks == []
+    assert charts._read_stacking(ui, ctx, single) is None
+    charts._verify_stacking(ui, ctx, single, (True, True))
+    assert read_events(ctx.events.stream)[-1]["message"] == (
+        "s005: 100% stacked bar (one series: stacking not shown)")
+    # Two series always show the switch: hidden reads as unstacked, not unknown.
+    assert charts._read_stacking(ui, ctx, _bar(stacked_percent=True)) == (False, False)
+
+
+@pytest.mark.parametrize("op, shown, message", [
+    (_area(stacked_percent=True), (True, False), "area variant read back Stacked area, not 100% stacked area"),
+    (_area(), (True, True), "area variant read back 100% stacked area, not Area"),
+    (_bar(stacked_percent=True), (False, False), "bar variant read back Bar, not 100% stacked bar"),
+])
+def test_verify_fails_when_the_variant_reads_back_differently(tmp_path, op, shown, message):
+    from dsengine.ops import OperationError, charts
+
+    key = "stacked_switch" if op.chart_type == "bar" else "area_stack_switch"
+    with pytest.raises(OperationError, match=f"^{re.escape(message)}$"):
+        charts._verify_stacking(StackUI(key, *shown), _stack_context(tmp_path), op,
+                                charts._stacking(op))

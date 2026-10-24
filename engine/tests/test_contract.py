@@ -199,3 +199,60 @@ def test_sample_time_series_without_date_granularity_keeps_its_inferred_type(tmp
             raise AssertionError(f"page.{name} used")
 
     charts._date_granularity(Untouchable(), None, op, change=True)
+
+
+def _area_op(**options):
+    return {"op": "add_chart", "component_id": "p1_area", "chart_type": "area",
+            "x": 24, "y": 100, "w": 560, "h": 280, "dimensions": [],
+            "date_dimension": "order_date", "metrics": [{"field": "revenue", "agg": "sum"}],
+            "breakdown": "region", "options": options}
+
+
+def _write(tmp_path, records, name="recipe.jsonl"):
+    path = tmp_path / name
+    path.write_text("\n".join(json.dumps(record) for record in records), encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize("options", [{}, {"date_granularity": "month"},
+                                     {"stacked": True, "date_granularity": "month"},
+                                     {"stacked_percent": True}, {"stacked": False}])
+def test_area_chart_validates_prints_and_dry_runs(tmp_path, options):
+    # Recipe 1.3 adds chart_type area; the header keeps recipe_version "1.0".
+    records = [json.loads(line) for line in SAMPLE.read_text(encoding="utf-8").splitlines()]
+    records = _with_op(records, _area_op(**options))
+    path = _write(tmp_path, records)
+    result = run_cli("validate", path)
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+    result = run_cli("print", path)
+    assert result.returncode == 0, result.stderr
+    assert "--type area" in result.stdout.splitlines()[1]
+    result = run_cli("run", path, "--dry-run")
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout.splitlines()[-1])["skipped"] == len(records) - 1
+
+
+def test_bar_stacked_percent_validates(tmp_path):
+    records = [json.loads(line) for line in SAMPLE.read_text(encoding="utf-8").splitlines()]
+    bar = next(record for record in records if record.get("chart_type") == "bar")
+    bar["options"] = {**bar.get("options", {}), "stacked_percent": True}
+    result = run_cli("validate", _write(tmp_path, records))
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+
+@pytest.mark.parametrize("key, value", [("stacked_percent", "true"), ("stacked_percent", 1),
+                                        ("stacked_percent", None), ("stacked", "yes")])
+@pytest.mark.parametrize("chart_type", ["area", "bar"])
+def test_non_bool_stacking_is_rejected_by_validate(tmp_path, chart_type, key, value):
+    # The schema leaves options open, so the engine's own check owns the bool type.
+    records = [json.loads(line) for line in SAMPLE.read_text(encoding="utf-8").splitlines()]
+    op = _area_op(**{key: value})
+    if chart_type == "bar":
+        op.update(chart_type="bar", dimensions=["region"], date_dimension=None, breakdown=None)
+    records = _with_op(records, op)
+    schema = json.loads((CONTRACTS / "recipe.schema.json").read_text(encoding="utf-8"))
+    assert Draft202012Validator({**schema, "$ref": "#/$defs/op"}).is_valid(records[2])
+    result = run_cli("validate", _write(tmp_path, records))
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert result.stderr.strip().endswith(f"line 3: {key} must be true or false"), result.stderr

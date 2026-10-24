@@ -230,7 +230,7 @@ tasks and require a separately specified scope/contract revision. Task statuses 
   - If: b_697880743b4f's view no longer exists in BigQuery -> rely on the `DSS_TEST_TABLE` case and say so in progress.md.
   - If: the Style tab offers no per-series color for a breakdown at all -> skip the key with the message (recipe 1.3 allows it), record what it offers in editor.md and progress.md, and keep the op `ok`.
   - Review focus: one color path shared with 11.3's swatches (not a copy); the op's deadline checked before each series step; selectors only from knowledge/datastudio-ui; no fixed sleeps over 1 s.
-- [ ] 13.2 Area chart and 100% stacked bars
+- [x] 13.2 Area chart and 100% stacked bars
   - Goal: recipe 1.3's `chart_type: area` (options `stacked`, `stacked_percent`, `date_granularity`) and `bar` `stacked_percent` build Data Studio's native variants, so release 2.6's per-country urban/rural area charts and rural/urban 100 % split bar can be recreated.
   - Spec: ../contracts/recipe.md#Ops; docs/architecture.md#Live editor conventions
   - Files: src/dsengine/recipe.py, src/dsengine/ops/charts.py, knowledge/datastudio-ui/editor.md, knowledge/datastudio-ui/log.md, tests/test_executor.py, tests/test_contract.py, tests/live/test_charts_b.py, tests/live/recipes/*.jsonl

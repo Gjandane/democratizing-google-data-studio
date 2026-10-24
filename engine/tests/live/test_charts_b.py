@@ -21,10 +21,10 @@ from dsengine.selectors import load_selectors
 pytestmark = pytest.mark.live
 
 
-def _records():
+def _records(name="charts_b.jsonl"):
     load_dotenv(ENGINE_ROOT.parent / ".env")
     records = [json.loads(line) for line in (
-        Path(__file__).parent / "recipes/charts_b.jsonl"
+        Path(__file__).parent / "recipes" / name
     ).read_text().splitlines()]
     project, dataset, table = os.getenv(
         "DSS_TEST_TABLE", "bigquery-public-data.thelook_ecommerce.order_items"
@@ -199,3 +199,74 @@ def test_controls_retry_and_remaining_chart_variants(tmp_path, capsys, monkeypat
     assert counts == [1, 4]
     assert any(e["event"] == "log" and "clamped" in e["message"] for e in events)
     assert events[-1]["status"] == "partial"
+
+
+REPORT_QUALITY = ENGINE_ROOT.parent / "data" / "report-quality"
+
+
+def test_area_variants_and_percent_stacked_bars(tmp_path, capsys, monkeypatch):
+    # Recipe 1.3 (task 13.2): release 2.6's urban/rural area charts and 100% split bar.
+    records = _records("area_charts.jsonl")
+    read_back = {}
+    verify = charts.verify
+
+    def checked(page, op, ctx):
+        verify(page, op, ctx)
+        # Independently of the engine's check: verify leaves the Style tab open.
+        switch = lambda key: (ctx.locator(page, key).count() > 0
+                              and ctx.locator(page, key).first.is_visible()
+                              and ctx.locator(page, key).first.get_attribute("aria-checked") == "true")
+        stack_key = "stacked_switch" if op.chart_type == "bar" else "area_stack_switch"
+        found = {"stacked": switch(stack_key), "percent": switch("percent_stack_switch")}
+        if op.chart_type == "area":
+            ctx.locator(page, "setup_tab").click()
+            ctx.locator(page, "dimension_group_any").locator(
+                ctx.selectors["dimension_type_button"]).first.click()
+            control = ctx.locator(page, "data_type_control")
+            control.wait_for(state="visible")
+            found["date_type"] = control.inner_text().splitlines()[0].strip()
+            page.keyboard.press("Escape")
+        read_back[op.id] = found
+
+    monkeypatch.setattr(charts, "verify", checked)
+    events = _run(records, tmp_path, capsys)
+    finished = [e for e in events if e["event"] == "op_finished"]
+    assert [e["status"] for e in finished] == ["ok"] * (len(records) - 1), finished
+    assert events[-1]["status"] == "ok" and events[-1]["report_url"]
+    variants = {e["message"].split(": ", 1)[0]: e["message"].split(": ", 1)[1] for e in events
+                if e["event"] == "log" and e.get("level") == "info"
+                and e["message"].split(": ", 1)[0] in {"s002", "s003", "s004", "s005"}}
+    assert variants == {"s002": "Area", "s003": "Stacked area", "s004": "100% stacked area",
+                        "s005": "100% stacked bar"}, events
+    assert read_back == {
+        "s002": {"stacked": False, "percent": False, "date_type": "Year Month"},
+        "s003": {"stacked": True, "percent": False, "date_type": "Year Month"},
+        "s004": {"stacked": True, "percent": True, "date_type": "Year Month"},
+        "s005": {"stacked": True, "percent": True},
+    }, read_back
+
+    selectors = load_selectors()
+    with chrome.attached(chrome.ChromeConfig.from_env()) as browser:
+        page = browser.new_page()
+        try:
+            page.set_viewport_size({"width": 1920, "height": 1200})
+            page.goto(events[-1]["report_url"], wait_until="domcontentloaded")
+            page.bring_to_front()
+            components = page.locator(selectors["components"])
+            expect(components).to_have_count(4, timeout=30000)
+            for component, op in zip(components.all(), records[2:6]):
+                assert all(abs(a - op[k]) <= 4 for a, k in zip(
+                    charts._geometry(component), ("x", "y", "w", "h")))
+                frame = component.locator(selectors["chart_iframe"])
+                expect(frame).to_have_count(1, timeout=30000)
+                expect(frame.content_frame.locator(selectors["chart_frame_body"])).to_contain_text(
+                    re.compile(r"\d"), timeout=45000)
+            for index in (0, 1, 2):
+                expect(components.nth(index).locator(selectors["component_area"])).to_have_count(1)
+            expect(page.locator(selectors["loading"])).to_have_count(0, timeout=30000)
+            REPORT_QUALITY.mkdir(parents=True, exist_ok=True)
+            page.screenshot(path=str(REPORT_QUALITY / "engine-13.2-area.png"), timeout=120000)
+            (tmp_path / "evidence.json").write_text(json.dumps(
+                {"events": events, "read_back": read_back}, indent=2))
+        finally:
+            page.close()

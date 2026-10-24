@@ -1,0 +1,8 @@
+{"recipe_version":"1.0","build_id":"b_000000000132","version":1,"report_name":"Engine area charts","canvas":{"width":1200,"height":900},"datasource":{"connector":"bigQuery","project_id":"bigquery-public-data","dataset_id":"thelook_ecommerce","table_id":"order_items"}}
+{"id":"s001","op":"open_report"}
+{"id":"s002","op":"add_chart","component_id":"p1_area","chart_type":"area","x":24,"y":24,"w":560,"h":300,"dimensions":[],"date_dimension":"created_at","metrics":[{"field":"sale_price","agg":"sum"}],"breakdown":"status","title":"Area","options":{"date_granularity":"month"}}
+{"id":"s003","op":"add_chart","component_id":"p1_stacked_area","chart_type":"area","x":616,"y":24,"w":560,"h":300,"dimensions":[],"date_dimension":"created_at","metrics":[{"field":"sale_price","agg":"sum"}],"breakdown":"status","title":"Stacked area","options":{"date_granularity":"month","stacked":true}}
+{"id":"s004","op":"add_chart","component_id":"p1_percent_area","chart_type":"area","x":24,"y":360,"w":560,"h":300,"dimensions":[],"date_dimension":"created_at","metrics":[{"field":"sale_price","agg":"sum"}],"breakdown":"status","title":"100% stacked area","options":{"date_granularity":"month","stacked_percent":true}}
+{"id":"s005","op":"add_chart","component_id":"p1_split","chart_type":"bar","x":616,"y":360,"w":560,"h":300,"dimensions":["status"],"metrics":[{"field":"sale_price","agg":"sum"},{"field":"order_id","agg":"count"}],"title":"100% stacked bar","options":{"orientation":"horizontal","stacked_percent":true}}
+{"id":"s006","op":"save_report"}
+{"id":"s007","op":"get_link"}

@@ -514,3 +514,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: P2 a retry after a verify failure ends ok with "0 of N" + warn - style.py; P3 names slower than 5 s color empty slots - style.py.
 - Next: Task 13.2 Area chart and 100% stacked bars. Start by `status`.
+
+## 2026-10-24: Task 13.2 Area chart and 100% stacked bars
+- Status: done
+- Plan check: off
+- What changed: charts.py: `area` inserts Area / Stacked area / 100% stacked area by `_stacking(op)`; bar `stacked_percent` inserts the 100% stacked (vertical) bar; area shares time series' date path via `_DATE_AXIS`; verify reads Style switches back and logs "<id>: <variant>". recipe.py rejects non-bool `stacked`/`stacked_percent` on bar/area. 8 selectors (editor.md/log.md); offline tests; live `recipes/area_charts.jsonl` + test in test_charts_b.py.
+- Checks: `uv run pytest -m live tests/live/test_charts_b.py` PASS 3/3 (new test 1/1 alone first); live golden `tests/live/test_golden.py` PASS 3/3; `tests/test_contract.py` PASS 26 (8 reject cases fail without recipe.py check); Test (all) `uv run pytest` PASS 280. Screenshot ../data/report-quality/engine-13.2-area.png: 3 filled month-axis areas, bar segments 0-100%.
+- Decisions: plain Area exists (If not triggered). `stacked_percent` implies stacked (`stacked:false, stacked_percent:true` -> 100%). Area keeps its own Sort section (no inherent sort); default metric sort did not reorder the date axis live. Switches are set only while shown; read-back hidden+multi-series = unstacked, hidden+one series = not shown (logged). Bar without stacking options: unchanged (no read-back, no log). AGENTS.md: 1 gotcha added.
+- Digest: charts.py `_DATE_AXIS={"time_series","area"}`; `_stacking(op)->(stacked,percent)|None` (area default plain); `_gallery_key(op, stacking)`; `_verify_stacking` logs "<id>: Area|Stacked area|100% stacked bar"; selectors area_stack_switch, percent_stack_switch, component_area.
+- Tried and failed: none
+- Gotchas: set_style colors on area charts untested (style.py `_series_count` knows time series only).
+- Left open: P3 hidden "Show stack" on a multi-series area reads as plain Area instead of failing - src/dsengine/ops/charts.py; P3 "100% stacking" visibility checked right after toggling stack (may skip, verify then fails) - src/dsengine/ops/charts.py
+- Next: Task 13.3 Fixed-size list control. Start with `status`.

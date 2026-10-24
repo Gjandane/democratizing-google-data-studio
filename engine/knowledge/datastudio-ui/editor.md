@@ -61,6 +61,14 @@ selectors:
   stacked_bar_chart: 'role=button[name=/^Stacked bar chart$/]'
   stacked_vertical_bar_chart: 'role=button[name=/^Stacked vertical bar chart$/]'
   donut_chart: 'role=button[name=/^Donut chart$/]'
+  percent_stacked_bar_chart: 'role=button[name=/^100% stacked bar chart$/]'
+  percent_stacked_vertical_bar_chart: 'role=button[name=/^100% stacked vertical bar chart$/]'
+  area_chart: 'role=button[name=/^Area chart$/]'
+  stacked_area_chart: 'role=button[name=/^Stacked area chart$/]'
+  percent_stacked_area_chart: 'role=button[name=/^100% stacked area chart$/]'
+  component_area: 'ng2-canvas-component.simple-areachart'
+  area_stack_switch: 'role=switch[name="Show stack"]'
+  percent_stack_switch: 'role=switch[name="100% stacking"]'
   add_dimension: 'role=button[name="Add dimension"]'
   add_metric: 'role=button[name="Add metric"]'
   status_field: 'role=button[name="status"]'
@@ -371,6 +379,19 @@ leaves both menus and the editor open; one Escape closes all three. The chip the
 reads "<field> (Year Month)"; the Date range dimension keeps its own type. The
 chart redraws per bucket: x-axis labels (`chart_x_axis_label`, in the chart
 iframe) go from "Jan 6, 2019" (or "Jan 1" within one year) to "Jan 2019".
+
+### Area charts and 100% stacking (task 13.2, live 2026-10-24)
+
+The gallery's Area group offers Stacked area chart, 100% stacked area chart and
+Area chart (a plain variant exists); its Bar group adds 100% stacked vertical bar
+chart and 100% stacked bar chart. Every area variant is
+`ng2-canvas-component.simple-areachart` with time-series-like Setup: date chip
+first in actionConceptList, breakdownDimension, metrics, plus dateRangeDimension
+and a Sort section (sortConcept, default the metric) that a time series lacks.
+Style shows the variant: plain area has "Show stack" off and no "100% stacking"
+switch; Stacked area has Show stack on and 100% stacking off; 100% stacked has
+both on. A bar's "100% stacking" (cell key show100Stack) shows below "Stacked
+bars" once stacked; the 100% stacked bar preset inserts with both on.
 
 Add a control opens a menu containing Date range control and Drop-down list.
 Wait for the chosen menu item to disappear before clicking the drawing canvas;

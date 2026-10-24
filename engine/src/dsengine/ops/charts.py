@@ -13,6 +13,7 @@ HANDLED_OPS = {"add_chart"}
 _CHART_BUTTONS = {
     "scorecard": "scorecard_chart",
     "time_series": "time_series_chart",
+    "area": "area_chart",
     "bar": "bar_chart",
     "pie": "pie_chart",
     "table": "table_chart",
@@ -33,6 +34,15 @@ _AGGREGATIONS = {
     "none": "None",
 }
 
+# Charts drawn over date_dimension as their first dimension (recipe 1.3 adds area).
+_DATE_AXIS = {"time_series", "area"}
+
+# Gallery buttons by (stacked, 100% stacked); Style switches read each variant back
+# (live 2026-10-24: Show stack / Stacked bars, then 100% stacking once stacked).
+_AREA_BUTTONS = {(False, False): "area_chart", (True, False): "stacked_area_chart",
+                 (True, True): "percent_stacked_area_chart"}
+_STACK_LABELS = {(False, False): "", (True, False): "stacked ", (True, True): "100% stacked "}
+
 _GEO_TYPES = {"country": "Country", "region": "Country subdivision (1st level)", "city": "City"}
 
 # Data type -> Date & Time labels (live 2026-10-23); the menu offers no "Year Week".
@@ -50,7 +60,7 @@ def _dimensions(op: Any) -> tuple[list[str], list[str]]:
         if any(not isinstance(fields, list) or any(not isinstance(f, str) or not f for f in fields)
                for fields in (dimensions, columns)):
             raise OperationError("pivot row_dimensions and column_dimensions must be lists of field names")
-    if op.chart_type == "time_series" and getattr(op, "date_dimension", None):
+    if op.chart_type in _DATE_AXIS and getattr(op, "date_dimension", None):
         dimensions = [op.date_dimension] + [f for f in dimensions if f != op.date_dimension]
     return dimensions, columns
 
@@ -98,9 +108,9 @@ def _geo_type(page: Any, ctx: OpContext, op: Any, *, change: bool) -> None:
 
 
 def _granularity(op: Any) -> str | None:
-    """A time series' date_granularity, checked before any UI action (recipe 1.2)."""
+    """A time series' or area's date_granularity, checked before any UI action (recipe 1.2)."""
     value = (getattr(op, "options", {}) or {}).get("date_granularity")
-    if op.chart_type != "time_series" or value is None:
+    if op.chart_type not in _DATE_AXIS or value is None:
         return None
     if not isinstance(value, str) or value not in _DATE_GRANULARITIES:
         raise OperationError("date_granularity must be day, week, month, quarter or year")
@@ -113,10 +123,89 @@ def _date_granularity(page: Any, ctx: OpContext, op: Any, *, change: bool) -> No
     if value is None:
         return
     label = _DATE_GRANULARITIES[value]
-    actual = _data_type(page, ctx, "date_type_menu", label, change=change,
-                        subject="time series date dimension")
+    subject = f"{op.chart_type.replace('_', ' ')} date dimension"
+    actual = _data_type(page, ctx, "date_type_menu", label, change=change, subject=subject)
     if actual != label:
-        raise OperationError(f"time series date dimension type is {actual}, not {label}")
+        raise OperationError(f"{subject} type is {actual}, not {label}")
+
+
+def _stacking(op: Any) -> tuple[bool, bool] | None:
+    """(stacked, 100% stacked) asked of a bar or area, checked before any UI action.
+
+    stacked_percent implies stacked. An area always has a variant (plain by default);
+    a bar without either option keeps what its gallery button gives (None).
+    """
+    if op.chart_type not in {"bar", "area"}:
+        return None
+    options = getattr(op, "options", {}) or {}
+    if any(not isinstance(options.get(key, False), bool) for key in ("stacked", "stacked_percent")):
+        raise OperationError("stacked and stacked_percent must be true or false")
+    if op.chart_type == "bar" and not {"stacked", "stacked_percent"} & options.keys():
+        return None
+    percent = options.get("stacked_percent", False)
+    return options.get("stacked", False) or percent, percent
+
+
+def _variant(op: Any, stacking: tuple[bool, bool]) -> str:
+    """The variant's name as the gallery spells it: "Area", "Stacked area", "100% stacked bar"."""
+    return (_STACK_LABELS[stacking] + op.chart_type).capitalize()
+
+
+def _gallery_key(op: Any, stacking: tuple[bool, bool] | None) -> str:
+    """The selector key of the chart gallery button that inserts op's variant."""
+    options = getattr(op, "options", {}) or {}
+    if op.chart_type == "bar":
+        key = "vertical_bar_chart" if options.get("orientation") == "vertical" else "bar_chart"
+        return {(True, True): "percent_stacked_", (True, False): "stacked_"}.get(stacking, "") + key
+    if op.chart_type == "area":
+        return _AREA_BUTTONS[stacking]
+    if op.chart_type == "pie" and options.get("donut"):
+        return "donut_chart"
+    return _CHART_BUTTONS[op.chart_type]
+
+
+def _stack_keys(op: Any) -> tuple[str, str]:
+    return ("stacked_switch" if op.chart_type == "bar" else "area_stack_switch",
+            "percent_stack_switch")
+
+
+def _set_stacking(page: Any, ctx: OpContext, op: Any, stacking: tuple[bool, bool]) -> None:
+    """Match the Style tab's stacking switches to stacking (the gallery variant normally has).
+
+    Each is set only while shown: one series hides stacking, and 100% stacking shows
+    only once stacked. Verification reads the variant back either way.
+    """
+    for key, enabled, option in zip(_stack_keys(op), stacking, ("stacking", "100% stacking")):
+        if _visible(_locator(page, ctx, key)):
+            _set_switch(page, ctx, key, enabled, option)
+
+
+def _read_stacking(page: Any, ctx: OpContext, op: Any) -> tuple[bool, bool] | None:
+    """The (stacked, 100% stacked) the open Style tab shows.
+
+    None when one series hides the stacking switch: then the inserted type is all there is.
+    """
+    stack_key, percent_key = _stack_keys(op)
+    stack, percent = _locator(page, ctx, stack_key), _locator(page, ctx, percent_key)
+    if not _visible(stack):
+        single = len(getattr(op, "metrics", None) or []) == 1 and not getattr(op, "breakdown", None)
+        return None if single else (False, False)
+    stacked = stack.get_attribute("aria-checked") == "true"
+    return stacked, stacked and _visible(percent) and percent.get_attribute("aria-checked") == "true"
+
+
+def _verify_stacking(page: Any, ctx: OpContext, op: Any, stacking: tuple[bool, bool]) -> None:
+    """Read the variant back from the open Style tab and log it.
+
+    With one series, stacking has no visual effect and the editor hides its switch:
+    type, orientation and the sole series are verified independently.
+    """
+    found = _read_stacking(page, ctx, op)
+    if found is not None and found != stacking:
+        raise OperationError(f"{op.chart_type} variant read back {_variant(op, found)}, "
+                             f"not {_variant(op, stacking)}")
+    ctx.events.emit("log", level="info", message=f"{op.id}: {_variant(op, stacking)}"
+                    + ("" if found else " (one series: stacking not shown)"))
 
 
 def _locator(page: Any, ctx: OpContext, key: str) -> Any:
@@ -381,23 +470,22 @@ def _set_title_and_options(page: Any, ctx: OpContext, op: Any) -> str | None:
         title.press("Tab", timeout=ctx.timeout_ms())
 
     options = getattr(op, "options", None) or {}
-    if not options:
+    stacking = _stacking(op)
+    if not options and not stacking:
         return None
     if op.chart_type == "scorecard" and "compact_numbers" in options:
         _locator(page, ctx, "style_tab").click(timeout=ctx.timeout_ms())
         _set_switch(page, ctx, "compact_numbers_switch",
                     bool(options["compact_numbers"]), "compact numbers")
-    elif op.chart_type == "bar":
+    elif op.chart_type in {"bar", "area"}:
         _locator(page, ctx, "style_tab").click(timeout=ctx.timeout_ms())
-        if "orientation" in options:
+        if op.chart_type == "bar" and "orientation" in options:
             key = "orientation_vertical" if options["orientation"] == "vertical" else "orientation_horizontal"
             control = _locator(page, ctx, key)
             _wait_visible(control, ctx, "bar chart orientation control is unavailable")
             control.check(timeout=ctx.timeout_ms())
-        if "stacked" in options:
-            stacked = _locator(page, ctx, "stacked_switch")
-            if _visible(stacked):
-                _set_switch(page, ctx, "stacked_switch", bool(options["stacked"]), "stacked bars")
+        if stacking:
+            _set_stacking(page, ctx, op, stacking)
     elif op.chart_type == "table" and "rows_per_page" in options:
         _locator(page, ctx, "setup_tab").click(timeout=ctx.timeout_ms())
         # Rows per page is a fixed menu (1, 5, 10, 20, 25, 50, 100, 250, ...).
@@ -682,6 +770,7 @@ def _run_add_chart(page: Any, op: Any, ctx: OpContext) -> OpResult:
         if geo_type is not None and (not isinstance(geo_type, str) or geo_type not in _GEO_TYPES):
             raise OperationError("geo_type must be country, region or city")
     _granularity(op)
+    stacking = _stacking(op)
     inherent_sort = _inherent_sort(op, dimensions)
     target, clamped = _chart_box(op, ctx)
     if clamped:
@@ -704,17 +793,10 @@ def _run_add_chart(page: Any, op: Any, ctx: OpContext) -> OpResult:
     if not previous:
         ctx.state[op.id] = {"chart_index": before}
     if charts.count() == before:
-        key = _CHART_BUTTONS[op.chart_type]
-        options = getattr(op, "options", {}) or {}
-        if op.chart_type == "bar":
-            vertical = options.get("orientation") == "vertical"
-            key = ("stacked_vertical_bar_chart" if vertical else "stacked_bar_chart") if options.get("stacked") else ("vertical_bar_chart" if vertical else "bar_chart")
-        elif op.chart_type == "pie" and options.get("donut"):
-            key = "donut_chart"
         _locator(page, ctx, "add_chart").click(timeout=ctx.timeout_ms())
         gallery = _locator(page, ctx, "chart_gallery")
         _wait_visible(gallery, ctx, "chart type gallery did not open")
-        gallery.locator(ctx.selectors[key]).click(timeout=ctx.timeout_ms())
+        gallery.locator(ctx.selectors[_gallery_key(op, stacking)]).click(timeout=ctx.timeout_ms())
         _locator(page, ctx, "drawing").wait_for(state="visible", timeout=ctx.timeout_ms())
         _click_canvas(page, ctx, canvas, 24, 24)
         _poll(page, ctx, lambda: charts.count() == before + 1,
@@ -764,7 +846,7 @@ def _run_add_chart(page: Any, op: Any, ctx: OpContext) -> OpResult:
                              str(_value(metric, "agg", "none")), change=True)
 
     date_dimension = getattr(op, "date_dimension", None)
-    if date_dimension and op.chart_type != "time_series":
+    if date_dimension and op.chart_type not in _DATE_AXIS:
         date_group = _locator(page, ctx, "date_range_dimension_group")
         _wait_visible(date_group, ctx, "chart date dimension Setup group is unavailable")
         _set_fields(page, ctx, date_group, [date_dimension])
@@ -781,7 +863,7 @@ def _run_add_chart(page: Any, op: Any, ctx: OpContext) -> OpResult:
         "columns": columns,
         "metrics": [(str(_value(metric, "field", "")), str(_value(metric, "agg", "none")))
                     for metric in metrics],
-        "date_dimension": date_dimension if op.chart_type != "time_series" else None,
+        "date_dimension": date_dimension if op.chart_type not in _DATE_AXIS else None,
         # The verified first dimension already proves an inherent date sort.
         "sort": (_value(sort, "field"), _value(sort, "order")) if sort else None,
         "title": getattr(op, "title", None),
@@ -883,7 +965,8 @@ def _verify_add_chart(page: Any, op: Any, ctx: OpContext) -> None:
         # The applied value: the recipe's, or the nearest the menu offers.
         if _locator(page, ctx, "rows_per_page_control").inner_text().strip() != state["rows_per_page"]:
             raise OperationError("table rows per page did not match the recipe")
-    if state["title"] or (options and op.chart_type != "table") or state.get("scorecard"):
+    stacking = _stacking(op)
+    if state["title"] or (options and op.chart_type != "table") or state.get("scorecard") or stacking:
         _locator(page, ctx, "style_tab").click(timeout=ctx.timeout_ms())
     scorecard = state.get("scorecard")
     if scorecard:
@@ -903,17 +986,9 @@ def _verify_add_chart(page: Any, op: Any, ctx: OpContext) -> None:
             key = "orientation_vertical" if options["orientation"] == "vertical" else "orientation_horizontal"
             if not _locator(page, ctx, key).is_checked():
                 raise OperationError("bar orientation did not match the recipe")
-        if "stacked" in options:
-            control = _locator(page, ctx, "stacked_switch")
-            visible = _visible(control)
-            actual = visible and control.get_attribute("aria-checked") == "true"
-            # With one series, stacking has no visual effect and the editor
-            # hides its switch. Type, orientation and the sole series have
-            # already been verified independently.
-            single_series = len(state["metrics"]) == 1 and not state["breakdown"]
-            if not (single_series and not visible) and actual != bool(options["stacked"]):
-                raise OperationError("bar stacking did not match the recipe")
-    elif op.chart_type == "pie" and "donut" in options:
+    if stacking:
+        _verify_stacking(page, ctx, op, stacking)
+    if op.chart_type == "pie" and "donut" in options:
         actual = _locator(page, ctx, "pie_inner_radius").evaluate(
             "e => Number(e.value ?? e.getAttribute('aria-valuenow')) > 0"
         )
