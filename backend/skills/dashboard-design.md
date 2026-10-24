@@ -45,7 +45,8 @@ white at least 4.5:1 (theme `text` and `muted` pass).
 ## Allowed markup and CSS
 - Tags: div span section header footer main article aside nav h1-h6 p strong b em i small sup
   sub br hr ul ol li figure figcaption, and inline `<svg>` with g path circle ellipse line
-  polyline polygon rect. Attributes: `class`, `style`, `data-slot` on div, `data-icon` on i.
+  polyline polygon rect. Attributes: `class`, `style`, `data-slot` on div, `data-icon` or
+  `data-art` on i.
   Everything else is removed (scripts, links, images, buttons, inputs, tables, `<use>`).
 - One `<style>` block first. Class selectors and the page root as `body` (`body{...}` styles
   the page root). Properties: layout (display, grid, flex, gap, position static/relative/absolute,
@@ -61,6 +62,19 @@ stroke `currentColor`: set `color` on the tile). Pick the icon by meaning (users
 dollar-sign or wallet for revenue, shopping-cart for orders, truck for delivery, clock for time,
 percent for rates, trending-up for growth). An unknown name is an error; if nothing fits, draw a
 small inline `<svg>` of plain shapes inside the `<i>` instead.
+
+## Art
+`<i data-art="name"></i>` with a name from the art list becomes a static map drawn by code:
+`globe-europe-africa`, `globe-americas`, `globe-asia-pacific` (square, the visible hemisphere in a
+circle) or `world` (flat, 1000:442, no Antarctica). Never draw a globe or map yourself. Size the
+`<i>` with a class (a width, and a height or none): the art scales to fit that box. Color it with
+CSS on its classes: `.land` (every country), a continent (`.africa`, `.asia`, `.europe`,
+`.north-america`, `.south-america`, `.oceania`, `.antarctica`, `.seven-seas` for remote islands),
+one country `.c-<ISO alpha-3>` (`.c-FRA`), and on globes `.ocean` (disk fill) and `.outline` (rim
+stroke), for example
+`.ocean{fill:#0B1E3F}.land{fill:#1E3A8A;stroke:#0B1E3F}.c-BRA{fill:#F59E0B}`. Art is
+decoration: anything inside the `<i>` is removed, it never goes in or over a slot, and an unknown
+name is an error.
 
 ## Text fit
 Every text must fit its box with no overflow or clipping, at 12 px or larger. Give titles room

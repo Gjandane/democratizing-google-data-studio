@@ -1405,3 +1405,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: P3 count refusal's "existing + extracted" may not sum past 40 after merges - src/dss/harness/nodes/capability_check.py
 - Next: Task 24.4 Static globe and world art.
+
+## 2026-10-24: Task 24.4 Static globe and world art
+- Status: done
+- Plan check: off
+- What changed: scripts/make_art.py (stdlib orthographic + Equal Earth) writes src/dss/render/art/ (3 globes, world, NOTICE) from Natural Earth 110m v5.1.2 (user-approved download, kept outside git). design_page: `<i data-art>` allowlist, art(), wrap() inlines art, measure errors; designer context lists art; skill Art section.
+- Checks: make_art on the real GeoJSON: 58,029 / 40,397 / 43,559 / 73,029 bytes, sha256-identical rerun; `uv run pytest tests/test_design_page.py tests/test_designer.py` 57 passed (6 new art tests failed before); `uv run pytest` 1656 passed (an earlier overlapped run had 1 timing flake in test_feasibility, passed alone). Globe fixture 3x PNG 355,260 B; sanitize+measure+background 2.86 s.
+- Decisions: art stays an empty `<i data-art="name">` in sanitized/stored HTML (children, data-icon dropped; name normalized to [A-Za-z0-9_-], max 80); wrap() inlines it, adding ART_CSS only when art is present (other designed prototypes keep their bytes), so design.html, readable(), coverage and comment metadata stay art-free. Art inside a slot: the sanitizer records it, measure reports it at `slots.<cid>`; over a slot: graphics overlap with an art message. Codes: ISO_A3, else ISO_A3_EH, else ADM0_A3 (France/Norway are -99). Continent class = CONTINENT slug (Seven seas -> seven-seas). Centres 15E 20N, 75W 10N, 115E 10N; viewBox 500, r 249; hidden runs become rim arcs (<=90 degrees each) that follow the hidden path's sweep. world.svg: Equal Earth without Antarctica, viewBox 0 0 1000 442. Default fills #CBD5E1 land, #F1F5F9 ocean. tests/test_context.py (outside Files) updated: it pins the designer section list. Review P2 fixed: a Chromium isPointInFill probe test that fails on a flipped sweep flag or reversed rim step.
+- Digest: design_page.art()->{name: svg}: globe-europe-africa, globe-americas, globe-asia-pacific, world; sanitize keeps empty `<i data-art>`, wrap() inlines it; paths `land <continent> c-<ISO3>`; context section 'art'; scripts/make_art.py; tests/data/designed_globe.html
+- Tried and failed: none
+- Gotchas: none beyond AGENTS.md
+- Left open: P3 no limit on the number of art tags per page (each inlines 40-73 KB) - src/dss/render/design_page.py
+- Next: Task 24.5 The designer sees the reference. Start by reading designer.design/regenerate and context.designer_context for where image parts and the reference summary go.

@@ -1,8 +1,12 @@
-"""Designed pages: allowlist sanitizer, vendored icons and Chromium slot measurement (task 20.1)."""
+"""Designed pages: allowlist sanitizer, vendored icons and Chromium slot measurement (task 20.1);
+vendored static art (task 24.4)."""
 from html.parser import HTMLParser
+import importlib.util
 import json
+import math
 from pathlib import Path
 import re
+import struct
 import time
 
 import pytest
@@ -288,3 +292,225 @@ def test_minimum_slot_sizes_follow_layout_at_the_canvas_width():
     assert design_page.minimum('table', 1440) == (688, 144)
     with pytest.raises(ValueError):
         design_page.minimum('gauge', 1200)
+
+
+# Static art (task 24.4): scripts/make_art.py output, vendored like the icons.
+ART_NAMES = ['globe-americas', 'globe-asia-pacific', 'globe-europe-africa', 'world']
+CONTINENTS = {'africa', 'antarctica', 'asia', 'europe', 'north-america', 'oceania', 'seven-seas', 'south-america'}
+LAND = re.compile(r'<path class="land ([a-z-]+) c-([A-Z]{3})" d="([^"]+)"></path>')
+GLOBE_PAGE = Path(__file__).parent / 'data/designed_globe.html'
+
+
+def path_points(d):
+    """Absolute points of make_art path data: M, relative l, A (rim arcs) and z."""
+    tokens, points, here, command, i = re.findall(r'[MAlz]|-?(?:\d+(?:\.\d*)?|\.\d+)', d), [], (0.0, 0.0), None, 0
+    while i < len(tokens):
+        if tokens[i] in ('M', 'A', 'l', 'z'):
+            command, i = tokens[i], i + 1
+        elif command == 'A':
+            here, i = (float(tokens[i + 5]), float(tokens[i + 6])), i + 7
+            points.append(here)
+        else:
+            x, y = float(tokens[i]), float(tokens[i + 1])
+            here, i = ((x, y) if command == 'M' else (here[0] + x, here[1] + y)), i + 2
+            points.append(here)
+    return points
+
+
+def inside_the_globe(d):
+    return all(math.hypot(x - 250, y - 250) <= 249.1 for x, y in path_points(d))  # rim radius 249, 0.1 rounding
+
+
+def test_art_is_vendored_natural_earth_with_its_notice():
+    art = design_page.art()
+    assert sorted(art) == ART_NAMES
+    notice = (design_page.ART / 'NOTICE').read_text(encoding='utf-8')
+    assert 'ne_110m_admin_0_countries' in notice and 'v5.1.2' in notice and 'public domain' in notice
+    countries = {}
+    for name in ART_NAMES:
+        assert (design_page.ART / f'{name}.svg').stat().st_size <= 80 * 1024
+        svg = art[name]
+        assert svg.startswith('<svg viewBox=') and design_page.sanitize(svg) == svg
+        lands = LAND.findall(svg)
+        assert len(lands) == svg.count('<path') > 0  # every country path carries its classes
+        assert {continent for continent, _, _ in lands} <= CONTINENTS
+        countries[name] = {code: d for _, code, d in lands}
+        assert len(countries[name]) == len(lands)
+    assert len(countries['world']) == 176 and 'ATA' not in countries['world']  # 177 countries but Antarctica
+    # Natural Earth gives France and Norway ISO_A3 -99; their ISO_A3_EH codes still name them.
+    assert {'FRA', 'NOR', 'ZAF', 'RUS', 'ATA'} <= set(countries['globe-europe-africa'])
+    assert 'AUS' not in countries['globe-europe-africa'] and 'JPN' not in countries['globe-americas']
+    assert 'BRA' not in countries['globe-asia-pacific']
+    for name in ART_NAMES[:3]:
+        assert '<circle class="ocean" cx="250" cy="250" r="249"' in art[name] and '<circle class="outline"' in art[name]
+        for code, d in countries[name].items():
+            assert inside_the_globe(d), (name, code)  # only the visible hemisphere
+    # A country across the horizon follows the rim; one in full view does not.
+    assert 'A249 249' in countries['globe-europe-africa']['RUS'] and 'A' not in countries['globe-europe-africa']['FRA']
+
+
+def feature(iso, eh, adm0, continent, ring):
+    return {'type': 'Feature', 'properties': {'ISO_A3': iso, 'ISO_A3_EH': eh, 'ADM0_A3': adm0, 'CONTINENT': continent},
+            'geometry': {'type': 'Polygon', 'coordinates': [[*ring, ring[0]]]}}
+
+
+def ring(west, south, east, north, step=5):
+    return ([[lon, south] for lon in range(west, east, step)] + [[east, lat] for lat in range(south, north, step)]
+            + [[lon, north] for lon in range(east, west, -step)] + [[west, lat] for lat in range(north, south, -step)])
+
+
+BOX = (30, -30, 175, 80)  # west, south, east, north: crosses the horizon of 15E 20N on two edges
+
+
+def test_make_art_is_deterministic_and_clips_each_globe_to_its_visible_hemisphere(tmp_path, monkeypatch):
+    spec = importlib.util.spec_from_file_location('make_art', Path(__file__).parents[1] / 'scripts/make_art.py')
+    make_art = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(make_art)
+    monkeypatch.setattr(make_art, 'OUT', tmp_path / 'art')
+    source = tmp_path / 'countries.geojson'
+    source.write_text(json.dumps({'type': 'FeatureCollection', 'features': [
+        feature('-99', 'FRA', 'FRA', 'Europe', ring(-5, 42, 8, 51)),
+        feature('RUS', 'RUS', 'RUS', 'Europe', ring(*BOX)),
+        feature('KIR', 'KIR', 'KIR', 'Oceania', ring(-160, -5, -150, 5)),  # on the far side
+        feature('-99', '-99', 'KOS', 'Seven seas (open ocean)', ring(20, 42, 22, 44, 1)),
+    ]}), encoding='utf-8')
+    make_art.main([str(source)])
+    first = {path.name: path.read_bytes() for path in (tmp_path / 'art').iterdir()}
+    make_art.main([str(source)])
+    assert {path.name: path.read_bytes() for path in (tmp_path / 'art').iterdir()} == first
+    assert sorted(first) == ['NOTICE', *[f'{name}.svg' for name in ART_NAMES]]
+    svg = design_page.sanitize(first['globe-europe-africa.svg'].decode('utf-8'))
+    globe = {code: (continent, d) for continent, code, d in LAND.findall(svg)}
+    assert {code: continent for code, (continent, _) in globe.items()} == {'FRA': 'europe', 'KOS': 'seven-seas',
+                                                                         'RUS': 'europe'}
+    assert globe['RUS'][1].count('A249 249') >= 2 and 'A' not in globe['FRA'][1]  # a rim run over 90 degrees
+    assert all(inside_the_globe(d) for _, d in globe.values())
+    assert first['world.svg'].count(b'<path class="land ') == 4
+    # The filled region is the box's visible part: Chromium's own fill test at visible probes, near the
+    # rim too (a reversed arc or rim step would bulge in or wrap the wrong way around). Probes within 2
+    # units of a box edge as drawn are skipped (edges are sampled every 1/4 degree; near the limb a
+    # degree foreshortens below the rounding).
+    projection, probes = make_art.Globe(15, 20), []
+    edges = [projection.xy(v) for v in (make_art.vector(lon / 4, lat / 4) for lon, lat in ring(*(4 * b for b in BOX), 1))
+             if make_art.dot(projection.centre, v) > 0]
+    for lon in range(BOX[0] - 5, 180, 3):
+        for lat in range(BOX[1] - 5, 87, 3):
+            point = make_art.vector(lon, lat)
+            x, y = projection.xy(point)
+            if make_art.dot(projection.centre, point) > .05 and min((x - a) ** 2 + (y - b) ** 2 for a, b in edges) >= 4:
+                probes.append([x, y, BOX[0] < lon < BOX[2] and BOX[1] < lat < BOX[3]])
+    assert sum(inside for *_, inside in probes) > 200 and sum(not inside for *_, inside in probes) > 200
+    assert sum(math.hypot(x - 250, y - 250) > 230 for x, y, inside in probes if inside) > 10  # along the rim run
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        try:
+            page = browser.new_page()
+            page.set_content(svg)
+            filled = page.evaluate('''probes => probes.map(([x, y]) =>
+                document.querySelector('.c-RUS').isPointInFill(new DOMPoint(x, y)))''', probes)
+        finally:
+            browser.close()
+    wrong = [(round(x), round(y), inside) for (x, y, inside), fill in zip(probes, filled) if fill != inside]
+    assert wrong == []
+
+
+def test_art_tag_is_sanitized_empty_and_wrap_draws_the_vendored_svg():
+    raw = ('<i class="globe" data-art="globe-europe-africa" data-icon="users" onclick="x()" data-x="1" '
+           'style="width:300px"><svg onload="y()"><circle r="3"></circle></svg>hello<b>bold</b></i>')
+    clean = design_page.sanitize(raw)
+    assert clean == '<i class="globe" data-art="globe-europe-africa" style="width:300px"></i>'
+    assert design_page.sanitize(clean) == clean
+    wrapped = design_page.wrap(clean, 1200)
+    globe = design_page.art()['globe-europe-africa']
+    assert f'<i class="globe" data-art="globe-europe-africa" style="width:300px">{globe}</i>' in wrapped
+    assert wrapped.count('<svg') == 1 and design_page.ART_CSS in wrapped
+    markup = wrapped.split('</style>', 1)[1]  # after code's own stylesheet
+    for needle in ('onload', 'onclick', 'data-x', 'data-icon', 'hello', 'bold'):
+        assert needle not in markup
+    # Any name survives bounded for measure to report; an unknown one stays empty.
+    odd = design_page.sanitize('<i data-art="mars &quot;x"><svg viewBox="0 0 2 2"></svg></i>')
+    assert odd == '<i data-art="mars--x"></i>' and '<i data-art="mars--x"></i>' in design_page.wrap(odd, 1200)
+    # Pages without art keep their bytes.
+    assert design_page.wrap('<p>x</p>', 1200) == design_page.wrap('<p>x</p>', 1200).replace(design_page.ART_CSS, '')
+
+
+def chromium_art(html, width=1200):
+    """Sizes and computed fills of sanitized, wrapped art, with JavaScript off and every request aborted."""
+    from playwright.sync_api import sync_playwright
+    requests = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        try:
+            context = browser.new_context(java_script_enabled=False, viewport={'width': width, 'height': 900})
+            context.route('**/*', lambda route: route.abort())
+            page = context.new_page()
+            page.on('request', lambda request: requests.append(request.url))
+            page.set_content(design_page._document(design_page.sanitize(html), width), wait_until='load')
+            drawn = page.evaluate('''() => {
+              const size = s => { const r = document.querySelector(s).getBoundingClientRect(); return [r.width, r.height]; };
+              const fill = s => getComputedStyle(document.querySelector(s)).fill;
+              return {globe: size('.globe'), globe_svg: size('.globe > svg'), map: size('.map'), map_svg: size('.map > svg'),
+                      fra: fill('.globe .c-FRA'), zaf: fill('.globe .c-ZAF'), deu: fill('.globe .c-DEU'),
+                      map_fra: fill('.map .c-FRA'), ocean: fill('.globe .ocean')};
+            }''')
+        finally:
+            browser.close()
+    return drawn, requests
+
+
+def test_art_renders_scaled_to_its_css_box_and_colored_by_page_css():
+    html = ('<style>body{padding:24px}.globe{width:320px;height:240px}.map{width:600px}'
+            '.c-FRA{fill:#1e3a8a}.africa{fill:#93c5fd}</style>'
+            '<i class="globe" data-art="globe-europe-africa"></i><i class="map" data-art="world"></i>')
+    drawn, requests = chromium_art(html)
+    assert drawn['globe'] == drawn['globe_svg'] == [320, 240]
+    _, _, w, h = map(int, re.search(r'viewBox="([^"]+)"', design_page.art()['world']).group(1).split())
+    assert drawn['map'] == drawn['map_svg'] and drawn['map'][0] == 600 and abs(drawn['map'][1] - 600 * h / w) < 1
+    assert drawn['fra'] == drawn['map_fra'] == 'rgb(30, 58, 138)' and drawn['zaf'] == 'rgb(147, 197, 253)'
+    assert drawn['deu'] == 'rgb(203, 213, 225)' and drawn['ocean'] == 'rgb(241, 245, 249)'  # the art's own defaults
+    assert requests == []
+    result = design_page.measure(html, {}, 1200)
+    assert result.errors == [] and result.requests == []
+
+
+def test_art_errors_unknown_name_inside_or_over_a_slot():
+    html = ('<style>.g{width:200px;height:200px}.slot{width:600px;height:300px}</style>'
+            '<i class="g" data-art="globe-americas"></i>'
+            '<i class="m" data-art="mars" style="width:40px;height:40px"></i>'
+            '<div class="slot" data-slot="p1_bar"><i data-art="world"></i></div>'
+            '<i class="over" data-art="world" style="position:absolute;left:100px;top:300px;width:400px"></i>')
+    result = design_page.measure(html, {'p1_bar': 'bar'}, 1200)
+    errors = {(e['path'], e['message']) for e in result.errors}
+    assert len(errors) == len(result.errors) == 3, result.errors
+    expected = {
+        'slots.p1_bar': 'art "world" is inside slot p1_bar',
+        'i[data-art="mars"]': 'art "mars" is not vendored: use one of ' + ', '.join(ART_NAMES),
+        'i[data-art="world"]': 'art "world" overlaps slot p1_bar',
+    }
+    assert {path for path, _ in errors} == set(expected)
+    for path, message in errors:
+        assert expected[path] in message, (path, message)
+    assert result.boxes == {'p1_bar': {'x': 0, 'y': 240, 'w': 600, 'h': 300}} and result.requests == []
+
+
+def test_globe_page_renders_to_a_3x_png_under_2mb(tmp_path):
+    from dss.harness.nodes import designer
+    from dss.render import background
+    from dss.render.prototype import render
+    from dss.spec.models import DashboardSpec
+    from dss.spec.validate import validate_spec
+    spec = DashboardSpec.model_validate_json((Path(__file__).parent / 'data/designed_spec.json').read_text(encoding='utf-8'))
+    html = GLOBE_PAGE.read_text(encoding='utf-8')
+    slots = {c.id: c.type for c in spec.pages[0].components}
+    measured = design_page.measure(html, slots, 1440, footer=designer.FOOTER)  # page 1 of a synthetic build
+    assert measured.errors == [] and measured.requests == []
+    clean = design_page.sanitize(html)
+    assert clean.count('data-art=') == 2 and '<svg' not in clean  # the design stores the tags, not the art
+    designed = designer.assemble(spec, [designer.Designed(clean, measured.boxes, measured.height, 1440, '')], 'fixture')
+    assert validate_spec(designed) == []
+    assert design_page.art()['globe-americas'] in render(designed, layer='decoration')
+    assert background.write_pages(designed, tmp_path) == {'background_p1.png': 3}
+    png = (tmp_path / 'background_p1.png').read_bytes()
+    assert struct.unpack('>II', png[16:24]) == (4320, 3 * measured.height)
+    assert len(png) < background.LIMIT

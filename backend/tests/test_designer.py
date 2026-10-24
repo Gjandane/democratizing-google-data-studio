@@ -69,6 +69,8 @@ class DesignerLLM(FakeLLM):
         answer = {'html': CSS + page_html(page) if page['index'] == 1 else page_html(page)}
         if behaviour == 'bad':
             answer['html'] = '<p class="x">No slots here</p>'
+        if behaviour == 'art':  # a globe below the cards, clear of every slot
+            answer['html'] += '<i class="globe" data-art="globe-americas" style="width:240px"></i>'
         if page['index'] == 1:
             answer['canvas_width'] = 1440
         self.response = {'json': '{"html": ', 'empty': ''}.get(behaviour, json.dumps(answer))
@@ -212,6 +214,21 @@ def test_readable_html_names_vendored_icons_again():
     text = designer.readable(clean)
     # The vendored icon is its name again; the model's own drawing stays.
     assert f'<i data-icon="{name}" class="k"></i>' in text and text.count('<svg') == 1 and 'dss-design' not in text
+
+
+async def test_art_names_reach_the_designer_and_the_design_keeps_the_tag_code_draws():
+    from dss.render import design_page
+    from dss.render.prototype import render
+    llm = DesignerLLM(plan={1: ['art']})
+    designed, notes = await designer.design(three_pages(), lambda: llm, Trace())
+    assert notes == [] and validate_spec(designed) == []
+    assert 'Art names for <i data-art="name"></i>:\n' + ', '.join(design_page.art()) in llm.seen[0][1]
+    assert len(design_page.art()) == 4
+    tag = '<i class="globe" data-art="globe-americas" style="width:240px"></i>'
+    # The stored design and the revise prompt carry the one tag; the prototype draws the vendored globe.
+    html = designed.pages[0].design.html
+    assert tag in html and '<svg' not in html and tag in designer.readable(html)
+    assert design_page.art()['globe-americas'] in render(designed)
 
 
 async def test_regenerate_redesigns_only_the_named_page_from_its_previous_html():

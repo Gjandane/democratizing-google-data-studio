@@ -1,0 +1,42 @@
+<style>
+body { padding: 24px; background: #0B1220; color: #E2E8F0; font-family: Arial, sans-serif; }
+.header { height: 96px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
+.header h1 { margin: 0; font-size: 28px; line-height: 35px; font-weight: 700; }
+.header p { margin: 4px 0 0; font-size: 15px; line-height: 20px; color: #94A3B8; }
+.map { width: 200px; }
+.map .land { fill: #334155; stroke: none; }
+.hero { display: grid; grid-template-columns: 320px 504px 520px; gap: 24px; margin-bottom: 24px; }
+.card { background: #111A2E; border: 1px solid #1E293B; border-radius: 16px; padding: 16px; }
+.kpis, .charts { display: flex; flex-direction: column; gap: 16px; }
+.kpis [data-slot] { height: 72px; }
+.charts [data-slot] { height: 196px; }
+.globe-card { display: flex; align-items: center; justify-content: center; }
+.globe { width: 420px; height: 420px; }
+.ocean { fill: #0F1F3D; }
+.outline { stroke: #38BDF8; stroke-width: 2; }
+.globe .land { fill: #1E3A8A; stroke: #0F1F3D; }
+.globe .c-USA, .globe .c-BRA { fill: #38BDF8; }
+.tables { display: grid; grid-template-columns: 1392px; gap: 16px; }
+.tables [data-slot] { height: 200px; }
+</style>
+<header class="header">
+  <div><h1>Global sales</h1><p>Revenue, orders and delivery across the Americas</p></div>
+  <i class="map" data-art="world"></i>
+</header>
+<section class="hero">
+  <div class="kpis">
+    <div class="card"><div data-slot="p1_kpi_revenue"></div></div>
+    <div class="card"><div data-slot="p1_kpi_orders"></div></div>
+    <div class="card"><div data-slot="p1_kpi_customers"></div></div>
+    <div class="card"><div data-slot="p1_kpi_delivery"></div></div>
+  </div>
+  <div class="card globe-card"><i class="globe" data-art="globe-americas"></i></div>
+  <div class="charts">
+    <div class="card"><div data-slot="p1_bar_sales_by_region"></div></div>
+    <div class="card"><div data-slot="p1_pie_category_mix"></div></div>
+  </div>
+</section>
+<section class="tables">
+  <div class="card"><div data-slot="p1_table_top_products"></div></div>
+  <div class="card"><div data-slot="p1_table_late_shipments"></div></div>
+</section>

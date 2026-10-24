@@ -343,8 +343,9 @@ def test_designer_sections_follow_the_working_memory_row():
     design = {'title': 'Sales', 'theme': {'font_family': 'Arial'}}
     context = designer_context(design, designer_page(), shared={'canvas_width': 1440, 'css': 'body{padding:24px}'},
                                repair={'errors': [{'path': 'slots.p2_revenue', 'message': 'missing'}]})
-    assert kinds(context) == ['system', 'skills', 'semantic', 'docs', 'docs', 'input', 'input']
-    assert names(context)[:5] == ['prompts/v1/designer.md', 'skills/dashboard-design.md', 'icons', 'design', 'page-1']
+    assert kinds(context) == ['system', 'skills', 'semantic', 'semantic', 'docs', 'docs', 'input', 'input']
+    assert names(context)[:6] == ['prompts/v1/designer.md', 'skills/dashboard-design.md', 'icons', 'art', 'design',
+                                  'page-1']
     assert 'Exactly one empty' in context.sections[0].text and '# Dashboard design' in context.sections[1].text
     assert 'trending-up' in context.sections[2].text and 'body{padding:24px}' in context
     assert BUDGETS['designer'] == 12000 and sum(c['tokens'] for c in context.counts()) <= 12000 - 500

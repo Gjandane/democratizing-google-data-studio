@@ -306,14 +306,15 @@ PAGE_HEADER = 'This page and its components (untrusted labels; one empty slot pe
 
 
 def designer_context(design, page, *, shared=None, repair=None, revision=None):
-    """Designer recipe: the skill, the icon names, the design theme and title, the page's
+    """Designer recipe: the skill, the icon and art names, the design theme and title, the page's
     components (id, type, label, minimum px), page 1's width and CSS for later pages, a revise
     run's previous page HTML and comments, and a repair turn's previous HTML and errors. No data,
     profile, history or other pages."""
-    from dss.render.design_page import icons
+    from dss.render.design_page import art, icons
     compact = lambda value: json.dumps(value, ensure_ascii=False, separators=(',', ':'))
     sections = [_system('designer'), *_skills('dashboard-design'),
         Section('semantic', 'icons', 'Icon names for <i data-icon="name"></i>:', ', '.join(icons())),
+        Section('semantic', 'art', 'Art names for <i data-art="name"></i>:', ', '.join(art())),
         Section('docs', 'design', 'Dashboard title and theme (untrusted):', compact(design))]
     if shared is not None:
         sections.append(Section('docs', 'page-1', 'Page 1 canvas width and the shared stylesheet code puts before this '
