@@ -1392,3 +1392,16 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: existing builds keep grain-less specs until re-intake and re-accept (old profiles lack the fact).
 - Left open: none
 - Next: Task 24.3. Start by `status --task 24.3`.
+
+## 2026-10-24: Task 24.3 Comment checks fit a long build
+- Status: done
+- Plan check: off
+- What changed: capability_check budget 24k input / 8k output; a pure comment batch sends rows bound to its targets + unbound rows, merges only those, keep_unsent restores the rest; issue cap counts active issues only; refusals name limit + size. New live test tests/live/test_comment_checks.py (outside Files: Done-when live check).
+- Diagnosis (backup copy, mode=ro): b_697880743b4f's last batch m_cd05a55f0af1 (p1_design globe) hit the input budget: request_tokens 12,728 > 12,000 (estimate 10,290; model never called). Sections: prompt 1381, skill 150, registry 1755, requirements.json 2272 (6 rows; trimming sends 4), metadata 3938, sources 93. Output/issue limits didn't fire.
+- Checks: `uv run pytest tests/test_capabilities.py tests/test_feasibility.py tests/test_context.py` PASS 235 (one earlier run 1 failed/234, unreproduced, likely timing flake); 16 new/updated tests fail on old src; Test (all) `uv run pytest` PASS 1649; live `-m live tests/live/test_comment_checks.py` PASS (5m28s): 8 comments all ready, ledger 2->9 rows, capability_check request_tokens 10478, 10883, 11254, 10863, 10980, 11348, 11725, 12059 (sent/kept rows 1/0..4/4); evidence .blueprint/qa/task-24.3/comments/20261024-215826-bbbc0687.
+- Decisions: labels "Comment check"/"Requirement check"; messages e.g. "Comment check input 26,140 tokens, over its 24,000 budget", "... output reached its 8,000-token limit (N tokens reported)", "21 active issues, over the 20-issue limit; drop or clarify some requests, then check again". assemble/fit_request RunError detail adds tokens/budget. Assessment.issues lost max_length (no contract cap). Merge on trimmed ledger (review P2: full merge could absorb a definition into an unsent row, then lose it). Span keys ledger_rows_sent/kept. AGENTS.md gotcha added.
+- Digest: BUDGETS['capability_check']=24000, capability_check.MAX_OUTPUT_TOKENS=8000; req.sent_requirements(ledger, incoming)->rows; req.keep_unsent(before, after, sent)->Ledger; evaluate caps unresolved issues only; capability_check span ledger_rows_sent/kept.
+- Tried and failed: live comment sets with vague design / title-font-size comments (correctly refused, not scope).
+- Gotchas: none beyond AGENTS.md.
+- Left open: P3 count refusal's "existing + extracted" may not sum past 40 after merges - src/dss/harness/nodes/capability_check.py
+- Next: Task 24.4 Static globe and world art.

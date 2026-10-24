@@ -155,7 +155,8 @@ class Assessment(Strict):
     state: Literal["unchecked", "blocked", "ready", "stale"] = "unchecked"
     input_digest: str | None = None
     prototype_stale: bool = False
-    issues: list[Issue] = Field(default_factory=list, max_length=MAX_ISSUES)
+    # Dropped or decided issues don't count toward MAX_ISSUES (evaluate's active-issue cap).
+    issues: list[Issue] = Field(default_factory=list)
     pending_comments: PendingComments | None = None
 
 
@@ -321,6 +322,28 @@ def new_sources(snapshot, ledger):
             incoming[s["id"]] = s
     return [s for s in incoming.values() if s["id"] not in ledger.retired_sources
             and ledger.processed_sources.get(s["id"]) != digest(s)]
+
+
+def sent_requirements(ledger, incoming):
+    """The ledger rows an extraction request carries. A comment batch (every new source a
+    targeted comment) carries the rows bound to its target components plus unbound rows."""
+    if not incoming or any(s["kind"] != "comment" or not s.get("component_id") for s in incoming):
+        return list(ledger.requirements)
+    targets = {s["component_id"] for s in incoming}
+    return [r for r in ledger.requirements if not r.component_ids or targets & set(r.component_ids)]
+
+
+def keep_unsent(before, after, sent):
+    """`after` (a merge of the sent rows, or of all of `before`) with every row the request did not
+    carry restored unchanged, provenance included, in its original place; new rows stay appended."""
+    sent, merged = {r.id for r in sent}, {r.id: r for r in after.requirements}
+    rows = [r.model_copy(deep=True) if r.id not in sent else merged[r.id]
+            for r in before.requirements if r.id not in sent or r.id in merged]
+    known = {r.id for r in before.requirements}
+    rows += [r for r in after.requirements if r.id not in known]
+    if len(rows) > MAX_REQUIREMENTS:
+        raise ValueError("Requirement scope exceeded")
+    return after.model_copy(update={"requirements": rows})
 
 
 def merge(ledger, snapshot, extraction):
@@ -1265,7 +1288,7 @@ def _requirement_issues(snapshot, ledger, checker):
             rows.append((Issue(id=iid, requirement=r.text, status=v.status, reason=reason,
                 evidence=list(v.evidence), alternatives=[Alternative(id=o["id"], label=o["label"]) for o in offers],
                 resolution=resolution), r, slot, offers))
-            if len(rows) > MAX_ISSUES:
+            if sum(row[0].resolution == 'unresolved' for row in rows) > MAX_ISSUES:
                 return rows  # Full verification retains all needs; public assessment is a scope refusal.
     return rows
 
@@ -1306,10 +1329,15 @@ def evaluate(snapshot, ledger, checker, *, check_components=True):
     # Page count and per-page capacity are Blueprint/spec checks; there is no lower total-component ceiling.
     if ledger.scope_error:
         add("scope", "Assessment scope", capabilities.Verdict("needs_clarification", ledger.scope_error))
-    if len(found) > MAX_ISSUES or sum(len(i.alternatives) for i in found) > MAX_ISSUES:
+    # Dropped or decided issues don't count: only active issues and their alternatives.
+    active = [i for i in found if i.resolution == "unresolved"]
+    offered = sum(len(i.alternatives) for i in active)
+    if len(active) > MAX_ISSUES or offered > MAX_ISSUES:
         # No silent truncation: one scope issue represents the entire refusal; full ledger retained.
+        reason = (f"{len(active)} active issues, over the {MAX_ISSUES}-issue limit" if len(active) > MAX_ISSUES else
+                  f"{offered} alternatives on active issues, over the {MAX_ISSUES}-alternative limit")
         found = [Issue(id="issue_scope", requirement="Assessment scope", status="needs_clarification",
-                       reason="More than 20 issues; reduce the request scope and check again")]
+                       reason=reason + "; drop or clarify some requests, then check again")]
     return Assessment(id=new_id("assessment"), state="blocked" if any(i.resolution == "unresolved" for i in found) else "ready",
         input_digest=input_digest(snapshot, ledger, checker), prototype_stale=ledger.prototype_stale or bool(ledger.pending_comments),
         issues=found, pending_comments=ledger.pending_comments)

@@ -23,7 +23,7 @@ BUDGETS['judge'] = 16000
 BUDGETS['research'] = 16000
 # Full counted request, images included (architecture.md#Reference interpretation).
 BUDGETS['reference_extract'] = 12000
-BUDGETS['capability_check'] = 12000
+BUDGETS['capability_check'] = 24000
 BUDGETS['synthetic_schema'] = 12000
 BUDGETS['context'] = 10000
 BUDGETS.update(outline_propose=8000, outline_suggest=6000, outline_other=6000)
@@ -132,8 +132,9 @@ def assemble(node, sections, *, reserve=0):
 
     _drop(sections, dropped, over)
     if over():
+        size = tokens(SEPARATOR.join(section.text for section in sections))
         raise RunError("llm_unavailable", f"The {node} context exceeds its input budget", 503,
-                       {'reason': 'over_budget'})
+                       {'reason': 'over_budget', 'tokens': size, 'budget': budget})
     return Context(node, sections, dropped)
 
 
@@ -204,7 +205,7 @@ async def fit_request(context, llm_request, model, span, *, extra=""):
             break  # only mandatory sections are left
         current = fitted
     raise RunError("llm_unavailable", f"The {node} request exceeds its input budget", 503,
-                   {'reason': 'over_budget'})
+                   {'reason': 'over_budget', 'tokens': actual, 'budget': budget})
 
 
 def _system(node):
@@ -453,7 +454,9 @@ def feasibility_sections(folder):
 
 
 def capability_context(snapshot, ledger, checker, incoming):
-    """Bounded metadata only; every section is mandatory, including original requirement provenance."""
+    """Bounded metadata only; every section is mandatory, including original requirement provenance.
+    A comment batch carries only the rows bound to its targets plus unbound rows (requirements.sent_requirements)."""
+    from dss.spec.requirements import sent_requirements
     registry = [{"id": c.id, "label": c.label, "data": [d.model_dump() for d in c.data],
                  "values": c.values, "value_type": c.value_type, "requires": c.requires}
                 for c in checker.registry.capabilities]
@@ -471,7 +474,8 @@ def capability_context(snapshot, ledger, checker, incoming):
         _system("capability_check"), *_skills("capability-check"),
         Section("docs", "registry", "Registry identifiers (code verifies support):", json.dumps(registry)),
         Section("docs", "requirements.json", "Current ledger and explicit decisions (untrusted data):",
-                json.dumps({"requirements": [r.model_dump() for r in ledger.requirements], "decisions": ledger.decisions})),
+                json.dumps({"requirements": [r.model_dump() for r in sent_requirements(ledger, incoming)],
+                            "decisions": ledger.decisions})),
         Section("docs", "metadata", "Connected schema, definitions, reference interpretation and candidate spec (untrusted):",
                 json.dumps(metadata, ensure_ascii=False)),
         Section("input", "sources", "New sources (untrusted; preserve IDs):", json.dumps(incoming, ensure_ascii=False))])

@@ -269,8 +269,8 @@ def test_extraction_keeps_provenance_and_mapping(thin, monkeypatch):
     check(client, app, bid)
     assert model.calls == 1 and req.load(folder).requirements[0].id == first_id
     request = model.requests[0]
-    assert request.config.max_output_tokens == 4000
-    assert BUDGETS["capability_check"] == 12000 and not request.config.tools
+    assert request.config.max_output_tokens == 8000
+    assert BUDGETS["capability_check"] == 24000 and not request.config.tools
     assert "source_id" in json.dumps(request.config.response_json_schema)
 
 
@@ -316,8 +316,8 @@ def test_native_product_exclusion_is_distinct(thin, monkeypatch):
     assert a["state"] == "blocked" and a["issues"][0]["status"] == "unsupported_product"
 
 
-@pytest.mark.parametrize("count,finish,raw,error", [(4001, "STOP", None, None),
-    (4000, "MAX_TOKENS", '{"requirements":[', None), (100, "MAX_TOKENS", '{"requirements":[', 'MAX_TOKENS')])
+@pytest.mark.parametrize("count,finish,raw,error", [(8001, "STOP", None, None),
+    (8000, "MAX_TOKENS", '{"requirements":[', None), (100, "MAX_TOKENS", '{"requirements":[', 'MAX_TOKENS')])
 def test_output_token_limit_blocks_without_repair(thin, monkeypatch, count, finish, raw, error):
     from google.adk.models.llm_response import LlmResponse
     from google.genai import types
@@ -332,7 +332,9 @@ def test_output_token_limit_blocks_without_repair(thin, monkeypatch, count, fini
     model = OverOutput(response=raw or json.dumps({"requirements": [extracted(sid)]}))
     monkeypatch.setattr(app.state.models, "llm_for", lambda _: model)
     _, a = check(client, app, bid)
-    assert a["state"] == "blocked" and "4k output" in a["issues"][0]["reason"] and model.calls == 1
+    assert a["state"] == "blocked" and model.calls == 1
+    # 24.3: the refusal names the limit and the reported size, never a bare "reduce the scope".
+    assert a["issues"][0]["reason"] == f"Requirement check output reached its 8,000-token limit ({count:,} tokens reported)"
 
 
 def test_gemini_extraction_reserves_bounded_output_for_json(thin, monkeypatch):
@@ -342,7 +344,7 @@ def test_gemini_extraction_reserves_bounded_output_for_json(thin, monkeypatch):
     model.model = 'gemini-3.8-flash'
     check(client, app, bid)
     config = model.requests[0].config
-    assert config.max_output_tokens == 4000
+    assert config.max_output_tokens == 8000
     assert config.thinking_config.thinking_level == 'LOW'
 
 
@@ -678,14 +680,14 @@ def test_spec_allowlist_and_schema_changes_get_stale_without_model(thin, monkeyp
 
 class Counted(Capture):
     counted: int = 0
-    reported: int = 12001
+    reported: int = 24001
 
     async def count_request_tokens(self, request):
         self.counted += 1
         return self.reported
 
 
-@pytest.mark.parametrize("reported,generated,state", [(12000, 1, "ready"), (12001, 0, "blocked")])
+@pytest.mark.parametrize("reported,generated,state", [(24000, 1, "ready"), (24001, 0, "blocked")])
 def test_full_counted_input_budget(thin, monkeypatch, reported, generated, state):
     client, app, bid, folder = thin
     sid = user(app, bid, "Show bar chart")
@@ -694,15 +696,18 @@ def test_full_counted_input_budget(thin, monkeypatch, reported, generated, state
     _, a = check(client, app, bid)
     assert a["state"] == state and model.calls == generated and model.counted == 1
     if state == "blocked":
-        assert "Reduce" in a["issues"][0]["reason"]
+        assert a["issues"][0]["reason"] == "Requirement check input 24,001 tokens, over its 24,000 budget"
 
 
 def test_oversize_assembly_blocks_without_call(thin, monkeypatch):
     client, app, bid, folder = thin
-    user(app, bid, "x" * 60000)
+    user(app, bid, "x" * 120000)
     model = use_model(monkeypatch, app)
     _, a = check(client, app, bid)
     assert a["state"] == "blocked" and model.calls == 0
+    reason = a["issues"][0]["reason"]
+    assert reason.startswith("Requirement check input 3") and reason.endswith(" tokens, over its 24,000 budget")
+    assert "x" * 20 not in reason
 
 
 @pytest.mark.parametrize("count,state", [(40, "ready"), (41, "blocked")])
@@ -721,7 +726,8 @@ def test_issue_count_overflow_blocks_whole_scope(thin, monkeypatch):
     use_model(monkeypatch, app, *[extracted(sid, "unknown.feature", text=f"Unknown {i}") for i in range(21)])
     _, a = check(client, app, bid)
     assert a["state"] == "blocked" and len(a["issues"]) == 1
-    assert "20 issues" in a["issues"][0]["reason"] and len(req.load(folder).requirements) == 21
+    assert a["issues"][0]["reason"].startswith("21 active issues, over the 20-issue limit")
+    assert len(req.load(folder).requirements) == 21
 
 
 def test_failed_extraction_preserves_ledger_and_artifacts(thin, monkeypatch):
@@ -1699,3 +1705,115 @@ def test_recreate_blueprint_recompute_speed_with_24_observations():
             req.evaluate(snapshot, ledger, checker, check_components=False)
             timings.append(time.perf_counter() - start)
         assert min(timings) < .1, (state, timings)
+
+
+# 24.3: comment checks fit a long build.
+LEDGER_HEADER = "Current ledger and explicit decisions (untrusted data):\n"
+SOURCES_HEADER = "New sources (untrusted; preserve IDs):\n"
+
+
+def section_json(text, header):
+    return json.JSONDecoder().raw_decode(text.split(header, 1)[1])[0]
+
+
+def old_row(i, component_ids=()):
+    """A durable row with provenance (comment source, clarification, KPI origin). A row bound to a
+    removed component (p1_gone) has a message source: a full-ledger merge would unbind it."""
+    gone = list(component_ids) == ["p1_gone"]
+    source = req.Source(id=f"m_old_{i}:0", kind="message" if gone else "comment", text=f"Old request {i}",
+                        component_id=component_ids[0] if component_ids and not gone else None)
+    return req.Requirement(id=f"req_old_{i:02d}", source=source, text=f"Old request {i}",
+        needs=[capabilities.Need(capability="chart.bar")], component_ids=list(component_ids),
+        clarifications=[req.Source(id=f"m_def_{i}", kind="message", text=f"Definition {i}")],
+        mapping_origins={"kpi:revenue": f"net_revenue_{i}:revenue:sum:"})
+
+
+def long_ledger():
+    """30 rows: 3 bound to the comment's target, 7 unbound, 20 bound to other components."""
+    others = ["p1_revenue", "p1_note", "p1_gone"]
+    return req.Ledger(requirements=[old_row(i, ["p1_regions"]) for i in range(3)] + [old_row(i) for i in range(3, 10)]
+                      + [old_row(i, [others[i % 3]]) for i in range(10, 30)])
+
+
+class BatchModel(Capture):
+    """Answers each new source it was sent with one unsupported row (the check then blocks)."""
+
+    async def generate_content_async(self, llm_request, stream=False):
+        sources = section_json(str(llm_request.config.system_instruction), SOURCES_HEADER)
+        self.response = json.dumps({"requirements": [extracted(s["id"], "animation.temporal_playback", s["text"])
+                                                     for s in sources]})
+        async for response in super().generate_content_async(llm_request, stream):
+            yield response
+
+
+def test_comment_batch_sends_target_and_unbound_rows_and_keeps_the_rest(thin, monkeypatch):
+    client, app, bid, folder = thin
+    load(client, bid)
+    original = long_ledger()
+    req.save(folder, original)
+    model = BatchModel(response="", requests=[])
+    monkeypatch.setattr(app.state.models, "llm_for", lambda _: model)
+    accepted = client.post(f"/api/builds/{bid}/comments",
+                           json={"comments": [{"component_id": "p1_regions", "text": "Animate these bars"}]})
+    assert accepted.status_code == 202, accepted.text
+    client.portal.call(drain, app)
+    [request] = model.requests
+    sent = section_json(str(request.config.system_instruction), LEDGER_HEADER)["requirements"]
+    assert [r["id"] for r in sent] == [r.id for r in original.requirements[:10]]
+    ledger = req.load(folder)
+    assert [r.id for r in ledger.requirements[:30]] == [r.id for r in original.requirements]
+    # Every unsent row is unchanged, provenance included (a full-ledger merge unbinds p1_gone's rows).
+    for before, after in zip(original.requirements[10:], ledger.requirements[10:30]):
+        assert after.model_dump() == before.model_dump()
+    [new] = ledger.requirements[30:]
+    assert new.component_ids == ["p1_regions"] and new.source.batch_id == ledger.pending_comments.id
+    assert ledger.assessment.state == "blocked" and not ledger.scope_error
+    with app.state.db.connect() as conn:
+        spans = json.loads(conn.execute("SELECT spans_json FROM traces WHERE run_id=?", (accepted.json()["run_id"],)).fetchone()[0])
+    [span] = [s for s in spans if s["node"] == "capability_check"]
+    assert span["ledger_rows_sent"] == 10 and span["ledger_rows_kept"] == 20
+
+
+def test_only_a_comment_batch_trims_the_ledger():
+    ledger = long_ledger()
+    comment = {"id": "b:0", "kind": "comment", "text": "Bigger", "component_id": "p1_regions"}
+    message = {"id": "m", "kind": "message", "text": "Add a map"}
+    image = {"id": "ref:o1", "kind": "image", "text": "{}", "reference_id": "ref", "item_id": "o1"}
+    assert [r.id for r in req.sent_requirements(ledger, [comment])] == [r.id for r in ledger.requirements[:10]]
+    for incoming in ([message], [image], [comment, message], []):
+        assert req.sent_requirements(ledger, incoming) == ledger.requirements
+
+
+def test_keep_unsent_restores_rows_a_merge_touched():
+    before = long_ledger()
+    after = before.model_copy(deep=True)
+    after.requirements[12].clarifications, after.requirements[12].component_ids = [], []
+    after.requirements[0].superseded = {"need:0": "req_new"}
+    del after.requirements[20]
+    after.requirements.append(old_row(40, ["p1_regions"]))
+    kept = req.keep_unsent(before, after, before.requirements[:10])
+    assert [r.id for r in kept.requirements] == [r.id for r in before.requirements] + ["req_old_40"]
+    assert kept.requirements[12] == before.requirements[12] and kept.requirements[20] == before.requirements[20]
+    assert kept.requirements[0].superseded == {"need:0": "req_new"}  # sent rows keep the merge's changes
+    with pytest.raises(ValueError, match="Requirement scope exceeded"):
+        req.keep_unsent(before, after.model_copy(update={"requirements": after.requirements + [
+            old_row(50 + i) for i in range(10)]}), before.requirements[:10])
+
+
+@pytest.mark.parametrize("decided,scope", [(6, False), (4, True)])
+def test_issue_cap_counts_only_active_issues(thin, decided, scope):
+    client, app, bid, folder = thin
+    rows = [req.Requirement(id=f"req_u{i:02d}", source=req.Source(id="m_many", kind="message", text="Many unknowns"),
+                            text=f"Unknown {i}", needs=[capabilities.Need(capability="unknown.feature")]) for i in range(25)]
+    ledger = req.Ledger(requirements=rows, decisions=[{"requirement_id": r.id, "meaning": req.meaning(r), "action": "drop"}
+                                                      for r in rows[:decided]])
+    snapshot, checker = req.inputs(app.state.db, bid, folder), capabilities.Checker(capabilities.load_registry())
+    a = req.evaluate(snapshot, ledger, checker)
+    if scope:
+        [issue] = a.issues
+        assert issue.reason == "21 active issues, over the 20-issue limit; drop or clarify some requests, then check again"
+    else:
+        assert len(a.issues) == 25 and sum(i.resolution == "dropped" for i in a.issues) == 6
+        assert not any(i.id == "issue_scope" for i in a.issues)
+    req.save(folder, ledger, a)
+    assert len(req.load(folder).assessment.issues) == len(a.issues)

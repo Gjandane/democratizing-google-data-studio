@@ -356,7 +356,9 @@ def test_designer_over_budget_refuses():
     from dss.harness.context import designer_context
     with pytest.raises(RunError) as refused:
         designer_context({'title': 'Sales', 'theme': {}}, designer_page('Revenue ' * 6000))
-    assert refused.value.code == 'llm_unavailable' and refused.value.detail == {'reason': 'over_budget'}
+    assert refused.value.code == 'llm_unavailable' and refused.value.detail['reason'] == 'over_budget'
+    # 24.3: the refusal carries its size and budget (numbers only) for a reason that names them.
+    assert refused.value.detail['tokens'] > refused.value.detail['budget'] == 12000 - 500
 
 
 def observation_inputs(title=None):
@@ -405,3 +407,24 @@ def test_blueprint_observations_section_fits_without_boxes_bytes_or_rows():
 def test_blueprint_context_without_observations_is_unchanged():
     memory = blueprint_memory(())
     assert 'observations' not in names(memory) and 'Recreate observations:' not in str(memory)
+
+
+def test_capability_context_trims_only_a_comment_batch_and_outline_other_keeps_the_ledger():
+    """24.3: a comment batch sends its targets' rows plus unbound rows; Other and references send all."""
+    from dss.harness.context import capability_context, outline_context
+    from dss.spec.capabilities import Checker, load_registry
+    from test_feasibility import long_ledger
+    ledger, checker = long_ledger(), Checker(load_registry())
+    snapshot = {'sources': [], 'reference': None, 'definitions': {}, 'spec': None, 'incoming': []}
+    comment = {'id': 'b:0', 'kind': 'comment', 'text': 'Bigger', 'component_id': 'p1_regions'}
+    image = {'id': 'ref:o1', 'kind': 'image', 'text': '{}', 'reference_id': 'ref', 'item_id': 'o1'}
+    def ids(memory):
+        [section] = [s for s in memory.sections if s.name == 'requirements.json']
+        return [r['id'] for r in json.loads(section.body)['requirements']]
+    assert ids(capability_context(snapshot, ledger, checker, [comment])) == [r.id for r in ledger.requirements[:10]]
+    assert ids(capability_context(snapshot, ledger, checker, [image])) == [r.id for r in ledger.requirements]
+    other = outline_context(None, SimpleNamespace(model_dump_json=lambda: '{}'), [], 'executive', 'outline_other',
+                            source={'id': 'm', 'text': 'Add a map'}, ledger=ledger, checker=checker)
+    [section] = [s for s in other.sections if s.name == 'ledger']
+    assert [r['id'] for r in json.loads(section.body)['requirements']] == [r.id for r in ledger.requirements]
+    assert BUDGETS['outline_other'] == 6000 and BUDGETS['reference_extract'] == 12000

@@ -62,3 +62,4 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Reference interpretation item ids are positional (o1, o2, ...): omitting an item from a vision fixture renumbers the rest.
 - The root .env sets DSS_ALLOWED_TYPES to the pre-1.3 list and allowed_types() reads it in tests too: a test of the catalog default must delenv and monkeypatch `dss.spec.validate.dotenv_values`, and a test passing only because .env narrows types is environment-dependent.
 <!-- blueprint-solution:end -->
+- A reference's instructions are new intent: after `/design/confirm` its `bp_intent_` issue can't be decided; run `POST /feasibility/check` first. Live comments need app-supported kinds (title, move, series colors): title font size is unsupported_app, vague layout asks are unknown.
