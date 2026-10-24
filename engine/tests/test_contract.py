@@ -256,3 +256,22 @@ def test_non_bool_stacking_is_rejected_by_validate(tmp_path, chart_type, key, va
     assert result.returncode == 2
     assert result.stdout == ""
     assert result.stderr.strip().endswith(f"line 3: {key} must be true or false"), result.stderr
+
+
+@pytest.mark.parametrize("control_type", ["dropdown", "fixed_size_list"])
+def test_field_controls_need_a_field_in_validate(tmp_path, control_type):
+    # Recipe 1.3 adds fixed_size_list (release 2.6's region checkbox list); the
+    # schema leaves field optional, so the engine requires it, as for dropdown.
+    records = [json.loads(line) for line in SAMPLE.read_text(encoding="utf-8").splitlines()]
+    op = {"op": "add_control", "component_id": "p1_region", "control_type": control_type,
+          "x": 24, "y": 100, "w": 200, "h": 220, "field": "region"}
+    result = run_cli("validate", _write(tmp_path, _with_op(records, op)))
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+    del op["field"]
+    records = _with_op(records, op)
+    schema = json.loads((CONTRACTS / "recipe.schema.json").read_text(encoding="utf-8"))
+    assert Draft202012Validator({**schema, "$ref": "#/$defs/op"}).is_valid(records[2])
+    result = run_cli("validate", _write(tmp_path, records))
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert result.stderr.strip().endswith(f"line 3: {control_type} requires a field"), result.stderr

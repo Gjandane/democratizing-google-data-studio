@@ -2848,3 +2848,119 @@ def test_verify_fails_when_the_variant_reads_back_differently(tmp_path, op, show
     with pytest.raises(OperationError, match=f"^{re.escape(message)}$"):
         charts._verify_stacking(StackUI(key, *shown), _stack_context(tmp_path), op,
                                 charts._stacking(op))
+
+
+class ControlUI:
+    """One field control: an insert menu, a canvas, and Style's two list-mode radios."""
+
+    def __init__(self, inserted):
+        self.inserted, self.count, self.calls = inserted, 0, []
+        self.keyboard = self
+
+    def press(self, key):
+        self.calls.append(("press", key))
+
+    def node(self, key):
+        from types import SimpleNamespace
+
+        ui = self
+
+        class Node:
+            def click(self, timeout=None):
+                ui.calls.append(("click", key))
+
+            def wait_for(self, state, timeout=None):
+                ui.calls.append(("wait", key, state))
+
+            def count(self):
+                return ui.count if key == "components" else 1
+
+            def nth(self, index):
+                return SimpleNamespace(locator=lambda selector: SimpleNamespace(count=lambda: 1))
+
+            def is_checked(self):
+                ui.calls.append(("read", key))
+                return key == ui.inserted
+
+            def bounding_box(self):
+                return {"x": 0, "y": 0, "width": 1200, "height": 900}
+
+        return Node()
+
+
+def _control_editor(monkeypatch, tmp_path, inserted):
+    from dsengine.ops import controls
+
+    ui = ControlUI(inserted)
+    target = (24, 100, 200, 220)
+
+    def click_canvas(page, ctx, canvas, x, y):
+        ui.count += 1
+
+    def poll(page, ctx, ready, message):
+        assert ready(), message
+
+    def set_fields(page, ctx, group, fields):
+        ui.calls.append(("fields", fields))
+
+    for name, value in {
+        "_locator": lambda page, ctx, key: ui.node(key),
+        "_source_fields": lambda page, ctx: [], "_require_source_field": lambda *a: None,
+        "_chart_box": lambda op, ctx: (target, False), "_wait_visible": lambda *a: None,
+        "_click_canvas": click_canvas, "_poll": poll, "_set_fields": set_fields,
+        "_place_chart": lambda page, ctx, comp, canvas, box, dismiss_popup: ui.calls.append(
+            ("place", box)),
+        "_geometry": lambda component: target, "_field_names": lambda group, ctx: ["status"],
+    }.items():
+        monkeypatch.setattr(controls, name, value)
+    ctx = cleanup_context(tmp_path)
+    ctx.selectors = {**ctx.selectors, "component_dropdown_control": "filter",
+                     "component_fixed_size_list_control": "filter"}
+    return controls, ui, ctx
+
+
+def _control_op(control_type, **extra):
+    return Operation(id="s002", op="add_control", component_id="p1_region",
+                     control_type=control_type, x=24, y=100, w=200, h=220, **extra)
+
+
+@pytest.mark.parametrize("control_type, menu, mode", [
+    ("dropdown", "dropdown_control", "control_mode_dropdown"),
+    ("fixed_size_list", "fixed_size_list_control", "control_mode_fixed_size_list"),
+])
+def test_field_controls_share_one_path_and_read_their_list_mode_back(
+        tmp_path, monkeypatch, control_type, menu, mode):
+    # Recipe 1.3 (release 2.6 region list): Fixed-size list is the drop-down's
+    # dimension-filter; only the insert menu entry and Style > expandable differ.
+    controls, ui, ctx = _control_editor(monkeypatch, tmp_path, inserted=mode)
+    op = _control_op(control_type, field="status")
+    controls.run(ui, op, ctx)
+    assert ui.calls == [("click", "add_control"), ("click", menu), ("wait", menu, "hidden"),
+                        ("place", (24, 100, 200, 220)), ("press", "Escape"),
+                        ("click", "setup_tab"), ("fields", ["status"])]
+    ui.calls.clear()
+    controls.verify(ui, op, ctx)
+    assert ui.calls == [("click", "style_tab"), ("read", mode), ("click", "setup_tab")]
+
+
+@pytest.mark.parametrize("control_type, other", [
+    ("dropdown", "control_mode_fixed_size_list"),
+    ("fixed_size_list", "control_mode_dropdown"),
+])
+def test_field_control_of_the_other_list_mode_fails_verify(tmp_path, monkeypatch, control_type, other):
+    from dsengine.ops import OperationError
+
+    controls, ui, ctx = _control_editor(monkeypatch, tmp_path, inserted=other)
+    op = _control_op(control_type, field="status")
+    controls.run(ui, op, ctx)
+    with pytest.raises(OperationError, match="^inserted control type did not match the recipe$"):
+        controls.verify(ui, op, ctx)
+
+
+def test_fixed_size_list_without_a_field_fails_before_any_click(tmp_path, monkeypatch):
+    from dsengine.ops import OperationError
+
+    controls, ui, ctx = _control_editor(monkeypatch, tmp_path, inserted=None)
+    with pytest.raises(OperationError, match="^fixed_size_list requires a field$"):
+        controls.run(ui, _control_op("fixed_size_list"), ctx)
+    assert ui.calls == []

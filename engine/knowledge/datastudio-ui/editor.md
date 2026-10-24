@@ -114,6 +114,12 @@ selectors:
   dropdown_control: 'role=menuitem[name=/^Drop\-down\ list$/]'
   component_date_range_control: 'ng2-canvas-component.simple-daterangepicker'
   component_dropdown_control: 'ng2-canvas-component.dimension-filter'
+  fixed_size_list_control: 'role=menuitem[name=/^Fixed\-size\ list$/]'
+  component_fixed_size_list_control: 'ng2-canvas-component.dimension-filter'
+  control_mode_dropdown: '[data-webdriver-cell-key="expandable"] input[aria-label="radio button: Drop-down"]'
+  control_mode_fixed_size_list: '[data-webdriver-cell-key="expandable"] input[aria-label="radio button: Fixed-size"]'
+  control_list_name: '.list-control-container .header .dimension-name'
+  control_list_item: '.list-control-container .item md-checkbox'
   control_field_group: '[data-webdriver-cell-key="controlField"]'
   date_control_default: '[data-webdriver-cell-key="dateRange"]'
   date_range_options: '.cdk-overlay-pane button.date-range-options'
@@ -406,6 +412,15 @@ viewport y 500), so the resize corner hits the calendar header and nothing
 resizes. Close it before each drag step. The default control is 300 x 50; it
 resizes to 276 x 44 (no larger minimum observed). A background's center guide
 snaps a move: on a 532 px canvas y 264 lands at 266, inside ±4.
+Fixed-size list (task 13.3) inserts the same `dimension-filter` component as
+Drop-down list, 300 x 300 by default, with the same Setup (controlField
+auto-filled with some dimension, here status or created_at: always set it) and
+the same "Drop-down list properties" header. The variant lives only in Style >
+`expandable`, a radio pair "Drop-down" / "Fixed-size" (native inputs labelled
+"radio button: <name>"). Rendered, the list is `.list-control-container`: a header
+(select-all checkbox, `.dimension-name` = the field) and `.item` rows, each an
+`md-checkbox` (role checkbox, aria-label = the value) plus "only" and the metric
+value. Rows are an md-virtual-repeat: only the rows in view exist in the DOM.
 Last 7 days first opens a preset-family submenu; select the exact Last 7 days
 entry there before Apply. After filtering, require changed numeric chart content
 together, then wait for progress bars to disappear before capturing evidence.

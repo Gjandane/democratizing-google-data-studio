@@ -123,9 +123,11 @@ def load_recipe(path: Path) -> Recipe:
                     continue
                 if value["id"] <= previous_id:
                     raise RecipeError(f"line {line_number}: op IDs must be unique and increasing")
-                if value["op"] == "add_control" and value["control_type"] == "dropdown":
+                if value["op"] == "add_control" and value["control_type"] in {
+                        "dropdown", "fixed_size_list"}:
                     if not value.get("field"):
-                        raise RecipeError(f"line {line_number}: dropdown requires a field")
+                        raise RecipeError(
+                            f"line {line_number}: {value['control_type']} requires a field")
                 if value["op"] == "add_chart" and value["chart_type"] in {"bar", "area"}:
                     # The schema leaves options open; recipe 1.3 types its stacking as bool.
                     options = value.get("options") or {}

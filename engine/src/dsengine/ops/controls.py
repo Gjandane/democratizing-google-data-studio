@@ -1,4 +1,4 @@
-"""Date range and dimension dropdown controls in the owned report."""
+"""Date range and dimension (drop-down, fixed-size list) controls in the owned report."""
 
 from typing import Any
 
@@ -9,17 +9,21 @@ from dsengine.ops.charts import (
 )
 
 HANDLED_OPS = {"add_control"}
-_TYPES = {"date_range": "date_range_control", "dropdown": "dropdown_control"}
+_TYPES = {"date_range": "date_range_control", "dropdown": "dropdown_control",
+          "fixed_size_list": "fixed_size_list_control"}
+# Both insert the same dimension-filter; Style > expandable radio holds the variant.
+_FIELD_TYPES = {"dropdown": "control_mode_dropdown",
+                "fixed_size_list": "control_mode_fixed_size_list"}
 
 
 def run(page: Any, op: Any, ctx: OpContext) -> OpResult:
     if op.control_type not in _TYPES:
         raise OperationError(f"unsupported control type {op.control_type}")
     _source_fields(page, ctx)
-    field = getattr(op, "field", None) if op.control_type == "dropdown" else None
-    if op.control_type == "dropdown":
+    field = getattr(op, "field", None) if op.control_type in _FIELD_TYPES else None
+    if op.control_type in _FIELD_TYPES:
         if not field:
-            raise OperationError("dropdown requires a field")
+            raise OperationError(f"{op.control_type} requires a field")
         _require_source_field(page, ctx, field)
     target, clamped = _chart_box(op, ctx)
     if clamped:
@@ -62,11 +66,17 @@ def verify(page: Any, op: Any, ctx: OpContext) -> None:
         raise OperationError("inserted control type did not match the recipe")
     if not all(abs(a - e) <= 4 for a, e in zip(_geometry(component), state["target"])):
         raise OperationError("control box did not match the requested position and size")
+    if op.control_type in _FIELD_TYPES:
+        _locator(page, ctx, "style_tab").click(timeout=ctx.timeout_ms())
+        mode = _locator(page, ctx, _FIELD_TYPES[op.control_type])
+        _wait_visible(mode, ctx, "control list mode Style setting is unavailable")
+        if not mode.is_checked():
+            raise OperationError("inserted control type did not match the recipe")
     _locator(page, ctx, "setup_tab").click(timeout=ctx.timeout_ms())
     if state["field"]:
         labels = _field_names(_locator(page, ctx, "control_field_group"), ctx)
         if len(labels) != 1 or not _matches_field(labels[0], state["field"]):
-            raise OperationError("dropdown field did not match the recipe")
+            raise OperationError(f"{op.control_type} field did not match the recipe")
     else:
         _wait_visible(_locator(page, ctx, "date_control_default"), ctx,
                       "date range control Setup is unavailable")

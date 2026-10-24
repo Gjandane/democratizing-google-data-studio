@@ -526,3 +526,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: set_style colors on area charts untested (style.py `_series_count` knows time series only).
 - Left open: P3 hidden "Show stack" on a multi-series area reads as plain Area instead of failing - src/dsengine/ops/charts.py; P3 "100% stacking" visibility checked right after toggling stack (may skip, verify then fails) - src/dsengine/ops/charts.py
 - Next: Task 13.3 Fixed-size list control. Start with `status`.
+
+## 2026-10-24: Task 13.3 Fixed-size list control
+- Status: done
+- Plan check: off
+- What changed: controls.py: `fixed_size_list` inserts Add a control -> Fixed-size list on the dropdown path (`_TYPES` menu key; `_FIELD_TYPES` field controls); verify reads Style `expandable` radio for both field controls, then Setup field. recipe.py: `fixed_size_list` requires `field`. 6 selectors (editor.md/log.md); offline tests; live `recipes/fixed_size_list.jsonl` + test in test_charts_b.py.
+- Checks: `uv run pytest -m live tests/live/test_charts_b.py` PASS 4 passed (208.8 s; s002 fixed list ok 3125 ms, Setup field status, Fixed-size radio on, view rows Shipped/Complete/Processing/Cancelled/Returned as checkboxes); new offline tests 7 pass, 6 fail before; Test (all) `uv run pytest` PASS 287 passed, 22 deselected.
+- Decisions: Fixed-size list is the same `dimension-filter` component as Drop-down (live); variant read back only from Style radio, also now checked for dropdowns. Error messages name the control type ("fixed_size_list requires a field"). Engine never toggles the radio: the menu entry sets it.
+- Digest: controls.py `_TYPES` (menu keys incl. fixed_size_list_control), `_FIELD_TYPES` {dropdown, fixed_size_list} -> Style radio key; selectors control_mode_dropdown/_fixed_size_list, control_list_name, control_list_item; recipes/fixed_size_list.jsonl.
+- Tried and failed: none
+- Gotchas: Data Studio auto-fills controlField with some dimension on insert (status or created_at); always set it. List rows are md-virtual-repeat: only rows in view exist.
+- Left open: P3 live test hard-codes order_items status values - tests/live/test_charts_b.py
+- Next: no task left in this part's plan.

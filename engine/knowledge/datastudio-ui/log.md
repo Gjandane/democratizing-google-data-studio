@@ -6,6 +6,13 @@ timestamp: 2026-10-18
 selectors: {}
 ---
 
+- 2026-10-24 task 13.3: added `fixed_size_list_control` (Add a control menu
+  item "Fixed-size list"), `component_fixed_size_list_control` (same
+  `dimension-filter` as the dropdown), `control_mode_dropdown` /
+  `control_mode_fixed_size_list` (Style `expandable` radios) and
+  `control_list_name` / `control_list_item` (rendered list header and checkbox
+  rows), after dumping the control menu, both controls' Setup/Style cell keys and
+  the rendered list on order_items.
 - 2026-10-24 task 13.2: added `area_chart`, `stacked_area_chart`,
   `percent_stacked_area_chart`, `percent_stacked_bar_chart`,
   `percent_stacked_vertical_bar_chart` (Chart gallery button names),

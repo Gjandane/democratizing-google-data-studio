@@ -270,3 +270,58 @@ def test_area_variants_and_percent_stacked_bars(tmp_path, capsys, monkeypatch):
                 {"events": events, "read_back": read_back}, indent=2))
         finally:
             page.close()
+
+
+_STATUSES = {"Complete", "Shipped", "Processing", "Cancelled", "Returned"}  # order_items.status
+
+
+def test_fixed_size_list_control(tmp_path, capsys, monkeypatch):
+    # Recipe 1.3 (task 13.3): release 2.6's region checkbox list, here on status.
+    records = _records("fixed_size_list.jsonl")
+    read_back = {}
+    verify = controls.verify
+
+    def checked(page, op, ctx):
+        verify(page, op, ctx)
+        # Independently of the engine's check: verify leaves the Setup tab open.
+        chips = ctx.locator(page, "control_field_group").locator(ctx.selectors["field_chips"])
+        fields = chips.evaluate_all("es=>es.map(e=>e.getAttribute('aria-label'))")
+        ctx.locator(page, "style_tab").click()
+        modes = {key: ctx.locator(page, key).is_checked()
+                 for key in ("control_mode_dropdown", "control_mode_fixed_size_list")}
+        ctx.locator(page, "setup_tab").click()
+        read_back[op.id] = {"fields": fields, **modes}
+
+    monkeypatch.setattr(controls, "verify", checked)
+    events = _run(records, tmp_path, capsys)
+    finished = [e for e in events if e["event"] == "op_finished"]
+    assert [e["status"] for e in finished] == ["ok"] * (len(records) - 1), finished
+    assert events[-1]["status"] == "ok" and events[-1]["report_url"]
+    assert read_back == {"s002": {"fields": ["status"], "control_mode_dropdown": False,
+                                  "control_mode_fixed_size_list": True}}, read_back
+
+    selectors = load_selectors()
+    with chrome.attached(chrome.ChromeConfig.from_env()) as browser:
+        page = browser.new_page()
+        try:
+            page.set_viewport_size({"width": 1920, "height": 1200})
+            page.goto(events[-1]["report_url"], wait_until="domcontentloaded")
+            page.bring_to_front()
+            components = page.locator(selectors["components"])
+            expect(components).to_have_count(1, timeout=30000)
+            control = components.first
+            assert all(abs(a - records[2][k]) <= 4 for a, k in zip(
+                charts._geometry(control), ("x", "y", "w", "h")))
+            expect(control.locator(selectors["control_list_name"])).to_have_text(
+                "status", timeout=30000)
+            items = control.locator(selectors["control_list_item"])
+            expect(items.first).to_be_visible(timeout=30000)
+            labels = items.evaluate_all("es=>es.map(e=>[e.getAttribute('role'),"
+                                        "e.getAttribute('aria-label')])")
+            assert len(labels) >= 3 and all(role == "checkbox" for role, _ in labels), labels
+            assert {label for _, label in labels} <= _STATUSES, labels
+            page.screenshot(path=str(tmp_path / "fixed_size_list.png"))
+            (tmp_path / "evidence.json").write_text(json.dumps(
+                {"events": events, "read_back": read_back, "labels": labels}, indent=2))
+        finally:
+            page.close()

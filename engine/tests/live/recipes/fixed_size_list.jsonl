@@ -1,0 +1,5 @@
+{"recipe_version":"1.0","build_id":"b_000000000001","version":1,"report_name":"Engine fixed-size list","canvas":{"width":1200,"height":900},"datasource":{"connector":"bigQuery","project_id":"bigquery-public-data","dataset_id":"thelook_ecommerce","table_id":"order_items"}}
+{"id":"s001","op":"open_report"}
+{"id":"s002","op":"add_control","component_id":"p1_status_list","control_type":"fixed_size_list","field":"status","x":24,"y":100,"w":200,"h":220}
+{"id":"s003","op":"save_report"}
+{"id":"s004","op":"get_link"}
