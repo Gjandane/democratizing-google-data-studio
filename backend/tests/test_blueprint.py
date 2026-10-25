@@ -259,8 +259,154 @@ def test_wrong_kpi_aggregation_is_rejected_after_one_repair(blueprint_api):
     confirm(client, app, bid)
     assessment = client.get(f'/api/builds/{bid}/feasibility').json()
     assert llm.calls == 2
+    repair = str(llm.seen[1].config.system_instruction)
+    assert all(part in repair for part in ('q4:', 'Required: SUM(revenue)',
+                                         'Missing: SUM(revenue)', 'Conflicting actual: AVG(revenue)'))
     assert any(i['requirement'] == 'q4' and 'confirmed field and aggregation' in i['reason'] for i in assessment['issues'])
     assert next(r for r in node.load(folder).rows if r.question_id == 'q4').status == 'blocked'
+
+
+def native_year_inputs(blueprint_api):
+    client, app, bid, sid, folder, bq, llm, value = blueprint_api
+    with app.state.db.connect() as conn:
+        columns = json.loads(conn.execute('SELECT columns_json FROM sources WHERE id=?', (sid,)).fetchone()[0])
+        columns.append(dict(name='year', type='date', bq_type='DATE', bucket_start='year', null_pct=0, sample=[]))
+        conn.execute('UPDATE sources SET columns_json=? WHERE id=?', (json.dumps(columns), sid))
+    (folder / 'references.json').write_text(json.dumps(dict(id='ref_native', mode='recreate', instructions='',
+        images=[], interpretation={'items': []})), encoding='utf-8')
+    row = next(r for r in value['rows'] if r['question_id'] == 'q4')
+    row['component'].update(type='time_series', dimensions=[], date_dimension='year_trunc',
+                            sort={'field': 'year_trunc', 'order': 'asc'})
+    extra = dict(name='year_trunc', expression='DATE_TRUNC(year, YEAR) * 1', type='datetime', description='Planner year')
+    value['derived_fields'].append(extra)
+    return row
+
+
+@pytest.mark.parametrize('phase', ['row_repair', 'sql_repair', 'both'])
+@pytest.mark.parametrize('remove_proof', [False, True])
+def test_native_year_binding_rechecks_raw_rows_at_every_repair(blueprint_api, phase, remove_proof):
+    """An overall native axis has no observation identity or global year-grain intent."""
+    client, app, bid, sid, folder, bq, llm, value = blueprint_api
+    row = native_year_inputs(blueprint_api)
+    replies = [value]
+    if phase in ('row_repair', 'both'):
+        unrelated = next(r for r in value['rows'] if r['question_id'] == 'q5')
+        repair = deepcopy(unrelated)
+        unrelated['component']['dimensions'] = ['missing_dimension']
+        replies.append({'rows': [repair]})
+    if phase in ('sql_repair', 'both'):
+        replies.append({k: value[k] for k in ('view_sources', 'derived_fields')})
+    llm.replies = [json.dumps(reply) for reply in replies]
+    original, attempts = bq.dry_run, []
+
+    def dry_run(sql):
+        assert 'DATE_TRUNC' not in sql and 'year_trunc' not in sql, sql
+        attempts.append(sql)
+        if phase in ('sql_repair', 'both') and len(attempts) == 1:
+            raise ValueError('Unrelated SQL validation failure')
+        return original(sql)
+
+    bq.dry_run = dry_run
+    confirm(client, app, bid)
+    after = node.load(folder)
+    assert llm.calls == len(replies) and len(attempts) == (2 if phase in ('sql_repair', 'both') else 1)
+    assert after.view_table is not None and 'year_trunc' not in {f.name for f in after.derived_fields}
+    c = next(r.component for r in after.rows if r.question_id == 'q4')
+    assert c.date_dimension == c.sort.field == 'year'
+    if remove_proof:
+        from test_render import reloaded
+        assert node.previous_inputs(folder)['native_dates']
+        assessment = client.get(f'/api/builds/{bid}/feasibility').json()
+        ratio = next(i for i in assessment['issues'] if i['requirement'] == 'q2')
+        assert choose(client, bid, assessment, ratio, 'numerator_denominator').status_code == 200
+        assert client.get(f'/api/builds/{bid}/feasibility').json()['state'] == 'ready'
+        with app.state.db.connect() as conn:
+            columns = json.loads(conn.execute('SELECT columns_json FROM sources WHERE id=?', (sid,)).fetchone()[0])
+            for column in columns:
+                column.pop('bucket_start', None)
+            conn.execute('UPDATE sources SET columns_json=? WHERE id=?', (json.dumps(columns), sid))
+        assert reloaded(app, bid)[0]['state'] == 'stale'
+        refused = client.post(f'/api/builds/{bid}/blueprint/accept')
+        assert refused.status_code == 409 and refused.json()['error']['code'] == 'feasibility_blocked'
+        assert reloaded(app, bid)[0]['state'] == 'blocked'
+        # Reconfirm unchanged selected questions: persisted raw intent is checked
+        # again, and the two permitted repairs may not silently lose year grain.
+        with app.state.db.connect() as conn:
+            conn.execute('UPDATE builds SET stage=? WHERE id=?', ('design', bid))
+        llm.replies = [json.dumps({'rows': [row]}), json.dumps({k: value[k] for k in ('view_sources', 'derived_fields')})]
+        llm.calls = 0
+        confirm(client, app, bid)
+        a = client.get(f'/api/builds/{bid}/feasibility').json()
+        assert a['state'] == 'blocked' and llm.calls <= 2
+        assert any('original year grouping' in i['reason'] for i in a['issues'])
+        refused = client.post(f'/api/builds/{bid}/blueprint/accept')
+        assert refused.status_code == 409 and refused.json()['error']['code'] == 'feasibility_blocked'
+
+
+@pytest.mark.parametrize('case', ['dates', 'breakdowns', 'style', 'none'])
+def test_native_year_intent_identity_and_reference_mode_reconfirm(blueprint_api, case):
+    client, app, bid, sid, folder, bq, llm, value = blueprint_api
+    row = native_year_inputs(blueprint_api)
+    # Keep this regression about native date intent alone, with no ratio choice.
+    outline = Outline.model_validate(fixture('outline'))
+    for section in outline.sections:
+        for question in section.questions:
+            if question.id == 'q2':
+                question.selected = False
+    artifact(folder, outline)
+    value['rows'] = [r for r in value['rows'] if r['question_id'] != 'q2']
+    if case in ('dates', 'breakdowns'):
+        second = deepcopy(row)
+        second['component']['label'] = 'Second overall trend'
+        if case == 'dates':
+            with app.state.db.connect() as conn:
+                columns = json.loads(conn.execute('SELECT columns_json FROM sources WHERE id=?', (sid,)).fetchone()[0])
+                columns.append(dict(name='year_alt', type='date', bq_type='DATE', bucket_start='year', null_pct=0, sample=[]))
+                conn.execute('UPDATE sources SET columns_json=? WHERE id=?', (json.dumps(columns), sid))
+            value['derived_fields'].append(dict(name='year_alt_trunc', expression='DATE_TRUNC(year_alt, YEAR) * 1',
+                type='datetime', description='Another yearly date'))
+            second['component']['date_dimension'] = second['component']['sort']['field'] = 'year_alt_trunc'
+        else:
+            row['component']['breakdown'] = 'region'
+            second['component']['breakdown'] = 'product_category'
+        value['rows'].append(second)
+    llm.replies = [json.dumps(value)]
+    confirm(client, app, bid)
+    before = node.load(folder)
+    a = client.get(f'/api/builds/{bid}/feasibility').json()
+    assert a['state'] == 'ready', [i['reason'] for i in a['issues']]
+    expected = [r.component for r in before.rows if r.question_id == 'q4']
+    assert len(node.previous_inputs(folder)['native_dates']) == (2 if case in ('dates', 'breakdowns') else 1)
+    if case in ('style', 'none'):
+        if case == 'none':
+            (folder / 'references.json').unlink()
+        else:
+            reference = json.loads((folder / 'references.json').read_text(encoding='utf-8'))
+            reference['mode'] = 'style'
+            (folder / 'references.json').write_text(json.dumps(reference), encoding='utf-8')
+    with app.state.db.connect() as conn:
+        conn.execute('UPDATE builds SET stage=? WHERE id=?', ('design', bid))
+    if case == 'dates':
+        # An unchanged-row reconfirmation also needs the raw bindings when its
+        # view enters SQL repair without a fresh initial model draft.
+        original, attempts = bq.dry_run, []
+
+        def retry(sql):
+            attempts.append(sql)
+            if len(attempts) == 1:
+                raise ValueError('Unrelated SQL validation failure')
+            return original(sql)
+
+        bq.dry_run = retry
+        llm.replies.append(json.dumps({k: value[k] for k in ('view_sources', 'derived_fields')}))
+    confirm(client, app, bid)
+    a = client.get(f'/api/builds/{bid}/feasibility').json()
+    assert a['state'] == 'ready', [i['reason'] for i in a['issues']]
+    assert llm.calls == (2 if case == 'dates' else 1)
+    assert [r.component for r in node.load(folder).rows if r.question_id == 'q4'] == expected
+    assert all('DATE_TRUNC' not in sql for sql in bq.sql)
+    if case in ('style', 'none'):
+        assert 'native_dates' not in node.previous_inputs(folder)
 
 
 def test_drop_all_rows_rejects_accept_and_preserves_issue_history(blueprint_api):
@@ -578,7 +724,8 @@ def test_leaked_label_syntax_is_repaired_to_its_first_fragment_without_a_model_c
 
 
 @pytest.mark.parametrize('repair_succeeds', [False, True])
-def test_label_without_a_clean_fragment_goes_through_the_one_row_repair(blueprint_api, repair_succeeds):
+@pytest.mark.parametrize('sql_repair', [False, True])
+def test_label_without_a_clean_fragment_goes_through_the_one_row_repair(blueprint_api, repair_succeeds, sql_repair):
     client, app, bid, sid, folder, bq, llm, value = blueprint_api
     index = next(i for i, r in enumerate(value['rows']) if r['question_id'])
     qid = value['rows'][index]['question_id']
@@ -586,9 +733,20 @@ def test_label_without_a_clean_fragment_goes_through_the_one_row_repair(blueprin
     repaired = deepcopy([r for r in value['rows'] if r['question_id'] == qid])
     repaired[0]['component']['label'] = 'Net revenue' if repair_succeeds else '"'
     llm.replies = [json.dumps(value), json.dumps({'rows': repaired})]
+    if sql_repair:
+        llm.replies.append(json.dumps({k: value[k] for k in ('view_sources', 'derived_fields')}))
+        original, attempts = bq.dry_run, []
+
+        def retry(sql):
+            attempts.append(sql)
+            if len(attempts) == 1:
+                raise ValueError('Unrelated SQL validation failure')
+            return original(sql)
+
+        bq.dry_run = retry
     confirm(client, app, bid)
     draft = client.get(f'/api/builds/{bid}/blueprint').json()
-    assert llm.calls == 2
+    assert llm.calls == (3 if sql_repair else 2)
     assert 'without list or quote syntax' in str(llm.seen[1].config.system_instruction)
     labels = [r['component']['label'] for r in draft['rows'] if r['question_id'] == qid]
     metric = repaired[0]['component']['metrics'][0]['field'].replace('_', ' ')

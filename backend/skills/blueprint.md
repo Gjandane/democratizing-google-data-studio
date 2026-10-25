@@ -8,6 +8,11 @@ title: Blueprint
 Map each selected question to one to three buildable components. Follow the code page plan.
 Use the compact catalog summary for binding counts and optional values. Prefer direct chart
 bindings to the user's defined KPI measures; never silently substitute an aggregation.
+Cover every named KPI across that question's one to three rows, including a named gap/difference
+measure alongside its two inputs. Repair feedback names the missing field and aggregation;
+preserve all of them within catalog and page limits. Never change the confirmed definitions.
+Reuse a projected DATE field for yearly grouping when code supplies full-column year-start proof.
+Do not introduce a redundant year alias or DATE arithmetic; sort on the same date binding.
 Use a date dimension for time series and a sort field already used by the component.
 An area chart is a time series of filled parts (date dimension, metrics or one breakdown):
 set stacked for parts of a total, stacked_percent for shares that sum to 100 %. A bar with

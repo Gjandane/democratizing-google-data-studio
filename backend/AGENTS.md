@@ -70,3 +70,6 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Style mode imports no charts or controls from a reference: its slider, split bar and small multiples get no slots, and a designer shown the image drew them as fakes in the background until the skill forbade it (24.5 live run 1).
 - Definition-only reference instructions (`Label = AGG(field)`) stay blocking `unknown` rows unless an observation's mapping absorbs them exactly; to see every issue behind a 20-issue scope refusal, re-run requirements.evaluate with MAX_ISSUES patched (tests/live/test_reference_design.all_issues).
 - Reference HTML enforces `max(chars/4, folded*1.2+512)` on the complete request: 12k initially, 24k for its sole repair; exceeding either cap fails the candidate even when billed input would fit.
+- Sanitized ledger fixtures must preserve semantic `Property.path` keys; pseudonymized source identities require fresh processed-source hashes and replay of recorded decisions through the normal gate.
+- Blueprint date normalization retains raw year intent in private `blueprint-inputs.json.native_dates`; repair re-entry needs raw rows with the raw view and must preserve code label fallbacks.
+- Recreate coverage proves bindings across pages, not reference page placement: inspect the Blueprint's page assignments before paid HTML generation.

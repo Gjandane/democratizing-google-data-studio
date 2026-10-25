@@ -142,6 +142,9 @@ def diagnostics(snapshot, ledger, checker):
             'View sources or join keys are invalid; choose a source or union',
             'needs_data', False, offers)
     kpis = {k.id: k for k in context.kpis}
+    native_dates = snapshot.get('native_dates', []) if (snapshot.get('reference') or {}).get('mode') == 'recreate' else []
+    question_keys = {qid: req.digest(dict(id=qid, text=q.text, kpi_refs=q.kpi_refs, section_id=sections[qid],
+        definitions=[kpis[ref].model_dump() if ref in kpis else None for ref in q.kpi_refs])) for qid, q in selected.items()}
     for qid, question in selected.items():
         if qid in dropped:
             continue
@@ -178,10 +181,31 @@ def diagnostics(snapshot, ledger, checker):
             if qid in d['target']['qids']:
                 required += d.get('effect', {}).get('ratio_measures', [])
         metrics = [m.model_dump() for i in indices for m in bp.rows[i].component.metrics]
-        if any(m not in metrics for m in required) or any(
-            m['field'] in {needed['field'] for needed in required} and m not in required for m in metrics):
-            add('kpi', indices, [qid], 'Use each named KPI with exactly its confirmed field and aggregation')
+        missing = [m for m in required if m not in metrics]
+        conflicting = [m for m in metrics if m['field'] in {needed['field'] for needed in required} and m not in required]
+        if missing or conflicting:
+            describe = lambda measures: ', '.join(f"{m['agg'].upper()}({m['field']})" for m in measures)
+            message = f'{qid}: Use each named KPI with exactly its confirmed field and aggregation. Required: {describe(required)}.'
+            if missing:
+                message += ' Missing: ' + describe(missing) + '.'
+            if conflicting:
+                message += ' Conflicting actual: ' + describe(conflicting) + '.'
+            add('kpi', indices, [qid], message)
     for i, row in enumerate(bp.rows):
+        intents = [v for v in native_dates if v['key'] == native_key(row)
+                   and v['question'] == question_keys.get(row.question_id)]
+        expressions = {f.name: f.expression for f in bp.derived_fields}
+        matched = [v for v in intents if row.component.date_dimension in (v['field'], v['component']['date_dimension'])
+                   or any(req._date_bucket({}, row.component.date_dimension, g, v['field'], expressions) for g in req.GRAINS)]
+        if len(intents) == 1 and not matched:
+            matched = intents  # Unknown replacement bindings must still prove the original intent.
+        if intents and not matched:
+            add('date_intent', [i], [row.question_id], 'The original year date binding is ambiguous; clarify it')
+        for intent in matched:
+            if not req._bucket_of(snapshot, row.component.date_dimension, 'year', intent['field'], expressions):
+                add('date_intent', [i], [row.question_id],
+                    f"{row.question_id}: Preserve the original year grouping of {intent['field']}; "
+                    'its current base DATE no longer proves year starts. Use an explicit valid year bucket.')
         if row.question_id is not None and row.question_id not in selected:
             add('coverage', [i], [row.question_id], 'Row must answer a selected question')
         if row.question_id in selected and row.section_id != sections[row.question_id]:
@@ -238,6 +262,146 @@ def diagnostics(snapshot, ledger, checker):
 
 AGGS = {'sum': 'SUM', 'avg': 'AVG', 'count': 'COUNT', 'count_distinct': 'COUNT DISTINCT', 'min': 'MIN', 'max': 'MAX'}
 TRUNC = {'DATE': ('DATE_TRUNC', 'date'), 'DATETIME': ('DATETIME_TRUNC', 'datetime'), 'TIMESTAMP': ('TIMESTAMP_TRUNC', 'datetime')}
+
+# Complete bounded planner artifacts, not SQL equivalence rules. In particular DATE * 1
+# is invalid, and interval subtraction may change type: reconstruct the intended binding.
+YEAR_BINDING = re.compile(r'DATE_TRUNC\s*\(\s*(?:`([a-z_][a-z0-9_]*)`|([a-z_][a-z0-9_]*))\s*,\s*YEAR\s*\)'
+                          r'(?:\s*-\s*INTERVAL\s+0\s+DAY|\s*\*\s*1)?', re.I)
+
+
+def native_key(row):
+    """Internal native-axis meaning; display labels and layout do not erase date intent."""
+    c, date = row.component, row.component.date_dimension
+    return req.digest([row.question_id, c.type, [m.model_dump() for m in c.metrics],
+        [d for d in c.dimensions if d != date], None if c.breakdown == date else c.breakdown,
+        [None if c.sort.field == date else c.sort.field, c.sort.order] if c.sort else None])
+
+
+def restore_native_dates(bp, intents):
+    """Rehydrate raw planner intent for redraft, never stored source authorization."""
+    rows, derived = [], list(bp.derived_fields)
+    for row in bp.rows:
+        intent = next((v for v in intents if v['key'] == native_key(row)
+                       and row.component.date_dimension == v['field']), None)
+        if intent:
+            original = BlueprintComponent.model_validate(intent['component'])
+            update = {k: getattr(original, k) for k in ('date_dimension', 'dimensions', 'breakdown', 'sort')}
+            row = row.model_copy(update={'component': row.component.model_copy(update=update)}, deep=True)
+            if intent['derived']['name'] not in {f.name for f in derived}:
+                derived.append(DerivedField.model_validate(intent['derived']))
+        rows.append(row)
+    return bp.model_copy(update={'rows': rows, 'derived_fields': derived}, deep=True)
+
+
+def canonical_dates(snapshot, ledger, checker, bp, protected=()):
+    """Recreate-only, proof-backed reconstruction of planner date grouping bindings.
+
+    All uses must qualify before an extra can disappear. No metric or SQL text is
+    rewritten, and an undeclared *_year needs explicit reconciled field/grain intent.
+    """
+    if (snapshot.get('reference') or {}).get('mode') != 'recreate':
+        return bp
+    starts = req.date_starts({**snapshot, 'blueprint': bp.model_dump()})
+    proven = {name for name, grain in starts.items() if grain == 'year'}
+    if not proven:
+        return bp
+    connected = snapshot.get('sources') or []
+    try:
+        real = {f['name'] for f in view.blueprint_fields(connected, bp.view_sources, [])}
+    except ValueError:
+        return bp
+    context = snapshot.get('context') or {}
+    protected = set(protected) | {f['name'] for f in context.get('derived_fields', [])}
+    protected |= {k['measure']['field'] for k in context.get('kpis', []) if k.get('measure')}
+    protected |= {t['field'] for t in context.get('thresholds', [])}
+    selected = {q['id'] for s in (snapshot.get('outline') or {}).get('sections', [])
+                for q in s['questions'] if q['selected']}
+    # Completion omits observations with their own unresolved issue. Their absence
+    # must not authorize native-axis reconstruction: conflicting/currently stale
+    # evidence still governs the date intent. Inspect active records before that
+    # filter, including conflicts recorded before reconciliation could set `using`.
+    reference_id = snapshot['reference'].get('id')
+    intents = {}
+    for r in ledger.requirements:
+        if r.source.kind not in ('image', 'reference') or r.source.reference_id != reference_id:
+            continue
+        covered = req._covered(r, snapshot, ledger, checker)
+        if covered is None:
+            continue
+        if r.mapping_conflicts or req.observation_stale(snapshot, r):
+            return bp
+        needs, props = covered
+        meaning = req.observation_meaning(r, needs, props)
+        if source := meaning.get('date_field'):
+            intents.setdefault(source, set()).update(req.grain_name(m['date_grain'])
+                for m in meaning.get('metrics', []) if m.get('date_grain'))
+    # Inspect identifiers, not substrings or literal values, in other derivations.
+    def references(sql, name):
+        # Match the view builder's escaped literals; a quoted apostrophe must
+        # never hide a following real identifier from the dependency check.
+        sql = re.sub(r"(?i:\b(?:r|b|rb|br))?(?:'(?:\\.|''|[^'\\])*'|\"(?:\\.|\"\"|[^\"\\])*\")", ' ', sql)
+        return name in {m.casefold() for m in re.findall(r'[a-z_][a-z0-9_]*', sql, re.I)}
+
+    definitions = {f.name: f for f in bp.derived_fields}
+    if len(definitions) != len(bp.derived_fields):
+        return bp
+    candidates = {}
+    for field in bp.derived_fields:
+        match = YEAR_BINDING.fullmatch(field.expression.strip())
+        base = (match[1] or match[2]).casefold() if match else None
+        if (match and field.type in ('date', 'datetime') and base in proven and
+                field.name not in real | protected and not any(
+                    other.name != field.name and references(other.expression, field.name) for other in bp.derived_fields)):
+            candidates[field.name] = (base, True)
+    for base in proven:
+        alias = base + '_year'
+        if alias not in real | protected | definitions.keys() and not any(
+                references(f.expression, alias) for f in bp.derived_fields):
+            candidates[alias] = (base, False)
+    replacements = {}
+    def option_uses(value, alias):
+        if isinstance(value, dict):
+            return any(option_uses(v, alias) for v in value.values())
+        if isinstance(value, list):
+            return any(option_uses(v, alias) for v in value)
+        return value == alias
+
+    for alias, (base, declared) in candidates.items():
+        explicit = intents.get(base) == {'year'}
+        if intents.get(base, set()) - {'year'}:
+            continue
+        used, eligible = False, True
+        for row in bp.rows:
+            c = row.component
+            grouping = alias == c.date_dimension or alias in c.dimensions or alias == c.breakdown
+            sorting = c.sort is not None and c.sort.field == alias
+            metric = any(m.field == alias for m in c.metrics)
+            option_use = option_uses(c.options, alias)
+            if metric or option_use or (sorting and not grouping):
+                eligible = False
+                break
+            if not grouping:
+                continue
+            used = True
+            native = (declared and row.question_id in selected and c.type in DATE_AXIS_TYPES
+                      and c.date_dimension == alias)
+            if not explicit and not native:
+                eligible = False
+                break
+        if eligible and (used or explicit) and (declared or explicit):
+            replacements[alias] = base
+    if not replacements:
+        return bp
+    rows = []
+    for row in bp.rows:
+        c = row.component
+        update = dict(date_dimension=replacements.get(c.date_dimension, c.date_dimension),
+                      dimensions=[replacements.get(d, d) for d in c.dimensions],
+                      breakdown=replacements.get(c.breakdown, c.breakdown))
+        if c.sort:
+            update['sort'] = c.sort.model_copy(update={'field': replacements.get(c.sort.field, c.sort.field)})
+        rows.append(row.model_copy(update={'component': c.model_copy(update=update)}, deep=True))
+    return bp.model_copy(update={'rows': rows, 'derived_fields': [f for f in bp.derived_fields if f.name not in replacements]}, deep=True)
 
 
 def laid_out(rows):
@@ -417,7 +581,7 @@ def surplus(snapshot, ledger, checker, rows, derived_fields, observed=None):
     return extra - {i for _, _, _, indices, _ in verdicts if indices and set(indices) <= extra for i in indices}
 
 
-def _observed_row(meaning, r, needs, fields, derived, rules, section):
+def _observed_row(meaning, r, needs, fields, derived, rules, section, snapshot=None):
     """(the code-built page-1 row, its new date bucket field or None) for an observation whose reconciled
     meaning is complete (catalog type, metric fields and aggregations, dimension or date field), else None."""
     kind = meaning.get('type')
@@ -432,7 +596,7 @@ def _observed_row(meaning, r, needs, fields, derived, rules, section):
         return None
     if grains:
         grain, source = next(iter(grains)), meaning.get('date_field')
-        if source and req._date_bucket({}, source, grain, derived={f.name: f.expression for f in derived}):
+        if source and req._bucket_of(snapshot or {}, source, grain, source, {f.name: f.expression for f in derived}):
             name = source  # the date field already is the bucket
         else:
             bucket = _bucket(meaning, {}, fields, SimpleNamespace(derived_fields=derived))
@@ -488,7 +652,7 @@ def complete(snapshot, ledger, checker, bp, connected, context):
             fields = {f['name']: f for f in view.blueprint_fields(connected, bp.view_sources, derived)}
         except ValueError:
             break
-        built = _observed_row(req.observation_meaning(r, needs, properties), r, needs, fields, derived, rules, section)
+        built = _observed_row(req.observation_meaning(r, needs, properties), r, needs, fields, derived, rules, section, snapshot)
         if built is None:
             continue
         row, field = built

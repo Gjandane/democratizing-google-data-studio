@@ -437,6 +437,8 @@ def blueprint_memory(observations):
 def test_blueprint_observations_section_fits_without_boxes_bytes_or_rows():
     """22.1: the planner sees each recreate observation's reconciled meaning, within the blueprint's 14k input."""
     memory = blueprint_memory(observation_inputs())
+    from dss.harness.nodes import blueprint
+    assert BUDGETS['blueprint'] == 14000 and blueprint.MAX_OUTPUT_TOKENS == 6000
     [section] = [s for s in memory.sections if s.name == 'observations']
     observed = json.loads(section.body)
     assert section.kind == 'reference' and len(observed) == 24 and memory.dropped == {'past': 0, 'history': 0, 'semantic': 0}

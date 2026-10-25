@@ -1,4 +1,4 @@
-# Electricity reference acceptance fixture (task 24.7)
+# Electricity reference acceptance fixture (task 24.10)
 
 The image is the existing user-supplied electricity dashboard reference, retained by
 the earlier backend live run. It is a visual reference, not a data source.
@@ -24,8 +24,28 @@ needed to reproduce it. Full hashes for every fixture are also saved per run.
 Run from backend: `uv run pytest -m live tests/live/test_reference_design.py`.
 Real configured models and BigQuery are required. The test sets dry engine and the
 current native type catalog explicitly. Outputs, spans and screenshots go to
-`.blueprint/qa/task-24.8/` (`task-24.7/` with `DSS_LIVE_STAGE=24.7`); created BigQuery tables/views are cleaned after each case.
+`.blueprint/qa/task-24.10/` (`task-24.7/` with `DSS_LIVE_STAGE=24.7`,
+readiness-only `task-24.9/` with `DSS_LIVE_STAGE=24.9`); created BigQuery
+tables/views are cleaned after each case. Previous task evidence is preserved.
 
-No unsupported alternatives have been approved for this fixture yet. The test
-records unresolved feasibility issues and refuses to select or drop them itself.
+The user approved these substitutions on 2026-10-25:
+
+- Drop geo_map; the real-geography globe remains static artwork.
+- Drop the Rural/Urban legend misread as a dropdown and any extracted year slider.
+- Replace four per-country small multiples with one native urban/rural area chart,
+  expressed through the test's INSTRUCTIONS.
+- Use a native fixed_size_list for the region selector.
+
+For recreate, INSTRUCTIONS explicitly identify the four country definitions as
+aliases for one combined area chart. The additional recreate interview notes
+group the reference observations on the first Outline section/page and reserve
+a later section/page for extra analysis. The public workflow still chooses its
+Outline and Blueprint; the test never edits rows or moves generated components.
+Style and no-reference interview inputs are unchanged.
+
+The test records each applied drop by observation and issue id. Any other
+unsupported item blocks the check; it never selects an arbitrary alternative.
+Each run retains hashes, native slot ids/bindings, compiled recipes, coverage,
+per-stage model/image/token/time evidence and sanitized failed drafts when available.
+`runs.json` distinguishes a failed check from an actually published prototype.
 Passing technical checks does not constitute the user's visual acceptance.

@@ -2032,7 +2032,11 @@ def test_a_using_date_profiled_at_the_grain_is_its_own_bucket():
         'options': {'date_granularity': 'year'}}}
     rows = [*copy.deepcopy(ELECTRICITY['rows']), area]
     for starts, bound in (({'year': 'year'}, [len(rows) - 1]), ({}, []), ({'year': 'month'}, [])):
-        verdicts = observation_verdicts({**power_blueprint(snapshot, rows), 'date_starts': starts}, ledger)
+        current = copy.deepcopy(power_blueprint(snapshot, rows))
+        for column in current['sources'][0]['columns']:
+            if column['name'] == 'year':
+                column['bucket_start'] = starts.get('year')
+        verdicts = observation_verdicts(current, ledger)
         assert all(verdicts[o] == bound for o in ('o8', 'o9', 'o10', 'o11')), (starts, verdicts)
 
 
@@ -2081,3 +2085,168 @@ def test_recreate_definitions_recompute_speed_with_24_observations_and_24_clause
         req.evaluate(snapshot, ledger, checker, check_components=False)
         timings.append(time.perf_counter() - start)
     assert min(timings) < .1, timings
+
+
+def year_case(expression='DATE_TRUNC(year, YEAR)', explicit=True):
+    """Source-bound full-column proof plus a selected native axis; no metric-label identity."""
+    from dss.artifacts.models import Blueprint
+    snapshot = power_blueprint(power_snapshot())
+    snapshot['sources'][0]['columns'] = copy.deepcopy(ELECTRICITY['columns'])
+    date = next(c for c in snapshot['sources'][0]['columns'] if c['name'] == 'year')
+    date.update(bucket_start='year', null_pct=0)
+    qid = next(q['id'] for s in snapshot['outline']['sections'] for q in s['questions'] if q['selected'])
+    component = dict(type='time_series', label='Overall trend without observation identity', dimensions=[],
+        metrics=[{'field': 'access_pct', 'agg': 'avg'}], date_dimension='year_trunc', breakdown=None,
+        sort={'field': 'year_trunc', 'order': 'asc'}, options={})
+    snapshot['blueprint'].update(derived_fields=[dict(name='year_trunc', expression=expression,
+        type='datetime', description='Planner year binding')], rows=[dict(question_id=qid, section_id='s1',
+        page=1, component=component, note='', status='ok', issue_ids=[])])
+    ledger = assess(snapshot, power_extraction())[0] if explicit else req.Ledger()
+    return snapshot, ledger, Blueprint.model_validate(snapshot['blueprint'])
+
+
+def normalized_year(snapshot, ledger, bp, protected=()):
+    from dss.spec.feasibility import canonical_dates
+    return canonical_dates(snapshot, ledger, capabilities.Checker(capabilities.load_registry()), bp, protected)
+
+
+@pytest.mark.usefixtures('catalog_types')
+@pytest.mark.parametrize('explicit', [False, True])
+@pytest.mark.parametrize('expression', ['DATE_TRUNC(year, YEAR)', ' date_trunc ( `year` , year ) - INTERVAL 0 DAY ',
+                                      'DATE_TRUNC(year, YEAR) * 1'])
+def test_canonical_year_reconstructs_whole_binding_and_sort_idempotently(expression, explicit):
+    snapshot, ledger, bp = year_case(expression, explicit)
+    after = normalized_year(snapshot, ledger, bp)
+    assert after.derived_fields == []
+    assert after.rows[0].component.date_dimension == after.rows[0].component.sort.field == 'year'
+    assert after.rows[0].question_id == bp.rows[0].question_id and after.rows[0].note == bp.rows[0].note
+    assert normalized_year(snapshot, ledger, after) == after
+    assert bp.rows[0].component.date_dimension == 'year_trunc'  # no mutation
+
+
+@pytest.mark.usefixtures('catalog_types')
+@pytest.mark.parametrize('expression', ['DATE_TRUNC(year, YEAR) * 2', 'DATE_TRUNC(year, YEAR) + INTERVAL 0 DAY',
+    'DATE_TRUNC(year, YEAR) - INTERVAL 1 DAY', 'DATE_TRUNC(year, MONTH)', 'CAST(DATE_TRUNC(year,YEAR) AS DATE)',
+    'DATE_TRUNC(year, YEAR) * 1 + 0', "IF(TRUE, DATE_TRUNC(year,YEAR), NULL)", 'DATE_TRUNC(`year, YEAR)',
+    'DATE_TRUNC(t0.year, YEAR)', 'DATE_TRUNC(year, YEAR);'])
+def test_canonical_year_never_simplifies_other_sql(expression):
+    snapshot, ledger, bp = year_case(expression)
+    assert normalized_year(snapshot, ledger, bp) == bp
+
+
+@pytest.mark.usefixtures('catalog_types')
+@pytest.mark.parametrize('case', ['proof_missing', 'sample_only', 'null', 'wrong_type', 'wrong_grain', 'metric',
+    'sort_only', 'protected', 'context', 'dependency', 'collision', 'option', 'not_selected', 'not_axis', 'conflicting_intent'])
+def test_canonical_year_requires_current_proof_and_every_use(case):
+    snapshot, ledger, bp = year_case(explicit=case not in ('not_selected', 'not_axis'))
+    column = next(c for c in snapshot['sources'][0]['columns'] if c['name'] == 'year')
+    protected = ()
+    if case in ('proof_missing', 'sample_only'):
+        column.pop('bucket_start')
+        snapshot['date_starts'] = {'year': 'year'}  # stale name-only maps authorize nothing
+    elif case == 'null':
+        column['null_pct'] = 100
+    elif case == 'wrong_type':
+        column.update(type='datetime', bq_type='TIMESTAMP')
+    elif case == 'wrong_grain':
+        column['bucket_start'] = 'month'
+    elif case == 'metric':
+        bp.rows[0].component.metrics[0].field = 'year_trunc'
+    elif case == 'sort_only':
+        bp.rows[0].component.date_dimension = 'year'
+    elif case == 'protected':
+        protected = ('year_trunc',)
+    elif case == 'context':
+        snapshot['context']['derived_fields'] = [bp.derived_fields[0].model_dump()]
+    elif case == 'dependency':
+        bp.derived_fields.append(bp.derived_fields[0].model_copy(update={'name': 'other', 'expression': 'year_trunc'}))
+    elif case == 'collision':
+        snapshot['sources'][0]['columns'].append({**column, 'name': 'year_trunc'})
+    elif case == 'option':
+        bp.rows[0].component.options = {'row_dimensions': ['year_trunc']}
+    elif case == 'not_selected':
+        bp.rows[0].question_id = 'q_unknown'
+    elif case == 'not_axis':
+        bp.rows[0].component.type = 'bar'
+        bp.rows[0].component.dimensions = ['year_trunc']
+    elif case == 'conflicting_intent':
+        # Same explicit date field, incompatible confirmed grain.
+        changed = power_snapshot(ELECTRICITY['instructions'].replace('date grain year', 'date grain month'))
+        snapshot['reference'], snapshot['incoming'] = changed['reference'], changed['incoming']
+        ledger = assess(snapshot, power_extraction())[0]
+    assert normalized_year(snapshot, ledger, bp, protected) == bp
+
+
+@pytest.mark.usefixtures('catalog_types')
+@pytest.mark.parametrize('explicit', [False, True])
+def test_missing_year_alias_requires_explicit_binding_and_moves_all_date_slots(explicit):
+    snapshot, ledger, bp = year_case(explicit=explicit)
+    bp.derived_fields = []
+    c = bp.rows[0].component
+    c.type, c.date_dimension, c.dimensions, c.breakdown = 'bar', 'year_year', ['year_year'], 'year_year'
+    c.sort.field = 'year_year'
+    after = normalized_year(snapshot, ledger, bp)
+    assert (after != bp) == explicit
+    if explicit:
+        c = after.rows[0].component
+        assert (c.date_dimension, c.dimensions, c.breakdown, c.sort.field) == ('year', ['year'], 'year', 'year')
+    bp.rows[0].component.date_dimension = 'some_unknown_alias'
+    bp.rows[0].component.dimensions = []
+    bp.rows[0].component.breakdown = None
+    bp.rows[0].component.sort = None
+    assert normalized_year(snapshot, ledger, bp) == bp
+
+
+@pytest.mark.usefixtures('catalog_types')
+@pytest.mark.parametrize('mode', ['style', None])
+def test_canonical_year_does_not_change_other_reference_modes(mode):
+    snapshot, ledger, bp = year_case()
+    snapshot['reference'] = {**snapshot['reference'], 'mode': mode} if mode else None
+    before = bp.model_dump_json()
+    assert normalized_year(snapshot, ledger, bp).model_dump_json() == before
+
+
+@pytest.mark.usefixtures('catalog_types')
+def test_canonical_year_cannot_reuse_stale_observation_authorization():
+    snapshot, ledger, bp = year_case()
+    snapshot['reference']['instructions'] = ''
+    snapshot['incoming'] = [s for s in snapshot['incoming'] if not s['id'].endswith(':instructions')]
+    assert any(req.observation_stale(snapshot, r) for r in ledger.requirements)
+    assert normalized_year(snapshot, ledger, bp) == bp
+
+
+@pytest.mark.usefixtures('catalog_types')
+def test_canonical_year_respects_grain_on_an_observation_with_another_issue():
+    snapshot, ledger, bp = year_case(explicit=False)
+    rid = snapshot['reference']['id']
+    text = 'Monthly access = AVG(access_pct), date grain month using year.'
+    snapshot['reference']['instructions'] = text
+    snapshot['incoming'] = [req.Source(id=rid + ':instructions', kind='reference',
+        text=text, reference_id=rid).model_dump()]
+    r = req.Requirement(id='monthly', text='Monthly access with an unsupported behavior',
+        source=req.Source(id=rid + ':monthly', kind='image', reference_id=rid,
+            text=json.dumps(dict(kind='chart', label='Monthly access', metric_label='Monthly access',
+                                 date_grain='month', aggregation='avg'))),
+        needs=[{'capability': 'chart.time_series', 'fields': {'date_field': 'year'}},
+               {'capability': 'unknown.monthly_behavior'}],
+        mappings=[{'label': 'Monthly access', 'field': 'access_pct', 'aggregation': 'avg', 'date_grain': 'month'}])
+    req._reconcile_observation(r, snapshot)
+    ledger.requirements = [r]
+    checker = capabilities.Checker(capabilities.load_registry())
+    assert not r.mapping_conflicts and not req.observation_stale(snapshot, r)
+    assert req.blueprint_observations(snapshot, ledger, checker) == []
+    assert normalized_year(snapshot, ledger, bp) == bp
+
+
+@pytest.mark.usefixtures('catalog_types')
+@pytest.mark.parametrize('expression,dependent', [
+    (r"CASE WHEN country = 'O\'Reilly' THEN year_trunc ELSE DATE '2000-01-01' END", True),
+    (r'''CASE WHEN country = "O\"Reilly" THEN `year_trunc` ELSE DATE "2000-01-01" END''', True),
+    (r"CONCAT('O\'Reilly year_trunc', country)", False),
+])
+def test_canonical_year_dependency_scan_handles_escaped_literals(expression, dependent):
+    snapshot, ledger, bp = year_case()
+    bp.derived_fields.append(bp.derived_fields[0].model_copy(update={'name': 'other', 'expression': expression}))
+    after = normalized_year(snapshot, ledger, bp)
+    assert (after == bp) == dependent
+    assert ('year_trunc' in {f.name for f in after.derived_fields}) == dependent

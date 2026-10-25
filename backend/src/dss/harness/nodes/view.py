@@ -178,6 +178,29 @@ def blueprint_fields(sources, selection, derived):
              {'INT64', 'FLOAT64', 'NUMERIC', 'BIGNUMERIC'} else 'dimension'} for name, kind in fields.items()]
 
 
+def proven_date_starts(sources, selection):
+    """Full-column DATE facts through the actual projection, never a merged name map.
+
+    Joins expose the first column; every present union branch must prove the fact.
+    Missing union columns become typed NULLs. Parsed strings are not DATE proof.
+    """
+    selected, fields = _projection(sources, selection)
+    contributors = {}
+    for source in selected:
+        for name, column in _columns(source):
+            if selection.union or name not in contributors:
+                contributors.setdefault(name, []).append(column)
+    result = {}
+    for name, columns in contributors.items():
+        grains = {c.get('bucket_start') for c in columns}
+        if (fields[name] == 'DATE' and len(grains) == 1 and
+                grains <= {'month', 'quarter', 'year'} and all(
+                    c.get('bq_type') == 'DATE' and c.get('type') == 'date' and
+                    c.get('mode') != 'REPEATED' and c.get('null_pct', 0) < 100 for c in columns)):
+            result[name] = next(iter(grains))
+    return result
+
+
 def _scalar(value, identifiers):
     from dss.harness.nodes.context import AGGREGATE, QUOTED
     safe = expression(value, identifiers)

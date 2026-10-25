@@ -146,7 +146,7 @@ def previous_inputs(folder):
     return json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
 
 
-async def persist(harness, build, folder, run_id, draft, fingerprints, errors, context_fields):
+async def persist(harness, build, folder, run_id, draft, fingerprints, errors, context_fields, native_dates=()):
     old = load(folder)
     draft.revision = old.revision + 1 if old else 1
     ledger = req.load(folder)
@@ -155,6 +155,10 @@ async def persist(harness, build, folder, run_id, draft, fingerprints, errors, c
     snapshot.update(blueprint=draft.model_dump(), context=context_node.load(folder).model_dump(),
         outline=outline_node.load(folder).model_dump(), design=design_node.load(folder).model_dump(),
         blueprint_errors=errors)
+    if native_dates:
+        snapshot['native_dates'] = native_dates
+    else:
+        snapshot.pop('native_dates', None)
     # The one SQL repair can make a planner row fulfil what a code-added row did: drop it before the
     # assessment, so the saved Blueprint is the one assessed (architecture.md#Recreate observation completion).
     if drop := feasibility.surplus(snapshot, ledger, checker, draft.rows, draft.derived_fields):
@@ -167,8 +171,10 @@ async def persist(harness, build, folder, run_id, draft, fingerprints, errors, c
     backup = {p: p.read_bytes() if p.is_file() else None for p in targets}
     try:
         req.save(folder, ledger, assessment)
-        atomic_write(inputs_path(folder), json.dumps({'questions': fingerprints,
-            'context_fields': context_fields, 'errors': errors}, ensure_ascii=False))
+        recorded = {'questions': fingerprints, 'context_fields': context_fields, 'errors': errors}
+        if native_dates:
+            recorded['native_dates'] = native_dates
+        atomic_write(inputs_path(folder), json.dumps(recorded, ensure_ascii=False))
         await write_artifact(folder / 'docs/blueprint.md', draft,
             emit=lambda kind, payload: harness.emit(build['id'], run_id, kind, payload))
         stages.save(harness.db, build['id'], stages.edited({**build, 'stage': 'blueprint'}, 'blueprint'))
@@ -222,8 +228,18 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
     retained = [f for f in old.derived_fields if f.name not in recorded.get('context_fields', [])] if old and kept_ids else []
     initial_view = ViewDraft(view_sources=old.view_sources if old and kept_ids else
         ViewSources(base=connected[0]['id'], joins=[], union=[]), derived_fields=derived_fields(context, [], retained))
+    native_dates = [v for v in recorded.get('native_dates', [])
+                    if (req.references.load(folder) or {}).get('mode') == 'recreate'
+                    and any(v['question'] == fingerprints[qid] for qid in selected)]
+    if kept_ids and native_dates:
+        restored = feasibility.restore_native_dates(Blueprint(revision=1, **initial_view.model_dump(),
+            rows=normalize_rows(kept, selected, pages), view_table=None, assessment_id=None), native_dates)
+        kept = restored.rows
+        initial_view = ViewDraft(view_sources=restored.view_sources, derived_fields=restored.derived_fields)
     state = {'raw': '', 'draft': None, 'view': initial_view, 'rows': normalize_rows(kept, selected, pages),
-             'errors': [], 'row_repaired': False, 'sql_repaired': False, 'phase': 'generate', 'failure': None}
+             'errors': [], 'row_repaired': False, 'sql_repaired': False, 'phase': 'generate', 'failure': None,
+             'native_dates': native_dates}
+    state['row_view'], state['row_rows'] = initial_view, list(state['rows'])
     secrets = (config.google_api_key.get_secret_value(), config.access_code.get_secret_value(), config.agent_token.get_secret_value())
 
     async def start(node_input):
@@ -285,20 +301,32 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                     draft = Draft.model_validate_json(state['raw'])
                     state['view'] = ViewDraft(view_sources=draft.view_sources,
                         derived_fields=derived_fields(context, draft.derived_fields, retained))
+                    state['row_view'] = state['view']
                     state['rows'] += normalize_rows([r for r in draft.rows if r.question_id not in kept_ids], pending, pages)
+                    state['row_rows'] = list(state['rows'])
                 elif state['phase'] == 'row_repair':
                     repaired = RowRepair.model_validate_json(state['raw'])
+                    # RowRepair changes only rows. Recheck its aliases against the actual
+                    # draft expressions and current source proof, never cached authorization.
+                    state['view'] = state.get('row_view', state['view'])
+                    state['rows'] = list(state.get('row_rows', state['rows']))
                     ids = repair_ids()
                     indices = {i for e in state['errors'] if e['repairable'] for i in e['indices']
                                if state['rows'][i].question_id is None}
                     state['rows'] = [r for i, r in enumerate(state['rows']) if r.question_id not in ids and i not in indices] + normalize_rows(
                         [r for r in repaired.rows if r.question_id in ids or (indices and r.question_id is None)], selected, pages)
+                    state['row_rows'] = list(state['rows'])
+                canonicalize()
                 dirty = [i for i, r in enumerate(state['rows']) if label_text(r.component.label) is None]
                 if state['row_repaired']:
                     for i in dirty:
                         row = state['rows'][i]
                         state['rows'][i] = row.model_copy(update={'component': row.component.model_copy(
                             update={'label': fallback_label(row.component)})})
+                        if 'row_rows' in state:
+                            raw = state['row_rows'][i]
+                            state['row_rows'][i] = raw.model_copy(update={'component': raw.component.model_copy(
+                                update={'label': state['rows'][i].component.label})})
                     dirty = []
                 snapshot, ledger, checker = drafted_inputs()
                 state['errors'] = feasibility.diagnostics(snapshot, ledger, checker)
@@ -320,7 +348,28 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         snapshot.update(blueprint=Blueprint(revision=1, **state['view'].model_dump(), rows=state['rows'],
             view_table=None, assessment_id=None).model_dump(), context=context.model_dump(),
             outline=outline.model_dump(), design=design.model_dump(), blueprint_errors=[])
+        if state['native_dates']:
+            snapshot['native_dates'] = state['native_dates']
+        else:
+            snapshot.pop('native_dates', None)
         return snapshot, req.load(folder), Checker(load_registry())
+
+    def canonicalize():
+        snapshot, ledger, checker = drafted_inputs()
+        before = Blueprint.model_validate(snapshot['blueprint'])
+        bp = feasibility.canonical_dates(snapshot, ledger, checker, before,
+                                          protected=[f.name for f in retained])
+        for raw, row in zip(before.rows, bp.rows):
+            alias, base = raw.component.date_dimension, row.component.date_dimension
+            field = next((f for f in before.derived_fields if f.name == alias), None)
+            if (row.question_id in selected and row.component.type in ('time_series', 'area')
+                    and alias != base and field is not None):
+                key = feasibility.native_key(row)
+                state['native_dates'] = [v for v in state['native_dates'] if (v['key'], v['field']) != (key, base)]
+                state['native_dates'].append(dict(key=key, question=fingerprints[row.question_id], field=base,
+                    component=raw.component.model_dump(), derived=field.model_dump()))
+        state['rows'] = bp.rows
+        state['view'] = ViewDraft(view_sources=bp.view_sources, derived_fields=bp.derived_fields)
 
     def complete_rows(snapshot, ledger, checker):
         # architecture.md#Recreate observation completion: after the one row repair, code adds the
@@ -348,6 +397,11 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                 repaired = ViewDraft.model_validate_json(state['raw'])
                 state['view'] = ViewDraft(view_sources=repaired.view_sources,
                     derived_fields=derived_fields(context, repaired.derived_fields, retained))
+                # Reconstruct from actual input bindings, not an unused alias
+                # left by a preceding canonicalization. Authorization is still
+                # recomputed against this repaired expression and current proof.
+                state['rows'] = list(state.get('row_rows', state['rows']))
+                canonicalize()
                 # Completion on the drafted view could build no fields when that view was invalid (live
                 # 24.8 run 20261025-214425): complete again on the repaired one, so its buckets are dry-run.
                 complete_rows(*drafted_inputs())
@@ -383,7 +437,8 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                           view_table=state.get('view_table'), assessment_id=None)
         await persist(harness, build, folder, run_id, draft, fingerprints,
                       [e for e in state['errors'] if 'question_id' in e],
-                      [f.name for f in context.derived_fields])
+                      [f.name for f in context.derived_fields],
+                      [v for v in state['native_dates'] if any(v['key'] == feasibility.native_key(r) for r in draft.rows)])
         return ('Blueprint drafted. Resolve the listed issues before accepting.' if state['errors'] else
                 'Blueprint drafted and its view dry run passed. Review the component rows.')
 

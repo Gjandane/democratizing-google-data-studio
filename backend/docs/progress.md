@@ -1591,3 +1591,30 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: see QA handoff for unverified integration scaffolding and remaining coverage.
 - Left open: task implementation and all completion gates.
 - Next: reapply attempt selectively; inspect blocked observation evidence and guard native fallback against conflicting field/grain/type intent before normalization. Follow `.blueprint/qa/task-24.9/attempt-20261026.md`, then complete task 24.9.
+
+## 2026-10-26: Task 24.9 Canonical recreate year bindings and precise KPI repair
+- Status: done
+- Plan check: off
+- What changed: source-bound year reconstruction across draft, repairs, completion and reload/redraft; exact missing/conflicting KPI feedback; sanitized saved-run regression fixtures.
+- Checks: prescribed suite PASS 594; Test (all) `uv run pytest` PASS 1848 (17 live deselected). Both saved fixtures publish contract-valid yearly recipes and finish the fake engine. Two consecutive live recreate readiness runs PASS (112.57/119.00 s); only approved geo-map drops. No reference HTML, live engine or visual approval claimed. Seven fingerprint cases: 31 identical artifact hashes; 40 original input hashes unchanged. Evidence: `.blueprint/qa/task-24.9/`.
+- Decisions: recompute actual projection proof; private `native_dates` retains typed intent, never authorization; disambiguate native bindings and scope them to recreate. Reuse one local definition scan: oracle minimum 73.61 ms (<100). Added fixture/repair gotchas to AGENTS.md.
+- Digest: view.proven_date_starts(sources,selection)->{field:grain}; feasibility.canonical_dates(...); blueprint-inputs.json.native_dates retains recreate year intent (not proof); DSS_LIVE_STAGE=24.9 stops at ready /design/confirm.
+- Tried and failed: fixture sanitization/rebinding, repair re-entry/freshness/scope edge cases and duplicate-scan timing failures corrected; details in QA notes.
+- Gotchas: none beyond AGENTS.md.
+- Left open: none; final reviewer: No findings.
+- Next: 24.10 Verify and approve two-stage reference fidelity.
+
+
+## 2026-10-26: Task 24.10 Verify and approve two-stage reference fidelity
+- Status: blocked
+- Plan check: off
+- What changed: fixture inputs/provenance and diagnostic outcomes; evidence: `.blueprint/qa/task-24.10/acceptance-review.md`.
+- Checks: live 1 FAIL/2 PASS (673.10s); retry FAIL (172.45s); corrected input FAIL (75.07s). Required focused suite: 284 PASS (306.29s); Test (all) `uv run pytest`: 1848 PASS (826.92s). Review: no introduced findings; secret scan clean.
+- Decisions: preserve gates/caps; public inputs only; retain diagnostics. AGENTS.md adds cross-page coverage gotcha.
+- Tried and failed: published table replaces right areas; scorecard percentage/2011 unclear/clipped. Retry: 272px list below 276px minimum. Corrected input: consolidation date_field clarification, no alternatives/publication.
+- Gotchas: none beyond AGENTS.md.
+- Left open: recreate revision/dry-engine and visual approval; native ids/substitutions/stage evidence retained.
+- Blocked because: (b) needs architect disposition of feasibility/fidelity failures.
+- Question: Should the architect clarify fixture date binding before another fidelity run?
+- Options: A assess explicit date clause (recommended) / B plan product scope if still needed.
+- Next: architect assesses `date grain year using year` in consolidation clause; unverified, not proof area is unsupported.

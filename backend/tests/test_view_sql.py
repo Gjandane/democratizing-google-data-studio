@@ -2,6 +2,50 @@ import pytest
 from dss.harness.nodes.view import DerivedField, Join
 from dss.harness.nodes.view import select_sql, expression
 
+
+@pytest.mark.parametrize('mode,other,expected', [
+    ('base', None, {'year': 'year'}),
+    ('base', {}, {'year': 'year'}),  # unrelated source cannot override base
+    ('join', {}, {'year': 'year'}),  # shadowed join column cannot revoke first projection
+    ('union', {}, {}),
+    ('union', {'bucket_start': 'year'}, {'year': 'year'}),
+    ('union', {'bucket_start': 'month'}, {}),
+    ('padding', None, {'year': 'year'}),
+    ('shadow', {'bucket_start': 'year'}, {}),  # proved joined source cannot authorize base
+])
+def test_projected_year_proof_uses_actual_contributors(mode, other, expected):
+    from dss.artifacts.models import ViewSources
+    from dss.harness.nodes import view
+    column = {'name': 'Year', 'type': 'date', 'bq_type': 'DATE', 'bucket_start': 'year', 'null_pct': 0}
+    sources = [{'id': 's1', 'bq_table': 'project.data.one', 'columns': [column]},
+               {'id': 's2', 'bq_table': 'project.data.two', 'columns': [{**column, 'bucket_start': None, **(other or {})}]}]
+    selection = ViewSources(base='s1', joins=[], union=[])
+    if mode in ('join', 'shadow'):
+        selection.joins = [{'source_id': 's2', 'on': [{'left': 'year', 'right': 'year'}]}]
+        selection = ViewSources.model_validate(selection.model_dump())
+    if mode in ('union', 'padding'):
+        selection.union = ['s2']
+    if mode == 'padding':
+        sources[1]['columns'] = [{'name': 'other', 'bq_type': 'STRING'}]
+    if mode == 'shadow':
+        sources[0]['columns'][0] = {**column, 'bucket_start': None}
+    assert view.proven_date_starts(sources, selection) == expected
+    sql = view.blueprint_sql(sources, selection, [])
+    if mode == 'padding':
+        assert 'CAST(NULL AS DATE) AS `year`' in sql
+
+
+@pytest.mark.parametrize('change', [
+    {'bucket_start': None}, {'bucket_start': 'quarter'}, {'bq_type': 'TIMESTAMP', 'type': 'datetime'},
+    {'bq_type': 'STRING', 'date_like': True}, {'mode': 'REPEATED'}, {'null_pct': 100},
+])
+def test_projected_year_proof_rejects_unproved_or_wrong_typed_column(change):
+    from dss.artifacts.models import ViewSources
+    from dss.harness.nodes import view
+    source = {'id': 's', 'columns': [{'name': 'year', 'type': 'date', 'bq_type': 'DATE',
+              'bucket_start': 'year', 'null_pct': 0, **change}]}
+    assert view.proven_date_starts([source], ViewSources(base='s', joins=[], union=[])).get('year') != 'year'
+
 SOURCE = {"bq_table": "project.data.sales", "columns": [
     {"name": "date", "bq_type": "DATE"}, {"name": "revenue", "bq_type": "FLOAT"}]}
 

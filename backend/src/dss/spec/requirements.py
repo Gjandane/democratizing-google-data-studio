@@ -263,15 +263,19 @@ def inputs(db, build_id, folder):
         confirmed = row is not None and stages.states({"artifacts_json": row[0]})["context"] == "confirmed"
         snapshot["confirmed_kpis"] = [k.model_dump() for k in read_artifact(path, Context).kpis] if confirmed and path.is_file() else []
         with db.connect() as conn:
-            profiled = [json.loads(r[0]) for r in conn.execute("SELECT columns_json FROM sources WHERE build_id=? ORDER BY rowid", (build_id,))]
-        # A DATE column whose every value starts a bucket (intake profile, 24.2) is a date at that grain.
-        snapshot["date_starts"] = {name: c["bucket_start"] for columns in profiled
-                                   for c, name in zip(columns, snake_names([c["name"] for c in columns])) if c.get("bucket_start")}
+            profiled = {r['id']: json.loads(r['columns_json']) for r in conn.execute(
+                "SELECT id, columns_json FROM sources WHERE build_id=? ORDER BY rowid", (build_id,))}
+        # Keep aggregate proof on its current source/column. Never trust a merged same-name map.
+        for source in sources:
+            source['columns'] = [{k: c[k] for k in ('name', 'type', 'bq_type', 'date_like', 'mode',
+                'bucket_start', 'null_pct') if k in c} for c in profiled[source['id']]]
     if (folder / 'docs/blueprint.md').is_file():
         for name, model in [('blueprint', Blueprint), ('context', Context), ('outline', Outline), ('design', Design)]:
             snapshot[name] = read_artifact(folder / f'docs/{name}.md', model).model_dump()
         recorded = _json(folder, 'blueprint-inputs.json') or {}
         snapshot['blueprint_errors'] = recorded.get('errors', [])
+        if recorded.get('native_dates') and reference and reference['mode'] == 'recreate':
+            snapshot['native_dates'] = recorded['native_dates']
     return snapshot
 
 
@@ -1386,9 +1390,10 @@ def mapping_verdict(mapping, requirement, fields):
     # Merely listing available fields is not a definition. Accept a direct positive
     # assignment clause, never an incidental mention (or a negated instruction).
     text = _effective_text("\n".join(s.text for s in [requirement.source, *requirement.clarifications]))
-    if _conflicting(_candidates(text, mapping, fields)):
+    candidates = _candidates(text, mapping, fields)
+    if _conflicting(candidates):
         return capabilities.Verdict('needs_clarification', f'Conflicting definitions for {mapping.label}; provide an explicit correction')
-    defined_units = {d['unit'] for _, d in _candidates(text, mapping, fields) if d.get('unit')}
+    defined_units = {d['unit'] for _, d in candidates if d.get('unit')}
     if mapping.unit and defined_units and mapping.unit not in defined_units:
         return capabilities.Verdict('needs_clarification', f'Clarify incompatible units for {mapping.label}')
     # A confirmed Context KPI recorded at extraction is the user's explicit field,
@@ -2108,9 +2113,25 @@ def _date_bucket(snapshot, field, grain, source=None, derived=None):
 def _bucket_of(snapshot, field, grain, using, derived):
     """`field` is a date bucket at `grain`, of `using` (a definition's date field) unless `using` names the bucket:
     a derived DATE_TRUNC, or the `using` field itself when its profile says every value starts that grain."""
-    if using is not None and field == using and (snapshot.get('date_starts') or {}).get(field) == grain_name(grain):
+    if using is not None and field == using and date_starts(snapshot).get(field) == grain_name(grain):
         return True
     return _date_bucket(snapshot, field, grain, None if using in (None, field) else using, derived)
+
+
+def date_starts(snapshot):
+    """Recompute projected date proof from active source metadata on every assessment."""
+    from dss.artifacts.models import ViewSources
+    from dss.harness.nodes import view
+    sources = snapshot.get('sources') or []
+    selection = (snapshot.get('blueprint') or {}).get('view_sources')
+    if selection is None:
+        if len(sources) != 1:
+            return {}
+        selection = {'base': sources[0]['id'], 'joins': [], 'union': []}
+    try:
+        return view.proven_date_starts(sources, ViewSources.model_validate(selection))
+    except ValueError:
+        return {}
 
 
 def verification(snapshot, ledger, checker):

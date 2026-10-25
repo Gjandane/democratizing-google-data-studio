@@ -1,4 +1,4 @@
-"""Tasks 24.7-24.8: real two-stage reference design with retained synthetic inputs.
+"""Task 24.10: real two-stage reference fidelity with retained synthetic inputs.
 
 Run explicitly with -m live. Every run retains evidence, including failures; no
 fallback or unresolved feasibility decision is accepted as a successful check.
@@ -38,10 +38,25 @@ NOTES = (
     'They pick regions from a list, compare urban and rural access over time, and follow the people without '
     'access year by year. Every row is invented synthetic sample data, not actual electricity statistics.'
 )
+RECREATE_NOTES = (
+    ' Required report grouping: the FIRST section/page recreates the reference composition: '
+    'headline left, region list left, access percentage scorecard, real-geography globe centre, '
+    'people_without_access yearly bar at the bottom, and ONE combined urban_pct/rural_pct area chart '
+    'in the right panel. Keep all those reference observations together on page 1. '
+    'A SECOND section/page contains additional country and regional comparison analysis. '
+    'The Philippines, Morocco, Fiji and Belize panels are approved aliases for the SAME combined '
+    'urban/rural chart; do not split them into country charts or derive country-filtered metrics.'
+)
 # architecture.md#Recreate observation completion surface, one definition per clause. The region
 # list is a native fixed-size list; the per-country small multiples (no per-chart filter) become
 # one urban/rural area chart, the user's explicit substitution.
 INSTRUCTIONS = (
+    'Approved substitution: replace ALL FOUR observed country panels (Philippines, Morocco, Fiji, '
+    'Belize) with exactly ONE native urban/rural area chart using AVG(urban_pct) and AVG(rural_pct) '
+    'for all countries together over year. The four country definitions below are aliases for that '
+    'SAME shared chart, not requests for separate country charts, country filters or derived fields. '
+    'Retain the reference composition on page 1: headline and region list left, globe centre, '
+    'yearly people-without-access chart at the bottom, shared urban/rural area chart in the right panel. '
     'Region Selector = region, chart fixed_size_list. Region = region. Country = country. '
     'Access to electricity = AVG(access_pct), unit %, date grain year using year. '
     'have access to electricity = AVG(access_pct), unit %, date grain year using year. '
@@ -234,6 +249,12 @@ def capture(flow, folder, evidence, label):
     (evidence / f'{label}.recipe.jsonl').write_text(recipe_text, encoding='utf-8')
     recipe = validate_recipe(recipe_text)
     slots = [c for p in spec['pages'] for c in p['components']]
+    dump(evidence / f'{label}.native-slots.json', [
+        {'page': p['index'], **{key: c[key] for key in
+         ('id', 'type', 'label', 'field', 'dimensions', 'metrics', 'date_dimension', 'breakdown',
+          'sort', 'options', 'box') if key in c}}
+        for p in spec['pages'] for c in p['components'] if c['type'] in (*CHART_TYPES, *CONTROL_TYPES)
+    ])
     emitted = {op['component_id'] for op in recipe[1:] if op['op'] in ('add_chart', 'add_control')}
     assert emitted == {c['id'] for c in slots if c['type'] in (*CHART_TYPES, *CONTROL_TYPES)}, (emitted, slots)
     proof = coverage(flow.app, flow.url.rsplit('/', 1)[1], folder)
@@ -269,7 +290,7 @@ def comparison(evidence, prototype, mode):
             browser.close()
 
 
-# The user-approved drop classes (task 24.7), each selected by its observation's kind, candidate, label
+# The user-approved drop classes (change 2026-10-25), each selected by its observation's kind, candidate, label
 # and status, never "first alternative": the geo map (the data has no GEO field), the misread
 # Rural/Urban legend control, and a year slider if one is extracted. Any other issue is a block.
 APPROVED_DROPS = (
@@ -302,8 +323,9 @@ def approved_drops(flow, folder, assessment):
 
 
 # DSS_LIVE_STAGE=24.7 stops after the published, dry-run recreate build: the design-stage, fidelity and
-# revision assertions below belong to task 24.8 (two-stage reference fidelity and its visual STOP).
-FIDELITY = os.environ.get('DSS_LIVE_STAGE') != '24.7'
+# revision assertions below belong to task 24.10 (two-stage reference fidelity and its visual STOP).
+STAGE = os.environ.get('DSS_LIVE_STAGE')
+FIDELITY = STAGE not in ('24.7', '24.9')
 
 
 def require_fidelity(spec):
@@ -328,12 +350,20 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
     assert all(fixtures[name] == digest for name, digest in HASHES.items())
     generation = json.loads((DATA / 'generation.json').read_text(encoding='utf-8-sig'))
     app, config, project = live_app(tmp_path)
-    evidence = evidence_dir('24.8' if FIDELITY else '24.7', mode)
+    evidence = evidence_dir('24.9' if STAGE == '24.9' else '24.10' if FIDELITY else '24.7', mode)
     (evidence / 'test-source.py').write_bytes(Path(__file__).read_bytes())
     print(f'{evidence.parents[1].name} {mode} evidence: {evidence}', flush=True)
     calls, tables = [], set()
     facts = {'mode': mode, 'fixture_sha256': fixtures, 'generation_calls': calls,
-             'visual_approval': 'pending', 'accepted_substitutions': [], 'dry_engine': True}
+             'visual_approval': 'pending', 'accepted_substitutions': [], 'dry_engine': True,
+             'check_status': 'running', 'fixture_provenance': str(DATA / 'README.md'),
+             'approved_fixture_substitutions': [
+                 'geo_map omitted; globe remains static real-geography art',
+                 'Rural/Urban legend misread as dropdown omitted',
+                 'extracted year slider omitted',
+                 'four per-country small multiples become native urban/rural area chart',
+                 'region selector uses native fixed_size_list',
+             ] if mode == 'recreate' else []}
     secrets = tuple(s.get_secret_value() for s in (config.google_api_key, config.access_code, config.agent_token))
     observe_generation(monkeypatch, calls, evidence=evidence / 'failed-drafts', secrets=secrets)
     started = time.monotonic()
@@ -357,7 +387,8 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
                 flow.act('reference', 'post', '/reference-images', seconds=180,
                          data={'mode': mode, 'instructions': INSTRUCTIONS if mode == 'recreate' else ''},
                          files=[('files', ('electricity-access.jpg', (DATA / 'electricity-access.jpg').read_bytes(), 'image/jpeg'))])
-            flow.act('context', 'post', '/context', seconds=150, json={'notes': NOTES})
+            flow.act('context', 'post', '/context', seconds=150,
+                     json={'notes': NOTES + (RECREATE_NOTES if mode == 'recreate' else '')})
             flow.act('outline', 'post', '/context/confirm', seconds=150)
             outline = flow.get('/outline')
             flow.call('outline', 'put', '/outline/selection', json={'questions': [
@@ -396,6 +427,12 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
             blueprint = flow.get('/blueprint')
             dump(evidence / 'blueprint.json', blueprint)
             facts['code_added_rows'] = [r['note'] for r in blueprint['rows'] if r['note'].startswith('observation ')]
+            if STAGE == '24.9':
+                facts['stage_limit'] = ('Stopped after real-model/BigQuery /design/confirm readiness; '
+                                        'no reference HTML, prototype, engine run or visual approval claimed.')
+                assert not calls, calls
+                facts['check_status'] = 'passed_stage_only'
+                return
             run = flow.act('prototype', 'post', '/blueprint/accept', seconds=1600)
             spec, proof = capture(flow, folder, evidence, 'prototype')
             if FIDELITY:
@@ -408,7 +445,6 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
                                                   if r.source.kind == 'image' and r.source.item_id not in dropped
                                                   and json.loads(r.source.text).get('kind') in ('chart', 'control')}, proof
             if mode == 'recreate' and FIDELITY:
-                require_fidelity(spec)
                 target = next(c for c in spec['pages'][0]['components'] if c['type'] == 'fixed_size_list')
                 old_html = spec['pages'][0]['design']['html']
                 run = flow.act('revision', 'post', '/comments', seconds=850, json={'comments': [{
@@ -438,7 +474,20 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
             assert [op['op_id'] for op in ops] == [op['id'] for op in recipe[1:]]
             assert all(op['status'] == 'skipped' for op in ops), 'engine was not dry-run'
             facts['engine'] = finished
+            if mode == 'recreate' and FIDELITY:
+                # Retain revision/dry-engine evidence even when the original published layout
+                # fails fidelity. The same structural acceptance oracle still must pass.
+                facts['active_check'] = 'fidelity'
+                require_fidelity(spec)
+                facts.pop('active_check')
+            facts['check_status'] = 'passed'
+        except BaseException:
+            facts['check_status'] = 'failed'
+            facts['failure_stage'] = facts.pop('active_check', None) or (flow.steps[-1]['stage'] if flow.steps else 'setup')
+            raise
         finally:
+            published = client.get(flow.url + '/spec')
+            facts['published_prototype'] = published.status_code == 200 and bool(published.json())
             facts['seconds'] = round(time.monotonic() - started, 2)
             facts['stages'] = stage_evidence(app, flow)
             try:

@@ -734,7 +734,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: a complete mandatory repair still exceeds 24k -> fail with its actual bound and budget; do not drop meaning or increase another cap. This task supersedes 24.6's 12k-repair and reference-kit-fallback rules; completed task entries remain historical.
   - Review focus: contracts/api.md 2.0 existing asynchronous failure/stage semantics and recipe.md 1.3 native ops; no contract edits/new public shape. Internal attempt selects the budget, never model/user input. Any failed reference page prevents the entire candidate publication; sibling tasks are settled before cleanup. Preserve positional revised(document, comments, batch, allowed) compatibility and no-reference bytes.
 
-- [~] 24.9 Canonical recreate year bindings and precise KPI repair
+- [x] 24.9 Canonical recreate year bindings and precise KPI repair
   - Goal: resolve both pre-design blockers in the saved 24.9 runs: redundant/mismatched year-bucket fields and incomplete confirmed-KPI rows. Reuse proven yearly dates and make the existing repair actionable without weakening validation.
   - Spec: docs/architecture.md#Recreate date binding normalization
   - Files: src/dss/harness/nodes/blueprint.py, src/dss/harness/nodes/view.py, src/dss/spec/feasibility.py, src/dss/spec/requirements.py, skills/blueprint.md, prompts/v1/blueprint.md, tests/test_blueprint.py, tests/test_feasibility.py, tests/test_view_sql.py, tests/test_render.py, tests/test_context.py, tests/data/recreate_year_buckets.json, tests/live/test_reference_design.py, .blueprint/qa/task-24.9/
@@ -745,7 +745,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: proof cannot be tied to the projected source without changing a contract/profile format -> block for the architect; never trust the existing name-only merged date_starts map as source identity.
   - Review focus: contracts/api.md 2.0 and dashboard-intent.md 1.2 existing blocking/publication semantics, recipe.md 1.3 code-owned date grain; no contract edits. DATE * 1 is not valid SQL, and interval subtraction can change type: require typed intent reconstruction, not algebraic simplification. Protected definitions/metrics and all named KPIs remain intact; apply one rule at every ingress and completion; no new dependencies/model calls.
 
-- [ ] 24.10 Verify and approve two-stage reference fidelity
+- [!] 24.10 Verify and approve two-stage reference fidelity
   - Goal: demonstrate the corrected route against the electricity reference with supported native charts, then retain the user's visual acceptance gate from original 24.5 and blocked 24.8.
   - Spec: docs/architecture.md#Reference HTML composition
   - Files: tests/live/test_reference_design.py, tests/data/reference_design/, docs/progress.md, .blueprint/qa/task-24.10/
