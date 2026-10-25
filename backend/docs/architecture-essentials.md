@@ -1,24 +1,23 @@
-<!-- essentials-of: docs/architecture.md sha256:ff6c6ac1c29b (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:56963f12fec8 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
-Read every build session. docs/architecture.md wins if they disagree.
+docs/architecture.md wins.
 
 ## Stack
 - Python 3.12/uv; FastAPI/uvicorn (no reload), SSE; ADK 2.x Workflow/LlmAgent; Gemini planner
-  `gemini-4-argon` (blueprint, designer), worker `gemini-3.8-flash` (rest), set in settings.
-  SQLite/FTS5; BigQuery/ADC; Playwright Chromium; httpx. Cloud Run: one instance, local dss-agent.
+  `gemini-4-argon` (blueprint, designer, reference brief), worker `gemini-3.8-flash` (reference
+  HTML and rest), set in settings.
+  SQLite/FTS5; BigQuery/ADC; Playwright Chromium; httpx. Cloud: one instance, local dss-agent.
 
 ## Folder map
 ```text
-src/dss/        api/, agent/, artifacts/ (models, okf, state), harness/ (graph, nodes, context,
-                llm, guardrails, tracing), memory/, data/ (bigquery, profile, research), spec/,
-                render/ (prototype, background, kits, design_page, icons/, art/), recipe/, ops/
-skills/         procedural memory; prompts/v1/ versioned system prompts
-knowledge/      OKF seed: catalog/, archetypes/, datastudio/ (fonts.md), themes/, index.md, log.md
-tests/          offline fakes; tests/live/ explicitly marked live
+src/dss/        api/, agent/, artifacts/, harness/, memory/, data/, spec/, render/, recipe/, ops/
+skills/         procedural memory; prompts/v1/ system prompts
+knowledge/      OKF seed: catalog/, archetypes/, datastudio/, themes/, index.md, log.md
+tests/          offline fakes; tests/live/ marked live
 ```
 
 ## Conventions
-- Vocabulary: ../harness-architecture.md. One API action = one ADK Workflow = one trace.
+- Vocabulary: ../harness-architecture.md. One action = one Workflow = one trace.
 - api.md 2.0: connect -> context -> outline -> design -> blueprint -> prototype. Code profiles,
   validates, lays out 1-5 pages, writes files. Models return validated JSON from compact
   profiles/frontmatter, never rows/history; repair limits, budgets: architecture.md#Working memory assembly.
@@ -27,15 +26,18 @@ tests/          offline fakes; tests/live/ explicitly marked live
   (git knowledge = seed); OKF needs `type`, folder index/log. Config: ../.env + settings.
 - Engine argument list/cwd, whole-tree cleanup; Playwright sync in a worker thread. Provider:
   response_json_schema, guarded raw output, sanitized errors. Gemini: planner 120 s, worker 30 s;
-  one retry on 429/500/503, never 504.
+  one retry on 429/500/503, never 504. Reference HTML: 600 s/page including counting/retry/repair.
+  Shutdown cancels active work.
 - Types: `DSS_ALLOWED_TYPES`; sort `{field, order}`. COUNT variants allow dimensions; dropdown
   uses one dimension. Chart colors override theme (no scorecards); accents affect only their target.
 - Cloud: SPA/$PORT, code cookie/header, fail-closed startup; backup API every 30 s when dirty;
   agent token, 60 s retry. Run recompiles the current spec; dev routes need DSS_DEV=1.
 - Accept publishes its candidate view/spec/artifacts atomically; never clean a published view.
   Backgrounds: background.write_pages per page, 3x, <2 MB.
-- Designed pages: sanitized planner HTML; Chromium measures slots -> `box`; prompt width 1200
-  (> ~1380 px misplaces); one repair, then kit; reference images in; `data-art` art.
+- Designed pages: no-reference planner unchanged; ready native slots + reference -> Argon brief
+  -> Flash HTML. Count images; 12k input, 4k/16k output. Chromium measures slots -> `box`;
+  width 1200 (> ~1380 misplaces); one HTML repair, then kit; `data-art` art. No new web access,
+  fake charts or slot changes.
   Text fit: architecture.md#Implementation conventions.
 - Feasibility: structured Blueprint rows; extraction only for Other, comments, references;
   images are not data. Other fail-open gap: PRD Later; unsupported still blocks.

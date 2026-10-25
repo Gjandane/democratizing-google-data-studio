@@ -23,8 +23,8 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 4. Token economy: code computes and writes; the LLM fills structured judgment fields from compact
    profiles and upstream artifacts (never rows or chat history); artifacts, spec layout, HTML,
    background, SQL view and recipe are deterministic code, except the designed page layer
-   (goal 9); model routing (planner `gemini-4-argon` for blueprint and designer;
-   `gemini-3.8-flash` for the rest).
+   (goal 9); model routing (planner `gemini-4-argon` for blueprint, no-reference designer and
+   reference design briefs; worker `gemini-3.8-flash` for reference HTML and the rest).
 5. History: every build keeps its versions; a new version starts from the latest spec.
 
 6. Required: style/recreate reference extraction and data reconciliation, with evidence-backed
@@ -36,13 +36,17 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 7. Screenshot-only builds: schema/row-count/seed driven Python CSV generation, exposed as a
    reusable function/CLI and API; typed BigQuery intake, visible synthetic provenance.
 
-9. Designed pages (change 2026-10-22, user): the planner, guided by a dashboard-design skill,
+9. Designed pages (change 2026-10-22, user; reference route revised 2026-10-25): without a
+   reference, the planner, guided by a dashboard-design skill,
    writes each page's background HTML/CSS (header, titles, cards, icons) around one empty slot
    per spec component, and picks the page width (1200-1920; the prompt asks 1200 because the
    Data Studio editor zooms wider canvases, 20.5). Code sanitizes it, measures the
    slots in Chromium to place the native Data Studio components, screenshots the rest as the
    background, and falls back to the code layout and kit per page. Target look:
-   docs/change-2026-10-22-reference.webp.
+   docs/change-2026-10-22-reference.webp. With a reference, feasibility and the accepted native
+   components precede an Argon visual brief, then Flash writes the sanitized background HTML.
+   Recreate aims for the closest supported Data Studio structure; style borrows treatment only.
+   Unsupported elements require the existing explicit decisions, never fake charts in the background.
 
 ## Non-goals
 - No user identities, accounts or multi-user isolation (POC, one shared access code).
@@ -100,6 +104,15 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
   the two-source GPS-style fixture reaches a blueprint with a union and a flagged ratio KPI.
 
 ## Decided by default
+- Change 2026-10-25: user keeps native Data Studio charts, allows HTML generation longer than
+  five minutes (reported a roughly three-minute Flash 3.8 experiment), and chooses supplied
+  reference/bundled assets first, with no new internet research. Default: 600 s per page's Flash
+  stage, including counting, transport retry and its one HTML repair; reason: room beyond the
+  observed three minutes, with a finite failure bound. Argon brief stage remains 120 s; output
+  caps remain 16k for HTML, with a new 4k brief cap, both including thinking. No-reference
+  requests stay identical. Reuse compatible pieces of the saved 24.5 work, inspected and
+  applied only inside backend; no unconditional whole-stash restore. These defaults preserve
+  existing API/recipe contracts and the required visual approval STOP.
 - Change staged workflow 2026-10-21 (user choices in ../docs/program.md decision log): the
   defaults below about the interview and conversational definitions are superseded. New
   defaults: profile value lists for <= 20 distinct values; at most 15 KPIs/derived fields/

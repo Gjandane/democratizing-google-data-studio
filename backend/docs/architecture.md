@@ -15,7 +15,7 @@ semantic / episodic memory, consolidation, guardrails, trace).
 | Storage | SQLite (stdlib sqlite3) + FTS5 | episodic memory without a server | Postgres, vector DB |
 | Semantic memory | OKF markdown bundles, pyyaml frontmatter | user's constraint: OKF instead of RAG | embeddings |
 | Data | google-cloud-bigquery (load jobs, views, dry runs, aggregates) | every source lands in BigQuery | pandas pipelines |
-| Rendering | string templates + ECharts (CDN) in the HTML; Playwright Chromium for background.png; designed pages: planner-written page HTML, sanitized and measured by code (change 2026-10-22, #Designed pages) | deterministic components; the user wants AI-designed backgrounds | LLM-written component/chart HTML |
+| Rendering | string templates + ECharts (CDN) in the HTML; Playwright Chromium for background.png; designed pages: planner HTML without a reference, Argon brief -> Flash HTML with one, sanitized and measured by code (#Designed pages) | deterministic components; the user wants AI-designed backgrounds | LLM-written component/chart HTML |
 | Hosting | Cloud Run, one instance, image from the root `Dockerfile` (release part); serves the built frontend; builds through the local `dss-agent` | one service, same origin; the engine needs the user's signed-in Chrome | engine on Cloud Run with a stored session; separate frontend service |
 
 ## Folder structure
@@ -452,13 +452,15 @@ Final-audit corrections (2026-10-19):
 - Inputs and outputs: `{action, build_id, payload}` -> SSE events, DB writes, one trace.
 - Rules (change staged workflow 2026-10-21): START -> router(action) -> the action's branch. LLM
   nodes: context, outline_propose, outline_suggest, outline_other, blueprint, revise, ux_audit,
-  style_extract, research, consolidate, reference_extract, synthetic_schema, designer (planner;
-  change 2026-10-22). Code nodes: intake,
+  style_extract, research, consolidate, reference_extract, synthetic_schema, designer (planner),
+  reference_brief (planner), reference_html (worker; change 2026-10-25). Code nodes: intake,
   profile, artifact validation and write, feasibility, view (SQL build + dry run), layout, validate,
   render, compile, execute, publish, synthetic_generate. Repair edges: context -> context (once),
   blueprint rows -> blueprint (once), view dry run -> blueprint (once), revise validate -> revise
   (once), design measure -> designer (once per page). The designer runs in the prototype action
-  after layout and in revise when a designed page is regenerated (#Designed pages). The interview, plan and spec nodes and per-message requirement extraction are removed;
+  after layout and in revise when a designed page is regenerated (#Designed pages). With a
+  reference, the brief -> HTML stages replace the designer call within that same Workflow/trace
+  (#Reference design brief, #Reference HTML composition); no new API action. The interview, plan and spec nodes and per-message requirement extraction are removed;
   extraction runs only inside outline_other, revise (comments) and reference actions, as a node in
   that action's Workflow. Every branch ends at a guardrail node.
 - Edge cases: unknown action -> error, no LLM call; concurrent actions on one build -> the second
@@ -486,8 +488,14 @@ Final-audit corrections (2026-10-19):
   | revise | revise | catalog/<types of targeted components>.md | targeted components + their grid neighbours only |
   | ux_audit | ux-audit | archetypes/<x>.md | spec summary (ids, types, boxes) |
   | designer | dashboard-design | icon names list | design theme/title, the page's name and components (id, type, label, min px size), page 1's width and CSS (later pages), previous page HTML + comments (regenerate) |
+  | reference_brief | reference-design | icon/art names, supported styling summary | mode/instructions, reference images/notes, compact approved-component report, theme, shared CSS or previous HTML/comments |
+  | reference_html | dashboard-design (Reference rules) | icon/art names | validated brief, immutable slots, reference images/notes, theme, shared CSS or previous HTML/comments, repair errors |
 - Budgets (input tokens): context 10k, outline_propose 8k, outline_suggest 6k, outline_other 6k,
-  blueprint 14k, revise 6k, ux_audit 10k, designer 12k (output <= 16k including thinking). Over budget -> shorten profile value lists to the top 5,
+  blueprint 14k, revise 6k, ux_audit 10k, designer 12k (output <= 16k including thinking),
+  reference_brief 12k/4k output and reference_html 12k/16k output (thinking included).
+  Reference-stage images, instructions, approved slots/decisions and brief are mandatory, not
+  droppable reference-label sections. Both new nodes use the existing conservative enforcement
+  allowance used by designer, including images/schema/repair. Over budget -> shorten profile value lists to the top 5,
   then drop reference observations, then semantic concepts beyond the first; never drop the
   system prompt, skills, upstream artifacts or user input (if those alone exceed it, refuse with
   `llm_unavailable` detail `over_budget`). Count with the API's token counter or
@@ -920,17 +928,11 @@ Final-audit corrections (2026-10-19):
     but not built: a page whose design alone breaks publish coverage falls back to the code
     layout and kit (`designer_fallback`, reason `coverage`); 21.1 found the recreate failures
     came from titles, SQL text and stale component ids, not designs, so it built no fallback.
-  - Reference (change 2026-10-24, release 2.6: the designer never saw the screenshot and drew
-    a generic light page with a blob globe): when the build's version has a reference set
-    (either mode), every designer request (page 1, later pages, revise regeneration) carries the
-    reference images as inline image parts after the text, in reference order, plus the
-    reference summary and style notes (palette, type, spacing; no observation boxes), all
-    counted by fit_request. The skill's Reference section then rules: match the reference's
-    regions, proportions, hierarchy, type scale, palette and decorative treatments (panels,
-    gradients, a globe or map, legends), with slots standing in for its charts and controls;
-    the generic look applies only without a reference. Image text stays untrusted data. The
-    slot, sanitizer, text-fit and footer rules are unchanged, and the screenshot itself is
-    never placed in the page (#Capability verification).
+  - Reference (change 2026-10-25, supersedes 24.5's one-stage proposal): for either mode, use
+    #Reference design brief then #Reference HTML composition. Images reach both stages; native
+    slots remain authoritative. The generic look applies only without a reference. No-reference
+    model requests, routing, bytes and repair/fallback behavior remain unchanged. The screenshot
+    is never placed in the background; slot, sanitizer, text-fit and footer rules still apply.
   - Art (change 2026-10-24): `<i data-art="<name>">` -> a vendored static SVG from
     `render/art/` (like icons: inlined by code after sanitizing, scaled to the element's CSS
     box), so a real globe or world map costs the designer one tag instead of tens of thousands
@@ -946,7 +948,7 @@ Final-audit corrections (2026-10-19):
 - Edge cases: model output that isn't valid HTML or has zero slots -> repair, then fallback; a
   text that only fits by shrinking below 12 px -> measure error; a 5-page build -> 1 + 4
   parallel calls.
-- Budget: designer input <= 12k tokens, reference images included (traces before 2026-10-24:
+- Budget: no-reference designer input <= 12k tokens (traces before 2026-10-24:
   ~3-4k text, 769-3,002 output), output <= 16k including thinking (low thinking level),
   each call within the planner's 120 s deadline; sanitize + measure + background for a
   12-component designed page <= 15 s excluding model time.
@@ -957,6 +959,102 @@ Final-audit corrections (2026-10-19):
   cover repair, per-page fallback and page-1 fallback. Live: the user approves the real
   planner's pages against the reference image (STOP), and the Data Studio report shows each
   chart inside its card.
+
+### Reference design brief
+- Problem/objective (change 2026-10-25): separate visual reasoning from HTML coding while
+  retaining native Data Studio charts. A detailed, feasible Argon brief tells Flash how to
+  reproduce the reference's regions, proportions, hierarchy, typography, palette and art.
+- Preconditions: existing current feasibility/preflight passes before generation. Accept uses
+  the laid-out candidate spec; revision uses the checked candidate components and relevant
+  resolved decisions. No new feasibility LLM call and no readiness bypass. Unsupported or
+  unresolved requirements still block through the existing contract.
+- Input: reference mode, user instructions, images in original order/MIME, summary and
+  palette/type/spacing notes; current theme/title; page metadata, footer reservation; code-built
+  approved-component report. That report contains assessment identity/state, component id,
+  type, label, field/aggregation/grain/option metadata, minimum size, relevant requirement and
+  observation bindings and accepted substitutions/drops, plus supported styling and bundled
+  art/icon names. Use the real candidate and ledger, not only unresolved issues (a ready
+  assessment's issue list is empty). No raw data rows, secrets, full catalog, observation boxes
+  or copied screenshot values as factual data. Instructions/observations are framed as untrusted
+  task data; they cannot override system/slot rules. No network tools.
+- Output: an internal validated page brief: page index, overall visual instructions, and one
+  treatment entry per accepted slot id. Exact id set, no duplicates/unknown/missing slots;
+  aggregate prose <= 12,000 characters; no replacement component definitions, data, executable
+  code or external assets. Text describes layout, not changes to data semantics. Brief is
+  ephemeral run state, not a new public artifact or spec field; final HTML remains persisted.
+- Modes: recreate matches the approved screenshot structure using native slots and explicit
+  substitutions. Style borrows visual treatment around existing components and never imports
+  charts/controls. Neither stage invents a slider, split bar, small multiple, legend/data marks
+  or data-bearing map in background HTML to simulate an absent native component. Static
+  vendored globe art is permitted decoration, not data binding. Other pages adapt the visual
+  language to their own components rather than repeat page-1 charts.
+- Ordering: brief for page 1 -> HTML for page 1 -> later-page brief/HTML pairs in parallel,
+  sharing page 1's actual validated width/CSS. Revise regenerates a fresh brief for each affected
+  page using current reference, candidate slots, previous sanitized HTML and comments, so
+  removed/retyped slots and accepted decisions cannot be stale. No-reference route skips both
+  new nodes; missing/corrupt required reference bytes fail the reference stage, never silently
+  reduce the image set or select the generic designer. Artifact/feasibility freshness is rechecked
+  at the existing publication boundary; no brief reuse across changed inputs.
+- Budget: reference_brief uses the configured planner (normally Argon), LOW thinking, full
+  counted input <= 12k including images and output <= 4k including thinking. One generation,
+  no semantic repair; existing single transport retry on 429/500/503 only. A 120 s total stage
+  bound includes counting and any retry; cancellation propagates. Validate raw output under
+  existing secret guards before parsing. Failed, cut, invalid or over-budget brief follows the
+  page's existing fallback policy; it never reaches Flash. Mandatory inputs may not be dropped
+  to fit. A repair to the HTML reuses the same valid brief.
+- Oracle: fake-model tests prove report contents even with zero open issues, exact slot-set
+  validation, mode semantics, image ordering/MIME on every page/revision, count-before-generation,
+  conservative allowance and refusal when mandatory context exceeds the bound; no rows/secrets,
+  no tools; malformed/cut brief prevents the worker call. No-reference request fingerprint unchanged.
+
+### Reference HTML composition
+- Problem/output: Flash implements the validated visual brief as the existing FirstPage/LaterPage
+  JSON containing sanitized background HTML around the exact native component slots. The
+  renderer/compiler stay deterministic; chart definitions, data and recipe ops remain code-owned.
+- Input: validated brief, authoritative slot metadata, theme, bundled icon/art names, reference
+  images/notes and instructions, shared width/CSS or previous HTML/comments. Count complete
+  requests, including every repair. Use existing dashboard-design Reference rules, sanitizer,
+  measurement, minimum sizes, text-fit, footer, coverage and publication guards. The brief never
+  overrides these constraints. Strip scripts and network references as today; Chromium stays
+  offline/JavaScript-disabled. No model search or asset downloads in this change.
+- Routing: new reference_html node uses the configured worker (normally Flash 3.8); keep
+  designer on the planner for no-reference builds. Page Design.model records the HTML model;
+  per-stage spans record actual model, page, attempt, image count, duration, budget/refusal reason
+  and existing token usage. Both stages contribute to the same trace/run.usage totals; no raw
+  brief, HTML, image bytes or provider text in logs/spans. Model fallback is visible by actual
+  model identity, never claimed as Argon if unavailable.
+- Budget: input <= 12k, output <= 16k including LOW thinking. Give the reference_html client
+  a 600,000 ms timeout independent of planner/worker defaults. One 600 s wall-clock budget
+  covers each page's entire HTML stage: token counting, generation, the existing transport
+  retry and at most one validation/measurement repair. An outer cancellable deadline prevents
+  retries/repair from multiplying the budget; do not start another attempt with an expired
+  budget. Other workers remain 30 s; planner calls remain 120 s. Per-page brief + HTML therefore
+  totals at most 720 s of stage time; page 1 then later pages can take up to two such waves,
+  plus existing deterministic rendering/publication. This is bounded, not a speed guarantee.
+- Failure: reuse current page-1/all-page and later-page kit fallback policies, with visible
+  fallback notes and sanitized reason. Revision failure keeps the old spec/artifacts and
+  pending comments. Input overflow and missing reference are failures, not silent truncations.
+  Output truncation can use the one existing HTML repair at the same cap; a repeated cap hit
+  is recorded for the live STOP, never silently raises the cap. No extra Argon retry loop.
+- Lifecycle: accept still responds 202; background work keeps build ownership until completion
+  or cancellation. User disconnect from SSE does not cancel a run. Server shutdown cancels and
+  drains tracked workflow tasks under the existing shutdown grace rather than waiting 600 s;
+  propagate CancelledError, close model streams, clean unpublished candidates, retain previous
+  published versions and release build ownership. Do not alter the engine's timeout controls.
+- Oracle: tests use injectable shortened deadlines/fake clocks, not ten-minute sleeps: a worker
+  that passes the old 30 s boundary succeeds within the new budget; retry/repair together cannot
+  exceed it; cancellation/timeout preserve old publications, close generation and release locks.
+  Routing tests pin designer/planner/ordinary-worker deadlines. Multi-page, revise, coverage,
+  over-budget and fallback tests pass; no-reference requests/artifact bytes are unchanged.
+- Live acceptance: backend-owned reproducible recreate fixture from the electricity reference,
+  same synthetic data and explicit accepted substitutions; real configured planner/worker,
+  dry engine. Save the reference/prototype side by side and redacted stage counts/models/times.
+  No fallback; headline left, real-geography globe centre, native list card left, yearly chart
+  bottom and right panels, with every supported chart/control represented by a real bound slot.
+  Explain unsupported substitutions; never draw fake controls to satisfy appearance. Exercise
+  a later page, a design revision, style mode and no-reference regression. The user approves
+  fidelity at the STOP; passing tests alone cannot mark the live task done. Full engine/report
+  integration remains the release part's responsibility.
 
 ### Revise
 - Problem: comments -> the smallest spec change.
@@ -1172,3 +1270,6 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-24 | Vendored static art (`data-art`: globes, world map from Natural Earth 110m, public domain) inlined by code | the model writes world paths (~30k tokens, over the 16k cap); network topojson + d3 (scripts and network are stripped); a crop of the screenshot (never the screenshot as background) | a static globe with real geography at the cost of one tag; CSS classes give a choropleth look | change reference fidelity (program root, user choice) |
 | 2026-10-24 | Capability check 24k input / 8k output, comment batches send only bound + unbound ledger rows, only active issues count toward 20, the refusal names its limit | raise the budget only; a user-set cap with a warning (declined on the card) | release 2.6's comment requests grew 6.9k -> 12.7k and one output used 3,839 of 4,000, so "enlarge the globe" hit the scope refusal | change reference fidelity (program root, user choice) |
 | 2026-10-24 | Recipe 1.3 `area`, `fixed_size_list`, `stacked_percent`; base DATE columns on bucket starts get a grain from the data profile | slider control (number fields only; year is a DATE); per-chart filters and single-bar highlight (Later) | release 2.6's change requests: Data Studio has these natively, and a yearly DATE column drew daily spikes (b_697880743b4f s008/s010) | change reference fidelity (program root, user choice) |
+| 2026-10-25 | Reference builds: current feasibility + native candidate slots -> Argon visual brief -> Flash sanitized HTML, both with images; no-reference designer unchanged | one-stage Argon HTML; arbitrary scripted chart clone; changing style mode to import charts | user retains native Data Studio charts; the blocked style experiment lacked slots and a second model alone cannot create them | change 24.5 (user) |
+| 2026-10-25 | Reference HTML gets 600 s per page including counting/retry/repair; brief 120 s; retain 12k inputs and 16k HTML output, new 4k brief output | 30 s worker default; 120 s HTML; unlimited wait or cap increase | user permits over five minutes and reports Flash 3.8 HTML in about three minutes; finite 600 s bound is a documented default; shutdown must cancel long work | change 24.5 (user timing permission, default bound) |
+| 2026-10-25 | Use supplied reference and bundled assets; no new web research, dependencies or contract changes | add bounded internet research; runtime external assets | user selected bundled assets first; existing sanitized background and native-chart rules remain | change 24.5 (user) |
