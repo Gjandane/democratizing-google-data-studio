@@ -440,7 +440,7 @@ Final-audit corrections (2026-10-19):
   one repair. Cover every ingress plus projection collisions, unions, proof removal, protected
   definitions, unknown aliases and non-identity expressions; verify idempotence and unchanged
   18.2/21.1/22.1, style/data/no-reference results. Live readiness and visual evidence are separate
-  gates in tasks 24.9/24.10; offline success cannot approve fidelity.
+  gates in tasks 24.9/24.11; offline success cannot approve fidelity.
 
 ### Blueprint observation coverage
 - Problem (final audit 2026-10-23): in recreate mode the Blueprint planner never sees the image
@@ -892,6 +892,79 @@ Final-audit corrections (2026-10-19):
   SUM(people_without_access) bar, and one urban/rural area chart bound to all four per-country
   observations. The recipe compiles and the fake engine is done. The 18.2, 21.1 and 22.1
   fixtures publish unchanged.
+
+### Recreate page placement and truthful observed titles
+- Problem (task 24.10 block, change 2026-10-26): run 20261026-045323-8f75b9ce published with
+  every observation bound, but the approved urban/rural area chart sat on page 3 while page 1's
+  right panel was a country table: coverage proves a binding on any page. Its access scorecard
+  showed `55.11` titled "have access to electricity worldwide in 2011": #Recreate definition
+  reconciliation copies the screenshot title, the value is AVG(access_pct) over every year, and
+  the recipe has no number format, so the `%` from `unit %` never shows. Evidence:
+  .blueprint/qa/task-24.10/ (acceptance-review.md, recreate/*/).
+- Inputs and outputs: as #Blueprint observation coverage and #Recreate observation completion,
+  plus each image observation's reference page (the page completion already targets: page 1,
+  since recreate reads one screenshot). Output: the same Assessment, decision API, spec and
+  recipe shapes (no contract change).
+- Placement rules:
+  - In recreate mode an image observation counts as fulfilled only by a row (at publish, a
+    component) on its reference page. One page-aware predicate (built on
+    `requirements._component_fulfills`, given the row's page or the spec page index) serves
+    `observation_coverage` (the Blueprint check and completion, whose `laid_out` rows must keep
+    their page) and `coverage_errors` (accept, publish and revision), so they agree. A matching
+    row on another page doesn't count for the observation and stays as additional analysis;
+    code never moves, deletes or retypes it.
+  - Matching (`_nearest`) and code-built offers (`_observation_offers`) consider only
+    reference-page rows; an offer on an off-page row can never fulfil the observation.
+  - Repair targeting: an observation unfulfilled on its page joins the existing one row repair.
+    Its error carries the question of the nearest reference-page row; with none, the selected
+    questions whose sections map to that page. Repaired rows keep the existing 1-3 rows per
+    question and the page/capacity checks. The feedback names the page and the observation's
+    required meaning (chart type, metrics, dimension or date field), not the title gap of an
+    off-page row. With no question on that page, the error isn't repairable.
+  - After the repair, the existing completion adds a code-built row on that page when the
+    reconciled meaning is complete; with no capacity left (12 rows) or an incomplete meaning,
+    it stays an Issue, as now.
+- Title rules (one normalizer, `requirements.observed_title(label, mapping)`, used everywhere the
+  screenshot title is used: `observation_meaning`'s title for the planner, completion row labels
+  (`_observed_row`), the simulated titling in `observation_coverage`, `observed_labels`, and the
+  label coverage check):
+  - Period: remove a trailing fixed-period phrase that no binding of that component enforces:
+    a year after `in|for|during|as of|since` (`in 2011`), and a year range, quarter-year or
+    month-year with or without one of those prepositions (`for 2000-2019`, `Q3 2024`,
+    `as of March 2024`, `March 2024`). A bare trailing year without a preposition is kept (it
+    may be a name, e.g. "Vision 2030"). The POC has no per-chart filter (PRD Later), so such a
+    phrase is always unenforced; page date controls still filter the value. Text elsewhere in
+    the label is kept.
+  - Unit: append ` (<unit>)` only when the unit comes from an instruction definition or a
+    confirmed Context KPI (never only from the extractor's reading of image text), every metric
+    of the mapping has that same unit, and the label doesn't already show it, compared through
+    the existing `_unit` aliases (`%`/percent, `$`/USD). Mixed units add nothing. The value is
+    unchanged; the recipe and renderer don't format numbers.
+  - A planner-written title equal to the raw screenshot title is normalized like a code-assigned
+    one; any other planner title, Context KPI and instruction definition is not rewritten.
+  - Text fit: if a normalized title with a unit suffix fails the existing text-fit check
+    (#Prototype renderer), that component keeps the period-stripped title without the suffix;
+    it never makes the other observed titles fall back.
+- Edge cases: a label that is only a period phrase keeps the original (never an empty title); a
+  period phrase in the middle of a label is kept. Removing the reference or instruction
+  recomputes and removes code-added page rows as now. Style mode, data mode, builds without a
+  reference and recreate observations already on their page: unchanged behavior and bytes.
+- Budget: no new model call, query, dependency, contract shape or cap; the 100 ms recomputation
+  oracle holds with 24 observations and 24 clauses.
+- Oracle: an offline fixture rebuilt from read-only copies of run 045323's inputs (sanitized,
+  reconstructed replies labelled, as in task 24.9) whose Blueprint binds the four per-country
+  observations to an area row on page 3 only and puts a table on page 1. Before the fix it is
+  ready and publishes the area on page 3; after it, the observations are unfulfilled on page 1,
+  the sole repair targets page-1 questions and names page 1, a compliant repair reply fulfils
+  them with no completion row, and with a non-compliant reply completion adds the urban/rural
+  area row on page 1; accept publishes it there, the page-3 rows survive, and the recipe
+  compiles to fake-engine done. The access scorecard publishes as "have access to electricity
+  worldwide (%)". Negatives: a full page 1 stays an Issue (409 on accept); an extractor-only
+  unit, mixed units, "Vision 2030", a mid-label period and an unrelated planner title are not
+  rewritten; a suffix failing text fit drops only that suffix. The 18.2, 21.1, 22.1 and 24.9
+  fixtures still publish; their only allowed differences are observed titles gaining a unit
+  suffix or losing a period phrase, each listed in the progress entry. Style, data and
+  no-reference fingerprints are unchanged.
 
 ### Build docs
 - Problem: the durable design brief (OKF bundle per version), written by code (change 2026-10-21).
@@ -1456,3 +1529,4 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-25 | Recreate observation completion: definition-only instructions are evidence, not rows; `Label = field`, `using <date field>`, `chart <type>`, multi-metric substitution; scorecards skip the grain check; code adds a page-1 row for a fully determined unfulfilled observation | alternative the user picks for the added row; drop policy inside the test; keep the extracted dropdown | 24.7 blocked at 21 issues on the electricity fixture; the user chose the code-added row, the `chart` clause and one urban/rural area for the per-country small multiples; geo_map, legend and slider drops approved for that fixture | change 24.7 (user) |
 | 2026-10-25 | Compact duplicate reference repair input; 12k initial / 24k repair input, unchanged conservative count allowance, 16k output and 600 s/one repair; reference design failure prevents publication and preserves prior artifacts | keep every request at 12k; publish the standard kit after reference failure; keep retrying live | 24.8 evidence: repair bound 14,117 exceeded 12k; another repair retained one measurement error. User chose the 24k repair limit and stopping failed reference builds. Native-slot validation and visual acceptance stay mandatory | change 24.8 (user answers in architect session) |
 | 2026-10-26 | Reconstruct recreate yearly dates onto the projected base DATE with active full-column proof plus explicit field/grain intent or a selected native date-axis use of a complete recognized truncation; undeclared aliases need explicit intent; share completion/ingress rules and give exact missing-KPI feedback | infer aliases/observations from names or metrics; simplify arbitrary SQL; repeat live until ready; waive q4's missing KPI | 24.9 failed twice before design: mismatched year aliases/invalid DATE arithmetic, including overall series without observation links, plus an independent missing confirmed q4 measure. Retain typed SQL, KPI and coverage gates | change 24.9 (architect ruling; implementation 24.9, live/visual verification 24.10) |
+| 2026-10-26 | Recreate observations count only on their reference page (shared coverage rule; existing one repair names the page, then completion adds the row there); code-assigned observed titles drop an unenforced trailing period phrase and gain the mapped unit | rely on planner notes for placement; accept the untruthful label as a substitution; add a number-format option (contract change) | 24.10 run 045323 published the urban/rural area on page 3 with a table on page 1, and a scorecard titled "...in 2011" showing an all-years 55.11 with no %; the corrected-input run blocked on a prose instruction needing a date field | change 24.10 (user answers; implementation 24.10, live/visual verification 24.11) |

@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:d6140b723185 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:62862b6068a5 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 docs/architecture.md wins.
 
@@ -51,6 +51,9 @@ tests/          offline fakes; tests/live/ marked live
   or a selected native date-axis use of a recognized truncation; missing aliases need explicit
   intent. No guessed SQL simplification. Exact missing-KPI feedback uses the
   existing one repair; unresolved KPIs block (#Recreate date binding normalization).
+  Recreate observations count only on their reference page; code-assigned observed titles drop
+  unenforced period phrases and show the mapped unit (#Recreate page placement and truthful
+  observed titles).
 - Synthetic: opt-in schema/count/seed -> stdlib CSV -> typed BQ intake; protected page-1 footer.
 - Tests offline unless marked live. Research <=20 fetches, no retries.
 
