@@ -300,24 +300,10 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                         state['rows'][i] = row.model_copy(update={'component': row.component.model_copy(
                             update={'label': fallback_label(row.component)})})
                     dirty = []
-                snapshot = req.inputs(harness.db, build_id, folder)
-                snapshot.update(blueprint=Blueprint(revision=1, **state['view'].model_dump(), rows=state['rows'],
-                    view_table=None, assessment_id=None).model_dump(), context=context.model_dump(),
-                    outline=outline.model_dump(), design=design.model_dump(), blueprint_errors=[])
-                ledger, checker = req.load(folder), Checker(load_registry())
+                snapshot, ledger, checker = drafted_inputs()
                 state['errors'] = feasibility.diagnostics(snapshot, ledger, checker)
                 if state['row_repaired'] or not (dirty or any(e['repairable'] for e in state['errors'])):
-                    # architecture.md#Recreate observation completion: after the one row repair, code adds the
-                    # rows observations still lack and drops code-added ones nothing needs. No model call.
-                    drafted = Blueprint.model_validate(snapshot['blueprint'])
-                    rows, derived, added = feasibility.complete(snapshot, ledger, checker, drafted, connected, context)
-                    if rows != drafted.rows or derived != drafted.derived_fields:
-                        state['rows'] = rows
-                        state['view'] = ViewDraft(view_sources=drafted.view_sources, derived_fields=derived)
-                        snapshot['blueprint'] = drafted.model_copy(update={'rows': rows, 'derived_fields': derived}).model_dump()
-                        state['errors'] = feasibility.diagnostics(snapshot, ledger, checker)
-                    if added:
-                        trace.spans[-1]['observation_rows'] = [r.note for r in added]
+                    complete_rows(snapshot, ledger, checker)
                 if dirty:
                     state['errors'].append(dict(code='label', indices=dirty, qids=[], status='needs_clarification',
                         message='Component label must be one short line without list or quote syntax',
@@ -328,6 +314,26 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
             state['row_repaired'], state['phase'] = True, 'row_repair'
             return Event(actions=EventActions(route='repair'))
         return Event(actions=EventActions(route='view'))
+
+    def drafted_inputs():
+        snapshot = req.inputs(harness.db, build_id, folder)
+        snapshot.update(blueprint=Blueprint(revision=1, **state['view'].model_dump(), rows=state['rows'],
+            view_table=None, assessment_id=None).model_dump(), context=context.model_dump(),
+            outline=outline.model_dump(), design=design.model_dump(), blueprint_errors=[])
+        return snapshot, req.load(folder), Checker(load_registry())
+
+    def complete_rows(snapshot, ledger, checker):
+        # architecture.md#Recreate observation completion: after the one row repair, code adds the
+        # rows observations still lack and drops code-added ones nothing needs. No model call.
+        drafted = Blueprint.model_validate(snapshot['blueprint'])
+        rows, derived, added = feasibility.complete(snapshot, ledger, checker, drafted, connected, context)
+        if rows != drafted.rows or derived != drafted.derived_fields:
+            state['rows'] = rows
+            state['view'] = ViewDraft(view_sources=drafted.view_sources, derived_fields=derived)
+            snapshot['blueprint'] = drafted.model_copy(update={'rows': rows, 'derived_fields': derived}).model_dump()
+            state['errors'] = feasibility.diagnostics(snapshot, ledger, checker)
+        if added:
+            trace.spans[-1]['observation_rows'] = [r.note for r in added]
 
     def repair_ids():
         return {qid for e in state['errors'] if e['repairable']
@@ -342,6 +348,9 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                 repaired = ViewDraft.model_validate_json(state['raw'])
                 state['view'] = ViewDraft(view_sources=repaired.view_sources,
                     derived_fields=derived_fields(context, repaired.derived_fields, retained))
+                # Completion on the drafted view could build no fields when that view was invalid (live
+                # 24.8 run 20261025-214425): complete again on the repaired one, so its buckets are dry-run.
+                complete_rows(*drafted_inputs())
             sql = view.blueprint_sql(connected, state['view'].view_sources, state['view'].derived_fields,
                                      context_fields=[f.name for f in context.derived_fields])
             service = payload['factory'](config)

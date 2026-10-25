@@ -723,7 +723,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: the extractor's shape varies (AGENTS.md gotcha) -> normalize in code. Confirm the live ready state with 2 consecutive passing runs. A different blocking class (not an approved drop) is a block for the architect, never a new drop.
   - Review focus: no contract or decision-API change. Code never drops, retypes or rebinds an observation by itself; only user instructions and decisions do. Added rows are fully determined and validated, with no model SQL. The metric rule "a field name alone is not a metric" still holds.
 
-- [ ] 24.8 Verify and approve two-stage reference fidelity
+- [!] 24.8 Verify and approve two-stage reference fidelity
   - Goal: demonstrate the new route against the electricity reference with supported native charts, then retain the user's visual acceptance gate from original 24.5.
   - Spec: docs/architecture.md#Reference HTML composition
   - Files: tests/live/test_reference_design.py, tests/data/reference_design/, docs/progress.md, .blueprint/qa/task-24.8/

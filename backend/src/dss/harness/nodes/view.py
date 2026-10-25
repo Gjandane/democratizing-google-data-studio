@@ -26,8 +26,8 @@ def field_name(value):
 
 
 # Planner output shape (live 24.7 runs): a trailing block comment citing provenance, or the next JSON
-# field leaked into the string (`DATE_TRUNC(year, YEAR)','date',`).
-LEAKED_TAIL = re.compile(r"\s*(?:/\*[^*]*\*/|'\s*,\s*'[a-z_]*'\s*,?)\s*$", re.I)
+# field leaked into the string (`DATE_TRUNC(year, YEAR)','date',`, 24.8: `...)','type':'date`).
+LEAKED_TAIL = re.compile(r"\s*(?:/\*[^*]*\*/|'(?:\s*[,:]\s*'[a-z_]*'?)+\s*,?)\s*$", re.I)
 
 
 def model_expression(value):

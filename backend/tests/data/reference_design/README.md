@@ -24,7 +24,7 @@ needed to reproduce it. Full hashes for every fixture are also saved per run.
 Run from backend: `uv run pytest -m live tests/live/test_reference_design.py`.
 Real configured models and BigQuery are required. The test sets dry engine and the
 current native type catalog explicitly. Outputs, spans and screenshots go to
-`.blueprint/qa/task-24.7/`; created BigQuery tables/views are cleaned after each case.
+`.blueprint/qa/task-24.8/` (`task-24.7/` with `DSS_LIVE_STAGE=24.7`); created BigQuery tables/views are cleaned after each case.
 
 No unsupported alternatives have been approved for this fixture yet. The test
 records unresolved feasibility issues and refuses to select or drop them itself.

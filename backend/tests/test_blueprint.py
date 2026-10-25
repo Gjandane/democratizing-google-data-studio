@@ -600,10 +600,10 @@ def test_label_without_a_clean_fragment_goes_through_the_one_row_repair(blueprin
 
 
 @pytest.mark.parametrize('leaked', ['DATE_TRUNC(year, YEAR) /* o3, o5, o6 */', "DATE_TRUNC(year, YEAR)','date',",
-                                    "DATE_TRUNC(year, YEAR)', 'date'"])
+                                    "DATE_TRUNC(year, YEAR)', 'date'", "DATE_TRUNC(year, YEAR)','type':'date"])
 def test_a_leaked_expression_tail_is_dropped_and_the_gate_still_holds(leaked):
-    """Live 24.7 runs: the planner cited observation ids in a trailing SQL comment, or leaked the next JSON
-    field into the string; the one SQL repair did not fix either. Code drops the tail, nothing else."""
+    """Live 24.7 runs (and 24.8 run 20261025-215617, a key:value tail): the planner cited observation ids in a
+    trailing SQL comment, or leaked the next JSON field into the string; the one SQL repair did not fix either. Code drops the tail, nothing else."""
     from dss.artifacts.models import DerivedField
     from dss.harness.nodes import view
     field = DerivedField(name='year_bucket', expression=leaked, type='date', description='Year')

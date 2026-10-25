@@ -1156,6 +1156,28 @@ def test_electricity_sql_repair_that_fulfils_the_observation_drops_the_code_adde
     assert assessment['state'] == 'ready', (assessment['state'], [i['reason'] for i in assessment['issues']])
 
 
+def test_electricity_completion_reruns_on_the_sql_repaired_view(blueprint_api, monkeypatch):
+    """Live 24.8 run 20261025-214425: the draft's view sources were invalid, so completion after the row
+    repair could build no fields and added nothing; the one SQL repair fixed the view but the per-country
+    area observations stayed Issues. Completion runs again on the repaired view."""
+    from test_blueprint import confirm
+    build = electricity_build(blueprint_api, monkeypatch)
+    draft = {**build.value, 'view_sources': {'base': 's_unknown', 'joins': [], 'union': []}}
+    build.llm.replies = [json.dumps(draft), json.dumps({'rows': [r for r in draft['rows'] if r['question_id']]}),
+                         json.dumps({k: build.value[k] for k in ('view_sources', 'derived_fields')})]
+    run_id = confirm(build.client, build.app, build.bid)
+    assert build.llm.calls == 3  # draft, row repair, the one SQL repair
+    blueprint = build.client.get(f'/api/builds/{build.bid}/blueprint').json()
+    added = [r for r in blueprint['rows'] if r['note'].startswith('observation ')]
+    # The row repair on the invalid view also dropped the question-less region list: code adds it too.
+    assert {'area', 'bar'} <= {r['component']['type'] for r in added}, blueprint['rows']
+    assert any('year_year' in sql for sql in blueprint_api[5].sql)  # the code-built bucket was dry-run
+    _, recorded = spans(build.app, run_id)
+    assert [s.get('observation_rows') for s in recorded if s['node'] == 'validate_blueprint_view'][-1] == [r['note'] for r in added]
+    assessment = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+    assert assessment['state'] == 'ready', [i['reason'] for i in assessment['issues'] if i['resolution'] == 'unresolved']
+
+
 def test_electricity_removed_instructions_remove_the_code_added_rows(blueprint_api, monkeypatch):
     from test_blueprint import confirm
     build = electricity_build(blueprint_api, monkeypatch)

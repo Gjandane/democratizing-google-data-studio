@@ -1,4 +1,4 @@
-"""Task 24.7: real two-stage reference design with retained synthetic inputs.
+"""Tasks 24.7-24.8: real two-stage reference design with retained synthetic inputs.
 
 Run explicitly with -m live. Every run retains evidence, including failures; no
 fallback or unresolved feasibility decision is accepted as a successful check.
@@ -110,14 +110,23 @@ def stage_evidence(app, flow):
             for run in flow.runs]
 
 
-def assert_design_stages(app, run, spec, mode, models, pages=None):
+def assert_design_stages(app, run, spec, mode, models, pages=None, facts=None):
     spans = json.loads(trace(app, run['run_id'])['spans_json'] or '[]')
-    assert not [s for s in spans if s['node'] in ('designer_fallback', 'redesign_failed', 'reference_html_timeout')], spans
+    failed = [s for s in spans if s['node'] in ('designer_fallback', 'redesign_failed', 'reference_html_timeout')]
     expected = pages or {p['index'] for p in spec['pages']}
+    if mode == 'none':
+        # Existing no-reference behavior (task 24.8 If): a later page may fall back to the kit; recorded, not
+        # failed. Page 1 still requires its planner design.
+        later = {i for i in expected if i > 1 and not spec['pages'][i - 1].get('design')}
+        facts.setdefault('later_page_fallbacks', []).extend(
+            {'page': i, 'spans': [s for s in failed if s.get('page') == i]} for i in sorted(later))
+        failed = [s for s in failed if s.get('page') not in later]
+        expected -= later
+    assert not failed, spans
     assert all(spec['pages'][i - 1].get('design') for i in expected), 'kit fallback'
     if mode == 'none':
         assert not any(s['node'] in ('reference_brief', 'reference_html') for s in spans)
-        assert {s['page'] for s in spans if s['node'] == 'designer'} == expected
+        assert expected <= {s['page'] for s in spans if s['node'] == 'designer'}
     else:
         assert not any(s['node'] == 'designer' for s in spans)
         for node, model, limit, seconds in (
@@ -262,9 +271,9 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
     assert all(fixtures[name] == digest for name, digest in HASHES.items())
     generation = json.loads((DATA / 'generation.json').read_text(encoding='utf-8-sig'))
     app, config, project = live_app(tmp_path)
-    evidence = evidence_dir('24.7', mode)
+    evidence = evidence_dir('24.8' if FIDELITY else '24.7', mode)
     (evidence / 'test-source.py').write_bytes(Path(__file__).read_bytes())
-    print(f'24.7 {mode} evidence: {evidence}', flush=True)
+    print(f'{evidence.parents[1].name} {mode} evidence: {evidence}', flush=True)
     calls, tables = [], set()
     facts = {'mode': mode, 'fixture_sha256': fixtures, 'generation_calls': calls,
              'visual_approval': 'pending', 'accepted_substitutions': [], 'dry_engine': True}
@@ -332,7 +341,7 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
             run = flow.act('prototype', 'post', '/blueprint/accept', seconds=1600)
             spec, proof = capture(flow, folder, evidence, 'prototype')
             if FIDELITY:
-                assert_design_stages(app, run, spec, mode, app.state.settings.get())
+                assert_design_stages(app, run, spec, mode, app.state.settings.get(), facts=facts)
                 assert len(spec['pages']) >= 2, 'later-page route not exercised'
             if mode == 'recreate':
                 assert proof['image_requirements'], 'recreate did not import observations'
@@ -342,13 +351,13 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
                                                   and json.loads(r.source.text).get('kind') in ('chart', 'control')}, proof
             if mode == 'recreate' and FIDELITY:
                 require_fidelity(spec)
-                target =next(c for c in spec['pages'][0]['components'] if c['type'] == 'fixed_size_list')
+                target = next(c for c in spec['pages'][0]['components'] if c['type'] == 'fixed_size_list')
                 old_html = spec['pages'][0]['design']['html']
                 run = flow.act('revision', 'post', '/comments', seconds=850, json={'comments': [{
                     'component_id': target['id'],
                     'text': 'Move this region list card down by 24 pixels, keeping it on the left and preserving the other visual regions.'}]})
                 revised, _ = capture(flow, folder, evidence, 'revised')
-                assert_design_stages(app, run, revised, mode, app.state.settings.get(), pages={1})
+                assert_design_stages(app, run, revised, mode, app.state.settings.get(), pages={1}, facts=facts)
                 assert revised['pages'][0]['design']['source'] == 'revise'
                 assert revised['pages'][0]['design']['html'] != old_html
                 assert [c['id'] for c in revised['pages'][0]['components']] == [c['id'] for c in spec['pages'][0]['components']]

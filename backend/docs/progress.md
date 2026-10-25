@@ -1519,3 +1519,17 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: live reference_extract fails ~3/26 runs (validation/deadline); page-1 reference HTML repair refused over 12k budget (kit fallback) in run 20261025-123807: 24.8. Interrupted run 20261025-132150 may have left its BigQuery source/view.
 - Left open: P3 code-added rows recognized by note text - feasibility.py; P3 `using <missing field>` gives needs_clarification, not needs_data - requirements.py; P3 pruned code-added bucket stays in derived_fields - feasibility.py
 - Next: Task 24.8. Start by running the full live reference test without DSS_LIVE_STAGE and resolving the page-1 kit fallback.
+
+## 2026-10-25: Task 24.8 Verify and approve two-stage reference fidelity
+- Status: blocked
+- Plan check: off
+- What changed: live test writes .blueprint/qa/task-24.8/ and records (not fails) no-reference later-page fallback. Outside Files: blueprint.py reruns observation completion after the SQL repair (run 214425: invalid draft view, area row never added); view.LEAKED_TAIL strips `','type':'date` (run 215617). Regression tests in test_render/test_blueprint fail pre-change.
+- Checks: offline Done-when files PASS 292; `uv run pytest` PASS 1747 (649 s). Live recreate FAIL x5 (110-255 s each); none/style not run.
+- Decisions: fixes stay within #Recreate observation completion (user approved committing them).
+- Blocked because: (b) the Spec's 12k reference_html input budget and one-repair rule aren't met reliably.
+- Question: How should the reference HTML repair fit its budget and quality bar so page 1-3 design without kit fallback?
+- Options: A architect revises the repair (leaner repair context, or a reference_html-specific allowance) and the post-repair failure policy / B keep retrying live (hides ~50% fallback) / Recommend: A (user chose A).
+- Tried and failed: 214425 area row lost (fixed); 215617 view tail leak (fixed); 215913 ready+published, page-2 repair folded 11,337 -> bound 14,117 > 12k, over_budget fallback; 220404 retry: page-1 repair still 1 measurement error, invalid fallback.
+- Gotchas: page-1 visual (215913 side-by-side.png): right panels are access_pct bars, not the urban/rural area; bottom bar y-axis labels overlap; scorecard 55.11 lacks %.
+- Left open: none
+- Next: architect resolves the repair budget; then rerun recreate/style/none live and take the visual STOP.
