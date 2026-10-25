@@ -1499,3 +1499,11 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: user-approved drops still needed after the fix: geo choropleth (country not GEO), per-country small multiples (no per-chart filter), year slider. None-mode test asserts no designer fallback; existing no-reference path can fall back: relax to record it.
 - Left open: none
 - Next: architect plans the fix; then resume 24.7 (rerun recreate, get drop decisions, finish live check, visual STOP).
+
+## 2026-10-25: Change recreate observation completion (24.7 block)
+- What changed: architecture.md gains #Recreate observation completion and a decision-log row. The essentials Feasibility line is extended (stamped). plan.md: 24.7 is rewritten as the fix task "Recreate reaches ready for the electricity reference" (reopened, same ID and evidence folder). The verification and visual STOP move unchanged to a new 24.8 (depends on 24.7; evidence in .blueprint/qa/task-24.8/).
+- Why: 24.7 was blocked at 21 feasibility issues (run 104805): 12 definition-only instructions became `unknown` rows; `Region Selector = region` wasn't an explicit control field; `using year` didn't bind the date field; a scorecard observation was asked for a year grain; the yearly SUM(people_without_access) bar stayed missing after the repair. The user chose fix option A.
+- User decisions (cards, 2026-10-25): approved drops for this fixture are geo_map (country is not GEO; the globe stays static art), the Rural/Urban legend misread as a dropdown, and any extracted year slider. The four per-country small multiples become one native urban/rural area chart, by instruction substitution. When an observed row is fully determined and still missing after the repair, code adds it (not an alternative). A `chart <type>` instruction clause is allowed (region fixed_size_list).
+- Decided by default: no delta audit (POC target). The none-mode designer fallback is existing behavior: 24.8 records it rather than failing on it. The scope gate doesn't apply: the deadline has passed, and the change fixes a blocker.
+- Affected tasks: 24.7 (rewritten, [ ]), 24.8 (new). The uncommitted live test and fixtures from the blocked run are 24.7 inputs and are committed with it.
+- Change requests: none open.

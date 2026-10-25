@@ -756,6 +756,65 @@ Final-audit corrections (2026-10-19):
   unconfirmed edits, missing fields, unsupported observations, instruction removal and changed
   KPIs/schema; reload and version copy preserve valid evidence but not invalid authorization.
 
+### Recreate observation completion
+- Problem (task 24.7 block, change 2026-10-25): the electricity recreate fixture stays blocked
+  at 21 issues. Its definition-only instructions become `unknown` requirement rows; `Region
+  Selector = region` isn't accepted as an explicit control field; `date grain year using year`
+  doesn't name the date field; a scorecard observation is asked for a year grain; and the
+  Blueprint lacks the observed yearly bar after the one repair. Evidence: .blueprint/qa/task-24.7/
+  recreate/20261025-104805-795461ae/ (assessment.json, issues-uncapped.json, build/).
+- Inputs and outputs: as in #Recreate definition reconciliation and #Blueprint observation
+  coverage. Output: the same Assessment shape and decision API (no contract change).
+- Definition surface (user-entered reference instructions only; one clause each):
+  `<Label> = <metric>[ and <metric>...][, unit <u>][, date grain <g>[ using <date field>]][,
+  chart <catalog type>]`, where `<metric>` is `AGG(field)`; and `<Label> = <field>[, chart
+  <type>]` for a control or dimension. Labels match observation `label` or `metric_label`
+  case-insensitively after trimming. Units may be symbols (`%`). The existing forms stay valid.
+- Rules:
+  - An instruction clause that is wholly a definition becomes definition evidence only, with no
+    requirement row and no `unknown` issue. Unused definitions raise no issue, and the
+    reconciliation span lists them. A sentence that isn't wholly definitions stays a
+    requirement, as now. A field missing from the schema -> needs_data; conflicting
+    definitions for one label -> needs_clarification (existing rule); an unknown aggregation
+    stays unknown.
+  - `<Label> = <field>` explicitly defines a control's control_field or a chart's dimension,
+    never a metric (a metric still needs an aggregation).
+  - `using <field>` binds the date field for that grain. It must be a DATE, DATETIME or
+    TIMESTAMP field (or the code-built bucket at that grain); otherwise needs_clarification.
+  - `chart <type>` overrides the observation's chart_candidate when the catalog accepts the bound
+    fields for that type, else needs_clarification. The user's instruction outranks the
+    extractor's guess.
+  - A multi-metric definition is the user's explicit substitution: every observation it defines
+    is checked against that meaning, so one row can satisfy several observations (existing
+    edge case).
+  - Scorecard observations: date grain is not a coverage check, because a single value has no
+    time axis. This is one shared rule in `coverage_errors`, so the Blueprint check and publish
+    coverage agree.
+  - Blueprint completion: after the one existing row repair, each observation still unfulfilled
+    whose reconciled meaning is complete (catalog type, metric fields and aggregations,
+    dimension or date field) gets a code-built row. It goes on the reference's page (page 1),
+    is validated by the existing row and capability checks, has its date bucket built and
+    dry-run by the view builder, and carries `observation <ref>:<item>` provenance in the row
+    note. No model call. With no capacity left (12 rows) or an incomplete meaning, it stays an
+    Issue, as now. Code never drops, retypes or rebinds an observation on its own: added rows
+    only fulfil the observation's meaning.
+- Edge cases: an added row a later redraft would duplicate counts once (rows already fulfilling
+  it win). Removing the instruction or reference recomputes and removes code-added rows that no
+  longer fulfil anything. Style mode, data mode and builds without a reference: unchanged
+  behavior and bytes.
+- Budget: no new model call; the 100 ms recomputation oracle holds with 24 observations and
+  24 definition clauses.
+- Oracle: an offline staged fixture rebuilt from read-only copies of the 104805 run's inputs
+  (references.json, requirements.json, blueprint-inputs.json; tests/live/test_reference_design.py
+  INSTRUCTIONS, updated to the surface above). Before the fix it is blocked with the 12
+  definition `unknown` rows. After it, the only issues are the user-approved drop classes
+  (geo_map needs_data, the misread Rural/Urban legend control, a year slider if extracted). With
+  those dropped it is ready, and accept publishes every other observation bound to a real
+  component: region fixed_size_list, the AVG(access_pct) scorecard, the code-added yearly
+  SUM(people_without_access) bar, and one urban/rural area chart bound to all four per-country
+  observations. The recipe compiles and the fake engine is done. The 18.2, 21.1 and 22.1
+  fixtures publish unchanged.
+
 ### Build docs
 - Problem: the durable design brief (OKF bundle per version), written by code (change 2026-10-21).
 - Rules (change staged workflow 2026-10-21): `data/builds/<id>/v<n>/docs/` holds `index.md`,
@@ -1273,3 +1332,4 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-25 | Reference builds: current feasibility + native candidate slots -> Argon visual brief -> Flash sanitized HTML, both with images; no-reference designer unchanged | one-stage Argon HTML; arbitrary scripted chart clone; changing style mode to import charts | user retains native Data Studio charts; the blocked style experiment lacked slots and a second model alone cannot create them | change 24.5 (user) |
 | 2026-10-25 | Reference HTML gets 600 s per page including counting/retry/repair; brief 120 s; retain 12k inputs and 16k HTML output, new 4k brief output | 30 s worker default; 120 s HTML; unlimited wait or cap increase | user permits over five minutes and reports Flash 3.8 HTML in about three minutes; finite 600 s bound is a documented default; shutdown must cancel long work | change 24.5 (user timing permission, default bound) |
 | 2026-10-25 | Use supplied reference and bundled assets; no new web research, dependencies or contract changes | add bounded internet research; runtime external assets | user selected bundled assets first; existing sanitized background and native-chart rules remain | change 24.5 (user) |
+| 2026-10-25 | Recreate observation completion: definition-only instructions are evidence, not rows; `Label = field`, `using <date field>`, `chart <type>`, multi-metric substitution; scorecards skip the grain check; code adds a page-1 row for a fully determined unfulfilled observation | alternative the user picks for the added row; drop policy inside the test; keep the extracted dropdown | 24.7 blocked at 21 issues on the electricity fixture; the user chose the code-added row, the `chart` clause and one urban/rural area for the per-country small multiples; geo_map, legend and slider drops approved for that fixture | change 24.7 (user) |

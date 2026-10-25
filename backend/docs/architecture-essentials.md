@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:56963f12fec8 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:5f57ab78960b (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 docs/architecture.md wins.
 
@@ -43,7 +43,8 @@ tests/          offline fakes; tests/live/ marked live
   images are not data. Other fail-open gap: PRD Later; unsupported still blocks.
 - Replans publish freshness with proof; comments need explicit recovery. Recreate reuses confirmed
   KPIs/instructions with provenance; conflicts block; Blueprint ready => observations pass accept
-  coverage (architecture.md#Blueprint observation coverage).
+  coverage (architecture.md#Blueprint observation coverage). Definition-only instructions are
+  evidence; code adds determined missing rows (#Recreate observation completion).
 - Synthetic: opt-in schema/count/seed -> stdlib CSV -> typed BQ intake; protected page-1 footer.
 - Tests offline unless marked live. Research <=20 fetches, no retries.
 
