@@ -256,8 +256,9 @@ def _place(spec, page, result, design):
         page.decorations.append(synthetic_decoration((top - grid.margin) // grid.row_height + 1))
 
 
-async def _generate(model, request, usage):
-    """(raw text, cut off) from one non-streamed call; thought parts are never part of the answer."""
+async def _generate(model, request, usage, limit=MAX_OUTPUT_TOKENS):
+    """(raw text, cut off at `limit` output tokens) from one non-streamed call; thought parts are
+    never part of the answer."""
     final = None
     async with aclosing(model.generate_content_async(request, stream=False)) as responses:
         async for response in responses:
@@ -273,6 +274,6 @@ async def _generate(model, request, usage):
     if final.error_code and not truncated:
         raise RunError('llm_unavailable', 'The designer call failed', 503)
     raw = ''.join(p.text for p in (final.content.parts or []) if p.text and not p.thought) if final.content else ''
-    cut = (truncated or tokens(raw) > MAX_OUTPUT_TOKENS
-           or bool(metadata and (metadata.candidates_token_count or 0) > MAX_OUTPUT_TOKENS))
+    cut = (truncated or tokens(raw) > limit
+           or bool(metadata and (metadata.candidates_token_count or 0) > limit))
     return raw, cut

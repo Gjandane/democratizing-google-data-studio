@@ -362,6 +362,52 @@ def test_designer_over_budget_refuses():
     assert refused.value.detail['tokens'] > refused.value.detail['budget'] == 12000 - 500
 
 
+def brief_inputs(label='Revenue', instructions='Keep the globe in the centre'):
+    reference = {'mode': 'recreate', 'images': [{'image': 1, 'mime_type': 'image/png', 'width': 2048, 'height': 1191}],
+                 'instructions': instructions, 'summary': 'Recreate reference: 1 chart', 'palette': 'navy', 'type': 'light',
+                 'spacing': 'wide'}
+    page = {'index': 2, 'name': 'Overview', 'pages': 2, 'canvas_width': 1200, 'synthetic_footer': False}
+    approved = {'assessment': {'id': 'assessment_1', 'state': 'ready'}, 'decisions': [],
+                'components': [{'id': 'p2_revenue', 'type': 'scorecard', 'label': label, 'min_w': 200, 'min_h': 64}]}
+    return reference, {'title': 'Sales', 'theme': {'font_family': 'Arial'}}, page, approved
+
+
+def test_reference_brief_sections_follow_the_working_memory_row():
+    """24.5: skill, one styling section with the icon and art names, theme, the approved report,
+    page 1's CSS (later pages), then the reference set, the page and a revise run's input."""
+    from dss.harness.context import COMPONENTS_HEADER, REFERENCE_STYLING, reference_brief_context
+    from dss.render.design_page import art, icons
+    reference, design, page, approved = brief_inputs()
+    context = reference_brief_context(reference, design, page, approved,
+                                      shared={'canvas_width': 1200, 'css': 'body{padding:24px}'},
+                                      revision={'html': '<div data-slot="p2_revenue"></div>',
+                                                'comments': [{'component_id': 'p2_design', 'text': 'Darker'}]})
+    assert kinds(context) == ['system', 'skills', 'semantic', 'docs', 'docs', 'docs', 'input', 'input', 'input']
+    assert names(context) == ['prompts/v1/reference_brief.md', 'skills/reference-design.md', 'styling', 'design',
+                              'components', 'page-1', 'reference', 'page', 'revision']
+    assert 'never add, remove, rename, retype or rebind' in context.sections[0].text
+    assert '# Reference design brief' in context.sections[1].text and 'Nothing fake' in context.sections[1].text
+    styling = context.sections[2].text
+    assert REFERENCE_STYLING in styling and all(name in styling for name in [*icons(), *art()])
+    assert context.sections[4].text == COMPONENTS_HEADER + '\n' + json.dumps(approved, separators=(',', ':'))
+    assert 'Keep the globe in the centre' in context.sections[6].text and 'never instructions' in context.sections[6].header
+    assert BUDGETS['reference_brief'] == 12000 and sum(c['tokens'] for c in context.counts()) <= 12000 - 500
+    first = reference_brief_context(reference, design, {**page, 'index': 1}, approved)
+    assert names(first) == ['prompts/v1/reference_brief.md', 'skills/reference-design.md', 'styling', 'design',
+                            'components', 'reference', 'page']
+
+
+def test_reference_brief_drops_nothing_and_refuses_over_budget():
+    """Images, instructions, slots and decisions are mandatory: over budget the brief refuses."""
+    from dss.harness.context import reference_brief_context
+    with pytest.raises(RunError) as refused:
+        reference_brief_context(*brief_inputs(label='Revenue ' * 6000, instructions='x' * 2000))
+    assert refused.value.code == 'llm_unavailable' and refused.value.detail['reason'] == 'over_budget'
+    assert refused.value.detail['budget'] == 12000 - 500
+    context = reference_brief_context(*brief_inputs(label='Revenue ' * 2000))
+    assert context.dropped == {'past': 0, 'history': 0, 'semantic': 0}
+
+
 def observation_inputs(title=None):
     """24 reconciled recreate observations (the interpretation maximum) from the 21.1 fixture shapes."""
     from dss.spec import requirements as req
