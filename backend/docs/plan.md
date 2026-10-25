@@ -734,7 +734,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: a complete mandatory repair still exceeds 24k -> fail with its actual bound and budget; do not drop meaning or increase another cap. This task supersedes 24.6's 12k-repair and reference-kit-fallback rules; completed task entries remain historical.
   - Review focus: contracts/api.md 2.0 existing asynchronous failure/stage semantics and recipe.md 1.3 native ops; no contract edits/new public shape. Internal attempt selects the budget, never model/user input. Any failed reference page prevents the entire candidate publication; sibling tasks are settled before cleanup. Preserve positional revised(document, comments, batch, allowed) compatibility and no-reference bytes.
 
-- [ ] 24.9 Verify and approve two-stage reference fidelity
+- [!] 24.9 Verify and approve two-stage reference fidelity
   - Goal: demonstrate the corrected route against the electricity reference with supported native charts, then retain the user's visual acceptance gate from original 24.5 and blocked 24.8.
   - Spec: docs/architecture.md#Reference HTML composition
   - Files: tests/live/test_reference_design.py, tests/data/reference_design/, docs/progress.md, .blueprint/qa/task-24.9/

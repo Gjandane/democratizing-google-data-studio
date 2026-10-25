@@ -1556,3 +1556,17 @@ context. Task status lives in docs/plan.md, not here.
 - Left open: none.
 - Next: 24.9, live fidelity checks and user visual STOP; save evidence under its QA folder.
 - Checkpoint: session started in folder mode with .blueprint/snapshots/task-24.8-1.zip; no Git commit. The verified task marker required an escalated script run after a sandbox write error.
+
+## 2026-10-25: Task 24.9 Verify and approve two-stage reference fidelity
+- Status: blocked
+- Plan check: off
+- What changed: no product code. Committed the uncommitted 24.8 work first (d3ea046, user-approved). Test evidence-dir rename (task-24.9) and README substitution notes are stashed (`blueprint: task 24.9 failed attempt`); reapply or redo before the next live run.
+- Checks: live recreate FAIL x2 at /design/confirm (Blueprint), before any reference_brief/reference_html ran: 20261025-233319-bc455866 (135 s), 20261025-233550-34512aef (134 s). Fixture hashes matched; approved geo_map drop applied pre-Blueprint. style/none, offline Done-when files and Test (all) not run.
+- Decisions: followed the task's If (one transient retry, then block); user chose block.
+- Blocked because: (d)/(b) the planner's Blueprint is not reliably ready for this fixture; fixing it needs code outside 24.9's Files (Blueprint/observation completion or planner skill).
+- Question: How should Blueprint handle the planner's redundant year-bucket derived fields, so recreate reaches ready reliably for the electricity fixture?
+- Options: A architect plans a fix (e.g. code maps/strips a derived `DATE_TRUNC(<DATE year-start field>, YEAR)` bucket onto the base field with its profile grain, and rows naming a missing `<field>_year` resolve to it) / B accept live variance and rerun until ready / Recommend: A.
+- Tried and failed: run 233319: derived `year_trunc = DATE_TRUNC(year, YEAR) - INTERVAL 0 DAY` but rows q2/q8 use `year_year` ("Field year_year is not in the view"; observations o5-o8 needs_clarification, offered date_bucket). Run 233550: derived `year_grain = DATE_TRUNC(year, YEAR) * 1` -> "The view did not pass SQL validation after one repair"; KPI q4 "Use each named KPI with exactly its confirmed field and aggregation". Blueprint in=15178/16682, bounds 6246+7451+5406 / 6481+8360+6066 (<=14k each), out 3556/3686, ~51 s.
+- Gotchas: none new (live variance already in AGENTS.md).
+- Left open: visual STOP, revision/later-page/style/none live checks.
+- Next: architect resolves the Blueprint year-bucket instability; then rerun recreate/style/none and take the visual STOP.
