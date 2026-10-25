@@ -104,6 +104,16 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
   the two-source GPS-style fixture reaches a blueprint with a union and a flagged ratio KPI.
 
 ## Decided by default
+- Change 2026-10-26 (24.9 block): repair planner-only recreate year buckets in code only when
+  the actual projected source's aggregate profile proves the base DATE already supplies that
+  grain, and each use has explicit date/grain intent or is a selected native date-axis slot
+  with a complete recognized truncation. Undeclared aliases still need explicit intent.
+  This is typed reconstruction, not general SQL simplification or field-name inference.
+  Keep the confirmed-KPI gate and give the existing
+  row repair exact missing/conflicting measures; an unresolved KPI still blocks. Reason:
+  both saved runs failed before design, and the second also omitted a named q4 measure.
+  No extra calls, budget, dependency, drop decision or public contract. Fix task 24.9 precedes
+  live/visual task 24.10, which retains the user's original approval STOP.
 - Change 2026-10-25 (24.8 block, user choices): reference HTML generation keeps its 12k
   input limit; its one repair may use 24k input, counted with the same conservative allowance.
   Remove duplicate representations first, retaining all authoritative facts. Output stays 16k
@@ -111,7 +121,7 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
   designed pages enabled, a reference page that still fails stops acceptance and preserves
   existing artifacts; it cannot publish a standard-kit substitute. Revision failures retain
   existing artifacts and pending comments. No-reference fallback stays unchanged. These are
-  explicit user decisions; implementation is 24.8 and live/visual acceptance is 24.9.
+  explicit user decisions; implementation is 24.8 and live/visual acceptance is now 24.10.
 - Change 2026-10-25: user keeps native Data Studio charts, allows HTML generation longer than
   five minutes (reported a roughly three-minute Flash 3.8 experiment), and chooses supplied
   reference/bundled assets first, with no new internet research. Default: 600 s per page's Flash

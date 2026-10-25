@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:7b7c6b429047 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:d6140b723185 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 docs/architecture.md wins.
 
@@ -46,7 +46,11 @@ tests/          offline fakes; tests/live/ marked live
 - Replans publish freshness with proof; comments need explicit recovery. Recreate reuses confirmed
   KPIs/instructions with provenance; conflicts block; Blueprint ready => observations pass accept
   coverage (architecture.md#Blueprint observation coverage). Definition-only instructions are
-  evidence; code adds determined missing rows (#Recreate observation completion).
+  evidence; code adds determined missing rows (#Recreate observation completion). Recreate
+  yearly dates reuse a projected base DATE with active full-column proof plus explicit intent
+  or a selected native date-axis use of a recognized truncation; missing aliases need explicit
+  intent. No guessed SQL simplification. Exact missing-KPI feedback uses the
+  existing one repair; unresolved KPIs block (#Recreate date binding normalization).
 - Synthetic: opt-in schema/count/seed -> stdlib CSV -> typed BQ intake; protected page-1 footer.
 - Tests offline unless marked live. Research <=20 fetches, no retries.
 

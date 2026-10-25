@@ -368,6 +368,80 @@ Final-audit corrections (2026-10-19):
   question -> repair, then an issue; a redraft sends only changed questions; 13 rows on a page ->
   issue; zero ok rows -> `409 artifact_invalid`.
 
+### Recreate date binding normalization
+- Problem (24.9 block, change 2026-10-26): the electricity source's `year` is already a
+  DATE with full-column `bucket_start: year` proof. Planner drafts nevertheless introduce
+  `year_trunc = DATE_TRUNC(year, YEAR) - INTERVAL 0 DAY` (declared datetime), bind rows to an
+  undeclared `year_year`, or emit invalid DATE arithmetic `DATE_TRUNC(year, YEAR) * 1`.
+  A separate q4 error omits confirmed AVG(urban_rural_gap); date normalization cannot fix it.
+- Objective: make a proven yearly date binding deterministic before row/view
+  checks, without accepting arbitrary SQL, guessing field meaning or relaxing KPI coverage.
+- Inputs: active recreate observations and reconciled instructions/confirmed Context, selected
+  questions, ViewSources, projected schema, source-specific aggregate profiles, protected
+  Context/retained derivations, planner extra derivations and rows. Output: canonical extra
+  derivations and rows, then the existing diagnostics, Assessment, dry-run and coverage paths.
+  No public shape or contract change; no model-written proof.
+- Rules:
+  - Scope is recreate Blueprint date bindings. Reuse a base field only when its actual
+    projected type is DATE and the active source's
+    full-column profile proves year starts. Samples, the field name, image text and planner
+    declarations are not proof. Missing/all-null/stale proof does not authorize this repair.
+  - Resolve proof through the same selected-source/projection rules as the view builder.
+    An unrelated or shadowed same-named source cannot supply proof. For unions, every
+    contributing non-NULL column must independently prove the same DATE/year fact; typed
+    NULL padding is harmless. If provenance or output type is ambiguous, keep the ordinary
+    validation/repair path. No new data query or profiling format is needed.
+  - Code may reconstruct a planner-only date binding from a whole DATE_TRUNC(base, YEAR)
+    extra expression, optionally with the observed `- INTERVAL 0 DAY` or `* 1` suffix, onto
+    the proven base DATE. These suffixes identify bounded planner artifacts, not valid DATE
+    algebra: * 1 is invalid SQL and subtracting an interval may change type. Reconstruction
+    requires either explicit reconciled field/year-grain intent, or a selected question's
+    native DATE-axis slot whose complete recognized expression names that base/YEAR. The
+    second route covers the saved overall-access time series without inventing observation
+    identity from matching metrics. Every use must independently qualify (including its sort),
+    exclusively for date grouping with no conflicting confirmed field/grain/type semantics.
+    Never apply this to a required datetime value, a metric, protected Context/retained definitions, an
+    expression referenced by another derivation, or a name colliding with a real field.
+    Recognize only those complete forms (case/whitespace/identifier quoting may vary), not
+    partial SQL matches. Other arithmetic, intervals, casts, functions and trailing SQL keep
+    their existing validation/one-SQL-repair outcome; never execute expressions to infer intent.
+  - A missing code-style `<base>_year` row alias may resolve to the base only with the same
+    explicit field/grain binding and proof, a unique target and no existing field/definition
+    of that name. Suffix matching alone is insufficient. Other unknown fields remain errors.
+  - Normalize a view and its date-grouping references together: date_dimension, date-bound
+    dimensions/breakdown and the corresponding sort.field. Do not text-replace SQL or metric
+    fields. Remove an eligible planner extra only after accounting for every use, with no
+    dangling alias. Preserve row ids, page, question, provenance, metric meaning and decisions.
+  - Apply the same rule after initial drafting, the existing row repair and SQL repair, before
+    validation/completion; observation completion reuses the proven base instead of adding a
+    redundant bucket. Recompute proof from current inputs on redraft/reload/accept. A changed
+    source/profile/definition invalidates authorization rather than reviving a cached alias.
+    Blueprint ready and publish coverage must agree; compiler grain remains code-owned.
+  - Missing/wrong confirmed KPI measures remain repairable errors. The existing one row
+    repair receives the question id and each missing required field/aggregation or conflicting
+    actual measure, rather than only generic advice. Planner guidance requires all named KPIs
+    across that question's 1-3 rows within catalog/page limits. If still missing, retain the
+    Issue and block accept; never delete kpi_refs, substitute aggregation or auto-add a measure.
+- Edge cases: normalization is idempotent; already-canonical rows stay unchanged. Preserve
+  valid user/protected derivations and non-year buckets. Style/data/no-reference success
+  behavior and published artifact/recipe bytes stay unchanged; existing error categories and
+  gates remain. Ineligible inputs retain existing actionable failures, not readiness.
+- Budget: no new model call, data query, dependency or repair; Blueprint remains 14k input/6k
+  output with one row repair and one SQL repair. Existing 100 ms deterministic recomputation
+  oracle holds with 24 observations and 24 definition clauses.
+- Oracle: read-only saved runs .blueprint/qa/task-24.9/recreate/20261025-233319-bc455866/
+  and 20261025-233550-34512aef/ supply profiles, Context/outline/design, reference requirements
+  and persisted Blueprint artifacts. Original model replies were not captured: reconstruct
+  FakeLLM draft/repair/view replies from those artifacts, label each reconstruction/adjustment,
+  and hash original inputs separately from the derived fixture. Both reproduce the old failure.
+  After normalization and a faithful q4 row repair, each reaches ready after only the existing
+  approved drops, publishes real observation bindings, compiles, and completes the fake engine.
+  No invalid DATE arithmetic reaches the dry-run. An uncorrected q4 remains blocked after its
+  one repair. Cover every ingress plus projection collisions, unions, proof removal, protected
+  definitions, unknown aliases and non-identity expressions; verify idempotence and unchanged
+  18.2/21.1/22.1, style/data/no-reference results. Live readiness and visual evidence are separate
+  gates in tasks 24.9/24.10; offline success cannot approve fidelity.
+
 ### Blueprint observation coverage
 - Problem (final audit 2026-10-23): in recreate mode the Blueprint planner never sees the image
   observations and Blueprint feasibility never checks rows against them, so a Blueprint reports
@@ -1381,3 +1455,4 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-25 | Use supplied reference and bundled assets; no new web research, dependencies or contract changes | add bounded internet research; runtime external assets | user selected bundled assets first; existing sanitized background and native-chart rules remain | change 24.5 (user) |
 | 2026-10-25 | Recreate observation completion: definition-only instructions are evidence, not rows; `Label = field`, `using <date field>`, `chart <type>`, multi-metric substitution; scorecards skip the grain check; code adds a page-1 row for a fully determined unfulfilled observation | alternative the user picks for the added row; drop policy inside the test; keep the extracted dropdown | 24.7 blocked at 21 issues on the electricity fixture; the user chose the code-added row, the `chart` clause and one urban/rural area for the per-country small multiples; geo_map, legend and slider drops approved for that fixture | change 24.7 (user) |
 | 2026-10-25 | Compact duplicate reference repair input; 12k initial / 24k repair input, unchanged conservative count allowance, 16k output and 600 s/one repair; reference design failure prevents publication and preserves prior artifacts | keep every request at 12k; publish the standard kit after reference failure; keep retrying live | 24.8 evidence: repair bound 14,117 exceeded 12k; another repair retained one measurement error. User chose the 24k repair limit and stopping failed reference builds. Native-slot validation and visual acceptance stay mandatory | change 24.8 (user answers in architect session) |
+| 2026-10-26 | Reconstruct recreate yearly dates onto the projected base DATE with active full-column proof plus explicit field/grain intent or a selected native date-axis use of a complete recognized truncation; undeclared aliases need explicit intent; share completion/ingress rules and give exact missing-KPI feedback | infer aliases/observations from names or metrics; simplify arbitrary SQL; repeat live until ready; waive q4's missing KPI | 24.9 failed twice before design: mismatched year aliases/invalid DATE arithmetic, including overall series without observation links, plus an independent missing confirmed q4 measure. Retain typed SQL, KPI and coverage gates | change 24.9 (architect ruling; implementation 24.9, live/visual verification 24.10) |

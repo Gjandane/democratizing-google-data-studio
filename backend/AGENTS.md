@@ -35,6 +35,7 @@ Run from this folder (`backend/`) in bash.
 
 ## Known gotchas
 Traps that cost an earlier session time and that the other docs don't cover, one line each. Builders add lines; the architect sorts them into the docs at the final audit.
+- Codex's Windows sandbox can deny uv's default cache and pytest temp directories or stall TestClient: a workspace `UV_CACHE_DIR=.blueprint/uv-cache` fixes uv; run local TestClient/network checks with normal process access.
 - BigQuery rejects source_column_match=POSITION with autodetect; normalize upload headers, and use an explicit positional schema for GCS loads.
 - Gemini's generic `400 INVALID_ARGUMENT` does not identify the invalid field; isolate worker/model/schema compatibility with a minimal live request before attributing it to `Any` or unions.
 - HTTP clients normalize literal `..` path segments before sending: use `%2e%2e` when testing the API's invalid-name guard.
