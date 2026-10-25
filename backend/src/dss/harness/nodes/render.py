@@ -175,9 +175,12 @@ async def accept(harness, build_id, run_id, payload, trace):
             # Until design.html verifies decoration requirements, pages with bound decorations keep their kit.
             bound = {cid for r in req.load(folder).requirements for cid in r.component_ids}
             keep = {page.index for page in spec.pages if any(d.id in bound for d in page.decorations)}
+            reference = designer.reference_design(
+                folder, {**req.inputs(harness.db, build_id, folder), 'spec': spec.model_dump(mode='json')},
+                req.load(folder), Checker(load_registry()), harness.models)
             spec, notes = await designer.design(
                 spec, payload.get('_designer') or (lambda: harness.models.llm_for('designer')), trace,
-                secrets=secrets, keep=keep, report=lambda totals: harness.emit(build_id, run_id, 'run.usage', {
+                secrets=secrets, keep=keep, reference=reference, report=lambda totals: harness.emit(build_id, run_id, 'run.usage', {
                     'run_id': run_id, 'node': 'prototype', **totals}))
         existing.write_text(spec.model_dump_json(indent=2), encoding='utf-8')
         reply = ' '.join([await perform(harness, build_id, run_id, payload, trace), *notes])

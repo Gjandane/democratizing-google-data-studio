@@ -31,6 +31,9 @@ from dss.spec.capabilities import Checker, load_registry
 # Why a page redesign failed when its answer left no check errors (designer.Fallback.reason).
 FAILURES = {'model': 'the design model is unavailable; check Settings',
             'over_budget': 'the page is too large for the design model',
+            'reference': 'the reference images are missing or damaged; upload them again',
+            'feasibility': 'the candidate needs a current ready feasibility assessment',
+            'timeout': 'the page design exceeded its time budget',
             'error': 'the design call failed'}
 
 
@@ -362,9 +365,11 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         """Each page in `redesign` designed again (one designer run per page), then the whole spec
         and every requirement checked; a RunError leaves the published version unchanged."""
         secrets = (secret, *(s.get_secret_value() for s in (config.access_code, config.agent_token)))
+        reference = designer.reference_design(
+            folder, {**state['snapshot'], 'spec': candidate}, state['ledger'], state['checker'], harness.models)
         spec, failed = await designer.regenerate(
             DashboardSpec.model_validate(candidate), redesign,
-            payload.get('_designer') or (lambda: harness.models.llm_for('designer')), trace, secrets=secrets,
+            payload.get('_designer') or (lambda: harness.models.llm_for('designer')), trace, secrets=secrets, reference=reference,
             report=lambda totals: harness.emit(build_id, run_id, 'run.usage', {'run_id': run_id, 'node': 'revise', **totals}))
         if failed:
             reasons = []

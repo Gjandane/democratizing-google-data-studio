@@ -58,6 +58,7 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - tests/live/test_staged_flow.observe_revisions wraps revise.revised(document, comments, batch, allowed) positionally and default runs skip it: keep that signature (a new kwarg breaks every live revise).
 - To replay a live test build with `dsengine run`, run the live test with DSS_LIVE_KEEP=1 (test_designed_dashboard_sample_csv) so its BigQuery source/view survive; delete them afterwards.
 - One-reply fakes (ContextLLM) also answer the designer (default designed_pages: page-1 fallback, +2 model calls, designer/validate/designer_fallback spans) and a recreate observation gap's row repair (needs a second `{"rows": [...]}` reply, or llm_unavailable).
+- Reference builds need separate `reference_brief`/`reference_html` fake routing: reusing a finite Blueprint reply makes the brief invalid and silently exercises kit fallback instead of designed output.
 - A publish 422 "Candidate no longer fulfills": its `publish` trace span lists `coverage_errors`; to diagnose a release build, copy it (sqlite backup API, `?mode=ro`), lay out its Blueprint, call `requirements.coverage_errors`.
 - Reference interpretation item ids are positional (o1, o2, ...): omitting an item from a vision fixture renumbers the rest.
 - The root .env sets DSS_ALLOWED_TYPES to the pre-1.3 list and allowed_types() reads it in tests too: a test of the catalog default must delenv and monkeypatch `dss.spec.validate.dotenv_values`, and a test passing only because .env narrows types is environment-dependent.

@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 PLANNER_NODES = frozenset({"blueprint", "designer", "reference_brief"})
 PLANNER_TIMEOUT_MS, WORKER_TIMEOUT_MS = 120_000, 30_000
+REFERENCE_HTML_TIMEOUT_MS = 600_000
 # 504 is our own deadline (the client timeout Google enforces): retrying would just wait again.
 RETRY_CODES = frozenset({429, 500, 503})
 RETRY_DELAY_S = 1.0
@@ -121,6 +122,8 @@ class ModelRouter:
     def timeout_ms(node):
         """google-genai sends the client timeout to Google as the server deadline (a 504 when
         exceeded), and a per-request timeout does not override it: set it on the client."""
+        if node == 'reference_html':
+            return REFERENCE_HTML_TIMEOUT_MS
         return PLANNER_TIMEOUT_MS if node in PLANNER_NODES else WORKER_TIMEOUT_MS
 
     def llm_for(self, node):

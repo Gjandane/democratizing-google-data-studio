@@ -504,7 +504,8 @@ def observed(data):
     return sorted(k for k in data['extraction'] if k != 'instructions')
 
 
-def recreate_build(blueprint_api, monkeypatch, matching=True, data=RECREATE, synthetic=False, designer=None, designed=True):
+def recreate_build(blueprint_api, monkeypatch, matching=True, data=RECREATE, synthetic=False, designer=None, designed=True,
+                   brief=None, reference_html=None):
     """Staged build whose Blueprint answers the recreate fixture `data`; KPIs that name its metrics or
     not; a synthetic (screenshot-only) source or the uploaded one; `designer` answers the designer node
     (`designed` False: Config.designed_pages off)."""
@@ -552,8 +553,12 @@ def recreate_build(blueprint_api, monkeypatch, matching=True, data=RECREATE, syn
         monkeypatch.setattr(app.state.settings, 'defaults', app.state.settings.defaults.model_copy(update={'designed_pages': False}))
     build = SimpleNamespace(client=client, app=app, bid=bid, folder=folder, llm=llm, value=value, context=context, data=data,
                             vision=Capture(response=output(items=data['items']), requests=[]), extraction=None)
+    from test_reference_brief import BriefLLM
+    build.brief = brief or BriefLLM()
+    build.reference_html = reference_html or designer or Capture(response='{}', requests=[])
     monkeypatch.setattr(app.state.models, 'llm_for', lambda action: {
-        'reference_extract': build.vision, 'capability_check': build.extraction, 'designer': designer}.get(action) or llm)
+        'reference_extract': build.vision, 'capability_check': build.extraction, 'designer': designer,
+        'reference_brief': build.brief, 'reference_html': build.reference_html}.get(action) or llm)
     return build
 
 
@@ -742,7 +747,7 @@ def test_recreate_accept_publishes_with_planner_titles(blueprint_api, monkeypatc
     assert (SYNTHETIC_LABEL in render(spec, layer='decoration', page=1)) == (case == 'synthetic')
     assert SYNTHETIC_LABEL not in compile_recipe(spec, 1)
     if designer:
-        assert designer.calls == len(spec.pages)  # no added model call
+        assert designer.calls == len(spec.pages) and build.brief.calls == len(spec.pages)
         # The designer laid its cards out around the observed titles.
         assert all(f'>{c.label}<' in p.design.html for p in spec.pages for c in p.components)
     components = [c for p in spec.pages for c in p.components]
@@ -763,6 +768,43 @@ def test_recreate_accept_publishes_with_planner_titles(blueprint_api, monkeypatc
     fresh = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
     assert fresh['state'] == 'ready' and not fresh['prototype_stale'], fresh
     executes(build.client, build.app, build.bid, monkeypatch)
+
+
+def test_recreate_accept_uses_checked_brief_and_html_with_real_decisions(blueprint_api, monkeypatch):
+    from test_reference_brief import BriefLLM, section, attached
+    from test_designer import ReferenceHTMLLLM
+    from dss.harness.context import COMPONENTS_HEADER
+    from test_blueprint import choose, confirm
+    from dss.spec import requirements as req
+    # The gap fixture forces explicit substitutions/drops before composition.
+    build = gap_build(blueprint_api, monkeypatch, 'table')
+    monkeypatch.setattr(build.app.state.settings, 'defaults', build.app.state.settings.defaults.model_copy(
+        update={'designed_pages': True}))
+    brief, html = BriefLLM(), ReferenceHTMLLLM()
+    route = build.app.state.models.llm_for
+    monkeypatch.setattr(build.app.state.models, 'llm_for', lambda node: {
+        'reference_brief': brief, 'reference_html': html}.get(node) or route(node))
+    confirm(build.client, build.app, build.bid)
+    blocked = build.client.post(f'/api/builds/{build.bid}/blueprint/accept')
+    assert blocked.status_code == 409 and not brief.requests and not html.requests
+    for oid, fix in GAP_FIXES['table'].items():
+        assessment = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+        assert choose(build.client, build.bid, assessment, gap_issues(assessment, build)[oid], fix).status_code == 200
+    accept(build)
+    spec = DashboardSpec.model_validate_json((build.folder / 'spec.json').read_text(encoding='utf-8'))
+    assert all(p.design and p.design.model == html.model for p in spec.pages)
+    assert len(brief.requests) == html.calls == 1
+    approved = json.loads(section(str(brief.requests[0].config.system_instruction), COMPONENTS_HEADER))
+    implementation = json.loads(section(str(html.requests[0].config.system_instruction), COMPONENTS_HEADER))
+    assert [{k: v for k, v in c.items() if k not in ('min_w', 'min_h')} for c in approved['components']] == implementation['components']
+    assert approved['decisions'] == implementation['decisions'] and len(approved['decisions']) >= 3
+    assert attached(brief.requests[0])[1] == attached(html.requests[0])[1]
+    assert all(e['id'] in {c.id for p in spec.pages for c in p.components} for e in approved['components'])
+    with build.app.state.db.connect() as conn:
+        run_id = conn.execute("SELECT run_id FROM traces WHERE node='prototype' ORDER BY started_at DESC").fetchone()[0]
+    trace, recorded = spans(build.app, run_id)
+    assert [s['model'] for s in recorded if s['node'] in ('reference_brief', 'reference_html')] == [brief.model, html.model]
+    assert req.load(build.folder).assessment.state == 'ready'
 
 
 def test_failed_publish_coverage_records_its_errors_in_the_publish_span(blueprint_api, monkeypatch):

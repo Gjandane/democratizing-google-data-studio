@@ -1474,3 +1474,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md
 - Left open: P3 Decisions not scoped to the page - src/dss/harness/nodes/reference_brief.py; P3 Style-mode test uses an empty ledger - tests/test_reference_brief.py
 - Next: Task 24.6. Wire reference(folder)/report/brief into render.accept and revise regeneration, then the Flash reference_html stage.
+
+## 2026-10-25: Task 24.6 Flash composes reference pages with a bounded long deadline
+- Status: done
+- Plan check: off
+- What changed: wired ready references through planner brief then worker HTML on accept/revise; preserved native slots and ordinary designer fingerprints. Added per-page deadlines, cancellation/shutdown cleanup and truncation diagnostics.
+- Checks: `uv run pytest tests/test_designer.py tests/test_reference_brief.py tests/test_context.py tests/test_llm_timeouts.py tests/test_render.py tests/test_revise.py tests/test_feasibility.py tests/test_skeleton.py tests/test_api_contract.py tests/test_recipe_contract.py` PASS (560, 2 deselected); Test (all) `uv run pytest` PASS (1730, 14 deselected, 2 dependency warnings). Checkpoint staged-routing and timeout regressions fail as expected. Read-only review: no findings after cap-hit tracing fix.
+- Decisions: ephemeral ReferenceDesign carries current reports/getters; one outer 600s HTML deadline includes counting, retry, measurement and repair. Reference-only prompt overrides default card treatment, preserving ordinary prompt/skill bytes. AGENTS.md records finite-reply fake routing trap.
+- Digest: `designer.reference_design(folder,snapshot,ledger,checker,models)` feeds `design/regenerate(reference=...)`; reference_html uses worker, 600s/page including count/retry/repair, 12k/16k budgets; spans record actual model, duration and truncation; shutdown cancels tasks.
+- Tried and failed: legacy finite Blueprint fake answered the new brief; separate stage fakes fixed the regression.
+- Gotchas: none beyond AGENTS.md.
+- Left open: none.
+- Next: 24.7, live fidelity experiments and user approval STOP.

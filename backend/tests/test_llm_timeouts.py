@@ -16,6 +16,7 @@ class Settings:
 
 @pytest.mark.parametrize('node,model,timeout', [
     *[(node, 'planner-model', 120_000) for node in ('blueprint', 'designer', 'reference_brief')],
+    ('reference_html', 'worker-model', 600_000),
     *[(node, 'worker-model', 30_000) for node in (
         'hello', 'context', 'outline_propose', 'outline_other', 'outline_suggest', 'revise', 'capability_check', 'reference_extract', 'ux_audit',
         'research', 'consolidate', 'judge')]])

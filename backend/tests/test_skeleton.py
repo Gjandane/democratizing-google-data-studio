@@ -122,3 +122,39 @@ async def test_guardrail_rejects_secret(client, app, build_id):
     with app.state.db.connect() as connection:
         assert connection.execute("SELECT count(*) FROM messages").fetchone()[0] == 0
         assert "test-key" not in connection.execute("SELECT spans_json FROM traces").fetchone()[0]
+
+
+@pytest.mark.parametrize('mode', ['local', 'agent'])
+def test_shutdown_cancels_tracked_workflow_and_closes_model_without_its_long_deadline(tmp_path, mode):
+    import time
+    from dss.api.workflow import enqueue
+    from fakes import fake_models
+    from test_intake import create
+    class Waiting(FakeLLM):
+        closed: bool = False
+
+        async def generate_content_async(self, request, stream=False):
+            try:
+                async for result in super().generate_content_async(request, stream):
+                    yield result
+            finally:
+                self.closed = True
+
+    app = create_app(Config(data_dir=tmp_path, google_api_key='test-key', engine_mode=mode,
+                            agent_token='test-token'), model_lister=fake_models)
+    fake = Waiting(started=asyncio.Event(), release=asyncio.Event())
+    with TestClient(app) as client:
+        bid = create(client)['id']
+        app.state.models.llm_for = lambda node: fake
+        async def start():
+            app.state.harness.active_builds.add(bid)
+            enqueue(app.state, bid, 'hello', {})
+            await asyncio.wait_for(fake.started.wait(), 3)
+        client.portal.call(start)
+        assert bid in app.state.harness.active_builds and app.state.engine_tasks
+        started = time.monotonic()
+    assert time.monotonic() - started < 3
+    assert fake.closed and not app.state.harness.active_builds and not app.state.engine_tasks
+    with app.state.db.connect() as conn:
+        [trace] = conn.execute("SELECT status,error FROM traces WHERE node='hello'").fetchall()
+        assert trace['status'] == 'error' and trace['error'] == 'cancelled'

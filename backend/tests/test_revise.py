@@ -1137,6 +1137,73 @@ def test_type_change_that_no_longer_fits_its_slot_regenerates_the_page(setup, de
     assert page.components[0].type == 'table' and page.components[0].box.h >= design_page.minimum('table', 1440)[1]
 
 
+@pytest.mark.parametrize('failure', [None, 'invalid', 'cut', 'budget', 'missing', 'timeout', 'cancel'])
+def test_reference_revision_uses_fresh_candidate_and_preserves_publication_on_failure(
+        setup, designed, client, monkeypatch, failure):
+    from test_reference_brief import BriefLLM, reference_set, section, attached
+    from test_designer import ReferenceHTMLLLM
+    from dss.harness.context import COMPONENTS_HEADER
+    from dss.harness.nodes import designer as node
+    from dss.spec import references, requirements as req
+    from dss.spec.capabilities import Checker, load_registry
+    app, bid, folder, *_ = setup
+    reference_set(folder, 'style', 2)
+    record = references.load(folder); record['instructions'] = ''
+    (folder / references.SET_FILE).write_text(json.dumps(record), encoding='utf-8')
+    # This test adds visual evidence only. Establish actual current readiness before posting intent.
+    checker = Checker(load_registry())
+    snap, ledger = req.inputs(app.state.db, bid, folder), req.load(folder)
+    req.save(folder, ledger, req.evaluate(snap, ledger, checker))
+    text = 'Make it a table'
+    patch = [op('/pages/0/components/0/type', 'table'), op('/pages/0/components/0/dimensions', ['region'])]
+    fake = DesignFlow(needs_by_text={text: [{'capability': 'chart.table'}]}, response=response(patch))
+    brief = BriefLLM()
+    html = (fake if failure is None else ReferenceHTMLLLM(plan={1: ['cut' if failure == 'cut' else 'bad'] * 2},
+            fixed=9800 if failure == 'budget' else 1000,
+            pause_generate=5 if failure == 'timeout' else 0,
+            started=asyncio.Event(), release=asyncio.Event() if failure == 'cancel' else None))
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda node: {'reference_brief': brief, 'reference_html': html}.get(node) or fake)
+    if failure == 'missing':
+        (folder / record['images'][1]['file']).unlink()
+    if failure == 'timeout':
+        monkeypatch.setattr(node, 'HTML_STAGE_SECONDS', .1)
+    old = {p: p.read_bytes() for p in folder.iterdir() if p.name == 'spec.json' or p.name == 'prototype.html' or p.name.startswith('background_')}
+    comments = [{'component_id': 'p1_scorecard_0', 'text': text}]
+    if failure == 'cancel':
+        accepted = client.post(f'/api/builds/{bid}/comments', json={'comments': comments})
+        assert accepted.status_code == 202
+        run_id = accepted.json()['run_id']
+        client.portal.call(asyncio.wait_for, html.started.wait(), 5)
+        async def cancel():
+            task = next(iter(app.state.engine_tasks)); task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        client.portal.call(cancel)
+        assessment = client.get(f'/api/builds/{bid}/feasibility').json()
+        assert html.closed == 1
+    else:
+        assessment, run_id = post_designed(client, app, bid, comments)
+    if failure:
+        assert all(p.read_bytes() == before for p, before in old.items())
+        assert assessment['pending_comments']['comments'] == comments
+        assert finished(app, bid, run_id)['status'] == 'error'
+        assert not app.state.harness.active_builds and not app.state.engine_tasks
+        if failure == 'missing':
+            assert not brief.requests and not html.requests
+        return
+    assert assessment['pending_comments'] is None, finished(app, bid, run_id)
+    revised = DashboardSpec.model_validate_json((folder / 'spec.json').read_text(encoding='utf-8'))
+    assert revised.pages[1:] == designed.pages[1:]
+    assert revised.pages[0].components[0].type == 'table'
+    assert revised.pages[0].components[0].box.h >= node.design_page.minimum('table', 1440)[1]
+    assert len(brief.requests) == len(fake.designs) == 1
+    approved = json.loads(section(str(brief.requests[0].config.system_instruction), COMPONENTS_HEADER))
+    assert approved['components'][0]['type'] == 'table' and approved['assessment']['state'] == 'ready'
+    assert 'Make it a table' in str(brief.requests[0].config.system_instruction)
+    assert 'border-radius:12px' in str(brief.requests[0].config.system_instruction)  # previous HTML
+    assert '"type":"table"' in fake.designs[0][1] and '"comments"' in fake.designs[0][1]
+    assert attached(brief.requests[0])[1] == [(i['mime_type'], (folder / i['file']).read_bytes()) for i in record['images']]
+
+
 def test_design_html_recomputation_stays_within_budget():
     """Deterministic recomputation (evaluate + coverage) of 40 design-bound rows on the designed
     3-page spec stays <= 100 ms."""

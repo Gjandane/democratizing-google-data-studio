@@ -79,10 +79,20 @@ def create_app(config=None, *, model_lister=None, bigquery_factory=None):
             try:
                 if config.engine_mode == "agent":
                     await app.state.agent_jobs.close()
-                    for task in app.state.engine_tasks:
-                        task.cancel()
-                if app.state.engine_tasks:
-                    await asyncio.gather(*app.state.engine_tasks, return_exceptions=True)
+                tasks = tuple(app.state.engine_tasks)
+                for task in tasks:
+                    task.cancel()
+                if tasks:
+                    # Workflow tasks include reference HTML calls with a ten-minute deadline.
+                    # Cancel in every mode; their finally blocks close streams, clean candidates
+                    # and release ownership. SSE disconnect does not enter this path.
+                    done, pending = await asyncio.wait(tasks, timeout=max(
+                        0, shutdown_deadline - asyncio.get_running_loop().time()))
+                    for task in done:
+                        if not task.cancelled():
+                            task.exception()  # retrieve guarded background failures
+                    if pending:
+                        logger.warning('Active work exceeded the shutdown budget; cleanup deferred until restart')
             finally:
                 stop_backup.set()
                 if backup_task:

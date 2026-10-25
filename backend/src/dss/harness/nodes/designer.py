@@ -1,4 +1,5 @@
-"""Designer node: the planner designs each page as HTML/CSS around its component slots.
+"""HTML/CSS around code-owned native slots: planner for builds without a reference; a counted
+planner brief then worker HTML for reference builds, each with a separate cancellable deadline.
 
 architecture.md#Designed pages. Page 1 goes first and sets the canvas width and the shared
 stylesheet; pages 2-n then run in parallel with both as input. Each page gets one repair turn with
@@ -9,13 +10,14 @@ guarded and never logged or traced; spans carry counts only.
 import asyncio
 from contextlib import aclosing
 import re
+import time
 from typing import NamedTuple
 
 from google.adk.models.llm_request import LlmRequest
 from google.genai import types
 from pydantic import Field, ValidationError
 
-from dss.harness.context import designer_context, fit_request, tokens
+from dss.harness.context import designer_context, reference_html_context, fit_request, tokens
 from dss.harness.guardrails import RunError, check_reply
 from dss.harness.nodes.style_extract import provider_schema
 from dss.render import design_page
@@ -24,6 +26,7 @@ from dss.spec.models import Box, Design, Model
 from dss.spec.validate import validate_spec
 
 MAX_OUTPUT_TOKENS = 16000  # thinking included (low thinking level)
+HTML_STAGE_SECONDS = 600  # one deadline for counting, transport retry, measurement and one repair
 FOOTER = 64  # px under page 1 of a synthetic build; code draws the sample-data label there
 MAX_ERRORS = 20  # errors sent back on the repair turn
 WIDTHS = (1200, 1440, 1920)  # page 1's minimum slot widths are listed at these canvas widths
@@ -54,6 +57,33 @@ class Fallback(NamedTuple):
     errors: tuple = ()  # the last attempt's ({path, message}, ...), at most MAX_ERRORS
 
 
+class ReferenceDesign(NamedTuple):
+    reference: object
+    approved: dict
+    get_brief: object
+    get_html: object
+    failure: Fallback | None = None
+
+
+def reference_design(folder, snapshot, ledger, checker, models):
+    """Prepare ephemeral reference-stage inputs from the current candidate, after feasibility.
+    A broken reference refuses via the normal design fallback; absence keeps the old designer.
+    This function does not call a model or persist anything."""
+    from dss.harness.nodes import reference_brief as rb
+    from dss.spec import requirements as req
+    try:
+        reference = rb.reference(folder)
+    except RunError:
+        return ReferenceDesign(None, {}, None, None, Fallback('reference'))
+    if reference is None:
+        return None
+    if (ledger.assessment is None or ledger.assessment.state != 'ready'
+            or req.new_sources(snapshot, ledger) or req.evaluate(snapshot, ledger, checker).state != 'ready'):
+        return ReferenceDesign(reference, {}, None, None, Fallback('feasibility'))
+    return ReferenceDesign(reference, rb.report(snapshot, ledger, checker),
+                           lambda: models.llm_for('reference_brief'), lambda: models.llm_for('reference_html'))
+
+
 ICON = re.compile(r'(<i\b[^>]*\bdata-icon="([^"]*)"[^>]*>)<svg\b.*?</svg>(</i>)', re.S)
 
 
@@ -64,16 +94,20 @@ def readable(clean):
     return PAGE_ROOT.sub('body', clean)
 
 
-async def design(spec, get_model, trace, *, secrets=(), report=None, keep=frozenset()):
+async def design(spec, get_model, trace, *, secrets=(), report=None, keep=frozenset(), reference=None):
     """(spec, notes): `spec` with every page that passed designed, or `spec` itself when page 1
     falls back. `notes` are assistant-message sentences for each fallback. `get_model()` gives the
-    planner model (called once, only here); `report(totals)` emits the run's token usage. Pages in
+    planner model for a build without references; `reference` supplies the two stage getters and
+    current approved-component reports otherwise. `report(totals)` emits the run's token usage. Pages in
     `keep` (indexes whose decorations a requirement names) stay code-laid with no model call."""
     if 1 in keep:
         trace.spans.append({'node': 'designer_fallback', 'page': 1, 'reason': 'requirements', 'errors': 0})
         return spec, [ALL_FALLBACK]
+    if reference is not None and reference.failure:
+        trace.spans.append({'node': 'designer_fallback', 'page': 1, 'reason': reference.failure.reason, 'errors': 0})
+        return spec, [ALL_FALLBACK]
     try:
-        model = get_model()
+        model = reference.get_html() if reference is not None else get_model()
     except RunError:
         trace.spans.append({'node': 'designer_fallback', 'page': 1, 'reason': 'model', 'errors': 0})
         return spec, [ALL_FALLBACK]
@@ -83,7 +117,9 @@ async def design(spec, get_model, trace, *, secrets=(), report=None, keep=frozen
         if page.index in keep:
             trace.spans.append({'node': 'designer_fallback', 'page': page.index, 'reason': 'requirements', 'errors': 0})
             return Fallback('requirements')
-        result = await _page(model, spec, page, trace, first=first, secrets=secrets, report=report)
+        run_page = _reference_page if reference is not None else _page
+        kwargs = {'reference': reference} if reference is not None else {}
+        result = await run_page(model, spec, page, trace, first=first, secrets=secrets, report=report, **kwargs)
         if isinstance(result, Fallback):
             trace.spans.append({'node': 'designer_fallback', 'page': page.index, 'reason': result.reason,
                                 'errors': len(result.errors)})
@@ -112,19 +148,23 @@ async def design(spec, get_model, trace, *, secrets=(), report=None, keep=frozen
     return designed, notes
 
 
-async def regenerate(spec, comments, get_model, trace, *, secrets=(), report=None):
+async def regenerate(spec, comments, get_model, trace, *, secrets=(), report=None, reference=None):
     """Revise on designed pages (architecture.md#Designed pages): each page in `comments`
     ({page index: [comment, ...]}) is designed again from its previous HTML and its comments at
     the spec's canvas width (sanitize, measure, one repair), all pages in parallel. (spec, {})
     with those pages replaced (source "revise"), or (None, {page index: Fallback}) for the pages
     that failed, in which case nothing is replaced. The reviser's trace keeps its model name."""
+    if reference is not None and reference.failure:
+        return None, {index: reference.failure for index in comments}
     try:
-        model = get_model()
+        model = reference.get_html() if reference is not None else get_model()
     except RunError:
         return None, {index: Fallback('model') for index in comments}
     pages = [spec.pages[index - 1] for index in sorted(comments)]
-    results = await asyncio.gather(*(_page(model, spec, page, trace, secrets=secrets, report=report, revision={
-        'html': readable(page.design.html), 'comments': comments[page.index]}) for page in pages))
+    run_page = _reference_page if reference is not None else _page
+    kwargs = {'reference': reference} if reference is not None else {}
+    results = await asyncio.gather(*(run_page(model, spec, page, trace, secrets=secrets, report=report, revision={
+        'html': readable(page.design.html), 'comments': comments[page.index]}, **kwargs) for page in pages))
     failed = {page.index: result for page, result in zip(pages, results) if isinstance(result, Fallback)}
     for index, result in failed.items():
         trace.spans.append({'node': 'redesign_failed', 'page': index, 'reason': result.reason, 'errors': len(result.errors)})
@@ -137,7 +177,39 @@ async def regenerate(spec, comments, get_model, trace, *, secrets=(), report=Non
     return revised, {}
 
 
-async def _page(model, spec, page, trace, *, first=None, revision=None, secrets=(), report=None):
+async def _reference_page(model, spec, page, trace, *, reference, first=None, revision=None, secrets=(), report=None):
+    """Brief then HTML, in the same run. The outer HTML deadline includes both attempts and
+    all counting/transport retries. CancelledError propagates through both model streams."""
+    from dss.harness.nodes import reference_brief as rb
+    try:
+        brief_model = reference.get_brief()
+    except RunError:
+        return Fallback('model')
+    shared = None if first is None else {'canvas_width': first.width, 'css': first.css}
+    approved = reference.approved[page.index]
+    brief = await rb.brief(brief_model, reference.reference, approved, spec, page, trace,
+                           shared=shared, revision=revision, secrets=secrets, report=report)
+    if isinstance(brief, Fallback):
+        return brief
+    started = time.monotonic()
+    try:
+        async with asyncio.timeout(HTML_STAGE_SECONDS) as deadline:
+            return await _page(model, spec, page, trace, first=first, revision=revision, secrets=secrets,
+                               report=report, reference=(reference.reference, approved, brief, deadline))
+    except TimeoutError:
+        # Count-only metadata; never retain provider content or HTML in a trace.
+        trace.spans.append({'node': 'reference_html_timeout', 'page': page.index, 'model': model.model,
+                            'reason': 'timeout', 'duration_ms': round((time.monotonic() - started) * 1000)})
+        return Fallback('timeout')
+    finally:
+        duration = round((time.monotonic() - started) * 1000)
+        for span in trace.spans:
+            if span.get('node') == 'reference_html' and span.get('page') == page.index:
+                span['stage_duration_ms'] = duration
+                span.setdefault('duration_ms', duration)  # includes refusals before counting
+
+
+async def _page(model, spec, page, trace, *, first=None, revision=None, secrets=(), report=None, reference=None):
     """One page: an answer, then at most one repair; Designed or Fallback(reason, errors). Page 1
     of a new design (`first` None, no `revision`) chooses the width; a later page gets page 1's
     width and stylesheet (`first`); a revision keeps the spec's width and returns its whole page.
@@ -174,18 +246,39 @@ async def _page(model, spec, page, trace, *, first=None, revision=None, secrets=
     repair, errors = None, []
     try:
         for attempt in (1, 2):
-            trace.span('designer')
+            if reference is not None:
+                if asyncio.get_running_loop().time() >= reference[3].when():
+                    raise TimeoutError
+            trace.span('reference_html' if reference is not None else 'designer')
             span = trace.spans[-1]
             span.update(page=page.index, attempt=attempt)
-            memory = designer_context(theme, info, shared=shared, repair=repair, revision=revision)
+            if reference is None:
+                memory = designer_context(theme, info, shared=shared, repair=repair, revision=revision)
+            else:
+                ref, approved, brief, _ = reference
+                span.update(model=model.model, images=len(ref.images), output_budget=MAX_OUTPUT_TOKENS,
+                            input_budget=12000)
+                memory = reference_html_context(
+                    {'mode': ref.mode, 'images': list(ref.described), 'instructions': ref.instructions, **ref.notes},
+                    brief.model_dump(mode='json'), theme, info, approved,
+                    shared=shared, repair=repair, revision=revision)
             check_reply(memory, secrets)
             request = LlmRequest(model=model.model, config=types.GenerateContentConfig(
                 system_instruction=str(memory), response_mime_type='application/json',
                 response_json_schema=provider_schema(schema), max_output_tokens=MAX_OUTPUT_TOKENS,
                 thinking_config=types.ThinkingConfig(thinking_level='LOW')),
-                contents=[types.Content(role='user', parts=[types.Part(text='Return the page design JSON only.')])])
-            await fit_request(memory, request, model, span)
-            raw, cut = await _generate(model, request, lambda metadata: usage(metadata, span))
+                contents=[types.Content(role='user', parts=[types.Part(text='Return the page design JSON only.'),
+                    *(types.Part.from_bytes(data=data, mime_type=mime)
+                      for mime, data in (ref.images if reference is not None else ()))])])
+            started = time.monotonic()
+            try:
+                await fit_request(memory, request, model, span)
+                raw, cut = await _generate(model, request, lambda metadata: usage(metadata, span))
+            finally:
+                if reference is not None:
+                    span['duration_ms'] = round((time.monotonic() - started) * 1000)
+            if reference is not None:
+                span['truncated'] = cut
             if raw.strip():
                 check_reply(raw, secrets)
             trace.span('validate')
@@ -211,6 +304,8 @@ async def _page(model, spec, page, trace, *, first=None, revision=None, secrets=
                                                        footer=footer, fonts=fonts)
                     errors = measured.errors
             check.update(errors=len(errors))
+            if reference is not None:
+                span.update(duration_ms=round((time.monotonic() - started) * 1000), errors=len(errors))
             if not errors:
                 clean = design_page.sanitize(html, page=page.index, fonts=fonts)
                 css = STYLE.match(clean)
@@ -223,10 +318,18 @@ async def _page(model, spec, page, trace, *, first=None, revision=None, secrets=
         reason = 'invalid'
     except RunError as exc:
         reason = 'over_budget' if exc.detail.get('reason') == 'over_budget' else 'model'
+        if reference is not None:
+            span.update(reason=reason, **{k: v for k, v in exc.detail.items() if k in ('tokens', 'budget')})
+    except TimeoutError:
+        if reference is not None:
+            raise
+        reason = 'error'  # preserve the ordinary designer's fallback classification
     except Exception:
         # Provider and Chromium errors may echo request text: keep only the fact.
         reason = 'error'
-    return Fallback(reason, tuple(errors))
+    if reference is not None:
+        span.update(reason=reason, errors=len(errors))
+    return Fallback(reason, tuple(errors[:MAX_ERRORS]))
 
 
 def assemble(spec, results, model_name):

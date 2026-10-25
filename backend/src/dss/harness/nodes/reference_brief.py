@@ -164,7 +164,8 @@ async def brief(model, reference, approved, spec, page, trace, *, shared=None, r
     trace.span('reference_brief')
     span = trace.spans[-1]
     span.update(page=page.index, mode=reference.mode if reference else None,
-                images=len(reference.images) if reference else 0, model=model.model)
+                images=len(reference.images) if reference else 0, model=model.model, attempt=1,
+                input_budget=12000, output_budget=MAX_OUTPUT_TOKENS)
     ids = [c.id for c in page.components]
     errors = []
     try:
@@ -203,6 +204,7 @@ async def brief(model, reference, approved, spec, page, trace, *, shared=None, r
             async with asyncio.timeout(deadline):
                 await fit_request(memory, request, model, span)
                 raw, cut = await _generate(model, request, usage, MAX_OUTPUT_TOKENS)
+            span['truncated'] = cut
             if raw.strip():
                 check_reply(raw, secrets)
             answer, errors = validated(raw, cut, page.index, ids)
@@ -213,6 +215,7 @@ async def brief(model, reference, approved, spec, page, trace, *, shared=None, r
         reason = 'timeout'
     except RunError as exc:
         reason = 'over_budget' if exc.detail.get('reason') == 'over_budget' else 'model'
+        span.update({k: v for k, v in exc.detail.items() if k in ('tokens', 'budget')})
     except Exception:
         # Provider errors may echo request text: keep only the fact.
         reason = 'error'
