@@ -1486,3 +1486,16 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond AGENTS.md.
 - Left open: none.
 - Next: 24.7, live fidelity experiments and user approval STOP.
+
+## 2026-10-25: Task 24.7 Verify and approve two-stage reference fidelity
+- Status: blocked
+- Plan check: off
+- What changed: uncommitted (kept in tree for the resume): tests/live/test_reference_design.py (recreate/style/none live cases, fixture hash checks, per-stage evidence, uncapped issue dump `issues-uncapped.json` on block) and tests/data/reference_design/ (electricity image, synthetic CSV + generation.json, README provenance, full SHA256s). Also committed missed task 24.6 work (8e7fe2a).
+- Checks: `uv run pytest tests/test_reference_brief.py tests/test_designer.py tests/test_render.py tests/test_revise.py` PASS (246, 2 deselected, 218 s). Live: style PASS (earlier session, 360 s incl. none); none FAIL (planner designer page-3 kit fallback after repair, existing behavior); recreate FAIL x3 at feasibility (blocked; 107-113 s each). Test (all) not run.
+- Blocked because: (b) recreate needs feasibility/Blueprint fixes outside 24.7 Files (src/dss/spec/requirements.py, feasibility/blueprint planner).
+- Question: Should a fix task make recreate reach ready for this fixture before 24.7 resumes?
+- Options: A plan a fix task: absorb definition-only reference instruction rows (now blocking `unknown`), reconcile dimension observations with `X = field` instructions, make the Blueprint honor observations (yearly SUM(people_without_access) bar, region fixed_size_list) / B user drop policy in the test (drops observations the Done-when requires) / Recommend: A (user chose A).
+- Tried and failed: run 104330 (7 definitions) 22 issues (scope refusal); run 104805 (+field-name definitions) 21: 12 `unknown` definition rows, Region Selector needs_clarification, geo_map needs_data, Location legend as dropdown, 4 per-country small multiples (date_field), bp_ scorecard/bar observations with no matching row and no alternatives.
+- Gotchas: user-approved drops still needed after the fix: geo choropleth (country not GEO), per-country small multiples (no per-chart filter), year slider. None-mode test asserts no designer fallback; existing no-reference path can fall back: relax to record it.
+- Left open: none
+- Next: architect plans the fix; then resume 24.7 (rerun recreate, get drop decisions, finish live check, visual STOP).

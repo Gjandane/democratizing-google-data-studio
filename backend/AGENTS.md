@@ -65,3 +65,4 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 <!-- blueprint-solution:end -->
 - A reference's instructions are new intent: after `/design/confirm` its `bp_intent_` issue can't be decided; run `POST /feasibility/check` first. Live comments need app-supported kinds (title, move, series colors): title font size is unsupported_app, vague layout asks are unknown.
 - Style mode imports no charts or controls from a reference: its slider, split bar and small multiples get no slots, and a designer shown the image drew them as fakes in the background until the skill forbade it (24.5 live run 1).
+- Definition-only reference instructions (`Label = AGG(field)`) stay blocking `unknown` rows unless an observation's mapping absorbs them exactly; to see every issue behind a 20-issue scope refusal, re-run requirements.evaluate with MAX_ISSUES patched (tests/live/test_reference_design.all_issues).
