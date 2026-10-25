@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:5f57ab78960b (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:7b7c6b429047 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 docs/architecture.md wins.
 
@@ -35,9 +35,11 @@ tests/          offline fakes; tests/live/ marked live
 - Accept publishes its candidate view/spec/artifacts atomically; never clean a published view.
   Backgrounds: background.write_pages per page, 3x, <2 MB.
 - Designed pages: no-reference planner unchanged; ready native slots + reference -> Argon brief
-  -> Flash HTML. Count images; 12k input, 4k/16k output. Chromium measures slots -> `box`;
-  width 1200 (> ~1380 misplaces); one HTML repair, then kit; `data-art` art. No new web access,
-  fake charts or slot changes.
+  -> Flash HTML. Count images; brief 12k/4k; HTML 12k initial input, 24k repair input, 16k
+  output. One HTML repair, one 600 s stage. Repair deduplicates facts/current HTML, retains
+  intent/images. Chromium measures slots -> `box`; width 1200 (> ~1380 misplaces). Reference
+  failure stops publication and preserves prior artifacts; no-reference keeps its kit fallback.
+  `data-art` art; no new web access, fake charts or slot changes.
   Text fit: architecture.md#Implementation conventions.
 - Feasibility: structured Blueprint rows; extraction only for Other, comments, references;
   images are not data. Other fail-open gap: PRD Later; unsupported still blocks.

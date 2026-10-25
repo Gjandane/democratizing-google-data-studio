@@ -7,6 +7,7 @@ The separate user visual STOP is never inferred from pytest success.
 import hashlib
 import base64
 import json
+import itertools
 import os
 import re
 import time
@@ -16,6 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from dss.data.bigquery import BigQuery
+from dss.harness.guardrails import RunError, check_reply
 from dss.harness.nodes import designer, reference_brief
 from dss.spec import requirements
 from dss.spec.capabilities import Checker, load_registry
@@ -71,6 +73,10 @@ class RecordedFlow(Flow):
             self.runs.append(run)
             assert run['status'] == 'ok', {k: run[k] for k in ('stage', 'node', 'error')}
             spans = [s for s in json.loads(trace(self.app, run['run_id'])['spans_json'] or '[]') if 'sections' in s]
+            for request, span in zip(run['requests'], spans):
+                if span['node'] == 'reference_html' and span.get('attempt') == 2:
+                    assert span['input_budget'] == 24000, span
+                    request['budget'] = 24000
             sent = [r for r, s in zip(run['requests'], spans) if s.get('reason') != 'over_budget' or s.get('input_tokens')]
             check_usage({**run, 'requests': sent})
             return run
@@ -78,8 +84,56 @@ class RecordedFlow(Flow):
             print(f'  finished {stage}: {self.timings.get(stage)} seconds', flush=True)
 
 
-def observe_generation(monkeypatch, calls):
+def failed_draft_shot(path, html, width, height):
+    """Best-effort local screenshot using the runtime's offline, script-disabled surface."""
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(timeout=10000)
+        try:
+            context = browser.new_context(java_script_enabled=False, service_workers='block',
+                                          viewport={'width': width, 'height': min(max(height, 900), 20000)})
+            context.route('**/*', lambda route: route.abort())
+            page = context.new_page()
+            page.set_content(html, wait_until='load', timeout=10000)
+            page.screenshot(path=str(path), timeout=10000)
+        finally:
+            browser.close()
+
+
+def save_failed_draft(evidence, name, html, width, fonts, measured, secrets):
+    """Never persist provider replies: only guarded, sanitized measured HTML and errors."""
+    try:
+        check_reply(html, secrets)
+        clean = designer.design_page.sanitize(html, fonts=fonts)
+        document = designer.design_page._document(clean, width)
+        errors = json.dumps(measured.errors, ensure_ascii=False)
+        check_reply(document, secrets)
+        check_reply(errors, secrets)
+    except RunError:
+        return
+    evidence.mkdir(parents=True, exist_ok=True)
+    (evidence / f'{name}.html').write_text(document, encoding='utf-8')
+    dump(evidence / f'{name}.errors.json', measured.errors)
+    try:
+        failed_draft_shot(evidence / f'{name}.png', document, width, measured.height)
+    except Exception:
+        pass  # Missing browser/screenshot must not replace the measured design failure.
+
+
+def observe_generation(monkeypatch, calls, *, evidence=None, secrets=()):
     """Observe real generation, including thinking/transport retries; never change requests or answers."""
+    if evidence is not None:
+        original_measure = designer.design_page.measure
+        sequence = itertools.count(1)
+
+        def measured(html, slots, width, **kwargs):
+            result = original_measure(html, slots, width, **kwargs)
+            if result.errors:
+                save_failed_draft(evidence, f'failed-draft-{next(sequence)}', html, width,
+                                  kwargs.get('fonts', ()), result, secrets)
+            return result
+
+        monkeypatch.setattr(designer.design_page, 'measure', measured)
     for module, stage in ((reference_brief, 'reference_brief'), (designer, 'html')):
         original = module._generate
 
@@ -111,6 +165,7 @@ def stage_evidence(app, flow):
 
 
 def assert_design_stages(app, run, spec, mode, models, pages=None, facts=None):
+    assert run['status'] == 'ok', {k: run.get(k) for k in ('stage', 'node', 'error')}
     spans = json.loads(trace(app, run['run_id'])['spans_json'] or '[]')
     failed = [s for s in spans if s['node'] in ('designer_fallback', 'redesign_failed', 'reference_html_timeout')]
     expected = pages or {p['index'] for p in spec['pages']}
@@ -137,7 +192,9 @@ def assert_design_stages(app, run, spec, mode, models, pages=None, facts=None):
             assert {s['page'] for s in stages} == expected, stages
             for span in stages:
                 assert span['model'] == model and span['images'] == 1, span
-                assert 0 < span['enforced_input_bound'] <= 12000, span
+                budget = 24000 if node == 'reference_html' and span['attempt'] == 2 else 12000
+                assert span['input_budget'] == budget, span
+                assert 0 < span['enforced_input_bound'] <= budget, span
                 assert 0 < span['output_tokens'] <= limit, span
                 assert span.get('stage_duration_ms', span['duration_ms']) <= seconds * 1000, span
                 assert not span.get('reason') and not span.get('truncated'), span
@@ -277,7 +334,8 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
     calls, tables = [], set()
     facts = {'mode': mode, 'fixture_sha256': fixtures, 'generation_calls': calls,
              'visual_approval': 'pending', 'accepted_substitutions': [], 'dry_engine': True}
-    observe_generation(monkeypatch, calls)
+    secrets = tuple(s.get_secret_value() for s in (config.google_api_key, config.access_code, config.agent_token))
+    observe_generation(monkeypatch, calls, evidence=evidence / 'failed-drafts', secrets=secrets)
     started = time.monotonic()
     with TestClient(app) as client:
         assert client.put('/api/settings', json={'gcp_project_id': project}).status_code == 200

@@ -343,7 +343,7 @@ def staged_flow(request, blueprint_api, monkeypatch):
     bq.create_view = lambda table, sql: bq.created.append(table)
     bq.delete_view = lambda table: bq.deleted.append(table) or True
     bq.aggregate = lambda sql: [{'region': 'West', 'product_category': 'A', 'm0': 10}]
-    monkeypatch.setattr(background, 'capture', lambda html, path, width, height: path.write_bytes(b'PNG'))
+    monkeypatch.setattr(background, 'capture', lambda html, path, width, height, scale=3: path.write_bytes(b'PNG'))
     confirm(client, app, bid)
     before = client.get(f'/api/builds/{bid}/feasibility').json()
     assert before['state'] == 'ready', before['issues']
@@ -413,7 +413,10 @@ def execution_blocked(client, bid, code='feasibility_blocked'):
 def replan(client, app, bid, llm, value, monkeypatch):
     """Explicit replan through the staged API: regenerate the Blueprint, then accept it."""
     from test_context_node import wait
-    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: llm)
+    from test_reference_brief import BriefLLM
+    from test_designer import ReferenceHTMLLLM
+    pair = {'reference_brief': BriefLLM(), 'reference_html': ReferenceHTMLLLM()}
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda node: pair.get(node) or llm)
     llm.replies.append(json.dumps(value))
     regenerated = client.post(f'/api/builds/{bid}/blueprint/regenerate')
     assert regenerated.status_code == 202, regenerated.text
@@ -557,8 +560,9 @@ def recreate_build(blueprint_api, monkeypatch, matching=True, data=RECREATE, syn
     build = SimpleNamespace(client=client, app=app, bid=bid, folder=folder, llm=llm, value=value, context=context, data=data,
                             vision=Capture(response=output(items=data['items']), requests=[]), extraction=None)
     from test_reference_brief import BriefLLM
+    from test_designer import ReferenceHTMLLLM
     build.brief = brief or BriefLLM()
-    build.reference_html = reference_html or designer or Capture(response='{}', requests=[])
+    build.reference_html = reference_html or designer or ReferenceHTMLLLM()
     monkeypatch.setattr(app.state.models, 'llm_for', lambda action: {
         'reference_extract': build.vision, 'capability_check': build.extraction, 'designer': designer,
         'reference_brief': build.brief, 'reference_html': build.reference_html}.get(action) or llm)
@@ -800,7 +804,9 @@ def test_recreate_accept_uses_checked_brief_and_html_with_real_decisions(bluepri
     assert len(brief.requests) == html.calls == 1
     approved = json.loads(section(str(brief.requests[0].config.system_instruction), COMPONENTS_HEADER))
     implementation = json.loads(section(str(html.requests[0].config.system_instruction), COMPONENTS_HEADER))
-    assert [{k: v for k, v in c.items() if k not in ('min_w', 'min_h')} for c in approved['components']] == implementation['components']
+    strip_minima = lambda rows: [{k: v for k, v in c.items() if k not in ('min_w', 'min_h')} for c in rows]
+    assert strip_minima(approved['components']) == strip_minima(implementation['components'])
+    assert all(c['min_w'] and c['min_h'] for c in implementation['components'])
     assert approved['decisions'] == implementation['decisions'] and len(approved['decisions']) >= 3
     assert attached(brief.requests[0])[1] == attached(html.requests[0])[1]
     assert all(e['id'] in {c.id for p in spec.pages for c in p.components} for e in approved['components'])

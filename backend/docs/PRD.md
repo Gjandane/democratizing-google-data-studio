@@ -104,6 +104,14 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
   the two-source GPS-style fixture reaches a blueprint with a union and a flagged ratio KPI.
 
 ## Decided by default
+- Change 2026-10-25 (24.8 block, user choices): reference HTML generation keeps its 12k
+  input limit; its one repair may use 24k input, counted with the same conservative allowance.
+  Remove duplicate representations first, retaining all authoritative facts. Output stays 16k
+  including thinking; the whole HTML stage stays 600 s, with one validation repair. With
+  designed pages enabled, a reference page that still fails stops acceptance and preserves
+  existing artifacts; it cannot publish a standard-kit substitute. Revision failures retain
+  existing artifacts and pending comments. No-reference fallback stays unchanged. These are
+  explicit user decisions; implementation is 24.8 and live/visual acceptance is 24.9.
 - Change 2026-10-25: user keeps native Data Studio charts, allows HTML generation longer than
   five minutes (reported a roughly three-minute Flash 3.8 experiment), and chooses supplied
   reference/bundled assets first, with no new internet research. Default: 600 s per page's Flash

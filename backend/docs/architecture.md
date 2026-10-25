@@ -492,9 +492,13 @@ Final-audit corrections (2026-10-19):
   | reference_html | dashboard-design (Reference rules) | icon/art names | validated brief, immutable slots, reference images/notes, theme, shared CSS or previous HTML/comments, repair errors |
 - Budgets (input tokens): context 10k, outline_propose 8k, outline_suggest 6k, outline_other 6k,
   blueprint 14k, revise 6k, ux_audit 10k, designer 12k (output <= 16k including thinking),
-  reference_brief 12k/4k output and reference_html 12k/16k output (thinking included).
+  reference_brief 12k/4k output and reference_html 12k initial input, 24k repair input / 16k
+  output (thinking included; change 24.8, user). Only the internal second HTML attempt gets
+  the repair limit; reference_brief, no-reference designer and every other node keep their limits.
   Reference-stage images, instructions, approved slots/decisions and brief are mandatory, not
-  droppable reference-label sections. Both new nodes use the existing conservative enforcement
+  droppable reference-label sections. Reference HTML repair may replace duplicate representations
+  as specified in #Reference HTML composition; it never drops authoritative facts to fit.
+  Both new nodes use the existing conservative enforcement
   allowance used by designer, including images/schema/repair. Over budget -> shorten profile value lists to the top 5,
   then drop reference observations, then semantic concepts beyond the first; never drop the
   system prompt, skills, upstream artifacts or user input (if those alone exceed it, refuse with
@@ -992,6 +996,9 @@ Final-audit corrections (2026-10-19):
     slots remain authoritative. The generic look applies only without a reference. No-reference
     model requests, routing, bytes and repair/fallback behavior remain unchanged. The screenshot
     is never placed in the background; slot, sanitizer, text-fit and footer rules still apply.
+    Change 24.8: when designed pages are enabled, failure on any reference page stops acceptance
+    instead of using the kit, including failures before HTML generation or during assembled-spec
+    validation. This overrides the general fallback rules above for reference builds only.
   - Art (change 2026-10-24): `<i data-art="<name>">` -> a vendored static SVG from
     `render/art/` (like icons: inlined by code after sanitizing, scaled to the element's CSS
     box), so a real globe or world map costs the designer one tag instead of tens of thousands
@@ -1058,8 +1065,9 @@ Final-audit corrections (2026-10-19):
   counted input <= 12k including images and output <= 4k including thinking. One generation,
   no semantic repair; existing single transport retry on 429/500/503 only. A 120 s total stage
   bound includes counting and any retry; cancellation propagates. Validate raw output under
-  existing secret guards before parsing. Failed, cut, invalid or over-budget brief follows the
-  page's existing fallback policy; it never reaches Flash. Mandatory inputs may not be dropped
+  existing secret guards before parsing. Failed, cut, invalid or over-budget brief follows
+  #Reference HTML composition's failure policy (change 24.8: stop reference publication);
+  it never reaches Flash. Mandatory inputs may not be dropped
   to fit. A repair to the HTML reuses the same valid brief.
 - Oracle: fake-model tests prove report contents even with zero open issues, exact slot-set
   validation, mode semantics, image ordering/MIME on every page/revision, count-before-generation,
@@ -1082,7 +1090,11 @@ Final-audit corrections (2026-10-19):
   and existing token usage. Both stages contribute to the same trace/run.usage totals; no raw
   brief, HTML, image bytes or provider text in logs/spans. Model fallback is visible by actual
   model identity, never claimed as Argon if unavailable.
-- Budget: input <= 12k, output <= 16k including LOW thinking. Give the reference_html client
+- Budget (change 24.8, user): initial input <= 12k; the one repair input <= 24k. Both use
+  the existing conservative complete-request bound, including schema and ordered images.
+  Only the internally selected second HTML attempt may use 24k; not the brief, first attempt,
+  no-reference designer or another worker. Output <= 16k including LOW thinking on both
+  attempts. Give the reference_html client
   a 600,000 ms timeout independent of planner/worker defaults. One 600 s wall-clock budget
   covers each page's entire HTML stage: token counting, generation, the existing transport
   retry and at most one validation/measurement repair. An outer cancellable deadline prevents
@@ -1090,11 +1102,40 @@ Final-audit corrections (2026-10-19):
   budget. Other workers remain 30 s; planner calls remain 120 s. Per-page brief + HTML therefore
   totals at most 720 s of stage time; page 1 then later pages can take up to two such waves,
   plus existing deterministic rendering/publication. This is bounded, not a speed guarantee.
-- Failure: reuse current page-1/all-page and later-page kit fallback policies, with visible
-  fallback notes and sanitized reason. Revision failure keeps the old spec/artifacts and
-  pending comments. Input overflow and missing reference are failures, not silent truncations.
+- Repair context: remove duplicate representations before counting, not mandatory meaning.
+  There is one authoritative page component projection with all ids/types/labels, minima,
+  data bindings and accepted decisions; do not repeat that projection in page metadata. Keep
+  the full validated brief, theme, reference mode/instructions/notes, ordered descriptors and
+  image bytes, fixed width/shared CSS, and original revision comments. If a parsed failed HTML
+  draft exists, include it once as the current page; it replaces the older revision HTML for
+  this repair only. With no usable draft (empty, truncated or malformed output), retain the
+  original revision HTML when present and the errors; never send an unbounded raw bad reply.
+  First-page repair retains the proposed width or the schema's width-selection constraint.
+  All error paths and measured size/collision guidance remain available to the one repair
+  under the existing 20-error bound; sanitization and measurement run again afterwards.
+  No new HTML minifier, automatic layout solver, dropped slots, lossy brief summary or
+  additional model loop is required. A complete request still over its limit refuses before
+  generation; no truncation of mandatory facts or weakening of the allowance.
+- Failure (change 24.8, user): with designed pages enabled, any reference-page failure stops
+  acceptance before publication. This includes missing/damaged reference, failed brief,
+  over-budget input, timeout, model/JSON/measurement failure after the allowed repair, a
+  requirements-bound page that would otherwise keep its kit, and assembled-spec validation.
+  Do not publish any mixture of designed and fallback pages. Emit the existing run.finished
+  error with a sanitized stage/page/reason (existing error codes/shapes); retain the Blueprint
+  stage, prior published spec/view/artifacts and pending comments, clean the unpublished
+  candidate and release ownership. A successful page is never published alone after a
+  sibling fails. Revision failure keeps the old spec/artifacts and pending comments as today.
+  No-reference fallback and the explicit designed_pages=False path stay unchanged.
+  Input overflow and missing reference are failures, not silent truncations.
   Output truncation can use the one existing HTML repair at the same cap; a repeated cap hit
   is recorded for the live STOP, never silently raises the cap. No extra Argon retry loop.
+- Diagnostics: per-attempt spans retain folded count, enforced bound, applicable input budget,
+  billed usage, stage/page/attempt/model/duration, refusal reason and error count. Record only
+  code-owned validation categories/counts in spans, not HTML, brief, text snippets or provider
+  output. The live test may save sanitized failed drafts, measurement errors and screenshots
+  as backend-local QA evidence after the existing secret guard; never add these to runtime
+  logs or public artifacts. Diagnose the remaining measurement error before changing prompts;
+  a larger input budget alone does not prove layout quality.
 - Lifecycle: accept still responds 202; background work keeps build ownership until completion
   or cancellation. User disconnect from SSE does not cancel a run. Server shutdown cancels and
   drains tracked workflow tasks under the existing shutdown grace rather than waiting 600 s;
@@ -1103,8 +1144,14 @@ Final-audit corrections (2026-10-19):
 - Oracle: tests use injectable shortened deadlines/fake clocks, not ten-minute sleeps: a worker
   that passes the old 30 s boundary succeeds within the new budget; retry/repair together cannot
   exceed it; cancellation/timeout preserve old publications, close generation and release locks.
-  Routing tests pin designer/planner/ordinary-worker deadlines. Multi-page, revise, coverage,
-  over-budget and fallback tests pass; no-reference requests/artifact bytes are unchanged.
+  Routing tests pin designer/planner/ordinary-worker deadlines. A repair whose complete bound
+  is between 12k and 24k generates once; initial input above 12k or repair above 24k never
+  generates. Revision repair contains one current draft plus the original comments, not two
+  HTML copies; all required facts/images survive compaction. A failed first/later reference
+  page or assembled spec leaves publication bytes/version/view unchanged, releases ownership
+  and cleans candidates; a second invalid measurement never publishes. No-reference requests,
+  artifact bytes and fallback are unchanged. Existing text/slot/footer/security checks remain
+  the oracle; no relaxed checks to pass a live screenshot.
 - Live acceptance: backend-owned reproducible recreate fixture from the electricity reference,
   same synthetic data and explicit accepted substitutions; real configured planner/worker,
   dry engine. Save the reference/prototype side by side and redacted stage counts/models/times.
@@ -1333,3 +1380,4 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-25 | Reference HTML gets 600 s per page including counting/retry/repair; brief 120 s; retain 12k inputs and 16k HTML output, new 4k brief output | 30 s worker default; 120 s HTML; unlimited wait or cap increase | user permits over five minutes and reports Flash 3.8 HTML in about three minutes; finite 600 s bound is a documented default; shutdown must cancel long work | change 24.5 (user timing permission, default bound) |
 | 2026-10-25 | Use supplied reference and bundled assets; no new web research, dependencies or contract changes | add bounded internet research; runtime external assets | user selected bundled assets first; existing sanitized background and native-chart rules remain | change 24.5 (user) |
 | 2026-10-25 | Recreate observation completion: definition-only instructions are evidence, not rows; `Label = field`, `using <date field>`, `chart <type>`, multi-metric substitution; scorecards skip the grain check; code adds a page-1 row for a fully determined unfulfilled observation | alternative the user picks for the added row; drop policy inside the test; keep the extracted dropdown | 24.7 blocked at 21 issues on the electricity fixture; the user chose the code-added row, the `chart` clause and one urban/rural area for the per-country small multiples; geo_map, legend and slider drops approved for that fixture | change 24.7 (user) |
+| 2026-10-25 | Compact duplicate reference repair input; 12k initial / 24k repair input, unchanged conservative count allowance, 16k output and 600 s/one repair; reference design failure prevents publication and preserves prior artifacts | keep every request at 12k; publish the standard kit after reference failure; keep retrying live | 24.8 evidence: repair bound 14,117 exceeded 12k; another repair retained one measurement error. User chose the 24k repair limit and stopping failed reference builds. Native-slot validation and visual acceptance stay mandatory | change 24.8 (user answers in architect session) |

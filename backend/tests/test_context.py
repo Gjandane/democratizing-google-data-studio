@@ -475,3 +475,30 @@ def test_capability_context_trims_only_a_comment_batch_and_outline_other_keeps_t
     [section] = [s for s in other.sections if s.name == 'ledger']
     assert [r['id'] for r in json.loads(section.body)['requirements']] == [r.id for r in ledger.requirements]
     assert BUDGETS['outline_other'] == 6000 and BUDGETS['reference_extract'] == 12000
+
+
+@pytest.mark.parametrize('draft', [None, '<section>current draft</section>'])
+def test_reference_repair_keeps_one_projection_and_one_current_html(draft):
+    from dss.harness.context import reference_html_context
+    approved = {'assessment': {'state': 'ready'}, 'components': [
+        {'id': 'c1', 'type': 'bar', 'label': 'Revenue', 'metrics': [{'field': 'amount', 'agg': 'sum'}],
+         'bindings': [{'requirement': 'r1'}]}], 'decisions': [{'action': 'accept_alternative', 'choice': 'Native bar'}]}
+    page = {'index': 1, 'components': [{'id': 'c1', 'min_w': {'1200': 400}, 'min_h': 240}]}
+    revision = {'html': '<main>original baseline</main>', 'comments': [{'text': 'Preserve this comment'}]}
+    repair = {'errors': [{'path': 'slot', 'message': 'too small'}]}
+    if draft:
+        repair.update(html=draft, canvas_width=1440)
+    memory = reference_html_context({'instructions': 'Keep globe', 'images': [1, 2], 'notes': 'Navy'},
+        {'overall': 'Full validated brief'}, {'theme': 'dark'}, page, approved,
+        shared={'css': 'body{color:red}', 'canvas_width': 1440}, revision=revision, repair=repair, attempt=2)
+    sections = {s.name: json.loads(s.body) for s in memory.sections if s.kind in ('docs', 'input')}
+    assert memory.budget == 24000 and 'components' not in sections['page']
+    assert sections['components']['components'] == [{**approved['components'][0], 'min_w': {'1200': 400}, 'min_h': 240}]
+    assert sections['components']['decisions'] == approved['decisions']
+    assert sections['revision'] == {**revision, 'html': draft or revision['html']}
+    assert sections['repair'] == {'errors': repair['errors']}
+    assert str(memory).count('current draft' if draft else 'original baseline') == 1
+    assert ('original baseline' in str(memory)) == (draft is None)
+    assert sections['brief'] == {'overall': 'Full validated brief'}
+    assert sections['reference']['images'] == [1, 2] and sections['page-1']['css'] == 'body{color:red}'
+    assert revision['html'] == '<main>original baseline</main>' and 'components' in page  # inputs untouched

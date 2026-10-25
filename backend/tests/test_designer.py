@@ -10,6 +10,7 @@ from google.genai import types
 import pytest
 
 from dss.harness.context import PAGE_HEADER, SEPARATOR
+from dss.harness.guardrails import RunError
 from dss.harness.nodes import designer
 from dss.harness.nodes.designer import ALL_FALLBACK, FOOTER
 from dss.render import background
@@ -49,6 +50,9 @@ class DesignerLLM(FakeLLM):
     async def generate_content_async(self, llm_request, stream=False):
         instruction = str(llm_request.config.system_instruction)
         page = json.loads(instruction.split(PAGE_HEADER + '\n', 1)[1].split(SEPARATOR, 1)[0])
+        if 'components' not in page:  # reference HTML has one canonical component projection
+            from dss.harness.context import COMPONENTS_HEADER
+            page['components'] = json.loads(instruction.split(COMPONENTS_HEADER + '\n', 1)[1].split(SEPARATOR, 1)[0])['components']
         attempt = sum(index == page['index'] for index, _ in self.seen)
         self.seen.append((page['index'], instruction))
         self.configs.append(llm_request.config)
@@ -71,7 +75,7 @@ class DesignerLLM(FakeLLM):
             answer['html'] = '<p class="x">No slots here</p>'
         if behaviour == 'art':  # a globe below the cards, clear of every slot
             answer['html'] += '<i class="globe" data-art="globe-americas" style="width:240px"></i>'
-        if page['index'] == 1:
+        if 'canvas_width' in llm_request.config.response_json_schema['required']:
             answer['canvas_width'] = 1440
         self.response = {'json': '{"html": ', 'empty': ''}.get(behaviour, json.dumps(answer))
         async for response in super().generate_content_async(llm_request, stream):
@@ -373,6 +377,81 @@ class ReferenceHTMLLLM(DesignerLLM):
             self.active -= 1
 
 
+@pytest.mark.parametrize('second,success', [(11000, True), (19573, True), (19574, False)])
+async def test_only_reference_repair_uses_24k_complete_bound(tmp_path, second, success):
+    from dss.harness.guardrails import RunError
+    class Counts(ReferenceHTMLLLM):
+        async def count_request_tokens(self, request):
+            await super().count_request_tokens(request)
+            return 1000 if len(self.counted) == 1 else second
+    spec = three_pages(); spec.pages = spec.pages[:1]
+    ref, _, html = reference_plan(tmp_path, spec, html=Counts(plan={1: ['bad', 'ok']}))
+    trace = Trace()
+    if success:
+        result, notes = await designer.design(spec, lambda: None, trace, reference=ref)
+        assert result.pages[0].design and not notes and html.calls == 2
+    else:
+        with pytest.raises(RunError) as caught:
+            await designer.design(spec, lambda: None, trace, reference=ref)
+        assert caught.value.detail['reason'] == 'over_budget' and html.calls == 1
+    attempts = [s for s in trace.spans if s['node'] == 'reference_html']
+    assert [s['input_budget'] for s in attempts] == [12000, 24000]
+    assert attempts[-1]['enforced_input_bound'] == (second * 120 + 99) // 100 + 512
+
+
+@pytest.mark.parametrize('failure', ['later', 'requirements', 'spec'])
+async def test_any_reference_page_failure_settles_siblings_and_rejects_whole_spec(tmp_path, monkeypatch, failure):
+    spec = three_pages()
+    html = ReferenceHTMLLLM(gate=2, plan={2: ['bad', 'bad']} if failure == 'later' else {})
+    ref, _, _ = reference_plan(tmp_path, spec, html=html)
+    if failure == 'spec':
+        monkeypatch.setattr(designer, 'validate_spec', lambda value: [{'path': 'pages.1.height', 'message': 'invalid'}])
+    before = spec.model_dump_json()
+    with pytest.raises(RunError) as caught:
+        await designer.design(spec, lambda: None, Trace(), reference=ref,
+                              keep={2} if failure == 'requirements' else frozenset())
+    assert caught.value.detail['reason'] == {'later': 'invalid', 'requirements': 'requirements', 'spec': 'spec'}[failure]
+    assert html.active == 0 and html.closed == html.calls
+    assert spec.model_dump_json() == before
+
+
+@pytest.mark.parametrize('bad', ['json', 'cut', 'empty', 'bad'])
+async def test_reference_revision_repair_replaces_draft_or_retains_baseline(tmp_path, bad):
+    from test_reference_brief import section
+    spec, _ = await designer.design(three_pages(), lambda: DesignerLLM(), Trace())
+    spec.pages = spec.pages[:1]
+    baseline = designer.readable(spec.pages[0].design.html)
+    ref, _, html = reference_plan(tmp_path, spec, html=ReferenceHTMLLLM(plan={1: [bad, 'ok']}))
+    comments = [{'component_id': 'p1_design', 'text': 'Keep this exact request'}]
+    result, failed = await designer.regenerate(spec, {1: comments}, lambda: None, Trace(), reference=ref)
+    assert result is not None and failed == {}
+    repair = str(html.requests[1].config.system_instruction)
+    revision = json.loads(section(repair, 'Revise your previous design of this page for these comments '
+                                        '(untrusted); return the complete page HTML and CSS:'))
+    assert revision == {'html': '<p class="x">No slots here</p>' if bad == 'bad' else baseline, 'comments': comments}
+    assert repair.count(json.dumps(revision['html'], ensure_ascii=False)) == 1
+
+
+async def test_schema_invalid_reference_reply_cannot_expand_repair_with_raw_keys(tmp_path):
+    marker = 'untrusted-unknown-key-' * 1800  # below the 16k output limit; reaches schema validation
+    class UnknownKey(ReferenceHTMLLLM):
+        async def generate_content_async(self, request, stream=False):
+            if not self.requests:
+                self.requests.append(request.model_copy(deep=True))
+                raw = json.dumps({'html': '<p>invalid draft</p>', 'canvas_width': 1200, marker: 'raw payload'})
+                yield LlmResponse(content=types.Content(role='model', parts=[types.Part(text=raw)]))
+            else:
+                async for response in super().generate_content_async(request, stream):
+                    yield response
+    spec = three_pages(); spec.pages = spec.pages[:1]
+    ref, _, html = reference_plan(tmp_path, spec, html=UnknownKey())
+    result, notes = await designer.design(spec, lambda: None, Trace(), reference=ref)
+    assert result.pages[0].design and notes == [] and len(html.requests) == 2
+    repair = str(html.requests[1].config.system_instruction)
+    assert marker not in repair and 'raw payload' not in repair and 'invalid draft' not in repair
+    assert 'extra_forbidden' in repair and len(repair) < 20000
+
+
 def reference_plan(folder, spec, *, html=None, brief=None, mode='style', count=2):
     from test_reference_brief import BriefLLM, reference_set, unit_reports
     from dss.harness.nodes import reference_brief as rb
@@ -428,7 +507,7 @@ async def test_reference_pairs_use_exact_slots_images_and_measured_page_one(tmp_
     ('brief', 'cut', 'invalid'), ('brief', 'missing', 'invalid'), ('brief', 'secret', 'model'),
     ('html', 'cut', 'invalid'), ('html', 'bad', 'invalid'), ('html', 'empty', 'invalid'),
     ('html', 'budget', 'over_budget')])
-async def test_reference_failures_keep_the_kit_or_old_design(tmp_path, stage, behaviour, reason):
+async def test_reference_failures_reject_acceptance_and_keep_old_revision(tmp_path, stage, behaviour, reason):
     from test_reference_brief import BriefLLM
     spec = three_pages()
     spec.pages = spec.pages[:1]
@@ -437,8 +516,10 @@ async def test_reference_failures_keep_the_kit_or_old_design(tmp_path, stage, be
     brief = BriefLLM(plan=[behaviour] if stage == 'brief' else [])
     ref, _, _ = reference_plan(tmp_path, spec, html=html, brief=brief)
     trace = Trace()
-    result, notes = await designer.design(spec, lambda: None, trace, reference=ref, secrets=('test-secret-key',))
-    assert result is spec and notes == [ALL_FALLBACK]
+    with pytest.raises(RunError) as caught:
+        await designer.design(spec, lambda: None, trace, reference=ref, secrets=('test-secret-key',))
+    assert caught.value.detail == {'stage': 'reference_brief' if stage == 'brief' else 'reference_html',
+                                  'page': 1, 'reason': reason}
     assert trace.spans[-1]['reason'] == reason
     assert len(html.requests) == (0 if stage == 'brief' or behaviour == 'budget' else 2)
     # The same failure on revise returns no replacement, so its caller can retain artifacts/comments.
@@ -450,7 +531,8 @@ async def test_reference_failures_keep_the_kit_or_old_design(tmp_path, stage, be
 
 
 async def test_reference_html_repair_carries_all_context_and_refuses_instead_of_trimming(tmp_path):
-    from dss.harness.context import reference_html_context, BUDGETS
+    from dss.harness.context import reference_html_context, BUDGETS, fit_request
+    from google.adk.models.llm_request import LlmRequest
     from dss.harness.guardrails import RunError
     from test_reference_brief import attached
     spec = three_pages(); spec.pages = spec.pages[:1]
@@ -462,11 +544,15 @@ async def test_reference_html_repair_carries_all_context_and_refuses_instead_of_
     assert BUDGETS['reference_html'] == 12000
     # Each piece of a long repair/shared/previous request is mandatory, with an actual bound in the refusal.
     for field in ('shared', 'revision', 'repair'):
-        kwargs = {field: {'html': 'x' * 60000, 'comments': ['Keep all slots']}}
+        kwargs = {field: {'html': 'x' * 110000, 'comments': ['Keep all slots']}}
+        memory = reference_html_context({}, {}, {}, {}, ref.approved[1], attempt=2, **kwargs)
+        request = LlmRequest(model=html.model, config=html.requests[1].config.model_copy(deep=True),
+                             contents=html.requests[1].contents)
+        request.config.system_instruction = str(memory)
         with pytest.raises(RunError) as caught:
-            reference_html_context({}, {}, {}, {}, ref.approved[1], **kwargs)
+            await fit_request(memory, request, html, {})
         assert caught.value.detail['reason'] == 'over_budget'
-        assert caught.value.detail['tokens'] > caught.value.detail['budget']
+        assert caught.value.detail['tokens'] > caught.value.detail['budget'] == 24000
 
 
 def quick_measure(html, slots, width, **kwargs):
@@ -490,8 +576,9 @@ async def test_reference_html_one_deadline_covers_counting_generation_and_repair
                  ReferenceHTMLLLM(pause_generate=.13, plan={1: ['bad', 'ok']})):
         trace = Trace()
         ref, _, _ = reference_plan(tmp_path, spec, html=html)
-        result, notes = await designer.design(spec, lambda: None, trace, reference=ref)
-        assert result is spec and notes == [ALL_FALLBACK] and trace.spans[-1]['reason'] == 'timeout'
+        with pytest.raises(RunError) as caught:
+            await designer.design(spec, lambda: None, trace, reference=ref)
+        assert caught.value.detail['reason'] == 'timeout' and trace.spans[-1]['reason'] == 'timeout'
         stage = next(s for s in trace.spans if s['node'] == 'reference_html')
         assert stage['stage_duration_ms'] < 1000
         assert html.closed == len(html.requests)  # cancel closes even a blocked generation
@@ -526,8 +613,9 @@ async def test_reference_html_retry_and_repair_cannot_multiply_deadline(tmp_path
     spec = three_pages(); spec.pages = spec.pages[:1]
     ref, _, _ = reference_plan(tmp_path, spec, html=Retrying(model='worker'))
     trace = Trace()
-    result, notes = await designer.design(spec, lambda: None, trace, reference=ref)
-    assert result is spec and notes == [ALL_FALLBACK]
+    with pytest.raises(RunError) as caught:
+        await designer.design(spec, lambda: None, trace, reference=ref)
+    assert caught.value.detail['reason'] == 'timeout'
     assert len(calls) == len(closed) == 3 and trace.spans[-1]['reason'] == 'timeout'
     assert next(s for s in trace.spans if s['node'] == 'reference_html')['stage_duration_ms'] < 1000
 
@@ -551,8 +639,9 @@ async def test_repeated_output_cap_hits_are_traced_even_without_usage_metadata(t
     spec = three_pages(); spec.pages = spec.pages[:1]
     ref, _, _ = reference_plan(tmp_path, spec, html=CutWithoutUsage())
     trace = Trace()
-    result, notes = await designer.design(spec, lambda: None, trace, reference=ref)
-    assert result is spec and notes == [ALL_FALLBACK]
+    with pytest.raises(RunError) as caught:
+        await designer.design(spec, lambda: None, trace, reference=ref)
+    assert caught.value.detail['reason'] == 'invalid'
     attempts = [s for s in trace.spans if s['node'] == 'reference_html']
     assert len(attempts) == 2 and all(s['truncated'] is True for s in attempts)
     assert all(s.get('output_tokens', 0) == 0 and s['output_budget'] == 16000 for s in attempts)
@@ -590,7 +679,27 @@ def test_staged_style_accept_uses_pairs_in_one_run_and_stale_gate_calls_neither_
     assert rejected.status_code == 409 and (len(brief.requests), html.calls) == before
 
 
-@pytest.mark.parametrize('failure', ['cancel', 'timeout', 'missing', 'invalid', 'cut', 'budget'])
+def test_explicitly_disabled_reference_design_keeps_the_code_path(blueprint_api, monkeypatch):
+    from test_reference_brief import BriefLLM, reference_set
+    from dss.spec import references
+    from test_render import spans
+    folder = blueprint_api[4]
+    reference_set(folder, 'style', 1)
+    record = references.load(folder); record['instructions'] = ''
+    (folder / references.SET_FILE).write_text(json.dumps(record), encoding='utf-8')
+    (folder / record['images'][0]['file']).unlink()
+    brief, html = BriefLLM(), ReferenceHTMLLLM()
+    client, app, bid, folder, run_id = designed_flow(blueprint_api, monkeypatch, DesignerLLM(), enabled=False,
+        reference_models={'reference_brief': brief, 'reference_html': html})
+    trace, recorded = spans(app, run_id)
+    assert trace['status'] == 'ok' and client.get(f'/api/builds/{bid}').json()['stage'] == 'prototype'
+    spec = DashboardSpec.model_validate_json((folder / 'spec.json').read_text(encoding='utf-8'))
+    assert all(page.design is None for page in spec.pages)
+    assert not brief.requests and not html.requests
+    assert not any(s['node'] in ('reference_brief', 'reference_html', 'designer') for s in recorded)
+
+
+@pytest.mark.parametrize('failure', ['cancel', 'timeout', 'missing', 'invalid', 'schema', 'cut', 'budget'])
 def test_staged_reference_failure_cleans_candidate_and_releases_ownership(blueprint_api, monkeypatch, failure):
     from test_reference_brief import BriefLLM, reference_set
     from dss.spec import references
@@ -603,7 +712,7 @@ def test_staged_reference_failure_cleans_candidate_and_releases_ownership(bluepr
     if failure == 'missing':
         (folder / record['images'][0]['file']).unlink()  # damaged retained file, no intent edit
     html = ReferenceHTMLLLM(started=asyncio.Event(), release=asyncio.Event() if failure in ('cancel', 'timeout') else None,
-        plan={1: ['cut' if failure == 'cut' else 'bad'] * 2},
+        plan={1: [{'cut': 'cut', 'schema': 'json'}.get(failure, 'bad')] * 2},
         fixed=9800 if failure == 'budget' else 1000)
     if failure == 'timeout':
         monkeypatch.setattr(designer, 'HTML_STAGE_SECONDS', .1)
@@ -624,16 +733,88 @@ def test_staged_reference_failure_cleans_candidate_and_releases_ownership(bluepr
     publications = app.state.settings.get().data_dir / '.publications'
     assert not [p for p in publications.glob('r_*') if p.is_dir()]
     journal = json.loads((publications / f'{run_id}.json').read_text(encoding='utf-8'))
-    assert journal['committed'] or (journal['restored'] and not journal['creating'])
+    assert not journal['committed'] and journal['restored'] and not journal['creating']
     trace, recorded = spans(app, run_id)
     if failure == 'cancel':
         assert trace['error'] == 'cancelled' and html.closed == 1 and deleted
         assert not (folder / 'spec.json').exists() and not (folder / 'prototype.html').exists()
         assert client.get(f'/api/builds/{bid}').json()['stage'] == 'blueprint'
     else:
-        assert trace['status'] == 'ok'  # accept keeps its documented kit fallback
+        assert trace['status'] == 'error'
         reason = {'missing': 'reference', 'budget': 'over_budget', 'timeout': 'timeout'}.get(failure, 'invalid')
         assert any(s.get('reason') == reason for s in recorded)
-        spec = DashboardSpec.model_validate_json((folder / 'spec.json').read_text(encoding='utf-8'))
-        assert all(p.design is None for p in spec.pages)
+        assert not (folder / 'spec.json').exists() and not (folder / 'prototype.html').exists()
+        assert client.get(f'/api/builds/{bid}').json()['stage'] == 'blueprint'
+        assert deleted
         assert html.closed == (0 if failure in ('missing', 'budget') else 1 if failure == 'timeout' else 2)
+    with app.state.db.connect() as conn:
+        kinds = [r[0] for r in conn.execute('SELECT kind FROM events WHERE run_id=?', (run_id,))]
+    assert 'prototype.updated' not in kinds and 'stage.changed' not in kinds
+
+
+@pytest.mark.parametrize('failure', ['later', 'spec', 'requirements', 'brief', 'repair_budget'])
+def test_reference_reaccept_failure_preserves_published_bytes_and_view(blueprint_api, monkeypatch, failure):
+    from test_reference_brief import BriefLLM, reference_set
+    from test_context_node import wait
+    from test_render import spans
+    from dss.spec import references
+    folder = blueprint_api[4]
+    reference_set(folder, 'style', 1)
+    record = references.load(folder); record['instructions'] = ''
+    (folder / references.SET_FILE).write_text(json.dumps(record), encoding='utf-8')
+    models = {'reference_brief': BriefLLM(), 'reference_html': ReferenceHTMLLLM()}
+    client, app, bid, folder, _ = designed_flow(blueprint_api, monkeypatch, DesignerLLM(), reference_models=models)
+    prior_spec = json.loads((folder / 'spec.json').read_text(encoding='utf-8'))
+    with app.state.db.connect() as conn:
+        conn.execute("UPDATE builds SET stage='blueprint' WHERE id=?", (bid,))
+        old_version = dict(conn.execute('SELECT * FROM versions WHERE build_id=?', (bid,)).fetchone())
+        old_build = dict(conn.execute('SELECT * FROM builds WHERE id=?', (bid,)).fetchone())
+    def published_files():
+        return {p.relative_to(folder): p.read_bytes() for p in folder.rglob('*') if p.is_file()}
+    before = published_files()
+    # Preflight revalidates the feasibility assessment before the background candidate begins.
+    # Capture that boundary too: candidate failure must retain every file byte for byte.
+    from dss.spec.publication import Candidate
+    original_begin, checkpoints = Candidate.begin, []
+    def begin(*args, **kwargs):
+        checkpoints.append(published_files())
+        return original_begin(*args, **kwargs)
+    monkeypatch.setattr(Candidate, 'begin', begin)
+    deleted = []
+    blueprint_api[5].delete_view = lambda table: deleted.append(table) or True
+    models['reference_brief'] = BriefLLM(plan=['cut'] if failure == 'brief' else [])
+    class Overflow(ReferenceHTMLLLM):
+        async def count_request_tokens(self, request):
+            await super().count_request_tokens(request)
+            return 1000 if len(self.counted) == 1 else 20000
+    html = Overflow(plan={1: ['bad', 'ok']}) if failure == 'repair_budget' else ReferenceHTMLLLM(
+        plan={2: ['bad', 'bad']} if failure == 'later' else {})
+    models['reference_html'] = html
+    if failure == 'spec':
+        monkeypatch.setattr(designer, 'validate_spec', lambda value: [{'path': 'pages.1.height', 'message': 'invalid'}])
+    if failure == 'requirements':
+        real = designer.design
+        async def kept(*args, **kwargs):
+            return await real(*args, **{**kwargs, 'keep': {2}})
+        monkeypatch.setattr(designer, 'design', kept)
+    response = client.post(f'/api/builds/{bid}/blueprint/accept')
+    assert response.status_code == 202, response.text
+    wait(app)
+    run_id = response.json()['run_id']
+    trace, recorded = spans(app, run_id)
+    assert trace['status'] == 'error' and not any(s['node'] == 'publish' for s in recorded)
+    after = published_files()
+    assert len(checkpoints) == 1
+    assert {p for p in after if after[p] != checkpoints[0].get(p)} == set()
+    assert set(after) == set(checkpoints[0])
+    metadata = {'requirements.json', 'docs/log.md'}  # synchronous feasibility recheck only
+    assert {p for p in before if p.as_posix() not in metadata and before[p] != after.get(p)} == set()
+    with app.state.db.connect() as conn:
+        assert dict(conn.execute('SELECT * FROM versions WHERE build_id=?', (bid,)).fetchone()) == old_version
+        assert dict(conn.execute('SELECT * FROM builds WHERE id=?', (bid,)).fetchone()) == old_build
+        kinds = [r[0] for r in conn.execute('SELECT kind FROM events WHERE run_id=?', (run_id,))]
+    assert 'prototype.updated' not in kinds and 'stage.changed' not in kinds
+    assert len(deleted) == 1 and deleted[0] != prior_spec['datasource']['table']
+    assert not app.state.harness.active_builds and not app.state.engine_tasks and html.active == 0
+    publications = app.state.settings.get().data_dir / '.publications'
+    assert not [p for p in publications.glob('r_*') if p.is_dir()]

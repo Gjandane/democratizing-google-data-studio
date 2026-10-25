@@ -372,6 +372,9 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
             payload.get('_designer') or (lambda: harness.models.llm_for('designer')), trace, secrets=secrets, reference=reference,
             report=lambda totals: harness.emit(build_id, run_id, 'run.usage', {'run_id': run_id, 'node': 'revise', **totals}))
         if failed:
+            if reference is not None:
+                index = min(failed)
+                designer.reference_failed(index, failed[index], trace)
             reasons = []
             for n, result in sorted(failed.items()):
                 found = [e['message'] for e in result.errors[:3]] or [FAILURES.get(result.reason, FAILURES['error'])]

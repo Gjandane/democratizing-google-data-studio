@@ -959,6 +959,9 @@ class DesignFlow(CommentFlow):
                 yield result
             return
         page = json.loads(instruction.split(PAGE_HEADER + '\n', 1)[1].split(SEPARATOR, 1)[0])
+        if 'components' not in page:
+            from dss.harness.context import COMPONENTS_HEADER
+            page['components'] = json.loads(instruction.split(COMPONENTS_HEADER + '\n', 1)[1].split(SEPARATOR, 1)[0])['components']
         attempt = sum(index == page['index'] for index, _ in self.designs)
         self.designs.append((page['index'], instruction))
         marker = 'Revise your previous design'

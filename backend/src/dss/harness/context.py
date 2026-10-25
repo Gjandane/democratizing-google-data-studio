@@ -68,9 +68,10 @@ class Section:
 class Context(str):
     """The assembled working memory text, carrying its ordered sections for the trace."""
 
-    def __new__(cls, node, sections, dropped):
+    def __new__(cls, node, sections, dropped, budget=None):
         context = super().__new__(cls, SEPARATOR.join(section.text for section in sections))
         context.node, context.sections, context.dropped = node, sections, dropped
+        context.budget = BUDGETS[node] if budget is None else budget
         return context
 
     def counts(self):
@@ -88,7 +89,7 @@ class Context(str):
         sections = [replace(s, items=None if s.items is None else list(s.items)) for s in self.sections]
         dropped = dict(self.dropped)
         _drop(sections, dropped, lambda: over(SEPARATOR.join(s.text for s in sections)))
-        return Context(self.node, sections, dropped)
+        return Context(self.node, sections, dropped, self.budget)
 
 
 def _drop(sections, dropped, over):
@@ -125,7 +126,8 @@ def assemble(node, sections, *, reserve=0):
     Use the recipe's drop order. The system prompt, skills, action input, schema
     fields and upstream documents are never dropped; if these exceed it, refuse.
     """
-    budget = BUDGETS[node] - reserve
+    limit = BUDGETS[node]
+    budget = limit - reserve
     sections = sorted((s for s in sections if s.items is None or s.items),
                       key=lambda s: ORDER.index('docs' if s.kind == 'reference' else s.kind))
     dropped = {"past": 0, "history": 0, "semantic": 0}
@@ -138,7 +140,7 @@ def assemble(node, sections, *, reserve=0):
         size = tokens(SEPARATOR.join(section.text for section in sections))
         raise RunError("llm_unavailable", f"The {node} context exceeds its input budget", 503,
                        {'reason': 'over_budget', 'tokens': size, 'budget': budget})
-    return Context(node, sections, dropped)
+    return Context(node, sections, dropped, limit)
 
 
 def request_estimate(llm_request):
@@ -171,7 +173,7 @@ async def fit_request(context, llm_request, model, span, *, extra=""):
     drop, or a failed count: llm_unavailable, and the model is never called.
     """
     from dss.harness.llm import count_tokens
-    node, budget = context.node, BUDGETS[context.node]
+    node, budget = context.node, context.budget
     instruction = str(llm_request.config.system_instruction or "")
     # Keep anything ADK added around the provider's text (the identity line of a tool agent).
     before, found, after = instruction.partition(str(context) + extra)
@@ -378,11 +380,32 @@ def reference_brief_context(reference, design, page, approved, *, shared=None, r
     return assemble('reference_brief', sections, reserve=500)
 
 
-def reference_html_context(reference, brief, design, page, approved, *, shared=None, revision=None, repair=None):
+def reference_html_context(reference, brief, design, page, approved, *, shared=None, revision=None, repair=None,
+                           attempt=1):
     """Mandatory reference HTML input: keep the full brief, native bindings/decisions, ordered
     reference descriptors/instructions, shared CSS, previous HTML/comments and repair. Nothing
     may be trimmed to fit; images are attached to every request by the caller."""
     from dss.render.design_page import art, icons
+    if attempt not in (1, 2):
+        raise ValueError('Reference HTML has at most two attempts')
+    # The checked report owns bindings/decisions; page metadata supplies only slot minima.
+    minima = {c['id']: c for c in page.get('components', [])}
+    approved = {**approved, 'components': [
+        {**c, **{k: minima[c['id']][k] for k in ('min_w', 'min_h') if k in minima.get(c['id'], {})}}
+        for c in approved.get('components', [])]}
+    page = {k: v for k, v in page.items() if k != 'components'}
+    revision = None if revision is None else dict(revision)
+    if repair is not None:
+        # Only a schema-validated draft reaches here. Replace the previous revision HTML;
+        # malformed/cut output supplies errors only, retaining the revision baseline.
+        if repair.get('html'):
+            if revision is not None:
+                revision['html'] = repair['html']
+            else:
+                page['html'] = repair['html']
+        if 'canvas_width' in repair:
+            page['canvas_width'] = repair['canvas_width']
+        repair = {'errors': repair.get('errors', [])}
     compact = lambda value: json.dumps(value, ensure_ascii=False, separators=(',', ':'))
     sections = [_system('reference_html'), *_skills('dashboard-design'),
         Section('semantic', 'styling', 'Supported styling and bundled assets:',
@@ -402,7 +425,11 @@ def reference_html_context(reference, brief, design, page, approved, *, shared=N
     if repair is not None:
         sections.append(Section('input', 'repair', 'Your previous answer failed these checks. Fix every error and '
                                 'return the complete JSON again:', compact(repair)))
-    return assemble('reference_html', sections, reserve=500)
+    # All sections are mandatory. Count the complete request (schema + ordered images)
+    # before refusal so diagnostics report its actual bound, rather than a text-only subtotal.
+    sections.sort(key=lambda s: ORDER.index(s.kind))
+    return Context('reference_html', sections, {'past': 0, 'history': 0, 'semantic': 0},
+                   12000 if attempt == 1 else 24000)
 
 
 def outline_context(config, context, sources, archetype, action, *, section=None, source=None,
