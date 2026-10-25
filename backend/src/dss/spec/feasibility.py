@@ -3,14 +3,16 @@
 No extraction, SQL execution or model calls. Public issues retain their contract shape;
 the ledger keeps the code-built effects and the evidence binding each explicit choice.
 """
+import re
 from collections import Counter
 from copy import deepcopy
+from types import SimpleNamespace
 
 from dss.artifacts.models import Blueprint, BlueprintRow, BlueprintComponent, Context, DerivedField, Outline, ViewSources
 from dss.harness.nodes import view
 from dss.spec import requirements as req
 from dss.spec.models import CONTROL_TYPES, DATE_AXIS_TYPES, FIELD_CONTROLS
-from dss.spec.validate import catalog
+from dss.spec.validate import allowed_types, catalog, label_text
 
 
 def binding(snapshot, checker, target):
@@ -206,7 +208,9 @@ def diagnostics(snapshot, ledger, checker):
         indices = [i for i, r in enumerate(bp.rows) if r.page == page]
         if not 1 <= page <= 5:
             add('page', indices, [], 'Blueprint needs 1-5 pages')
-        controls = [i for i in indices if bp.rows[i].question_id is None]
+        # A code-added chart is no supporting control; a code-added control still counts.
+        controls = [i for i in indices if bp.rows[i].question_id is None
+                    and not (added(bp.rows[i]) and bp.rows[i].component.type not in CONTROL_TYPES)]
         if len(controls) > 2 or any(bp.rows[i].component.type not in CONTROL_TYPES for i in controls):
             add('controls', controls, [], 'At most two supporting controls are allowed per page')
         if count > 12:
@@ -290,7 +294,7 @@ def _describe(meaning):
     metrics = ' and '.join(f"{AGGS.get(m.get('aggregation'), '')}({m['field']})" for m in meaning.get('metrics', []) if m.get('field'))
     text = f"a {meaning.get('type', 'chart')}" + (f' of {metrics}' if metrics else '')
     grains = {m['date_grain'] for m in meaning.get('metrics', []) if m.get('date_grain')}
-    if grains:
+    if grains and meaning.get('type') != 'scorecard':
         text += f" by {'/'.join(sorted(grains))} of {meaning.get('date_field', 'its date')}"
     return text + ''.join(f' by {d}' for d in meaning.get('dimensions', []))
 
@@ -322,7 +326,8 @@ def _gaps(meaning, component, derived_fields):
     for want in meaning.get('metrics', []):
         if not any(m['field'] == want.get('field') and m['agg'] == want.get('aggregation') for m in component['metrics']):
             gaps.append(f"lacks {AGGS.get(want.get('aggregation'), '')}({want.get('field')})")
-        if want.get('date_grain') and not req._date_bucket({}, component.get('date_dimension'), want['date_grain'], derived=derived):
+        if want.get('date_grain') and meaning.get('type') != 'scorecard' and not req._date_bucket(
+                {}, component.get('date_dimension'), want['date_grain'], derived=derived):
             gaps.append(f"has no {req.grain_name(want['date_grain'])} bucket of {meaning.get('date_field') or 'its date'}"
                         + (f" (it uses {component['date_dimension']})" if component.get('date_dimension') else ''))
     gaps += [f'lacks the {d} dimension' for d in meaning.get('dimensions', []) if d not in _bound(component)]
@@ -392,6 +397,116 @@ def _observation_offers(snapshot, ledger, checker, bp, fields, connected, contex
     return offers
 
 
+# architecture.md#Recreate observation completion: rows code adds for observations the planner left out.
+ADDED = re.compile(r'observation (\S+:\S+)')
+
+
+def added(row):
+    """A code-added observation row: no question, and its note is the observation's provenance."""
+    return row.question_id is None and bool(ADDED.fullmatch(row.note))
+
+
+def surplus(snapshot, ledger, checker, rows, derived_fields, observed=None):
+    """Indices of code-added rows that fulfil no current observation which other rows leave unfulfilled:
+    rows already fulfilling it win, and a removed instruction or reference leaves them nothing."""
+    extra = {i for i, row in enumerate(rows) if added(row)}
+    if not extra:
+        return set()
+    observed = req.blueprint_observations(snapshot, ledger, checker) if observed is None else observed
+    verdicts = coverage(snapshot, ledger, checker, rows, derived_fields, observed) if observed else []
+    return extra - {i for _, _, _, indices, _ in verdicts if indices and set(indices) <= extra for i in indices}
+
+
+def _observed_row(meaning, r, needs, fields, derived, rules, section):
+    """(the code-built page-1 row, its new date bucket field or None) for an observation whose reconciled
+    meaning is complete (catalog type, metric fields and aggregations, dimension or date field), else None."""
+    kind = meaning.get('type')
+    if kind not in rules or kind not in allowed_types():
+        return None
+    metrics = meaning.get('metrics', [])
+    if any(not m.get('field') or m.get('aggregation') in (None, 'none') for m in metrics):
+        return None
+    dimensions, date_dimension, field = list(meaning.get('dimensions', [])), None, None
+    grains = {req.grain_name(m['date_grain']) for m in metrics if m.get('date_grain')} if kind != 'scorecard' else set()
+    if len(grains) > 1:
+        return None
+    if grains:
+        grain, source = next(iter(grains)), meaning.get('date_field')
+        if source and req._date_bucket({}, source, grain, derived={f.name: f.expression for f in derived}):
+            name = source  # the date field already is the bucket
+        else:
+            bucket = _bucket(meaning, {}, fields, SimpleNamespace(derived_fields=derived))
+            if bucket is None:
+                return None
+            name, field = bucket[0].name, bucket[0] if bucket[1] else None
+        if kind in DATE_AXIS_TYPES:
+            date_dimension = name
+        else:
+            dimensions.insert(0, name)
+    elif kind in DATE_AXIS_TYPES:
+        date_dimension = meaning.get('date_field')
+    options = {n.capability.rsplit('.', 1)[1]: n.value for n in needs
+               if n.capability.startswith(f'option.{kind}.') and n.value is not None}
+    words = ' and '.join(m['field'].replace('_', ' ') for m in metrics[:2]) or kind.replace('_', ' ')
+    text = label_text(meaning['title']) if meaning.get('title') else None
+    if text is None:
+        text = label_text(words + (f' by {next(iter(grains))}' if grains else '')) or kind.replace('_', ' ')
+        text = text[:1].upper() + text[1:]
+    component = BlueprintComponent(type=kind, label=text, dimensions=dimensions, date_dimension=date_dimension,
+        metrics=[{'field': m['field'], 'agg': m['aggregation']} for m in metrics], breakdown=None, sort=None, options=options)
+    return BlueprintRow(question_id=None, section_id=section, page=1, component=component, note=f'observation {r.source.id}',
+                        status='ok', issue_ids=[]), field
+
+
+def complete(snapshot, ledger, checker, bp, connected, context):
+    """After the one row repair: drop surplus code-added rows, then add one page-1 row per observation still
+    unfulfilled whose reconciled meaning is complete. Each is validated like any row, its date bucket is a
+    view-built derived field, and it must fulfil its observation and keep every fulfilled one. With no
+    capacity left (12 rows) or an incomplete meaning the observation stays an Issue. No model call.
+    Returns (rows, derived fields, the added rows)."""
+    observed = req.blueprint_observations(snapshot, ledger, checker)
+    drop = surplus(snapshot, ledger, checker, bp.rows, bp.derived_fields, observed)
+    rows, derived, new = [r for i, r in enumerate(bp.rows) if i not in drop], list(bp.derived_fields), []
+    section = next((s.id for s in Outline.model_validate(snapshot['outline']).sections if any(q.selected for q in s.questions)), None)
+    if not observed or section is None:
+        return rows, derived, new
+    rules, context_fields = catalog(), [f.name for f in context.derived_fields]
+    try:
+        fields = {f['name']: f for f in view.blueprint_fields(connected, bp.view_sources, derived)}
+    except ValueError:
+        return rows, derived, new
+    # Only the observation Issues the Blueprint check raises with no code-built alternative: an offered
+    # alternative stays the user's decision (#Blueprint observation coverage).
+    gaps = {e['requirement_id'] for e in observation_errors(snapshot, ledger, checker, bp.model_copy(update={'rows': rows}),
+                                                           fields, connected, context, rules) if not e['offers']}
+    verdicts = coverage(snapshot, ledger, checker, rows, derived, observed)
+    fulfilled = {v[0].id for v in verdicts if v[3]}
+    for r, needs, properties, _, unchecked in verdicts:
+        if r.id in fulfilled or r.id not in gaps or unchecked or sum(row.page == 1 for row in rows) >= 12:
+            continue
+        try:
+            fields = {f['name']: f for f in view.blueprint_fields(connected, bp.view_sources, derived)}
+        except ValueError:
+            break
+        built = _observed_row(req.observation_meaning(r, needs, properties), r, needs, fields, derived, rules, section)
+        if built is None:
+            continue
+        row, field = built
+        trial = derived + ([field] if field else [])
+        try:
+            fields = {f['name']: f for f in view.blueprint_fields(connected, bp.view_sources, trial)}
+            view.blueprint_sql(connected, bp.view_sources, trial, context_fields=context_fields)
+        except ValueError:
+            continue
+        if component_errors(row.component, fields, checker, rules):
+            continue
+        after = {v[0].id for v in coverage(snapshot, ledger, checker, rows + [row], trial, observed) if v[3]}
+        if r.id in after and fulfilled <= after:
+            rows, derived, fulfilled = rows + [row], trial, after
+            new.append(row)
+    return rows, derived, new
+
+
 def issue_rows(snapshot, ledger, checker):
     rows = []
     for error in diagnostics(snapshot, ledger, checker):
@@ -424,6 +539,8 @@ def mark(snapshot, ledger, checker, assessment):
                 bp.rows[i].status = 'blocked'
                 bp.rows[i].issue_ids.append(issue.id)
     bp.assessment_id = assessment.id
+    if drop := surplus(snapshot, ledger, checker, bp.rows, bp.derived_fields):
+        bp.rows = [r for i, r in enumerate(bp.rows) if i not in drop]
     return bp
 
 

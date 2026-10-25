@@ -597,3 +597,18 @@ def test_label_without_a_clean_fragment_goes_through_the_one_row_repair(blueprin
     # Label syntax is code-repaired, never a persisted feasibility issue.
     assessment = client.get(f'/api/builds/{bid}/feasibility').json()
     assert not any('quote syntax' in i['reason'] for i in assessment['issues'])
+
+
+@pytest.mark.parametrize('leaked', ['DATE_TRUNC(year, YEAR) /* o3, o5, o6 */', "DATE_TRUNC(year, YEAR)','date',",
+                                    "DATE_TRUNC(year, YEAR)', 'date'"])
+def test_a_leaked_expression_tail_is_dropped_and_the_gate_still_holds(leaked):
+    """Live 24.7 runs: the planner cited observation ids in a trailing SQL comment, or leaked the next JSON
+    field into the string; the one SQL repair did not fix either. Code drops the tail, nothing else."""
+    from dss.artifacts.models import DerivedField
+    from dss.harness.nodes import view
+    field = DerivedField(name='year_bucket', expression=leaked, type='date', description='Year')
+    [kept] = node.derived_fields(Context.model_validate(fixture('context')).model_copy(update={'derived_fields': []}), [field])
+    assert kept.expression == 'DATE_TRUNC(year, YEAR)'
+    for unsafe in ('DATE_TRUNC(year, YEAR) /* x */ + 1', 'a /* x */ /* y */', "x', 'y' OR 1=1"):
+        with pytest.raises(ValueError):
+            view.expression(view.model_expression(unsafe))

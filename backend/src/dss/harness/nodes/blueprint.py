@@ -99,6 +99,7 @@ def derived_fields(context, extra, retained=()):
     for field in retained:
         fields.setdefault(field.name, field)
     for field in extra:
+        field = field.model_copy(update={'expression': view.model_expression(field.expression)})
         if field.name in fields and fields[field.name] != field:
             raise ValueError('A retained or Context derived field cannot be redefined')
         fields[field.name] = field
@@ -154,6 +155,11 @@ async def persist(harness, build, folder, run_id, draft, fingerprints, errors, c
     snapshot.update(blueprint=draft.model_dump(), context=context_node.load(folder).model_dump(),
         outline=outline_node.load(folder).model_dump(), design=design_node.load(folder).model_dump(),
         blueprint_errors=errors)
+    # The one SQL repair can make a planner row fulfil what a code-added row did: drop it before the
+    # assessment, so the saved Blueprint is the one assessed (architecture.md#Recreate observation completion).
+    if drop := feasibility.surplus(snapshot, ledger, checker, draft.rows, draft.derived_fields):
+        draft.rows = [r for i, r in enumerate(draft.rows) if i not in drop]
+        snapshot['blueprint'] = draft.model_dump()
     assessment = req.evaluate(snapshot, ledger, checker, check_components=False)
     draft = feasibility.mark(snapshot, ledger, checker, assessment)
     targets = [folder / 'requirements.json', inputs_path(folder), *[folder / 'docs' / name for name in
@@ -298,7 +304,20 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                 snapshot.update(blueprint=Blueprint(revision=1, **state['view'].model_dump(), rows=state['rows'],
                     view_table=None, assessment_id=None).model_dump(), context=context.model_dump(),
                     outline=outline.model_dump(), design=design.model_dump(), blueprint_errors=[])
-                state['errors'] = feasibility.diagnostics(snapshot, req.load(folder), Checker(load_registry()))
+                ledger, checker = req.load(folder), Checker(load_registry())
+                state['errors'] = feasibility.diagnostics(snapshot, ledger, checker)
+                if state['row_repaired'] or not (dirty or any(e['repairable'] for e in state['errors'])):
+                    # architecture.md#Recreate observation completion: after the one row repair, code adds the
+                    # rows observations still lack and drops code-added ones nothing needs. No model call.
+                    drafted = Blueprint.model_validate(snapshot['blueprint'])
+                    rows, derived, added = feasibility.complete(snapshot, ledger, checker, drafted, connected, context)
+                    if rows != drafted.rows or derived != drafted.derived_fields:
+                        state['rows'] = rows
+                        state['view'] = ViewDraft(view_sources=drafted.view_sources, derived_fields=derived)
+                        snapshot['blueprint'] = drafted.model_copy(update={'rows': rows, 'derived_fields': derived}).model_dump()
+                        state['errors'] = feasibility.diagnostics(snapshot, ledger, checker)
+                    if added:
+                        trace.spans[-1]['observation_rows'] = [r.note for r in added]
                 if dirty:
                     state['errors'].append(dict(code='label', indices=dirty, qids=[], status='needs_clarification',
                         message='Component label must be one short line without list or quote syntax',

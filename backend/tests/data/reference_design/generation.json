@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "row_count": 2000,
+  "seed": 42,
+  "columns": [
+    {
+      "name": "country",
+      "type": "string",
+      "nullable_fraction": 0.0,
+      "generator": {
+        "kind": "choice",
+        "values": [
+          "Morocco",
+          "Nigeria",
+          "Kenya",
+          "Ethiopia",
+          "Philippines",
+          "India",
+          "Indonesia",
+          "Vietnam",
+          "Germany",
+          "France",
+          "Poland",
+          "Belize",
+          "Mexico",
+          "Haiti",
+          "Canada",
+          "Fiji",
+          "Papua New Guinea",
+          "Brazil",
+          "Peru",
+          "Bolivia"
+        ]
+      }
+    },
+    {
+      "name": "region",
+      "type": "string",
+      "nullable_fraction": 0.0,
+      "generator": {
+        "kind": "lookup",
+        "field": "country",
+        "mapping": {
+          "Morocco": "Africa",
+          "Nigeria": "Africa",
+          "Kenya": "Africa",
+          "Ethiopia": "Africa",
+          "Philippines": "Asia",
+          "India": "Asia",
+          "Indonesia": "Asia",
+          "Vietnam": "Asia",
+          "Germany": "Europe",
+          "France": "Europe",
+          "Poland": "Europe",
+          "Belize": "North America",
+          "Mexico": "North America",
+          "Haiti": "North America",
+          "Canada": "North America",
+          "Fiji": "Oceania",
+          "Papua New Guinea": "Oceania",
+          "Brazil": "South America",
+          "Peru": "South America",
+          "Bolivia": "South America"
+        }
+      }
+    },
+    {
+      "name": "year",
+      "type": "date",
+      "nullable_fraction": 0.0,
+      "generator": {
+        "kind": "choice",
+        "values": [
+          "2000-01-01",
+          "2001-01-01",
+          "2002-01-01",
+          "2003-01-01",
+          "2004-01-01",
+          "2005-01-01",
+          "2006-01-01",
+          "2007-01-01",
+          "2008-01-01",
+          "2009-01-01",
+          "2010-01-01",
+          "2011-01-01",
+          "2012-01-01",
+          "2013-01-01",
+          "2014-01-01",
+          "2015-01-01",
+          "2016-01-01",
+          "2017-01-01",
+          "2018-01-01",
+          "2019-01-01"
+        ]
+      }
+    },
+    {
+      "name": "access_pct",
+      "type": "number",
+      "nullable_fraction": 0.0,
+      "generator": {
+        "kind": "decimal",
+        "min": 10,
+        "max": 100,
+        "decimals": 1
+      }
+    },
+    {
+      "name": "urban_pct",
+      "type": "number",
+      "nullable_fraction": 0.0,
+      "generator": {
+        "kind": "decimal",
+        "min": 40,
+        "max": 100,
+        "decimals": 1
+      }
+    },
+    {
+      "name": "rural_pct",
+      "type": "number",
+      "nullable_fraction": 0.0,
+      "generator": {
+        "kind": "decimal",
+        "min": 5,
+        "max": 95,
+        "decimals": 1
+      }
+    },
+    {
+      "name": "people_without_access",
+      "type": "integer",
+      "nullable_fraction": 0.0,
+      "generator": {
+        "kind": "integer",
+        "min": 100000,
+        "max": 20000000
+      }
+    }
+  ]
+}

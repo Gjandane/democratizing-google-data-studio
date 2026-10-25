@@ -528,13 +528,16 @@ def recreate_build(blueprint_api, monkeypatch, matching=True, data=RECREATE, syn
     ids = dict(zip(('revenue', 'orders', 'units'), [k['id'] for k in context['kpis']]))
     outline = fixture('outline')
     template = outline['sections'][0]['questions'][0]
-    outline['sections'] = [{'id': 's1', 'title': 'Store performance', 'purpose': 'Recreate the reference.', 'questions': [
-        {**template, 'id': qid, **question} if isinstance(question, dict) else
-        {**template, 'id': qid, 'text': question, 'kpi_refs': [ids[k] for k in dict.fromkeys(
-            r['kpi'] for r in data['rows'] if r['question_id'] == qid)]} for qid, question in data['questions'].items()]}]
+    if 'sections' in data:
+        outline['sections'] = data['sections']  # a release build's own sections and questions (24.7)
+    else:
+        outline['sections'] = [{'id': 's1', 'title': 'Store performance', 'purpose': 'Recreate the reference.', 'questions': [
+            {**template, 'id': qid, **question} if isinstance(question, dict) else
+            {**template, 'id': qid, 'text': question, 'kpi_refs': [ids[k] for k in dict.fromkeys(
+                r['kpi'] for r in data['rows'] if r['question_id'] == qid)]} for qid, question in data['questions'].items()]}]
     artifact(folder, Outline.model_validate(outline))
-    value['rows'] = [{'question_id': r['question_id'], 'section_id': 's1', 'page': 1, 'note': '', 'status': 'ok',
-                      'issue_ids': [], 'component': r['component']} for r in data['rows']]
+    value['rows'] = [{'question_id': r['question_id'], 'section_id': r.get('section_id', 's1'), 'page': r.get('page', 1),
+                      'note': r.get('note', ''), 'status': 'ok', 'issue_ids': [], 'component': r['component']} for r in data['rows']]
     value['derived_fields'] = data['derived_fields'] if 'derived_fields' in data else [*value['derived_fields'], data['derived_field']]
     llm.replies = [json.dumps(value)]
     bq.created, bq.deleted = [], []
@@ -573,7 +576,8 @@ def upload_recreate(build, instructions=''):
     # One extraction reply for exactly the new sources; code reconciles every definition.
     extraction = build.data['extraction']
     items = [{'source_id': f'{reference["id"]}:{oid}', **extraction[oid]} for oid in observed(build.data)]
-    if instructions:
+    from dss.spec import requirements as req
+    if instructions and not req._wholly_definitions(instructions):  # code reads definition-only instructions itself
         records = extraction['instructions']
         items += [{'source_id': reference['id'] + ':instructions', **record}
                   for record in (records if isinstance(records, list) else [records])]
@@ -1035,6 +1039,140 @@ def test_recreate_gap_drop_is_an_explicit_recorded_choice(blueprint_api, monkeyp
     current = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
     assert {i['id']: i['resolution'] for i in current['issues']}[issue['id']] == 'dropped'
     assert 'o7' not in gap_issues(current, build) and 'o5' in gap_issues(current, build)
+
+
+ELECTRICITY = json.loads((Path(__file__).parent / 'data/recreate_electricity.json').read_text(encoding='utf-8'))
+INPUTS = Path(__file__).parents[1] / ELECTRICITY['provenance']['run'] / 'build'
+
+
+def electricity_build(blueprint_api, monkeypatch):
+    """The 24.7 fixture build after the user's approved drops (the geo map, the legend control), whose
+    planner answers the draft and the one row repair with the release build's own rows."""
+    from types import SimpleNamespace
+    from dss.spec.models import TYPES
+    # The recipe 1.3 catalog (area, fixed_size_list), whatever the root .env narrows it to.
+    monkeypatch.setenv('DSS_ALLOWED_TYPES', ','.join(TYPES))
+    build = recreate_build(blueprint_api, monkeypatch, data=ELECTRICITY, synthetic=True, designed=False)
+    bq = blueprint_api[5]
+    bq.dry_run = lambda sql: bq.sql.append(sql) or [SimpleNamespace(name='year_year', field_type='DATE', mode='NULLABLE')]
+    build.rid = upload_recreate(build, ELECTRICITY['instructions'])
+    assessment = feasibility_check(build.client, build.app, build.bid)
+    from dss.spec import requirements as req
+    owners = {r.text: r.source.item_id for r in req.load(build.folder).requirements}
+    pending = [i for i in assessment['issues'] if i['resolution'] == 'unresolved']
+    # Selected by observation and status, never "first alternative".
+    assert {(owners.get(i['requirement']), i['status']) for i in pending} == {('o5', 'needs_data'), ('o7', 'needs_clarification')}, pending
+    dropped = build.client.post(f'/api/builds/{build.bid}/feasibility/decisions', json={'assessment_id': assessment['id'],
+        'decisions': [{'issue_id': i['id'], 'action': 'drop', 'alternative_id': None} for i in pending]})
+    assert dropped.status_code == 200, dropped.text
+    assert build.client.get(f'/api/builds/{build.bid}/feasibility').json()['state'] == 'ready'
+    build.llm.replies = [json.dumps(build.value), json.dumps({'rows': [r for r in build.value['rows'] if r['question_id']]})]
+    return build
+
+
+def test_electricity_fixture_inputs_are_the_recorded_read_only_copies():
+    import ast
+    import hashlib
+    # The fixture's instructions are the live test's, read without importing the live module.
+    tree = ast.parse((Path(__file__).parent / 'live/test_reference_design.py').read_text(encoding='utf-8'))
+    [value] = [node.value for node in tree.body if isinstance(node, ast.Assign) and getattr(node.targets[0], 'id', None) == 'INSTRUCTIONS']
+    assert ELECTRICITY['instructions'] == ast.literal_eval(value)
+    if not INPUTS.is_dir():
+        pytest.skip('the run evidence (.blueprint/, git-ignored) is local to the machine that recorded it')
+    for name, digest in ELECTRICITY['provenance']['sha256'].items():
+        assert hashlib.sha256((INPUTS / name).read_bytes()).hexdigest() == digest, name
+
+
+def test_electricity_recreate_reaches_ready_and_publishes_every_observation(blueprint_api, monkeypatch):
+    """24.7 block (run 20261025-104805-795461ae): definition-only instructions were 12 `unknown` rows, the
+    region selector had no explicit field, the scorecard was asked for a year grain and no row showed
+    the yearly bar. After only the approved drops the Blueprint is ready, with code-added rows."""
+    from test_blueprint import confirm
+    from dss.spec import requirements as req
+    build = electricity_build(blueprint_api, monkeypatch)
+    assert not [r for r in req.load(build.folder).requirements if r.source.kind == 'reference']
+    run_id = confirm(build.client, build.app, build.bid)
+    assert build.llm.calls == 2  # the draft and the one row repair; code adds the rest
+    blueprint = build.client.get(f'/api/builds/{build.bid}/blueprint').json()
+    added = [r for r in blueprint['rows'] if r['note'].startswith('observation ')]
+    assert {(r['question_id'], r['page'], r['component']['type']) for r in added} == {(None, 1, 'bar'), (None, 1, 'area')}
+    notes = {r['component']['type']: r['note'].rsplit(':', 1)[1] for r in added}
+    # One area row for the four per-country observations (the first of them in ledger order adds it).
+    assert notes['bar'] == 'o6' and notes['area'] in ('o8', 'o9', 'o10', 'o11') and len(added) == 2
+    assert {'name': 'year_year', 'expression': 'DATE_TRUNC(year, YEAR)', 'type': 'date', 'description': 'Year of year'} in blueprint['derived_fields']
+    assert any('year_year' in sql for sql in blueprint_api[5].sql)  # the code-built bucket was dry-run
+    assessment = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+    assert assessment['state'] == 'ready', [i['reason'] for i in assessment['issues'] if i['resolution'] == 'unresolved']
+    trace, recorded = spans(build.app, run_id)
+    assert [s.get('observation_rows') for s in recorded if s['node'] == 'validate_blueprint_rows'][-1] == [r['note'] for r in added]
+    with build.app.state.db.connect() as conn:
+        check = json.loads(conn.execute("SELECT spans_json FROM traces WHERE node='capability_check' ORDER BY started_at").fetchall()[0][0])
+    assert next(s for s in check if s['node'] == 'assess_capabilities')['unused_definitions'] == ['Region', 'Country', 'Urban', 'Rural']
+    accept(build)
+    spec = DashboardSpec.model_validate_json((build.folder / 'spec.json').read_text(encoding='utf-8'))
+    components = {c.id: c for p in spec.pages for c in p.components}
+    ledger = req.load(build.folder)
+    bound = {r.source.item_id: next(e['fulfilled_by'] for e in ledger.verification[r.id] if 'fulfilled_by' in e)
+             for r in ledger.requirements if r.source.kind == 'image' and r.source.item_id not in ELECTRICITY['dropped']}
+    kinds = {item: {(components[c].type, components[c].field) for c in ids} for item, ids in bound.items()}
+    assert kinds['o2'] == {('fixed_size_list', 'region')} and kinds['o3'] == {('scorecard', None)}
+    assert kinds['o6'] == {('bar', None)} and components[bound['o6'][0]].dimensions == ['year_year']
+    assert components[bound['o6'][0]].id.startswith('p1_') and components[bound['o6'][0]].label == 'People without access to electricity'
+    [area] = {c for item in ('o8', 'o9', 'o10', 'o11') for c in bound[item]}
+    assert components[area].type == 'area' and [m.field for m in components[area].metrics] == ['urban_pct', 'rural_pct']
+    # Code dropped nothing: only the user's two decisions.
+    assert {r.source.item_id for r in ledger.requirements if r.id in {d['requirement_id'] for d in ledger.decisions if d['action'] == 'drop'}} == {'o5', 'o7'}
+    fresh = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+    assert fresh['state'] == 'ready' and not fresh['prototype_stale'], fresh
+    executes(build.client, build.app, build.bid, monkeypatch)
+
+
+def test_electricity_sql_repair_that_fulfils_the_observation_drops_the_code_added_row(blueprint_api, monkeypatch):
+    """Live run 20261025-124408: the planner's own yearly bar used a bucket the view gained only in the one
+    SQL repair, so the code-added bar became surplus after the assessment and the check read `stale`."""
+    from types import SimpleNamespace
+    from test_blueprint import confirm
+    build = electricity_build(blueprint_api, monkeypatch)
+    bucket = {'name': 'year_grain', 'expression': 'DATE_TRUNC(year, YEAR)', 'type': 'date', 'description': 'Year'}
+    bar = {'question_id': 'q2', 'section_id': 's1', 'page': 1, 'note': '', 'status': 'ok', 'issue_ids': [], 'component': {
+        'type': 'bar', 'label': 'People without access to electricity', 'dimensions': ['year_grain'], 'date_dimension': None,
+        'metrics': [{'field': 'people_without_access', 'agg': 'sum'}], 'breakdown': None, 'sort': None, 'options': {}}}
+    draft = {**build.value, 'rows': [*build.value['rows'], bar]}
+    build.llm.replies = [json.dumps(draft), json.dumps({'rows': [r for r in draft['rows'] if r['question_id']]}),
+                         json.dumps({'view_sources': draft['view_sources'], 'derived_fields': [*draft['derived_fields'], bucket,
+                                     {'name': 'year_year', 'expression': 'DATE_TRUNC(year, YEAR)', 'type': 'date', 'description': 'Year of year'}]})]
+    bq, attempts = blueprint_api[5], []
+    def dry_run(sql):
+        attempts.append(sql)
+        if len(attempts) == 1:
+            raise ValueError('Unrecognized name: year_grain')
+        return [SimpleNamespace(name=n, field_type='DATE', mode='NULLABLE') for n in ('year_grain', 'year_year')]
+    bq.dry_run = dry_run
+    confirm(build.client, build.app, build.bid)
+    assert build.llm.calls == 3 and len(attempts) == 2  # draft, row repair, the one SQL repair
+    rows = build.client.get(f'/api/builds/{build.bid}/blueprint').json()['rows']
+    assert [r['component']['type'] for r in rows if r['note'].startswith('observation ')] == ['area']  # the bar is the planner's
+    assessment = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+    assert assessment['state'] == 'ready', (assessment['state'], [i['reason'] for i in assessment['issues']])
+
+
+def test_electricity_removed_instructions_remove_the_code_added_rows(blueprint_api, monkeypatch):
+    from test_blueprint import confirm
+    build = electricity_build(blueprint_api, monkeypatch)
+    confirm(build.client, build.app, build.bid)
+    rows = build.client.get(f'/api/builds/{build.bid}/blueprint').json()['rows']
+    assert len([r for r in rows if r['note'].startswith('observation ')]) == 2
+    upload_recreate(build)
+    blocked = feasibility_check(build.client, build.app, build.bid)
+    assert blocked['state'] == 'blocked' and any('Define ' in i['reason'] for i in blocked['issues'])
+    # A design reconfirmation keeps every unchanged row and recomputes the code-added ones: none is needed now.
+    with build.app.state.db.connect() as conn:
+        conn.execute('UPDATE builds SET stage=? WHERE id=?', ('design', build.bid))
+    confirm(build.client, build.app, build.bid)
+    assert build.llm.calls == 2
+    after = build.client.get(f'/api/builds/{build.bid}/blueprint').json()['rows']
+    assert [r for r in after if r['note'].startswith('observation ')] == []
+    assert [r['component'] for r in after] == [r['component'] for r in rows if not r['note'].startswith('observation ')]
 
 
 def test_html_contract_geometry_layers(dashboard):

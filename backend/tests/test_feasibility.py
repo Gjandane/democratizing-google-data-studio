@@ -827,8 +827,9 @@ def recreate_snapshot(kpis=(NET,), instructions='', fields=SALES, items=None, ri
 def recreate_assess(snapshot, extraction=None, ledger=None):
     extraction = extraction if extraction is not None else {**RECREATE['extraction']}
     rid = snapshot['reference']['id']
+    # Only sources the extractor is sent (24.7: definition-only instructions are read by code).
     items = [{'source_id': f'{rid}:{oid}', **e} for oid, e in extraction.items()
-             if f'{rid}:{oid}' in {s['id'] for s in snapshot['incoming']}]
+             if f'{rid}:{oid}' in {s['id'] for s in req.new_sources(snapshot, ledger or req.Ledger())}]
     checker = capabilities.Checker(capabilities.load_registry())
     ledger = req.merge(ledger or req.Ledger(), snapshot, req.Extraction.model_validate({'requirements': items}))
     return ledger, req.evaluate(snapshot, ledger, checker, check_components=False)
@@ -1817,3 +1818,266 @@ def test_issue_cap_counts_only_active_issues(thin, decided, scope):
         assert not any(i.id == "issue_scope" for i in a.issues)
     req.save(folder, ledger, a)
     assert len(req.load(folder).assessment.issues) == len(a.issues)
+
+
+# 24.7: recreate observation completion (architecture.md#Recreate observation completion).
+ELECTRICITY = json.loads((Path(__file__).parent / 'data/recreate_electricity.json').read_text(encoding='utf-8'))
+POWER = {c['name']: c['bq_type'] for c in ELECTRICITY['columns']}
+CLAUSES = [c['text'] for c in ELECTRICITY['extraction']['instructions']]
+
+
+def power_snapshot(instructions=None, items=None, rid='ref_power'):
+    """What inputs() returns for the 24.7 electricity reference, its confirmed KPIs and profiled columns."""
+    text = ELECTRICITY['instructions'] if instructions is None else instructions
+    snapshot = recreate_snapshot(ELECTRICITY['kpis'], text, POWER, ELECTRICITY['items'] if items is None else items, rid)
+    snapshot['sources'][0]['columns'] = [{k: c[k] for k in ('name', 'type', 'bq_type', 'date_like')} for c in ELECTRICITY['columns']]
+    return snapshot
+
+
+def power_extraction(instructions=None, **items):
+    """The fixture's extraction; `instructions` replaces the instruction records (one per clause)."""
+    extraction = copy.deepcopy(ELECTRICITY['extraction'])
+    if instructions is not None:
+        extraction['instructions'] = [{'text': c, 'needs': [], 'mappings': []} for c in instructions]
+    extraction.update(items)
+    return extraction
+
+
+def assess(snapshot, extraction, ledger=None):
+    """recreate_assess with one extraction record per clause of the instructions."""
+    rid = snapshot['reference']['id']
+    known = {s['id'] for s in req.new_sources(snapshot, ledger or req.Ledger())}  # what the extractor is sent
+    items = [{'source_id': f'{rid}:{oid}', **e} for oid, records in extraction.items() if f'{rid}:{oid}' in known
+             for e in (records if isinstance(records, list) else [records])]
+    checker = capabilities.Checker(capabilities.load_registry())
+    ledger = req.merge(ledger or req.Ledger(), snapshot, req.Extraction.model_validate({'requirements': items}))
+    return ledger, req.evaluate(snapshot, ledger, checker, check_components=False)
+
+
+def power_assess(clauses=None, snapshot=None, ledger=None):
+    """A check of the fixture (or of `clauses`); with `ledger`, a recheck of already extracted sources."""
+    snapshot = snapshot or power_snapshot(' '.join(clauses) if clauses is not None else None)
+    return (*assess(snapshot, {} if ledger else power_extraction(clauses), ledger), snapshot)
+
+
+@pytest.fixture
+def catalog_types(monkeypatch):
+    """The recipe 1.3 catalog (area, fixed_size_list), whatever the root .env narrows DSS_ALLOWED_TYPES to."""
+    from dss.spec.models import TYPES
+    monkeypatch.setenv('DSS_ALLOWED_TYPES', ','.join(TYPES))
+
+
+def by_item(ledger):
+    return {r.source.item_id: r for r in ledger.requirements if r.source.kind == 'image'}
+
+
+def unresolved(a, row):
+    return [(i.status, i.reason) for i in a.issues if i.requirement == row.text and i.resolution == 'unresolved']
+
+
+def power_blueprint(snapshot, rows=None):
+    """The 24.7 fixture's staged Blueprint (its release rows, three per-section pages)."""
+    from test_blueprint import fixture
+    context = fixture('context')
+    context.update(datasets=[{'source_id': 's', 'summary': 'Electricity'}], derived_fields=[], kpis=ELECTRICITY['kpis'])
+    blueprint = fixture('blueprint')
+    blueprint.update(view_sources={'base': 's', 'joins': [], 'union': []}, derived_fields=[],
+                     rows=copy.deepcopy(ELECTRICITY['rows'] if rows is None else rows))
+    snapshot = {**snapshot, 'context': context, 'outline': {'revision': 1, 'sections': ELECTRICITY['sections']},
+                'design': fixture('design'), 'blueprint': blueprint, 'blueprint_errors': []}
+    snapshot['sources'][0]['bq_table'] = snapshot['sources'][0]['table']
+    return snapshot
+
+
+def dropped(ledger, a, snapshot):
+    """The user's approved drops of the remaining observation issues."""
+    ledger.decisions = [req.observation_drop(snapshot, ledger, next(r.id for r in ledger.requirements if r.text == i.requirement), i.id)
+                        for i in a.issues if i.resolution == 'unresolved']
+    return ledger
+
+
+def completed(snapshot, ledger):
+    from dss.artifacts.models import Blueprint, Context
+    from dss.spec import feasibility
+    checker = capabilities.Checker(capabilities.load_registry())
+    return feasibility.complete(snapshot, ledger, checker, Blueprint.model_validate(snapshot['blueprint']),
+                                snapshot['sources'], Context.model_validate(snapshot['context']))
+
+
+@pytest.mark.usefixtures('catalog_types')
+def test_definition_clauses_are_evidence_not_requirement_rows():
+    """24.7 block: each definition-only instruction clause was an `unknown` requirement row (12 in run 104805)."""
+    ledger, a, snapshot = power_assess()
+    # Code reads definition-only instructions itself: the extractor is never sent them (live: 30 s deadline).
+    assert 'ref_power:instructions' not in {s['id'] for s in req.new_sources(snapshot, req.Ledger())}
+    assert not [r for r in ledger.requirements if r.source.kind == 'reference']
+    assert not any(i.status == 'unknown' for i in a.issues), a.issues
+    rows = by_item(ledger)
+    assert sorted(rows, key=lambda o: int(o[1:])) == ['o2', 'o3', 'o5', 'o6', 'o7', 'o8', 'o9', 'o10', 'o11']  # none dropped
+    # Only the approved drop classes remain: the geo map lacks a GEO field, the legend control has no field.
+    assert {o: unresolved(a, r) for o, r in rows.items() if unresolved(a, r)} == {
+        'o5': [('needs_data', 'Geo chart needs a geo_field field (GEO/GEOGRAPHY) that the connected data lacks')],
+        'o7': [('needs_clarification', 'Choose which field supplies control_field for Drop-down list control')]}
+    assert req.unused_definitions(snapshot, ledger) == ['Region', 'Country', 'Urban', 'Rural']
+    # A fixed point: recomputation on unchanged inputs changes nothing.
+    assert req.merge(ledger, snapshot, req.Extraction(requirements=[])).requirements == ledger.requirements
+
+
+@pytest.mark.usefixtures('catalog_types')
+def test_a_mixed_sentence_stays_a_requirement_and_bad_definitions_block():
+    mixed = 'Region Selector = region and make it blue.'
+    ledger, a, _ = power_assess([*CLAUSES[1:], mixed])
+    [row] = [r for r in ledger.requirements if r.source.kind == 'reference']
+    assert row.text == mixed and unresolved(a, row) == [('unknown', 'No registered capability covers this requirement; clarify the requested behavior')]
+    missing = [c.replace('SUM(people_without_access)', 'SUM(households_without_power)') for c in CLAUSES]
+    ledger, a, _ = power_assess(missing)
+    assert unresolved(a, by_item(ledger)['o6']) == [('needs_data', 'Field households_without_power is not in the connected data')]
+    conflicting = [*CLAUSES, 'People without access to electricity = AVG(people_without_access), date grain year using year.']
+    ledger, a, _ = power_assess(conflicting)
+    assert [s for s, r in unresolved(a, by_item(ledger)['o6']) if 'Conflicting definitions for People without access' in r] == ['needs_clarification']
+    assert not [r for r in ledger.requirements if r.source.kind == 'reference']
+    # An unknown aggregation is not a definition: its clause stays an unknown row.
+    median = [*CLAUSES, 'Median access = MEDIAN(access_pct).']
+    ledger, a, _ = power_assess(median)
+    [row] = [r for r in ledger.requirements if r.source.kind == 'reference']
+    assert row.text == 'Median access = MEDIAN(access_pct).' and unresolved(a, row)[0][0] == 'unknown'
+
+
+@pytest.mark.usefixtures('catalog_types')
+def test_field_definition_binds_the_control_field_and_its_chart_type():
+    ledger, a, _ = power_assess()
+    selector = by_item(ledger)['o2']
+    assert selector.needs == [capabilities.Need(capability='control.fixed_size_list', fields={'control_field': 'region'})]
+    assert selector.mappings == [req.Mapping(label='Region Selector', field='region')] and not unresolved(a, selector)
+    assert json.loads(selector.mapping_origins['observed:0'])['evidence'] == ['ref_power:instructions']
+    for chart, reason in (('sparkline', 'Chart sparkline is not a catalog type'), ('scorecard', 'Chart scorecard cannot show Region Selector')):
+        clauses = [CLAUSES[0].replace('fixed_size_list', chart), *CLAUSES[1:]]
+        ledger, a, _ = power_assess(clauses)
+        found = unresolved(a, by_item(ledger)['o2'])
+        assert [s for s, r in found if r.startswith(reason)] == ['needs_clarification'], found
+    # Without the clause the extractor's proposed field is no definition.
+    ledger, a, _ = power_assess(CLAUSES[1:])
+    assert any('Confirm which field defines Region Selector' in r for _, r in unresolved(a, by_item(ledger)['o2']))
+
+
+@pytest.mark.usefixtures('catalog_types')
+def test_using_binds_the_date_field_and_must_name_a_date():
+    ledger, a, _ = power_assess()
+    rows = by_item(ledger)
+    assert rows['o6'].mapping_origins['using'] == 'year' and not unresolved(a, rows['o6'])
+    assert [n.model_dump(exclude_defaults=True) for n in rows['o8'].needs] == [
+        {'capability': 'chart.area', 'fields': {'date_field': 'year'}},
+        {'capability': 'option.area.date_granularity', 'value': 'year', 'fields': {'date_field': 'year'}},
+        {'capability': 'argument.title'}]
+    assert rows['o8'].mappings == [req.Mapping(label='Philippines', field=f, unit='%', aggregation='avg', date_grain='year')
+                                   for f in ('urban_pct', 'rural_pct')]
+    clauses = [c.replace('using year', 'using country') if c.startswith('People without') else c for c in CLAUSES]
+    ledger, a, _ = power_assess(clauses)
+    assert ('needs_clarification', 'Date grain year for People without access to electricity uses country; '
+            'name a DATE, DATETIME or TIMESTAMP field') in unresolved(a, by_item(ledger)['o6'])
+    assert 'observed:0' not in by_item(ledger)['o6'].mapping_origins  # nothing was authorized
+    # Removing the instructions restores each observation's own extraction.
+    restored, _, _ = power_assess([], snapshot=power_snapshot(''), ledger=ledger)
+    assert by_item(restored)['o8'].needs == [capabilities.Need.model_validate(n) for n in ELECTRICITY['extraction']['o8']['needs']]
+    assert not any(k in r.mapping_origins for r in by_item(restored).values() for k in ('surface', 'using', 'observed:1'))
+
+
+@pytest.mark.usefixtures('catalog_types')
+def test_scorecard_observation_skips_the_date_grain_and_the_bar_is_code_added():
+    from dss.spec import feasibility
+    ledger, a, snapshot = power_assess()
+    ledger = dropped(ledger, a, snapshot)
+    snapshot = power_blueprint(snapshot)
+    checker = capabilities.Checker(capabilities.load_registry())
+    verdicts = observation_verdicts(snapshot, ledger)
+    scorecard = next(i for i, r in enumerate(ELECTRICITY['rows']) if r['question_id'] == 'q1')
+    assert verdicts['o3'] == [scorecard] and verdicts['o2'] and verdicts['o6'] == [] and verdicts['o8'] == []
+    rows, derived, added = completed(snapshot, ledger)
+    assert [(r.question_id, r.page, r.note, r.component.type) for r in added] == [
+        (None, 1, 'observation ref_power:o6', 'bar'), (None, 1, 'observation ref_power:o8', 'area')]
+    bar, area = (r.component for r in added)
+    assert (bar.label, bar.dimensions, bar.date_dimension, [m.model_dump() for m in bar.metrics]) == (
+        'People without access to electricity', ['year_year'], None, [{'field': 'people_without_access', 'agg': 'sum'}])
+    assert (area.date_dimension, area.dimensions, area.options, [m.field for m in area.metrics]) == (
+        'year_year', [], {'date_granularity': 'year'}, ['urban_pct', 'rural_pct'])
+    assert [f.model_dump() for f in derived] == [{'name': 'year_year', 'expression': 'DATE_TRUNC(year, YEAR)', 'type': 'date',
+                                                  'description': 'Year of year'}]
+    done = {**snapshot, 'blueprint': {**snapshot['blueprint'], 'rows': [r.model_dump() for r in rows],
+                                      'derived_fields': [f.model_dump() for f in derived]}}
+    verdicts = observation_verdicts(done, ledger)
+    # Every other observation is bound to a real row; the four per-country ones share the one area row.
+    assert verdicts['o6'] == [len(rows) - 2] and all(verdicts[o] == [len(rows) - 1] for o in ('o8', 'o9', 'o10', 'o11'))
+    assert req.evaluate(done, ledger, checker, check_components=False).state == 'ready'
+    assert not feasibility.surplus(done, ledger, checker, rows, derived)
+    # A full page leaves the observation an Issue.
+    full = copy.deepcopy(ELECTRICITY['rows'])
+    full += [{**copy.deepcopy(full[0]), 'component': {**full[0]['component'], 'label': f'Year {n}'}}
+             for n in range(12 - sum(r['page'] == 1 for r in full))]
+    crowded = power_blueprint(snapshot, full)
+    rows, _, added = completed(crowded, ledger)
+    assert added == [] and len(rows) == len(full)
+    assert any(i.requirement == "Observation 'People without access to electricity'"
+               for i in req.evaluate(crowded, ledger, checker, check_components=False).issues)
+
+
+@pytest.mark.usefixtures('catalog_types')
+def test_a_using_date_profiled_at_the_grain_is_its_own_bucket():
+    """Live run 20261025-123124: the planner drew the urban/rural area on `year` itself; its profile says
+    every value starts a year, so the chart shows the defined grain without a derived bucket."""
+    ledger, a, snapshot = power_assess()
+    ledger = dropped(ledger, a, snapshot)
+    area = {'question_id': 'q5', 'section_id': 's2', 'page': 2, 'note': '', 'status': 'ok', 'issue_ids': [], 'component': {
+        'type': 'area', 'label': 'Rural vs. Urban Access Over Time', 'dimensions': [], 'date_dimension': 'year', 'breakdown': None,
+        'metrics': [{'field': 'rural_pct', 'agg': 'avg'}, {'field': 'urban_pct', 'agg': 'avg'}], 'sort': None,
+        'options': {'date_granularity': 'year'}}}
+    rows = [*copy.deepcopy(ELECTRICITY['rows']), area]
+    for starts, bound in (({'year': 'year'}, [len(rows) - 1]), ({}, []), ({'year': 'month'}, [])):
+        verdicts = observation_verdicts({**power_blueprint(snapshot, rows), 'date_starts': starts}, ledger)
+        assert all(verdicts[o] == bound for o in ('o8', 'o9', 'o10', 'o11')), (starts, verdicts)
+
+
+@pytest.mark.usefixtures('catalog_types')
+def test_removed_instructions_leave_code_added_rows_surplus():
+    from dss.artifacts.models import Blueprint
+    from dss.spec import feasibility
+    ledger, a, snapshot = power_assess()
+    ledger = dropped(ledger, a, snapshot)
+    rows, derived, added = completed(power_blueprint(snapshot), ledger)
+    blueprint = {**power_blueprint(snapshot)['blueprint'], 'rows': [r.model_dump() for r in rows],
+                 'derived_fields': [f.model_dump() for f in derived]}
+    removed, _, bare = power_assess([], snapshot=power_snapshot(''), ledger=ledger)
+    checker = capabilities.Checker(capabilities.load_registry())
+    bare = {**power_blueprint(bare), 'blueprint': blueprint}
+    assert feasibility.surplus(bare, removed, checker, rows, derived) == {len(rows) - 2, len(rows) - 1}
+    marked = feasibility.mark(bare, removed, checker, req.evaluate(bare, removed, checker, check_components=False))
+    assert not any(feasibility.added(r) for r in marked.rows) and len(marked.rows) == len(ELECTRICITY['rows'])
+    # Ordinary question-less controls are never code-added rows.
+    assert not any(feasibility.added(r) for r in Blueprint.model_validate(blueprint).rows[:len(ELECTRICITY['rows'])])
+
+
+def test_recreate_definitions_recompute_speed_with_24_observations_and_24_clauses(monkeypatch):
+    """The 100 ms recomputation oracle holds with 24 observations and 24 definition clauses, on the
+    catalog default (no DSS_ALLOWED_TYPES anywhere: the default re-reads no catalog per observation)."""
+    from dss.spec import validate
+    monkeypatch.delenv('DSS_ALLOWED_TYPES', raising=False)
+    monkeypatch.setattr(validate, 'dotenv_values', lambda *_: {})
+    items = [{**ELECTRICITY['items'][[1, 2, 5, 7][n % 4]], 'label': f'Chart {n}', 'metric_label': f'Metric {n}'} for n in range(24)]
+    clauses = [f'Chart {n} = region, chart fixed_size_list.' if n % 4 == 0 else
+               f'Metric {n} = AVG(access_pct), unit %, date grain year using year.' if n % 4 == 1 else
+               f'Metric {n} = SUM(people_without_access), date grain year using year.' if n % 4 == 2 else
+               f'Metric {n} = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year.' for n in range(24)]
+    sources = [ELECTRICITY['extraction'][o] for o in ('o2', 'o3', 'o6', 'o8')]
+    extraction = {f'o{n + 1}': {**sources[n % 4], 'mappings': [{**m, 'label': f'Metric {n}'} for m in sources[n % 4]['mappings']],
+                                'properties': [{'path': 'label', 'value': f'Chart {n}'}]} for n in range(24)}
+    extraction['instructions'] = {'text': ' '.join(clauses), 'needs': [], 'mappings': []}
+    snapshot = power_snapshot(' '.join(clauses), items)
+    ledger, a = assess(snapshot, extraction)
+    assert not [r for r in ledger.requirements if r.source.kind == 'reference'] and len(by_item(ledger)) == 24
+    assert not [i for i in a.issues if i.resolution == 'unresolved'], [i.reason for i in a.issues]
+    checker = capabilities.Checker(capabilities.load_registry())
+    timings = []
+    for _ in range(3):
+        start = time.perf_counter()
+        req.evaluate(snapshot, ledger, checker, check_components=False)
+        timings.append(time.perf_counter() - start)
+    assert min(timings) < .1, timings

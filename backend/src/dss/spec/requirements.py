@@ -17,7 +17,7 @@ from dss.db import new_id
 from dss.harness.guardrails import RunError
 from dss.data.bigquery import snake_names
 from dss.spec import capabilities, references
-from dss.spec.models import CONTROL_TYPES, DATE_AXIS_TYPES
+from dss.spec.models import CHART_TYPES, CONTROL_TYPES, DATE_AXIS_TYPES, FIELD_CONTROLS
 
 MAX_REQUIREMENTS = 40
 MAX_ISSUES = 20
@@ -262,6 +262,11 @@ def inputs(db, build_id, folder):
         path = folder / "docs/context.md"
         confirmed = row is not None and stages.states({"artifacts_json": row[0]})["context"] == "confirmed"
         snapshot["confirmed_kpis"] = [k.model_dump() for k in read_artifact(path, Context).kpis] if confirmed and path.is_file() else []
+        with db.connect() as conn:
+            profiled = [json.loads(r[0]) for r in conn.execute("SELECT columns_json FROM sources WHERE build_id=? ORDER BY rowid", (build_id,))]
+        # A DATE column whose every value starts a bucket (intake profile, 24.2) is a date at that grain.
+        snapshot["date_starts"] = {name: c["bucket_start"] for columns in profiled
+                                   for c, name in zip(columns, snake_names([c["name"] for c in columns])) if c.get("bucket_start")}
     if (folder / 'docs/blueprint.md').is_file():
         for name, model in [('blueprint', Blueprint), ('context', Context), ('outline', Outline), ('design', Design)]:
             snapshot[name] = read_artifact(folder / f'docs/{name}.md', model).model_dump()
@@ -320,6 +325,11 @@ def new_sources(snapshot, ledger):
         for i, comment in enumerate(batch.comments):
             s = Source(id=f"{batch.id}:{i}", kind="comment", batch_id=batch.id, **comment.model_dump()).model_dump()
             incoming[s["id"]] = s
+    # Recreate instructions that are wholly definitions are evidence code reads itself
+    # (architecture.md#Recreate observation completion): never extraction input.
+    reference = snapshot.get("reference") or {}
+    if reference.get("mode") == "recreate" and _wholly_definitions(reference.get("instructions") or ""):
+        incoming.pop(reference["id"] + ":instructions", None)
     return [s for s in incoming.values() if s["id"] not in ledger.retired_sources
             and ledger.processed_sources.get(s["id"]) != digest(s)]
 
@@ -450,6 +460,7 @@ def merge(ledger, snapshot, extraction):
         omitted = sid not in covered and (source["kind"] != "message" or bool(_remainder(source["text"])))
         if omitted or uncovered:
             updated.requirements.append(Requirement(id="req_" + digest(source)[:24], source=Source.model_validate(source), text=source["text"]))
+    _definition_rows(updated, snapshot)
     if len(updated.requirements) > MAX_REQUIREMENTS:
         raise ValueError("Requirement scope exceeded")
     updated.processed_sources.update({sid: digest(s) for sid, s in sources.items()})
@@ -780,7 +791,281 @@ def _absorb_definitions(ledger):
     ledger.requirements = [r for r in ledger.requirements if r.id not in absorbed]
 
 
-_CURRENCIES = {'$': 'usd', 'us$': 'usd', 'dollar': 'usd', 'dollars': 'usd', '€': 'eur', 'euro': 'eur', 'euros': 'eur', '£': 'gbp'}
+# architecture.md#Recreate observation completion: the definition surface of reference instructions.
+_SURFACE_AGGREGATIONS = {'sum': 'sum', 'avg': 'avg', 'average': 'avg', 'count': 'count', 'min': 'min', 'max': 'max'}
+_SURFACE_METRIC = re.compile(r'(sum|avg|average|count|min|max)\s*\(\s*(distinct\s+)?([a-z_][a-z0-9_]*)\s*\)', re.I)
+_SURFACE_OPTION = re.compile(r'unit\s+(?P<unit>\S(?:.*\S)?)|date\s+grain\s+(?P<grain>day|week|month|quarter|year)'
+                             r'(?:\s+using\s+(?P<using>[a-z_][a-z0-9_]*))?|chart\s+(?P<chart>[a-z_]+)', re.I)
+_DATE_TYPES = ('DATE', 'DATETIME', 'TIMESTAMP')
+_NUMBER_TYPES = ('INT64', 'INTEGER', 'FLOAT', 'FLOAT64', 'NUMERIC', 'BIGNUMERIC', 'DECIMAL', 'BIGDECIMAL')
+
+
+@lru_cache(maxsize=4096)
+def _surface(clause):
+    """One instruction clause as a definition, else None: `<Label> = <metric>[ and <metric>...][, unit <u>]
+    [, date grain <g>[ using <date field>]][, chart <type>]` with `<metric>` `AGG(field)`, or
+    `<Label> = <field>[, chart <type>]`. Read-only: callers share the cached value."""
+    match = re.fullmatch(r'([^=,]+?)\s*=\s*([^=]+)', _affirmative(clause).strip(' .'))
+    if not match:
+        return None
+    head, *options = (part.strip() for part in match[2].split(','))
+    metrics = []
+    for part in re.split(r'\s+and\s+', head, flags=re.I):
+        found = _SURFACE_METRIC.fullmatch(part)
+        if found is None or (found[2] and found[1].lower() != 'count'):
+            metrics = None  # DISTINCT only qualifies COUNT; an unknown aggregation is no definition
+            break
+        metrics.append((found[3].lower(), 'count_distinct' if found[2] else _SURFACE_AGGREGATIONS[found[1].lower()]))
+    field = None
+    if metrics is None:
+        if not re.fullmatch(r'[a-z_][a-z0-9_]*', head, re.I):
+            return None
+        field, metrics = head.lower(), []
+    # A list heading ("Definitions: Revenue = SUM(revenue)") is not part of the label.
+    label = re.sub(r'^(?:(?:metric|kpi)\s+)?definitions?\s*:\s*', '', match[1].strip(), flags=re.I)
+    definition = {'label': label, 'metrics': tuple(metrics), 'field': field,
+                  'unit': None, 'grain': None, 'using': None, 'chart': None}
+    for option in options:
+        found = _SURFACE_OPTION.fullmatch(option)
+        if found is None:
+            return None
+        for key, value in found.groupdict().items():
+            if value is not None:
+                if definition[key] is not None:
+                    return None  # each option once
+                definition[key] = value if key == 'unit' else value.lower()
+    if field and any(definition[k] for k in ('unit', 'grain')):
+        return None  # a field definition takes only a chart type
+    return definition
+
+
+@lru_cache(maxsize=256)
+def _surface_clauses(text):
+    """(surface definitions, other clauses) of reference instructions, one clause each."""
+    definitions, other = [], []
+    for clause in _clauses(text):
+        definition = _surface(clause)
+        (definitions if definition else other).append(definition or clause)
+    return tuple(definitions), tuple(other)
+
+
+def _surface_labels(text):
+    """{normalized label: [its definitions]} of reference instructions."""
+    labels = {}
+    for definition in _surface_clauses(text)[0]:
+        labels.setdefault(_normal(definition['label']), []).append(definition)
+    return labels
+
+
+def _surface_key(definition):
+    return tuple(definition[k] for k in ('metrics', 'field', 'unit', 'grain', 'using', 'chart'))
+
+
+def _wholly_definitions(text):
+    definitions, other = _surface_clauses(text)
+    return bool(definitions) and not other
+
+
+def _definition_rows(ledger, snapshot):
+    """A recreate reference's instruction clause that is wholly a definition is evidence only, never a
+    requirement row (architecture.md#Recreate observation completion); any other sentence stays one."""
+    reference = snapshot.get('reference') or {}
+    if reference.get('mode') != 'recreate':
+        return
+    whole = _wholly_definitions(reference.get('instructions') or '')
+    ledger.requirements = [r for r in ledger.requirements if not (
+        r.source.kind == 'reference' and r.source.reference_id == reference['id'] and (whole or _wholly_definitions(r.text)))]
+
+
+def unused_definitions(snapshot, ledger):
+    """Labels of the recreate reference's definition clauses that name no observation. They raise no
+    issue; the reconciliation span lists them."""
+    reference = snapshot.get('reference') or {}
+    if reference.get('mode') != 'recreate' or not reference.get('instructions'):
+        return []
+    used = set()
+    for r in ledger.requirements:
+        if r.source.kind == 'image' and r.source.reference_id == reference['id']:
+            item = json.loads(r.source.text)
+            used |= {_normal(v) for v in (item.get('label'), item.get('metric_label')) if v} | {_normal(m.label) for m in r.mappings}
+    return list(dict.fromkeys(d['label'] for d in _surface_clauses(reference['instructions'])[0] if _normal(d['label']) not in used))
+
+
+@lru_cache(maxsize=1)
+def _surface_registry():
+    # Capability ids and data prerequisites only: static registry facts, read once.
+    return capabilities.Checker(capabilities.load_registry())
+
+
+@lru_cache(maxsize=1)
+def _surface_catalog():
+    # The seed catalog's slot rules, read once: recomputation must stay within its 100 ms.
+    from dss.spec.validate import catalog
+    return catalog()
+
+
+def _offered_types():
+    """validate.allowed_types() (its env/.env reads included) with the cached catalog as the default."""
+    import os
+    from dss.spec import validate
+    configured = {**validate.dotenv_values(validate.BACKEND_DIR.parent / '.env'), **os.environ}.get('DSS_ALLOWED_TYPES')
+    allowed = _surface_catalog().keys() if configured is None else {s.strip() for s in configured.split(',') if s.strip()}
+    return set(allowed) & _surface_catalog().keys() & {*CHART_TYPES, *CONTROL_TYPES}
+
+
+def _takes_date(capability):
+    checker = _surface_registry()
+    return checker.registry.get(capability) is not None and any(p.name == 'date_field' for p in checker._prerequisites(capability))
+
+
+def _catalog_problem(kind, metrics, dimensions, date_field, grain, fields):
+    """Why the catalog does not accept these bound fields for `kind`, else None."""
+    rule = _surface_catalog()[kind]
+    if kind in FIELD_CONTROLS:
+        return None if len(dimensions) == 1 and not metrics else f'a {kind} takes one field and no metrics'
+    if not rule['min_metrics'] <= len(metrics) <= rule['max_metrics']:
+        return f"it takes {rule['min_metrics']}..{rule['max_metrics']} metrics"
+    # A date bucket at the grain is the dimension of a chart without a date axis (a yearly bar).
+    counted = len(dimensions) + bool(grain and date_field and kind not in DATE_AXIS_TYPES and kind != 'scorecard')
+    if not rule['min_dimensions'] <= counted <= rule['max_dimensions']:
+        return f"it takes {rule['min_dimensions']}..{rule['max_dimensions']} dimensions"
+    if rule['requires_date_dimension'] and not date_field:
+        return 'it needs a date field (date grain <grain> using <date field>)'
+    for field, aggregation in metrics:
+        if aggregation in ('sum', 'avg') and field in fields and fields[field].upper() not in _NUMBER_TYPES:
+            return f'{aggregation.upper()}({field}) needs a numeric field'
+    return None
+
+
+def _restore_surface(r):
+    """Undo an earlier pass's surface binding: every pass restarts from the observation's extraction."""
+    saved = r.mapping_origins.get('surface')
+    if saved is not None:
+        saved = json.loads(saved)
+        r.needs = [capabilities.Need.model_validate(n) for n in saved['needs']]
+        r.mappings = [Mapping.model_validate(m) for m in saved['mappings']]
+        r.superseded, r.mapping_origins = saved['superseded'], saved['origins']
+
+
+def _observe_surface(r, item, instructions, fields, kpis):
+    """Bind an image observation to the surface definition of its label, else of its metric label
+    (architecture.md#Recreate observation completion): metrics, unit, grain, date field, chart type
+    and control field. The user's instruction outranks the extractor's guess; what the definition
+    cannot mean blocks it. False when no surface definition applies (the clause rule reads plain ones)."""
+    definitions = _surface_labels(instructions.text)
+    found = next((definitions[_normal(name)] for name in (item.get('label'), item.get('metric_label'))
+                  if name and _normal(name) in definitions), None)
+    if not found or any(f'definition:{i}' in r.mapping_origins or str(i) in r.mapping_conflicts for i in range(len(r.mappings))) or any(
+            s.kind == 'message' and _candidates(s.text, m, fields) for s in r.clarifications for m in r.mappings):
+        return False  # No surface definition, or a conversational definition (or its conflict) governs.
+    requested = [Mapping.model_validate_json(r.mapping_origins.setdefault(f'requested:{i}', m.model_dump_json()))
+                 for i, m in enumerate(r.mappings)]
+    d, label = found[0], found[0]['label']
+    plain = d['field'] is None and len(d['metrics']) == 1 and not any(d[k] for k in ('unit', 'grain', 'using', 'chart'))
+    if len({_surface_key(x) for x in found}) == 1 and plain and any(_normal(m.label) == _normal(label) for m in requested):
+        return False  # The clause rule already reads a plain `Label = AGG(field)` of a metric label.
+    for i, base in enumerate(requested):
+        r.mappings[i] = base
+        r.mapping_origins.pop(f'observed:{i}', None)
+
+    def block(reason):
+        r.mapping_conflicts['definition'] = reason
+        return True
+    if len({_surface_key(x) for x in found}) > 1:
+        return block(f'Conflicting definitions for {label}; provide an explicit correction')
+    needs = [n.model_copy(deep=True) for n in r.needs]
+    typed = next((i for i, n in enumerate(needs) if n.capability.startswith(('chart.', 'control.'))), None)
+    kind = needs[typed].capability.split('.', 1)[1] if typed is not None else None
+    metric_maps = [m for m in requested if m.aggregation not in (None, 'none')]
+    dimension_maps = [m for m in requested if m.aggregation in (None, 'none') and m.field]
+    observed = grain_name(item['date_grain']) if item.get('date_grain') else None
+    grain = d['grain'] or (observed if d['metrics'] else None)
+    if d['grain'] and observed and observed != d['grain']:
+        return block(f'Clarify the date grain for {label}: {observed} or {d["grain"]}')
+    date_field = next((n.fields['date_field'] for n in needs if n.fields.get('date_field')), None)
+    if d['using']:
+        kinds = {f: t.upper() for f, t in fields.items()}
+        # The date field itself, or the code-built bucket of one at that grain (`year_year`).
+        source = d['using'] if kinds.get(d['using']) in _DATE_TYPES else next(
+            (f for f, t in kinds.items() if t in _DATE_TYPES and f'{f}_{grain}' == d['using']), None)
+        if source is None:
+            return block(f'Date grain {grain} for {label} uses {d["using"]}; name a DATE, DATETIME or TIMESTAMP field')
+        date_field = source
+        needs = [n.model_copy(update={'fields': {**n.fields, 'date_field': source}}) if _takes_date(n.capability) else n for n in needs]
+    if d['chart']:
+        offered = _offered_types()
+        new = f'{"control" if d["chart"] in CONTROL_TYPES else "chart"}.{d["chart"]}'
+        if d['chart'] not in offered or _surface_registry().registry.get(new) is None:
+            return block(f'Chart {d["chart"]} is not a catalog type; use one of {", ".join(sorted(offered))}')
+        metrics = d['metrics'] or tuple((m.field, m.aggregation) for m in metric_maps)
+        dimensions = [d['field']] if d['field'] else [m.field for m in dimension_maps]
+        if problem := _catalog_problem(d['chart'], metrics, dimensions, date_field, grain, fields):
+            return block(f'Chart {d["chart"]} cannot show {label} as defined: {problem}')
+        names = {p.name for p in _surface_registry()._prerequisites(new)}
+        retyped = []
+        for i, n in enumerate(needs):
+            if i == typed:
+                n = capabilities.Need(capability=new, fields={k: v for k, v in n.fields.items() if k in names})
+            elif kind and n.capability.startswith(f'option.{kind}.'):
+                option = f'option.{d["chart"]}.' + n.capability.split('.', 2)[2]
+                if _surface_registry().registry.get(option) is None:
+                    return block(f'Chart {d["chart"]} has no {option.rsplit(".", 1)[1]} option for {label}')
+                n = n.model_copy(update={'capability': option})
+            retyped.append(n)
+        needs = retyped if typed is not None else [capabilities.Need(capability=new), *retyped]
+        typed, kind = typed or 0, d['chart']
+    evidence = []
+    if d['field']:
+        if kind not in CONTROL_TYPES:
+            return False  # `Label = field` names a control field here; a chart's dimension is its own mapping's label
+        if 'control_field' in {p.name for p in _surface_registry()._prerequisites(needs[typed].capability)}:
+            needs[typed] = needs[typed].model_copy(update={'fields': {**needs[typed].fields, 'control_field': d['field']}})
+        mappings, defined = [Mapping(label=label, field=d['field'])], {0}
+    else:
+        shown = next((m.unit for m in metric_maps if m.unit), None)
+        if d['unit'] and shown and _unit(d['unit']) != _unit(shown):
+            return block(f'Clarify the unit for {label}: {shown} or {d["unit"]}')
+        unit = d['unit'] or shown
+        matches = _kpi_matches(label, kpis)
+        if matches:
+            if len({json.dumps([k['measure'], _unit(k.get('unit'))], sort_keys=True) if k.get('measure') else k['id'] for k in matches}) > 1:
+                return block(f'Clarify which confirmed KPI defines {label}: ' + ', '.join(sorted(k['name'] for k in matches)))
+            kpi = matches[0]
+            if not kpi.get('measure') or len(d['metrics']) > 1:
+                return block(f'Confirmed KPI {kpi["name"]} is ' + ('a ratio' if not kpi.get('measure') else 'one metric')
+                             + f', but the reference instructions define {label} as ' + ('one metric' if len(d['metrics']) == 1 else 'several'))
+            measure = {'field': kpi['measure']['field'], 'aggregation': kpi['measure']['agg'], 'unit': kpi.get('unit')}
+            stated = {'field': d['metrics'][0][0], 'aggregation': d['metrics'][0][1], 'unit': d['unit']}
+            differing = [k for k, v in measure.items() if v and stated[k] and not _same(k, v, stated[k])]
+            if differing:
+                return block(f'Confirmed KPI {kpi["name"]} and the reference instructions define {label} differently '
+                             f'({", ".join(differing)}); change one of them')
+            unit, evidence = d['unit'] or kpi.get('unit') or unit, ['kpi:' + kpi['id']]
+        mappings = [Mapping(label=label, field=f, aggregation=a, unit=unit, date_grain=grain) for f, a in d['metrics']]
+        defined = set(range(len(mappings)))
+        mappings += dimension_maps
+    r.mapping_origins['surface'] = json.dumps({'needs': [n.model_dump() for n in r.needs], 'mappings': [m.model_dump() for m in requested],
+                                               'superseded': r.superseded, 'origins': r.mapping_origins})
+    r.needs, r.mappings = needs, mappings
+    if d['using']:
+        r.mapping_origins['using'] = d['using']
+    if len(d['metrics']) > 1:
+        # The user's explicit substitution: checked against its meaning, not the replaced chart's title.
+        r.superseded = {**r.superseded, **{f'property:{i}': instructions.id for i, p in enumerate(r.properties) if p.path == 'label'}}
+    for i in defined:
+        if mappings[i].field in fields:
+            r.mapping_origins[f'observed:{i}'] = json.dumps({'evidence': evidence + [instructions.id], 'key': _observed_key(mappings[i])})
+    r.clarifications.append(instructions)
+    return True
+
+
+def _field_definition(label, instructions):
+    """The field a surface `<Label> = <field>` clause names for this label, if exactly one."""
+    fields = {d['field'] for d in _surface_labels(instructions.text).get(_normal(label), []) if d['field']}
+    return fields.pop() if len(fields) == 1 else None
+
+
+_CURRENCIES ={'$': 'usd', 'us$': 'usd', 'dollar': 'usd', 'dollars': 'usd', '€': 'eur', 'euro': 'eur', 'euros': 'eur', '£': 'gbp'}
 
 
 def _unit(value):
@@ -824,7 +1109,14 @@ def _reconcile_observation(r, snapshot):
     fields, kpis = schema(snapshot), snapshot.get('confirmed_kpis') or []
     instructions = next((Source.model_validate(s) for s in snapshot['incoming'] if s['id'] == reference['id'] + ':instructions'), None)
     item = json.loads(r.source.text) if r.source.kind == 'image' else {}
+    _restore_surface(r)
+    r.mapping_conflicts.pop('definition', None)
     r.clarifications = [s for s in r.clarifications if instructions is None or s.id != instructions.id]
+    if item.get('kind') == 'control' and any(p.path == 'label' for p in r.properties):
+        # A control has no title op: its observed title is its label property (extraction normalized).
+        r.needs = [n for n in r.needs if n.capability != 'argument.title']
+    if instructions and item and _observe_surface(r, item, instructions, fields, kpis):
+        return
     used = False
     for i, m in enumerate(r.mappings):
         if f'definition:{i}' in r.mapping_origins or str(i) in r.mapping_conflicts or any(
@@ -841,7 +1133,12 @@ def _reconcile_observation(r, snapshot):
             requested = {k: v or item.get(k) for k, v in requested.items()}
         requested['aggregation'] = None if requested['aggregation'] == 'none' else requested['aggregation']
         if not (observed or requested['aggregation'] is not None):
-            continue  # A dimension keeps its own binding; a KPI never redefines it.
+            # A dimension keeps its own binding; a KPI never redefines it. A `Label = field` clause does.
+            if instructions and (field := _field_definition(label, instructions)):
+                r.mappings[i] = base.model_copy(update={'field': field})
+                r.mapping_origins[f'observed:{i}'] = json.dumps({'evidence': [instructions.id], 'key': _observed_key(r.mappings[i])})
+                used = True
+            continue
         matches = _kpi_matches(label, kpis)
         stated = _candidates(instructions.text, base, fields) if instructions else []
 
@@ -1565,7 +1862,7 @@ def observation_meaning(r, needs, properties, *, labels=True):
     value = {'id': r.source.item_id or 'instructions', 'kind': item.get('kind', 'instruction'),
              'type': next((n.capability.split('.', 1)[1] for n in needs if n.capability.startswith(('chart.', 'control.'))), None),
              'metrics': metrics, 'dimensions': [m.field for m in r.mappings if m.aggregation in (None, 'none') and m.field],
-             'date_field': next((n.fields['date_field'] for n in needs if n.fields.get('date_field')), None),
+             'date_field': next((n.fields['date_field'] for n in needs if n.fields.get('date_field')), r.mapping_origins.get('using')),
              'title': next((p.value for p in properties if p.path == 'label'), None) if labels else None}
     return {k: v for k, v in value.items() if v not in (None, [])}
 
@@ -1694,7 +1991,9 @@ def _component_fulfills(component, requirement, needs, checker, snapshot, *, der
         if expected and component["type"] != expected:
             return False
         for key, field in need.fields.items():
-            bound = component.get("date_dimension") if key == "date_field" else (component.get("dimensions") or [None])[0]
+            # A control's field is its own slot (add_control.field), not a chart dimension.
+            bound = (component.get("date_dimension") if key == "date_field" else component.get("field") if key == "control_field"
+                     else (component.get("dimensions") or [None])[0])
             bucketed = key == 'date_field' and any(m.date_grain and _date_bucket(snapshot, bound, m.date_grain, field, derived)
                                                  for m in requirement.mappings)
             # A generic trend has no requested grain or metric semantics to borrow.
@@ -1733,11 +2032,19 @@ def _component_fulfills(component, requirement, needs, checker, snapshot, *, der
         metrics = [m for m in component.get("metrics", []) if m["field"] == mapping.field]
         if mapping.aggregation and (not metrics or any(m["agg"] != mapping.aggregation for m in metrics)):
             return False
-        if mapping.date_grain:
+        # A scorecard observation shows one value: it has no time axis, so no grain to prove (24.7).
+        if mapping.date_grain and not (component['type'] == 'scorecard' and requirement.source.kind == 'image'
+                                       and any(n.capability == 'chart.scorecard' for n in needs)):
             # Recipe 1.0 exposes no bucketing option: prove it in the selected
             # derived date dimension, never by a chart label or planner prose.
+            # A definition's `using` field must be the bucket's source.
+            using = requirement.mapping_origins.get('using')
             date_field = component.get('date_dimension')
-            if (component['type'] not in DATE_AXIS_TYPES and date_field not in component.get('dimensions', [])) or not _date_bucket(snapshot, date_field, mapping.date_grain, derived=derived):
+            if component['type'] not in DATE_AXIS_TYPES and date_field is None:
+                # A chart without a date axis (a yearly bar) shows the bucket as its dimension.
+                if not any(_bucket_of(snapshot, d, mapping.date_grain, using, derived) for d in component.get('dimensions', [])):
+                    return False
+            elif (component['type'] not in DATE_AXIS_TYPES and date_field not in component.get('dimensions', [])) or not _bucket_of(snapshot, date_field, mapping.date_grain, using, derived):
                 return False
         # Unit is a source-defined metric meaning kept in the ledger; recipe 1.0
         # has no display-unit setting. Never infer a currency conversion here.
@@ -1796,6 +2103,14 @@ def _date_bucket(snapshot, field, grain, source=None, derived=None):
     sql = derived.get(field)
     match = re.fullmatch(r'(?:date|timestamp|datetime)_trunc\s*\(\s*(?:`?t\d+`?\s*\.\s*)?`?([a-z_][a-z0-9_]*)`?\s*,\s*' + re.escape(grain_name(grain)) + r'\s*\)', sql.strip(), re.I) if sql else None
     return bool(match and (source is None or match[1] == source))
+
+
+def _bucket_of(snapshot, field, grain, using, derived):
+    """`field` is a date bucket at `grain`, of `using` (a definition's date field) unless `using` names the bucket:
+    a derived DATE_TRUNC, or the `using` field itself when its profile says every value starts that grain."""
+    if using is not None and field == using and (snapshot.get('date_starts') or {}).get(field) == grain_name(grain):
+        return True
+    return _date_bucket(snapshot, field, grain, None if using in (None, field) else using, derived)
 
 
 def verification(snapshot, ledger, checker):

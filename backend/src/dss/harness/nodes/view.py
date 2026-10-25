@@ -25,6 +25,16 @@ def field_name(value):
     return value
 
 
+# Planner output shape (live 24.7 runs): a trailing block comment citing provenance, or the next JSON
+# field leaked into the string (`DATE_TRUNC(year, YEAR)','date',`).
+LEAKED_TAIL = re.compile(r"\s*(?:/\*[^*]*\*/|'\s*,\s*'[a-z_]*'\s*,?)\s*$", re.I)
+
+
+def model_expression(value):
+    """A model-written derivation without a leaked tail; `expression` still gates what remains."""
+    return LEAKED_TAIL.sub('', value)
+
+
 def expression(value, identifiers=()):
     # Expressions may contain SQL functions, but may never introduce a statement,
     # comment or subquery. Source access is restricted to the profiled tables.
