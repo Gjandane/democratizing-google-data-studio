@@ -260,6 +260,7 @@ const currentAssessment = (id: string): Assessment => {
 
 /** Synthetic writes: connect only, no sources, no other action running (contracts/synthetic-data.md 1.2). */
 function requireSyntheticWrite(build: Build): void {
+  requireNoReview(build);
   requireStage(build, ['connect'], 'Sample data can only be added in Connect, before the context.');
   if (build.sources.length > 0) {
     throw new ApiError(409, 'synthetic_requires_empty_build', 'This build already has data. Start a new dashboard to use sample data.');
@@ -535,8 +536,13 @@ function requireEditable(build: Build, name: ArtifactName): void {
 
 function requireIdle(build: Build): void {
   if (state.stagedBusy.has(build.id)) throw new ApiError(409, 'action_in_progress', 'Wait for the current action to finish.');
-  // api.md 3.0: while a brief review waits, the other mutating routes refuse (reads and settings still work).
-  if (state.designPages.get(build.id)?.review) throw new ApiError(409, 'brief_review_pending', 'Approve or cancel the brief review first.', { review_id: state.designPages.get(build.id)!.review!.review_id });
+  requireNoReview(build);
+}
+
+/** api.md 3.0: while a brief review waits, every other mutating build route refuses (reads and settings still work). */
+function requireNoReview(build: Build): void {
+  const review = state.designPages.get(build.id)?.review;
+  if (review) throw new ApiError(409, 'brief_review_pending', 'Approve or cancel the brief review first.', { review_id: review.review_id });
 }
 
 /** The prototype run's result: the plan docs, the next spec version and the Prototype stage (api.md 2.0). */
@@ -944,6 +950,7 @@ export function createMockApi(): ApiClient {
 
     uploadSources: (id, files) =>
       respond(() => {
+        requireNoReview(findBuild(id));
         const tooLarge = oversizeError(files);
         if (tooLarge) throw tooLarge;
         const build = findBuild(id);
@@ -963,6 +970,7 @@ export function createMockApi(): ApiClient {
 
     addSource: (id, { kind, uri }) =>
       respond(() => {
+        requireNoReview(findBuild(id));
         const build = findBuild(id);
         requireGcp();
         const value = uri.trim();
@@ -979,6 +987,7 @@ export function createMockApi(): ApiClient {
 
     getFeasibility: (id) => respond(() => currentAssessment(id)),
     checkFeasibility: (id) => respond(() => {
+      requireNoReview(findBuild(id));
       const build = findBuild(id);
       requireStage(build, BEFORE_BUILD, 'Check feasibility before building.');
       if (state.assessmentBusy.has(id)) throw new ApiError(409, 'action_in_progress', 'Wait for the current check.');
@@ -993,6 +1002,7 @@ export function createMockApi(): ApiClient {
       }]);
     }),
     decideFeasibility: (id, assessmentId, decisions) => respond(() => {
+      requireNoReview(findBuild(id));
       const current = currentAssessment(id);
       if (!current.id || current.id !== assessmentId) throw new ApiError(409, 'feasibility_stale', 'Feasibility changed. Refresh and choose again.');
       if (state.assessmentBusy.has(id)) throw new ApiError(409, 'action_in_progress', 'Wait for the current check.');
@@ -1023,6 +1033,7 @@ export function createMockApi(): ApiClient {
       return updated;
     }),
     reapplyComments: (id, assessmentId, batchId) => respond(() => {
+      requireNoReview(findBuild(id));
       const build = findBuild(id);
       requireStage(build, ['prototype'], 'Open the prototype to reapply comments.');
       const current = currentAssessment(id);
@@ -1042,6 +1053,7 @@ export function createMockApi(): ApiClient {
       }]);
     }),
     discardComments: (id, assessmentId) => respond(() => {
+      requireNoReview(findBuild(id));
       const current = currentAssessment(id);
       if (current.id !== assessmentId) throw new ApiError(409, 'feasibility_stale', 'The saved batch changed. Refresh and choose again.');
       if (state.assessmentBusy.has(id)) throw new ApiError(409, 'action_in_progress', 'Wait for the current action.');
@@ -1059,6 +1071,7 @@ export function createMockApi(): ApiClient {
       return state.references.get(`${id}:${build.current_version}`) ?? null;
     }),
     uploadReferences: (id, files, mode, instructions) => respond(() => {
+      requireNoReview(findBuild(id));
       const build = findBuild(id);
       requireStage(build, BEFORE_BUILD, 'Start a new version to change references.');
       if (state.referenceBusy.has(id)) throw new ApiError(409, 'build_busy', 'Wait for the current reference upload.');
@@ -1081,6 +1094,7 @@ export function createMockApi(): ApiClient {
       }]);
     }),
     deleteReferences: (id) => respond(() => {
+      requireNoReview(findBuild(id));
       const build = findBuild(id);
       requireStage(build, BEFORE_BUILD, 'Start a new version to change references.');
       if (state.referenceBusy.has(id)) throw new ApiError(409, 'build_busy', 'Wait for the current reference upload.');
@@ -1175,6 +1189,7 @@ export function createMockApi(): ApiClient {
     syntheticCsvUrl: (id, sourceId) => `/api/builds/${encodeURIComponent(id)}/synthetic-data/${encodeURIComponent(sourceId)}/csv`,
     uploadStyleImages: (id, files) =>
       respond(() => {
+        requireNoReview(findBuild(id));
         const tooLarge = oversizeError(files);
         if (tooLarge) throw tooLarge;
         const build = findBuild(id);
@@ -1189,6 +1204,7 @@ export function createMockApi(): ApiClient {
 
     startResearch: (id, prompt) =>
       respond(() => {
+        requireNoReview(findBuild(id));
         const build = findBuild(id);
         requireModel();
         if (!prompt.trim()) throw invalid('invalid_request', 'Describe what to research.');
@@ -1548,6 +1564,7 @@ export function createMockApi(): ApiClient {
 
     postComments: (id, comments) =>
       respond(() => {
+        requireNoReview(findBuild(id));
         const build = findBuild(id);
         if (comments.length < 1 || comments.length > 20 || !comments.every((c) => isComment(c) && c.text.trim())) {
           throw invalid('invalid_request', 'Send 1 to 20 comments, each with text.');
@@ -1577,6 +1594,7 @@ export function createMockApi(): ApiClient {
 
     runAudit: (id) =>
       respond(() => {
+        requireNoReview(findBuild(id));
         const build = findBuild(id);
         requireStage(build, ['prototype'], 'Run the audit on the prototype. Open the Prototype stage first.');
         requireModel();
@@ -1591,6 +1609,7 @@ export function createMockApi(): ApiClient {
 
     compileRecipe: (id) =>
       respond(() => {
+        requireNoReview(findBuild(id));
         const build = findBuild(id);
         if (build.spec_version === null) throw new ApiError(409, 'wrong_stage', 'Accept the blueprint before the recipe.', { stage: build.stage });
         requireConfirmed(build);
@@ -1599,6 +1618,7 @@ export function createMockApi(): ApiClient {
 
     runBuild: (id) =>
       respond(() => {
+        requireNoReview(findBuild(id));
         const build = findBuild(id);
         if (state.engineBusy) throw new ApiError(409, 'engine_busy', 'Another build is running in Data Studio. Wait for it to finish, then try again.');
         if (agentMode() && !state.engine.agent_connected) {
@@ -1665,6 +1685,7 @@ export function createMockApi(): ApiClient {
 
     createVersion: (id) =>
       respond(() => {
+        requireNoReview(findBuild(id));
         const build = findBuild(id);
         requireStage(build, ['prototype', 'done'], 'Wait for the build to finish, then start a new version.');
         const n = Math.max(0, ...build.versions.map((v) => v.n)) + 1;

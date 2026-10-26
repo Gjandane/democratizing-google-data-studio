@@ -249,6 +249,41 @@ describe('Run checklist card', () => {
     expect(statuses()).toEqual(['done', 'failed', 'pending']);
   });
 
+  it('a run that emitted brief.review ends "Paused for brief review" with no success tick; approving starts a new card', async () => {
+    const { start, finish, fire } = await setup();
+    await start('prototype');
+    await advance(12_000);
+    await fire({ name: 'brief.review', data: { review_id: 'br_1', page: 1, pages: 2 } });
+    await finish('prototype');
+    const labels = () => steps().map((li) => li.querySelector('span:not(.sr-only)')?.textContent);
+    expect(labels()).toEqual(['Laying out the pages', 'Checking the layout', 'Paused for brief review']);
+    expect(statuses()).toEqual(['done', 'done', 'paused']);
+    expect(card()?.querySelectorAll('[data-step-status="done"]:last-child')).toHaveLength(0);
+    // The strip says the same, with no "Done in" and no success icon.
+    expect(strip()).toBe('Paused for brief review');
+    expect(document.querySelector('[data-activity-strip] .text-success')).toBeNull();
+    expect(document.querySelector('[data-activity-strip] [role="status"]')?.textContent).toBe('Paused for brief review');
+    await advance(60_000);
+    expect(statuses()).toEqual(['done', 'done', 'paused']);
+    // The approved review continues under the same node, as a new run.
+    await fire({ name: 'run.started', data: { run_id: 'r_2', node: 'prototype' } });
+    await advance(400);
+    expect(card()?.dataset.runCard).toBe('r_2');
+    expect(labels()).toEqual(['Laying out the pages', 'Checking the layout', 'Rendering the prototype']);
+    await fire({ name: 'run.finished', data: { run_id: 'r_2', node: 'prototype', status: 'ok', error: null } });
+    expect(statuses()).toEqual(['done', 'done', 'done']);
+  });
+
+  it('brief.review pauses only a prototype or revise run, never another node', async () => {
+    const { start, finish, fire } = await setup();
+    await start('blueprint');
+    await advance(400);
+    await fire({ name: 'brief.review', data: { review_id: 'br_1', page: 1, pages: 2 } });
+    await finish('blueprint');
+    expect(statuses()).toEqual(['done', 'done', 'done']);
+    expect(strip()).toMatch(/^Done in/);
+  });
+
   it('a node.progress text replaces the current step label', async () => {
     const { start, progress } = await setup();
     await start('blueprint');

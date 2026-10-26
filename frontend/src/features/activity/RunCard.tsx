@@ -1,16 +1,20 @@
-import { Check, Circle, X } from 'lucide-react';
+import { Check, Circle, CirclePause, X } from 'lucide-react';
 import { useLayoutEffect } from 'react';
 import { Spinner } from '../../components/Spinner';
 import { presetFor } from './presets';
 import { cardRun, currentStep, nextChange, useActivityClock, type Activity } from './activity';
 
-type StepStatus = 'done' | 'active' | 'pending' | 'failed';
+type StepStatus = 'done' | 'active' | 'pending' | 'failed' | 'paused';
 
-const STATUS_TEXT: Record<StepStatus, string> = { done: 'done', active: 'in progress', pending: 'to do', failed: 'failed' };
+const STATUS_TEXT: Record<StepStatus, string> = { done: 'done', active: 'in progress', pending: 'to do', failed: 'failed', paused: 'waiting for you' };
+
+/** The last step of a run that stopped for the user's brief review (api.md 3.0 `brief.review`). */
+export const PAUSED_STEP = 'Paused for brief review';
 
 function StepIcon({ status }: { status: StepStatus }) {
   if (status === 'done') return <Check aria-hidden="true" className="size-3.5 shrink-0 text-success" />;
   if (status === 'failed') return <X aria-hidden="true" className="size-3.5 shrink-0 text-danger" />;
+  if (status === 'paused') return <CirclePause aria-hidden="true" className="size-3.5 shrink-0 text-primary" />;
   if (status === 'active') return <Spinner size="sm" className="text-primary" />;
   return <Circle aria-hidden="true" className="size-3.5 shrink-0 text-border-strong" />;
 }
@@ -18,6 +22,7 @@ function StepIcon({ status }: { status: StepStatus }) {
 /**
  * The preset checklist of the newest run with steps. Steps tick on their preset timer; the last
  * one waits for `run.finished` ok, so the card never claims a result before the server does.
+ * A run that paused for a brief review ends on "Paused for brief review" instead of a tick.
  */
 export function RunCard({ activity, onShow }: { activity: Activity; onShow?: () => void }) {
   const now = Date.now();
@@ -32,7 +37,10 @@ export function RunCard({ activity, onShow }: { activity: Activity; onShow?: () 
   if (!run || !preset?.steps) return null;
 
   const current = currentStep(preset.steps, now - run.startedAt);
+  const last = preset.steps.length - 1;
+  const pausedHere = run.paused && run.status === 'ok';
   const statusOf = (i: number): StepStatus => {
+    if (pausedHere) return i < last ? 'done' : 'paused';
     if (run.status === 'ok') return 'done';
     const at = run.status === 'error' ? (run.failedStep ?? current) : current;
     if (i < at) return 'done';
@@ -56,7 +64,7 @@ export function RunCard({ activity, onShow }: { activity: Activity; onShow?: () 
             <li key={i} data-step-status={status} className="flex items-center gap-2 text-label">
               <StepIcon status={status} />
               <span className={`min-w-0 [overflow-wrap:anywhere] ${status === 'pending' ? 'text-text-muted' : 'text-text'}`}>
-                {run.labels[i] ?? step.label}
+                {pausedHere && i === last ? PAUSED_STEP : (run.labels[i] ?? step.label)}
               </span>
               <span className="sr-only">({STATUS_TEXT[status]})</span>
             </li>

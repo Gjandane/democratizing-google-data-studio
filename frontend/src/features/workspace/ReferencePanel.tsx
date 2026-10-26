@@ -7,6 +7,7 @@ import { TextArea } from '../../components/Input';
 import { focusRing } from '../../components/focus';
 import { LoadingState } from '../../components/Spinner';
 import { subscribeWorkspace, useRefocusAfter } from './stretch';
+import { useReviewLock } from './briefs/reviewLock';
 
 type Finished = BuildEventMap['run.finished'];
 const modeName = (mode: ReferenceMode) => mode === 'style' ? 'Use style' : 'Recreate dashboard';
@@ -58,7 +59,9 @@ export function ReferencePanel({ buildId, version = 1, readOnly = false, disable
   const finished = useRef(new Map<string, Finished>());
   const activeRuns = useRef(new Set<string>());
   const [externalBusy, setExternalBusy] = useState(false);
-  const locked = busy || disabled || externalBusy;
+  // A brief review waits (WorkspaceShell's lock): upload and remove wait with it.
+  const reviewLock = useReviewLock();
+  const locked = busy || disabled || externalBusy || reviewLock !== null;
   useRefocusAfter(busy, upload);
   // A background refetch keeps the loaded set and readiness; an error stays (closed) until a GET succeeds.
   useLayoutEffect(() => {

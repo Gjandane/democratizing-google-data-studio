@@ -2,6 +2,7 @@
 // With VITE_MOCK=1, `api` is the fixture-backed mock from src/mocks/ with the same signatures.
 import { withAccessNotice } from '../features/access/accessNotice';
 import { withServiceNotice } from '../features/settings/serviceNotice';
+import { withReviewNotice } from '../features/workspace/briefs/reviewLock';
 import { createMockApi } from '../mocks/api';
 import {
   ApiError,
@@ -361,7 +362,8 @@ export const httpApi: ApiClient = {
 export const isMockMode = import.meta.env.VITE_MOCK === '1';
 
 /**
- * The client every component uses; a 503 that points at Settings also raises the app banner, and a
- * `401 access_required` sends the app back to the access-code gate.
+ * The client every component uses; a 503 that points at Settings also raises the app banner, a
+ * `401 access_required` sends the app back to the access-code gate, and a `409 brief_review_pending`
+ * makes the open workspace read its brief review again.
  */
-export const api: ApiClient = withAccessNotice(withServiceNotice(isMockMode ? createMockApi() : httpApi));
+export const api: ApiClient = withAccessNotice(withServiceNotice(withReviewNotice(isMockMode ? createMockApi() : httpApi)));

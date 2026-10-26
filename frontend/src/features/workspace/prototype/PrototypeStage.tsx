@@ -13,6 +13,7 @@ import { SampleDataBanner } from '../connect/SyntheticDataPanel';
 import { BriefPanel } from '../briefs/BriefPanel';
 import { StandardLayoutChip } from '../briefs/StandardLayout';
 import { useDesignPages } from '../briefs/useDesignPages';
+import { useReviewLock } from '../briefs/reviewLock';
 import { PrototypeCanvas, type ShownPage } from './PrototypeCanvas';
 import type { PendingComment, Target } from './types';
 
@@ -60,6 +61,8 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
   const specVersion = build.spec_version;
   const seenVersion = useRef(specVersion);
   const designPages = useDesignPages(build.id);
+  // A brief review waits (WorkspaceShell's lock): Apply and the audit wait with it; drafting comments stays local.
+  const reviewLock = useReviewLock();
   const [briefOpen, setBriefOpen] = useState(false);
   const [shownPage, setShownPage] = useState<ShownPage>({ n: 1, name: null, tabbed: false });
   const briefButton = useRef<HTMLButtonElement>(null);
@@ -119,7 +122,7 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
 
   const apply = () => {
     const batch = pending;
-    if (batch.length === 0 || submitting) return;
+    if (batch.length === 0 || submitting || reviewLock) return;
     sent.current = batch;
     savedCandidate.current = batch;
     setError(null);
@@ -144,6 +147,7 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
       {/* Always shown with a prototype, so the canvas below never moves when data arrives. */}
       <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
         <div aria-live="polite" className="min-w-0 flex-1 text-right text-body text-text-muted">
+          {reviewLock && !auditing && audit.state !== 'ok' && <span>{reviewLock}</span>}
           {auditing && (
             <span className="inline-flex items-center gap-2">
               <Spinner />
@@ -174,7 +178,7 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
             ref={auditButton}
             variant="secondary"
             icon={<ScanSearch aria-hidden="true" />}
-            disabled={busy || auditing}
+            disabled={busy || auditing || reviewLock !== null}
             onClick={() => void audit.start(() => api.runAudit(build.id))}
           >
             Run UX audit
@@ -226,6 +230,7 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
         presentCids={presentCids}
         pageNames={pageNames}
         applying={busy}
+        lockReason={reviewLock}
         batchSize={batchSize}
         error={error}
         headingRef={heading}

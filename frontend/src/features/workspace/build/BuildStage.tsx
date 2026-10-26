@@ -9,6 +9,7 @@ import { failedCount, idleRun, type BuildRun } from './buildRun';
 import { EnginePanel, engineReady } from './EnginePanel';
 import { LiveViewPanel } from './LiveViewPanel';
 import { RecipePanel } from './RecipePanel';
+import { useReviewLock } from '../briefs/reviewLock';
 
 const messageOf = (error: unknown, fallback: string) => (error instanceof ApiError ? error.message : fallback);
 
@@ -72,6 +73,10 @@ export function BuildStage({ build, run: streamRun, referencesReady = true, feas
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const mounted = useRef(true);
+  // A brief review waits (WorkspaceShell's lock): the recipe and the build wait with it.
+  const reviewLock = useReviewLock();
+  const reviewLocked = useRef(false);
+  reviewLocked.current = reviewLock !== null;
   /** The run object at the time the recipe was compiled while idle: its results belong to the old recipe. */
   const compiledFor = useRef<BuildRun | null>(null);
   const autoCompiled = useRef(false);
@@ -91,7 +96,7 @@ export function BuildStage({ build, run: streamRun, referencesReady = true, feas
 
   const buildId = build.id;
   const generate = async () => {
-    if ((!referencesReady || !feasibilityReady)) return;
+    if ((!referencesReady || !feasibilityReady) || reviewLocked.current) return;
     setGenerating(true);
     setRecipeError(null);
     try {
@@ -122,7 +127,7 @@ export function BuildStage({ build, run: streamRun, referencesReady = true, feas
   }, [build.stage]);
 
   const start = async () => {
-    if ((!referencesReady || !feasibilityReady)) return;
+    if ((!referencesReady || !feasibilityReady) || reviewLocked.current) return;
     setStarting(true);
     setStartError(null);
     try {
@@ -147,7 +152,7 @@ export function BuildStage({ build, run: streamRun, referencesReady = true, feas
   const ready = engine !== null && engineReady(engine);
   const agentOffline = engine?.mode === 'agent' && !engine.agent_connected;
   const signedOut = engine !== null && !agentOffline && !engine.signed_in;
-  const canBuild = referencesReady && feasibilityReady && ready && recipe !== null && !run.running && !starting && build.stage === 'prototype';
+  const canBuild = referencesReady && feasibilityReady && reviewLock === null && ready && recipe !== null && !run.running && !starting && build.stage === 'prototype';
 
   return (
     <div className="mt-6 space-y-4">
@@ -155,7 +160,7 @@ export function BuildStage({ build, run: streamRun, referencesReady = true, feas
         This dashboard is built from invented rows, and Data Studio shows it with the same label.
       </SampleDataBanner>
       <EnginePanel refreshKey={engineKey} offlineSignal={offlineSignal} onEngine={setEngine} />
-      <fieldset disabled={(!referencesReady || !feasibilityReady)} className="min-w-0"><RecipePanel recipe={recipe} run={run} generating={generating} error={recipeError} onGenerate={generate} /></fieldset>
+      <fieldset disabled={(!referencesReady || !feasibilityReady) || reviewLock !== null} className="min-w-0"><RecipePanel recipe={recipe} run={run} generating={generating} error={recipeError} onGenerate={generate} /></fieldset>
       <LiveViewPanel frame={run.frame} running={run.running} />
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         {build.stage === 'done' ? (
@@ -165,6 +170,7 @@ export function BuildStage({ build, run: streamRun, referencesReady = true, feas
             Build in Data Studio
           </Button>
         )}
+        {reviewLock && build.stage !== 'done' && <p className="text-label text-text-muted">{reviewLock}</p>}
         {agentOffline && <p className="text-label text-text-muted">Start the build agent to build.</p>}
         {signedOut && (
           <p className="text-label text-text-muted">{engine?.mode === 'agent' ? 'Sign in on the agent to build.' : 'Sign in to Google to build.'}</p>

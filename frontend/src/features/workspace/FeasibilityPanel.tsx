@@ -8,6 +8,7 @@ import { focusRing } from '../../components/focus';
 import { LoadingState } from '../../components/Spinner';
 import { IssueSlotContext } from './blueprint/issueSlots';
 import { subscribeWorkspace } from './stretch';
+import { useReviewLock } from './briefs/reviewLock';
 
 export interface FeasibilityGates { planReady: boolean; buildReady: boolean }
 const closed: FeasibilityGates = { planReady: false, buildReady: false };
@@ -58,6 +59,10 @@ export function FeasibilityPanel({ buildId, referencesReady = true, readOnly = f
   const notifyDecided = slotHost?.notifyDecided;
   const hostRefresh = slotHost?.refresh ?? 0;
   const action = useRef<'check' | 'reapply' | 'replan'>('check');
+  // A brief review waits: decisions, checks and comment batches wait with every other action.
+  const reviewLock = useReviewLock();
+  const reviewLocked = useRef(false);
+  reviewLocked.current = reviewLock !== null;
   const success = () => action.current === 'check' ? 'Feasibility checked. Review the result.' : 'Prototype update finished. Review the current assessment.';
 
   const accept = useCallback((value: Assessment) => {
@@ -155,7 +160,7 @@ export function FeasibilityPanel({ buildId, referencesReady = true, readOnly = f
 
   const check = async (kind: 'check' | 'reapply' | 'replan' = 'check') => {
     const value = current.current;
-    if (locked.current || runs.current.size > 0 || externalBusy || !value || loadError || readOnly || !referencesReady) return;
+    if (locked.current || reviewLocked.current || runs.current.size > 0 || externalBusy || !value || loadError || readOnly || !referencesReady) return;
     if (kind !== 'check' && (!value?.id || !['ready', 'stale'].includes(value.state) || value.issues.some((issue) => issue.resolution === 'unresolved'))) return;
     if (kind === 'reapply' && !value?.pending_comments) return;
     if (kind === 'replan' && (!canReplan || localCommentsPending || value?.pending_comments || !value?.prototype_stale)) return;
@@ -187,7 +192,7 @@ export function FeasibilityPanel({ buildId, referencesReady = true, readOnly = f
   };
   const discard = async () => {
     const assessmentId = current.current?.id;
-    if (!assessmentId || !current.current?.pending_comments || locked.current || runs.current.size > 0 || loadError || externalBusy || readOnly || !referencesReady) return;
+    if (!assessmentId || !current.current?.pending_comments || locked.current || reviewLocked.current || runs.current.size > 0 || loadError || externalBusy || readOnly || !referencesReady) return;
     const request = seq.current;
     locked.current = true; setBusy(true); setError(null); setStatus('Discarding pending comments…');
     try {
@@ -208,7 +213,7 @@ export function FeasibilityPanel({ buildId, referencesReady = true, readOnly = f
   };
   const decide = async (decision: FeasibilityDecision) => {
     const assessmentId = current.current?.id;
-    if (!assessmentId || locked.current || loadError || externalBusy || readOnly || !referencesReady) return;
+    if (!assessmentId || locked.current || reviewLocked.current || loadError || externalBusy || readOnly || !referencesReady) return;
     const request = seq.current;
     locked.current = true; setBusy(true); setError(null); setStatus('Saving your decision…');
     try {
@@ -231,7 +236,7 @@ export function FeasibilityPanel({ buildId, referencesReady = true, readOnly = f
       if (mounted.current) { locked.current = false; setBusy(false); setFocusRequest((n) => n + 1); }
     }
   };
-  const disabled = readOnly || busy || externalBusy || !assessment || Boolean(loadError) || !referencesReady;
+  const disabled = readOnly || busy || externalBusy || reviewLock !== null || !assessment || Boolean(loadError) || !referencesReady;
   const resolved = assessment && ['ready', 'stale'].includes(assessment.state) && assessment.issues.every((issue) => issue.resolution !== 'unresolved');
   // Nothing to act on: heading, summary and any status share one line, so the stage content stays above the fold.
   const oneLine = !loadError && assessment?.state === 'ready' && resolved && !assessment.prototype_stale && !assessment.pending_comments;

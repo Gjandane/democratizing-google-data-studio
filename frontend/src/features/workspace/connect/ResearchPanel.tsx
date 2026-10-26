@@ -6,6 +6,7 @@ import { TextArea } from '../../../components/Input';
 import { Spinner } from '../../../components/Spinner';
 import type { StretchRuns } from '../../activity/useBuildStream';
 import { useRefocusAfter, useStretchAction } from '../stretch';
+import { useReviewLock } from '../briefs/reviewLock';
 
 /** Research mode: a prompt for the research run, whose findings land in the sources table. */
 export function ResearchPanel({ buildId, stretchRuns }: { buildId: string; stretchRuns: StretchRuns }) {
@@ -14,6 +15,7 @@ export function ResearchPanel({ buildId, stretchRuns }: { buildId: string; stret
   const button = useRef<HTMLButtonElement>(null);
   const busy = action.state === 'starting' || action.state === 'running';
   useRefocusAfter(busy, button);
+  const reviewLock = useReviewLock();
   if (action.hidden) return null;
   const text = prompt.trim();
 
@@ -22,7 +24,7 @@ export function ResearchPanel({ buildId, stretchRuns }: { buildId: string; stret
       aria-label="Research"
       onSubmit={(e) => {
         e.preventDefault();
-        if (text && !busy) void action.start(() => api.startResearch(buildId, text));
+        if (text && !busy && !reviewLock) void action.start(() => api.startResearch(buildId, text));
       }}
       className="flex flex-col gap-3 rounded-panel border border-border bg-surface p-4"
     >
@@ -35,7 +37,7 @@ export function ResearchPanel({ buildId, stretchRuns }: { buildId: string; stret
         onChange={(e) => setPrompt(e.target.value)}
       />
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <Button ref={button} type="submit" variant="secondary" icon={<Search aria-hidden="true" />} disabled={text === '' || busy}>
+        <Button ref={button} type="submit" variant="secondary" icon={<Search aria-hidden="true" />} disabled={text === '' || busy || reviewLock !== null}>
           Start research
         </Button>
         <div role="status" className="text-body text-text-muted">

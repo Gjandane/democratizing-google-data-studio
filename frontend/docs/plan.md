@@ -277,7 +277,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: S
   - Done when: `npm test` and `npm run typecheck` pass with tests/briefs.test.tsx (failing before) asserting: the Design brief panel renders the fixture markdown (no raw HTML), meta line and download links to `/api/builds/<id>/files/brief_p1.md` and `.json`; page 2 of design_pages.json shows "Standard layout" with the layout_fallback note; a page with a null brief says "No saved brief for this page"; design-pages refetches on `prototype.updated` and `brief.review` and a background refetch keeps the panel content. Manual at 1280x800 and 1440x900: screenshots/16.3-{brief-panel,standard-chip}-<viewport>.png checked against docs/stage-settings-ui.md and the UI design section; pins stay aligned with the chip shown.
   - Review focus: ../contracts/api.md 3.0 DesignPage; text not color alone; Studio Light tokens.
-- [ ] 16.4 Brief review gate
+- [x] 16.4 Brief review gate
   - Goal: a pending brief review shows as an editable panel that saves, approves or cancels, survives reload, handles stale, and locks every other mutating control in the workspace.
   - Spec: docs/stage-settings-ui.md#Brief review
   - Files: src/features/workspace/** (one review lock owned by WorkspaceShell and routed to every mutating control: ArtifactStage, the artifact editors, FeasibilityPanel, ReferencePanel, connect/, prototype/, build/), src/features/workspace/briefs/*, src/features/activity/RunCard.tsx, src/features/activity/activity.ts, src/mocks/*.ts, tests/brief-review.test.tsx (new), tests/activity.test.tsx, screenshots/

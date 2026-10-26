@@ -1,6 +1,7 @@
-import { CircleAlert, CircleCheck } from 'lucide-react';
+import { CircleAlert, CircleCheck, CirclePause } from 'lucide-react';
 import { PHRASE_MS, presetFor } from './presets';
 import { formatElapsed, formatTokens, nextChange, stripRun, useActivityClock, type Activity, type ActivityRun } from './activity';
+import { PAUSED_STEP } from './RunCard';
 
 const sep = <span aria-hidden="true">·</span>;
 
@@ -65,11 +66,15 @@ export function ActivityStrip({ activity }: { activity: Activity }) {
   } else if (run) {
     const took = formatElapsed((run.finishedAt ?? now) - run.startedAt);
     const ok = run.status === 'ok';
-    announce = ok ? `Done in ${took}` : `Stopped after ${took}`;
+    // A run that emitted brief.review finished ok but only paused: it says so, as its card does, with no success tick.
+    const paused = ok && run.paused;
+    announce = paused ? PAUSED_STEP : ok ? `Done in ${took}` : `Stopped after ${took}`;
     const total = ok && run.usage ? ` · ${formatTokens(run.usage.input + run.usage.output)} tokens` : '';
     line = (
       <>
-        {ok ? (
+        {paused ? (
+          <CirclePause aria-hidden="true" className="size-3.5 shrink-0 text-primary" />
+        ) : ok ? (
           <CircleCheck aria-hidden="true" className="size-3.5 shrink-0 text-success" />
         ) : (
           <CircleAlert aria-hidden="true" className="size-3.5 shrink-0 text-danger" />

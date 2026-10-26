@@ -1,5 +1,5 @@
 import { Activity, ArrowLeft, ChartColumn, Hammer, Settings } from 'lucide-react';
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import { ApiError, ARTIFACTS, type ArtifactName, type Assessment, type Build, type Stage } from '../../api/types';
@@ -18,6 +18,10 @@ import { ArtifactStage } from './ArtifactStage';
 import { FeasibilityPanel, type FeasibilityGates } from './FeasibilityPanel';
 import { ReferencePanel } from './ReferencePanel';
 import { prototypeStale, STAGE_LABELS, staleCause, Stepper } from './Stepper';
+import { BriefReviewPanel } from './briefs/BriefReviewPanel';
+import { onReviewPending, REVIEW_LOCK_REASON, ReviewLockContext } from './briefs/reviewLock';
+import { useDesignPages } from './briefs/useDesignPages';
+import { AWAIT_RUN_MS } from './outline/OutlinePicker';
 
 type Load = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; build: Build };
 
@@ -78,8 +82,14 @@ function StageArea({
   pendingComments,
   onPendingChange,
   onBuildChange,
+  review,
+  reviewLock,
 }: {
   build: Build;
+  /** The brief review panel, at the top of the stage area whatever the stage. */
+  review: ReactNode;
+  /** The review lock's reason while a brief review waits, else null. */
+  reviewLock: string | null;
   /** The stage area on screen: the build's stage, or an earlier step the stepper reopened. */
   shown: Stage;
   mainRef: RefObject<HTMLElement | null>;
@@ -113,6 +123,7 @@ function StageArea({
   return (
     <main ref={mainRef} tabIndex={-1} className="relative min-h-0 scroll-pb-20 overflow-y-auto outline-none">
       <div className="flex min-h-full flex-col px-6 py-6">
+        {review}
         {isArtifact(view) ? (
           <ArtifactStage
             key={view}
@@ -134,16 +145,16 @@ function StageArea({
               </div>
               {build.stage === 'prototype' && !showBuild && (
                 <div className="flex shrink-0 items-center gap-3">
-                  {pendingComments > 0 && (
+                  {(reviewLock !== null || pendingComments > 0) && (
                     <p id="continue-hint" className="text-label text-text-muted">
-                      Apply or remove your comments first.
+                      {reviewLock ?? 'Apply or remove your comments first.'}
                     </p>
                   )}
                   <Button
                     variant="primary"
                     icon={<Hammer aria-hidden="true" />}
-                    disabled={applying || pendingComments > 0 || !referencesReady || !feasibility.buildReady}
-                    aria-describedby={pendingComments > 0 ? 'continue-hint' : undefined}
+                    disabled={applying || reviewLock !== null || pendingComments > 0 || !referencesReady || !feasibility.buildReady}
+                    aria-describedby={reviewLock !== null || pendingComments > 0 ? 'continue-hint' : undefined}
                     onClick={() => onBuildOpen(true)}
                   >
                     Continue to build
@@ -212,11 +223,80 @@ function Workspace({ build, shown, mainRef, onBuildChange }: { build: Build; sho
     movedFocus.current = false;
     mainRef.current?.focus();
   }, [buildOpen, mainRef]);
+
+  // The brief review (api.md 3.0): one lock for the whole workspace, from GET design-pages.
+  const designPages = useDesignPages(build.id);
+  const reloadPages = designPages.reload;
+  // Any action answered 409 brief_review_pending: a review waits that this window never saw.
+  useEffect(() => onReviewPending(reloadPages), [reloadPages]);
+  // Reviews approved or cancelled here: hidden at once, even before the refetch lands.
+  const [handled, setHandled] = useState<ReadonlySet<string>>(() => new Set());
+  // After an approve's 202, controls stay off until its run shows on the stream (fallback AWAIT_RUN_MS).
+  const [awaitRun, setAwaitRun] = useState<string | null>(null);
+  const runSeen = awaitRun !== null && stream.activity.some((run) => run.runId === awaitRun);
+  useEffect(() => {
+    if (awaitRun === null) return;
+    if (runSeen) {
+      setAwaitRun(null);
+      return;
+    }
+    const timer = setTimeout(() => setAwaitRun(null), AWAIT_RUN_MS);
+    return () => clearTimeout(timer);
+  }, [awaitRun, runSeen]);
+  const fetched = designPages.data?.review ?? null;
+  const review = fetched && !handled.has(fetched.review_id) ? fetched : null;
+  // `brief.review` arrived and its refetch is still out: lock in the event's own render.
+  const announced = stream.briefReview;
+  const unread = announced !== null && !handled.has(announced.review_id) && designPages.loading;
+  const reviewLock = review !== null || unread || (awaitRun !== null && !runSeen) ? REVIEW_LOCK_REASON : null;
+
+  const reviewHeading = useRef<HTMLHeadingElement>(null);
+  const leftReview = useRef(false);
+  const shownReview = review?.review_id ?? null;
+  useLayoutEffect(() => {
+    if (shownReview === null) {
+      // Approve or Cancel unmounted the panel with focus in it: keep keyboard focus on the stage area.
+      if (leftReview.current) mainRef.current?.focus();
+      leftReview.current = false;
+      return;
+    }
+    // A review appeared: take focus to it, unless the user is in the top bar or the activity column.
+    const active = document.activeElement;
+    if (!active || active === document.body || mainRef.current?.contains(active)) reviewHeading.current?.focus();
+  }, [shownReview, mainRef]);
+  const settle = (reviewId: string) => {
+    leftReview.current = true;
+    setHandled((ids) => new Set(ids).add(reviewId));
+    reloadPages();
+  };
+  const reviewPanel = review && (
+    <BriefReviewPanel
+      key={review.review_id}
+      buildId={build.id}
+      review={review}
+      headingRef={reviewHeading}
+      onReload={reloadPages}
+      onApproved={(reviewId, runId) => {
+        setAwaitRun(runId);
+        settle(reviewId);
+      }}
+      onCancelled={(reviewId) => {
+        settle(reviewId);
+        // Cancel drops the candidate: read the build again (its stage and artifacts).
+        api.getBuild(build.id).then(onBuildChange, () => {
+          // The stream's next event or reconnect brings it.
+        });
+      }}
+    />
+  );
+
   return (
-    <div className="grid min-h-0 grid-cols-[var(--layout-chat)_minmax(0,1fr)]">
-      <ActivityColumn build={build} stream={stream} />
-      <StageArea build={build} shown={shown} mainRef={mainRef} stream={stream} buildOpen={buildOpen} onBuildOpen={toggleBuild} pendingComments={pendingComments} onPendingChange={setPendingComments} onBuildChange={onBuildChange} />
-    </div>
+    <ReviewLockContext.Provider value={reviewLock}>
+      <div className="grid min-h-0 grid-cols-[var(--layout-chat)_minmax(0,1fr)]">
+        <ActivityColumn build={build} stream={stream} />
+        <StageArea build={build} shown={shown} mainRef={mainRef} stream={stream} buildOpen={buildOpen} onBuildOpen={toggleBuild} pendingComments={pendingComments} onPendingChange={setPendingComments} onBuildChange={onBuildChange} review={reviewPanel} reviewLock={reviewLock} />
+      </div>
+    </ReviewLockContext.Provider>
   );
 }
 

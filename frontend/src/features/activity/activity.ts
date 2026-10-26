@@ -24,6 +24,8 @@ export interface ActivityRun {
   labels: Readonly<Record<number, string>>;
   /** The step that was current when the run failed. */
   failedStep: number | null;
+  /** The run emitted `brief.review` (api.md 3.0): it finishes ok but paused for the user's brief review. */
+  paused: boolean;
   /**
    * Activity messages known when the run started: its card sits after them, so later messages render
    * below it. null while the log's first load hasn't landed (the card then goes after all of it).
@@ -63,6 +65,7 @@ export function reduceActivity(runs: Activity, event: BuildEvent, now: number, m
         ops: 0,
         labels: {},
         failedStep: null,
+        paused: false,
         after: messages,
       };
       return [...runs.filter((r) => r.runId !== run.runId), run].slice(-KEEP_RUNS);
@@ -77,6 +80,11 @@ export function reduceActivity(runs: Activity, event: BuildEvent, now: number, m
         if (!steps || r.status !== 'running') return r;
         return { ...r, labels: { ...r.labels, [currentStep(steps, now - r.startedAt)]: event.data.text } };
       });
+    case 'brief.review': {
+      // The event names no run: it belongs to the newest prototype or revise run still going (api.md 3.0).
+      const run = [...runs].reverse().find((r) => r.status === 'running' && (r.node === 'prototype' || r.node === 'revise'));
+      return run ? update(runs, run.runId, (r) => ({ ...r, paused: true })) : runs;
+    }
     case 'build.op': {
       const run = [...runs].reverse().find((r) => r.status === 'running' && r.node === 'execute');
       return run ? update(runs, run.runId, (r) => ({ ...r, ops: r.ops + 1 })) : runs;

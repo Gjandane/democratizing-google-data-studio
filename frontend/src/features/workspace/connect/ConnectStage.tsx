@@ -14,6 +14,7 @@ import type { StretchRuns } from '../../activity/useBuildStream';
 import { ResearchPanel } from './ResearchPanel';
 import { hasSyntheticSource, SYNTHETIC_LABEL, SyntheticBadge, SyntheticDataPanel, SyntheticDetails } from './SyntheticDataPanel';
 import { ReferencePanel } from '../ReferencePanel';
+import { useReviewLock } from '../briefs/reviewLock';
 
 type UriKind = 'gcs' | 'bigquery';
 type DataChoice = 'upload' | 'generate';
@@ -135,7 +136,11 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
   const notesRef = useRef(notes);
   notesRef.current = notes;
 
-  const isBusy = busy !== null;
+  // A brief review waits (WorkspaceShell's lock): adding data and drafting the context wait with it.
+  const reviewLock = useReviewLock();
+  const reviewLocked = useRef(false);
+  reviewLocked.current = reviewLock !== null;
+  const isBusy = busy !== null || reviewLock !== null;
   const hasSources = build.sources.length > 0;
   const generating = !hasSources && choice === 'generate';
   const realSources = hasSources && !hasSyntheticSource(build.sources);
@@ -182,7 +187,7 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
   };
 
   const upload = async (files: File[]) => {
-    if (files.length === 0 || busyRef.current) return;
+    if (files.length === 0 || busyRef.current || reviewLocked.current) return;
     lastFiles.current = files;
     begin({ kind: 'upload', count: files.length });
     try {
@@ -210,7 +215,7 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
   const addUri = async (event: FormEvent) => {
     event.preventDefault();
     const value = uri.trim();
-    if (!value || busyRef.current) return;
+    if (!value || busyRef.current || reviewLocked.current) return;
     begin({ kind: 'uri' });
     setUriError(null);
     try {
@@ -239,7 +244,7 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
   };
 
   const draftContext = async () => {
-    if (latest.current.sources.length === 0 || busyRef.current || notesRef.current.length > MAX_NOTES) return;
+    if (latest.current.sources.length === 0 || busyRef.current || reviewLocked.current || notesRef.current.length > MAX_NOTES) return;
     const id = latest.current.id;
     const text = notesRef.current;
     begin({ kind: 'start' });
@@ -442,7 +447,7 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
                 <p className="min-w-0 flex-1 text-body text-text-muted">
                   Want invented sample data instead? It can't be mixed with these sources, so it needs a new dashboard.
                 </p>
-                <Button size="sm" variant="secondary" icon={<Plus aria-hidden="true" />} disabled={isBusy} onClick={() => setNewDashboard(true)}>
+                <Button size="sm" variant="secondary" icon={<Plus aria-hidden="true" />} disabled={busy !== null} onClick={() => setNewDashboard(true)}>
                   New dashboard
                 </Button>
               </div>
@@ -489,7 +494,8 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
         <p role="status" className="sr-only">
           {notice}
         </p>
-        {!hasSources && <p className="text-body text-text-muted">Add at least one source to start.</p>}
+        {reviewLock && <p className="text-body text-text-muted">{reviewLock}</p>}
+        {!reviewLock && !hasSources && <p className="text-body text-text-muted">Add at least one source to start.</p>}
         {hasSources && notesOver && <p className="text-body text-text-muted">Shorten the notes to 4,000 characters to start.</p>}
         <Button
           ref={startButton}

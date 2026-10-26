@@ -11,6 +11,8 @@ interface PendingListProps {
   /** Each component's page name, when the prototype has 2+ pages. */
   pageNames?: Map<string, string>;
   applying: boolean;
+  /** Why Apply is off while nothing is applying (the brief review lock), else null. */
+  lockReason?: string | null;
   /** Size of the batch being applied. */
   batchSize: number;
   error: string | null;
@@ -22,7 +24,7 @@ interface PendingListProps {
 
 const plural = (n: number) => `${n} comment${n === 1 ? '' : 's'}`;
 
-export function PendingList({ comments, presentCids, pageNames, applying, batchSize, error, headingRef, onRemove, onApply, onHover }: PendingListProps) {
+export function PendingList({ comments, presentCids, pageNames, applying, lockReason = null, batchSize, error, headingRef, onRemove, onApply, onHover }: PendingListProps) {
   const tooMany = comments.length > MAX_COMMENTS;
   return (
     <section aria-labelledby="pending-heading" className="rounded-panel border border-border bg-surface">
@@ -69,7 +71,8 @@ export function PendingList({ comments, presentCids, pageNames, applying, batchS
           </p>
         )}
         {tooMany && <p className="text-label text-text-muted">Apply at most {MAX_COMMENTS} comments at a time.</p>}
-        <Button variant="accent" loading={applying} disabled={comments.length === 0 || tooMany} onClick={onApply}>
+        {lockReason && !applying && <p className="text-label text-text-muted">{lockReason}</p>}
+        <Button variant="accent" loading={applying} disabled={comments.length === 0 || tooMany || lockReason !== null} onClick={onApply}>
           {applying ? `Applying ${plural(batchSize)}…` : `Apply ${plural(comments.length)}`}
         </Button>
       </footer>

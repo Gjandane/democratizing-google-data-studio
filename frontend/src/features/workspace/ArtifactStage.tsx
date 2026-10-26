@@ -29,6 +29,7 @@ import { IssueSlotContext, IssueSlotProvider, rowResolved } from './blueprint/is
 import { ContextEditor } from './context/ContextEditor';
 import { DesignPicker } from './design/DesignPicker';
 import { OutlinePicker, selectedCount } from './outline/OutlinePicker';
+import { useReviewLock } from './briefs/reviewLock';
 import { StageFrame } from './StageFrame';
 import { STAGE_LABELS, staleCause } from './Stepper';
 
@@ -194,7 +195,11 @@ function ArtifactStageBody({
   const here = build.stage === name;
   const stageAt = STAGES.indexOf(build.stage);
   const readOnly = build.stage === 'build' || build.stage === 'done';
-  const locked = stream.running !== null || pending !== null || readOnly;
+  // A brief review waits (WorkspaceShell's lock): every action and editor here waits with it.
+  const reviewLock = useReviewLock();
+  const reviewLockRef = useRef(reviewLock);
+  reviewLockRef.current = reviewLock;
+  const locked = stream.running !== null || pending !== null || readOnly || reviewLock !== null;
 
   let valid = value !== null;
   let status: ReactNode = null;
@@ -219,6 +224,7 @@ function ArtifactStageBody({
   }
   // While a run holds the build's lock, the strip's phrase says why everything waits.
   if (stream.running) status = `${presetFor(stream.running).phrases[0]}…`;
+  if (reviewLock) status = reviewLock;
 
   const confirm = (): Promise<unknown> => {
     if (name === 'context') return api.confirmContext(build.id);
@@ -250,7 +256,7 @@ function ArtifactStageBody({
   };
 
   const act = async (kind: 'primary' | 'secondary') => {
-    if (busy.current || savingRef.current) return;
+    if (busy.current || savingRef.current || reviewLockRef.current) return;
     busy.current = true;
     setPending(kind);
     setActionError(null);
