@@ -1627,3 +1627,15 @@ context. Task status lives in docs/plan.md, not here.
 - Checks: stamp refreshed; blueprint lint 0 errors (16 existing size warnings). No product code, test or live run changed or executed in this session.
 - Change requests: the 24.10 block (date-field clarification and fidelity failures) is planned in 24.10 (implementation) and 24.11 (verification); none deferred or declined.
 - Left open: implement 24.10, then run 24.11 and obtain the user's visual approval. Builder should show scorecard value clipping and full-date bar axis labels at the STOP.
+
+## 2026-10-26: Task 24.10 Recreate page placement and truthful observed titles
+- Status: done
+- Plan check: off
+- What changed: recreate image observations count only on page 1 through one predicate (`requirements.placed_fulfills`) in the Blueprint check, completion, accept/publish and revise coverage; page-1 repair targeting (`repair_qids`); `requirements.observed_title` strips unenforced trailing periods and appends evidenced units. Fixture tests/data/recreate_page_placement.json (run 045323, generator/hashes in .blueprint/qa/task-24.10/).
+- Checks: Done-when focused suite PASS 634 (359 s); Test (all) `uv run pytest` PASS 1889, 17 deselected (795 s). 39 new regression tests fail on 848749c, pass now. Recompute oracle min 31-33 ms (<100). Fingerprints (9 cases): 18.2/style/data/none byte-identical; title diffs: 21.1 Revenue, Revenue by month, Revenue by region +" (USD)"; 22.1-monthly Revenue, Revenue by month, Revenue by category +" (USD)"; 22.1-table those plus Top products by revenue +" (USD)"; 24.9 both "have access to electricity worldwide in 2011"->"... (%)". User-accepted beyond titles: 24.9 both gain a code-added page-1 area; 233550's page-1 bar takes o7's title. Review: no P0/P1.
+- Decisions: reference page = 1 (one recreate image, items carry no page). observed_title(label, r, kpis): units only from instruction/KPI evidence, conservative without KPIs; "text fit" = validate_spec label rule (component titles have no Chromium check). No-nearest page error: `repair_qids`, not `qids` (decide overlap). User-approved: live INSTRUCTIONS prose moved to RECREATE_NOTES (pre-existing HEAD failure); 22.1 title expectations in test_compiler/test_reference_brief; stale cross-page AGENTS gotcha replaced.
+- Digest: req.placed_fulfills(c,page,r,needs,checker,snap); req.reference_page(snap,r)->1|None; req.observed_title(label,r,kpis); observation_meaning(...,kpis=); observation_coverage(...,pages=); feasibility.page_questions; error key repair_qids
+- Tried and failed: none.
+- Gotchas: in AGENTS.md.
+- Left open: P2 builds published before 24.10 keep raw/off-page titles and fail coverage at run preflight/revise until re-accepted - src/dss/spec/requirements.py; P3 reference_brief.report passes no KPIs to observation_meaning - src/dss/harness/nodes/reference_brief.py:115
+- Next: 24.11 Verify and approve two-stage reference fidelity.

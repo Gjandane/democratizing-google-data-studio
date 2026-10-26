@@ -46,17 +46,20 @@ RECREATE_NOTES = (
     'A SECOND section/page contains additional country and regional comparison analysis. '
     'The Philippines, Morocco, Fiji and Belize panels are approved aliases for the SAME combined '
     'urban/rural chart; do not split them into country charts or derive country-filtered metrics.'
+    # Substitution/composition prose lives here, not in INSTRUCTIONS (24.11 ruling, change 2026-10-26):
+    # a prose instruction sentence becomes its own requirement row (run 20261026-052835).
+    ' Approved substitution: replace ALL FOUR observed country panels (Philippines, Morocco, Fiji, '
+    'Belize) with exactly ONE native urban/rural area chart using AVG(urban_pct) and AVG(rural_pct) '
+    'for all countries together over year. The four country definitions in the reference instructions '
+    'are aliases for that SAME shared chart, not requests for separate country charts, country filters '
+    'or derived fields. Retain the reference composition on page 1: headline and region list left, '
+    'globe centre, yearly people-without-access chart at the bottom, shared urban/rural area chart in '
+    'the right panel.'
 )
 # architecture.md#Recreate observation completion surface, one definition per clause. The region
 # list is a native fixed-size list; the per-country small multiples (no per-chart filter) become
 # one urban/rural area chart, the user's explicit substitution.
 INSTRUCTIONS = (
-    'Approved substitution: replace ALL FOUR observed country panels (Philippines, Morocco, Fiji, '
-    'Belize) with exactly ONE native urban/rural area chart using AVG(urban_pct) and AVG(rural_pct) '
-    'for all countries together over year. The four country definitions below are aliases for that '
-    'SAME shared chart, not requests for separate country charts, country filters or derived fields. '
-    'Retain the reference composition on page 1: headline and region list left, globe centre, '
-    'yearly people-without-access chart at the bottom, shared urban/rural area chart in the right panel. '
     'Region Selector = region, chart fixed_size_list. Region = region. Country = country. '
     'Access to electricity = AVG(access_pct), unit %, date grain year using year. '
     'have access to electricity = AVG(access_pct), unit %, date grain year using year. '

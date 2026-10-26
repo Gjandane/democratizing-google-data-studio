@@ -72,4 +72,5 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Reference HTML enforces `max(chars/4, folded*1.2+512)` on the complete request: 12k initially, 24k for its sole repair; exceeding either cap fails the candidate even when billed input would fit.
 - Sanitized ledger fixtures must preserve semantic `Property.path` keys; pseudonymized source identities require fresh processed-source hashes and replay of recorded decisions through the normal gate.
 - Blueprint date normalization retains raw year intent in private `blueprint-inputs.json.native_dates`; repair re-entry needs raw rows with the raw view and must preserve code label fallbacks.
-- Recreate coverage proves bindings across pages, not reference page placement: inspect the Blueprint's page assignments before paid HTML generation.
+- Recreate image observations count only on page 1 (requirements.reference_page/placed_fulfills): a fixture whose observed chart sits on a later page now gets a code-added page-1 row, or a metric-less observation retitles a page-1 chart (24.7/24.9 fixtures).
+- Observed titles come from the extraction's `label` property (the 18.2 RECREATE extraction has none); pass `kpis=snapshot['confirmed_kpis']` to observation_meaning/observed_title, or a KPI-only unit stays unproven and the title differs from publish.

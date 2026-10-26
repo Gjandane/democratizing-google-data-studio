@@ -745,7 +745,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: proof cannot be tied to the projected source without changing a contract/profile format -> block for the architect; never trust the existing name-only merged date_starts map as source identity.
   - Review focus: contracts/api.md 2.0 and dashboard-intent.md 1.2 existing blocking/publication semantics, recipe.md 1.3 code-owned date grain; no contract edits. DATE * 1 is not valid SQL, and interval subtraction can change type: require typed intent reconstruction, not algebraic simplification. Protected definitions/metrics and all named KPIs remain intact; apply one rule at every ingress and completion; no new dependencies/model calls.
 
-- [ ] 24.10 Recreate page placement and truthful observed titles
+- [x] 24.10 Recreate page placement and truthful observed titles
   - Goal: resolve the 24.10 fidelity block (user choices, change 2026-10-26): recreate observations count only on their reference page, and code-assigned screenshot titles state no unenforced period and show the mapped unit. The live verification and visual STOP move to 24.11.
   - Spec: docs/architecture.md#Recreate page placement and truthful observed titles
   - Files: src/dss/spec/requirements.py, src/dss/spec/feasibility.py, src/dss/harness/nodes/blueprint.py, src/dss/harness/nodes/render.py, tests/test_feasibility.py, tests/test_blueprint.py, tests/test_render.py, tests/test_revise.py, tests/data/recreate_page_placement.json, .blueprint/qa/task-24.10/

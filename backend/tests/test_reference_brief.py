@@ -240,7 +240,7 @@ def test_ready_recreate_report_lists_real_slots_bindings_and_decisions_with_no_o
     components = {c['id']: c for c in approved['components']}
     assert list(components) == [c.id for c in spec.pages[0].components]
     assert all(components[c.id]['type'] == c.type and components[c.id]['label'] == c.label for c in spec.pages[0].components)
-    trend = next(c for c in components.values() if c['label'] == 'Revenue by month')
+    trend = next(c for c in components.values() if c['label'] == 'Revenue by month (USD)')  # 24.10: the definition's unit
     assert (trend['type'], trend['date_dimension'], trend['grains']) == ('time_series', 'order_date_month',
                                                                           {'order_date_month': 'month'})
     assert trend['metrics'] == [{'field': 'revenue', 'agg': 'sum'}]
@@ -253,7 +253,7 @@ def test_ready_recreate_report_lists_real_slots_bindings_and_decisions_with_no_o
                for c in components.values() for b in c.get('bindings', []))
     chosen = {(d.get('observation', {}).get('id'), d['action']): d.get('choice') for d in approved['decisions']}
     assert chosen[('o5', 'accept_alternative')].startswith('Add order_date_month')
-    assert chosen[('o7', 'accept_alternative')] == 'Use a table for Top products by revenue'
+    assert chosen[('o7', 'accept_alternative')] == 'Use a table for Top products by revenue (USD)'
     assert {oid for oid, action in chosen if action == 'drop'} >= {'o3', 'o4'}
     text = json.dumps(reports)
     assert not any(word in text for word in ('"box"', 'confidence', '"rows"', 'West'))

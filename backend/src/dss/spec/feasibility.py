@@ -102,8 +102,7 @@ def diagnostics(snapshot, ledger, checker):
     selected = {q.id: q for s in outline.sections for q in s.questions if q.selected}
     sections = {q.id: s.id for s in outline.sections for q in s.questions}
     approved = choices(snapshot, ledger, checker)
-    dropped = {q for d in approved if d['action'] == 'drop' or d.get('effect', {}).get('drop_questions')
-               for q in d.get('effect', {}).get('drop_questions', d['target']['qids'])}
+    dropped = dropped_questions(approved)
     ratios = {q for d in approved if d.get('effect', {}).get('ratio_measures') for q in d['target']['qids']}
     result = []
     connected = [{**s, 'bq_table': s.get('bq_table', s.get('table'))} for s in snapshot['sources']]
@@ -412,13 +411,32 @@ def laid_out(rows):
 
 
 def coverage(snapshot, ledger, checker, rows, derived_fields, observations=None):
-    return req.observation_coverage(snapshot, ledger, checker, laid_out(rows), observations=observations,
-        derived={f.name: f.expression for f in derived_fields}, palette=(snapshot.get('design') or {}).get('palette'))
+    return req.observation_coverage(snapshot, ledger, checker, laid_out(rows), pages={i: r.page for i, r in enumerate(rows)},
+        observations=observations, derived={f.name: f.expression for f in derived_fields},
+        palette=(snapshot.get('design') or {}).get('palette'))
+
+
+def dropped_questions(approved):
+    """Question ids the user's Blueprint decisions dropped."""
+    return {q for d in approved if d['action'] == 'drop' or d.get('effect', {}).get('drop_questions')
+            for q in d.get('effect', {}).get('drop_questions', d['target']['qids'])}
+
+
+def page_questions(snapshot, ledger, checker, page):
+    """The selected, undropped questions whose sections map to `page` (blueprint.page_plan's rule)."""
+    sections = [s for s in snapshot['outline']['sections'] if any(q['selected'] for q in s['questions'])]
+    per_section = (snapshot.get('design') or {}).get('page_structure') == 'per_section'
+    dropped = dropped_questions(choices(snapshot, ledger, checker))
+    return [q['id'] for n, s in enumerate(sections, 1) if (n if per_section else 1) == page
+            for q in s['questions'] if q['selected'] and q['id'] not in dropped]
 
 
 def observation_errors(snapshot, ledger, checker, bp, fields, connected, context, rules):
     """architecture.md#Blueprint observation coverage: an observation no row fulfils is an issue on
-    its nearest row (repairable once, with code-built alternatives) or, with no such row, on none."""
+    its nearest row (repairable once, with code-built alternatives) or, with no such row, on none.
+    A recreate observation counts only on its reference page (#Recreate page placement and truthful
+    observed titles): its nearest row is a row there, and with none the one row repair targets the
+    selected questions of that page (`repair_qids`)."""
     observed = req.blueprint_observations(snapshot, ledger, checker)
     if not observed:
         return []
@@ -430,7 +448,7 @@ def observation_errors(snapshot, ledger, checker, bp, fields, connected, context
     for r, needs, properties, indices, unchecked in verdicts:
         if indices:
             continue
-        meaning = req.observation_meaning(r, needs, properties)
+        meaning = req.observation_meaning(r, needs, properties, kpis=snapshot.get('confirmed_kpis'))
         # Never the extraction text (it may echo boxes); an untitled record is named by its code-built meaning.
         name = repr(meaning['title']) if meaning.get('title') else f"{meaning['id']} ({_describe(meaning)})"
         error = dict(code='observation', indices=[], qids=[], status='needs_clarification', repairable=False, offers=[],
@@ -439,17 +457,21 @@ def observation_errors(snapshot, ledger, checker, bp, fields, connected, context
             errors.append({**error, 'message': f'Observation {name} cannot be checked against Blueprint rows: {unchecked}; '
                            'clarify it or drop it'})
             continue
-        nearest = _nearest(meaning, components)
+        page = req.reference_page(snapshot, r)
+        where = f' on page {page}' if page else ''
+        nearest = _nearest(meaning, {i: c for i, c in components.items() if page in (None, bp.rows[i].page)})
         if nearest is None:
             missing = ({m['field'] for m in meaning.get('metrics', [])} | set(meaning.get('dimensions', []))) - fields.keys()
-            errors.append({**error, 'status': 'needs_data' if missing else 'needs_clarification',
-                           'message': f'Observation {name} has no Blueprint row: add a row for {_describe(meaning)}'})
+            qids = page_questions(snapshot, ledger, checker, page) if page and not missing else []
+            errors.append({**error, 'status': 'needs_data' if missing else 'needs_clarification', 'repairable': bool(qids),
+                           **({'repair_qids': qids} if qids else {}),
+                           'message': f'Observation {name} has no Blueprint row{where}: add a row{where} for {_describe(meaning)}'})
             continue
         row = bp.rows[nearest]
         offers = _observation_offers(snapshot, ledger, checker, bp, fields, connected, context, rules, r, meaning, nearest, fulfilled, observed, checked)
         errors.append({**error, 'indices': [nearest], 'qids': [row.question_id] if row.question_id else [], 'repairable': True,
                        'offers': offers, 'message': f'Observation {name}' + f' ({_describe(meaning)})' * bool(meaning.get('title'))
-                       + ' has no matching Blueprint row: '
+                       + f' has no matching Blueprint row{where}: '
                        f'row {row.component.label!r} ' + '; '.join(_gaps(meaning, components[nearest], bp.derived_fields))})
     return errors
 
@@ -582,8 +604,9 @@ def surplus(snapshot, ledger, checker, rows, derived_fields, observed=None):
 
 
 def _observed_row(meaning, r, needs, fields, derived, rules, section, snapshot=None):
-    """(the code-built page-1 row, its new date bucket field or None) for an observation whose reconciled
-    meaning is complete (catalog type, metric fields and aggregations, dimension or date field), else None."""
+    """(the code-built row on the observation's reference page, page 1 (requirements.reference_page), its new
+    date bucket field or None) for an observation whose reconciled meaning is complete (catalog type, metric
+    fields and aggregations, dimension or date field), else None. Its label is the meaning's observed title."""
     kind = meaning.get('type')
     if kind not in rules or kind not in allowed_types():
         return None
@@ -652,7 +675,8 @@ def complete(snapshot, ledger, checker, bp, connected, context):
             fields = {f['name']: f for f in view.blueprint_fields(connected, bp.view_sources, derived)}
         except ValueError:
             break
-        built = _observed_row(req.observation_meaning(r, needs, properties), r, needs, fields, derived, rules, section, snapshot)
+        built = _observed_row(req.observation_meaning(r, needs, properties, kpis=snapshot.get('confirmed_kpis')),
+                              r, needs, fields, derived, rules, section, snapshot)
         if built is None:
             continue
         row, field = built

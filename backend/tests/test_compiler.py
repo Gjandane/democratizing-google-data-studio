@@ -262,7 +262,7 @@ def test_decided_monthly_gap_publishes_a_monthly_time_series(blueprint_api, monk
     series = [o for o in ops if o['op'] == 'add_chart' and o['chart_type'] == 'time_series']
     # The release build's other trend stays on the raw order_date: no grain.
     assert sorted((o['title'], o['date_dimension'], o['options'].get('date_granularity')) for o in series) == [
-        ('Revenue Trend Over Time', 'order_date', None), ('Revenue by month', 'order_date_month', 'month')]
+        ('Revenue Trend Over Time', 'order_date', None), ('Revenue by month (USD)', 'order_date_month', 'month')]  # 24.10: unit
     assert not any('date_granularity' in o['options'] for o in ops if o['op'] == 'add_chart' and o['chart_type'] != 'time_series')
 
 

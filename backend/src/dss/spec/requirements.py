@@ -1700,6 +1700,121 @@ def copy_version(db, build_id, folder, destination):
     save(destination, updated)
 
 
+# architecture.md#Recreate page placement and truthful observed titles.
+_YEAR = r'(?:19|20)\d{2}'
+_MONTH = (r'(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?'
+          r'|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?')
+# A year range, quarter-year or month-year stands alone; a single year needs its preposition ("Vision 2030" is a name).
+_SPAN = (rf'{_YEAR}\s*(?:[-–—/]|to)\s*(?:{_YEAR}|\d{{2}})|q[1-4][\s-]*{_YEAR}|{_YEAR}[\s-]*q[1-4]'
+         rf'|{_MONTH}\s+{_YEAR}')
+_PHRASE = rf'(?:(?:in|for|during|as\s+of|since)\s+(?:{_SPAN}|{_YEAR})|{_SPAN})'
+_PERIOD = re.compile(rf'(?:\s*[,:;|–—-]\s*|\s+)(?:\(\s*{_PHRASE}\s*\)|{_PHRASE})\s*$', re.I)
+_PERCENT = {'percent': '%', 'percentage': '%', 'pct': '%', 'per cent': '%'}
+
+
+@lru_cache(maxsize=1024)
+def _period_free(label):
+    """`label` without a trailing fixed-period phrase. The POC has no per-chart filter (PRD Later), so no
+    binding enforces one. A label that is only such a phrase keeps it; a phrase mid-label stays, and so
+    does the end of a comparison ("Sales 2023 vs March 2024"), which would otherwise dangle."""
+    match = _PERIOD.search(label)
+    if not match:
+        return label
+    base = label[:match.start()].rstrip(' ,:;|–—-')
+    if not re.search(r'\w', base) or re.search(r'\b(?:vs|versus|and|to|from|through|than|with)\.?$', base, re.I):
+        return label
+    return base
+
+
+def _shown_unit(value):
+    """`_unit` with percent words as `%`: how a title can show a unit."""
+    unit = _unit(value)
+    return _PERCENT.get(unit, unit)
+
+
+def _shows(label, unit):
+    """`label` already shows `unit`, compared through `_unit`'s aliases (`$`/USD) and percent words."""
+    want, text = _shown_unit(unit), ' '.join(label.lower().split())
+    tokens = re.findall(r'[^\W\d_]+|[^\w\s]', text)
+    return want in {_shown_unit(t) for t in tokens} or re.search(
+        rf'(?<![^\W_]){re.escape(want)}(?![^\W_])', text) is not None
+
+
+def _defined_units(r, kpis):
+    """Each metric mapping's unit when definition evidence states it (a reference instruction or a
+    confirmed Context KPI, never only the extractor's reading of image text), else None for it."""
+    surface = 'surface' in r.mapping_origins
+    stated = None
+    instructions = next((s for s in r.clarifications if s.kind == 'reference'), None)
+    if surface and instructions:
+        # The definition _observe_surface bound: of the item's label, else of its metric label.
+        item, definitions = json.loads(r.source.text), _surface_labels(instructions.text)
+        found = next((definitions[_normal(n)] for n in (item.get('label'), item.get('metric_label'))
+                      if n and _normal(n) in definitions), None)
+        stated = found[0]['unit'] if found else None
+    by_id = {k['id']: k for k in kpis or []}
+    units = []
+    for i, m in enumerate(r.mappings):
+        if m.aggregation in (None, 'none'):
+            continue
+        origin = r.mapping_origins.get(f'observed:{i}')
+        unit = None
+        if m.unit and origin:
+            if not surface:
+                unit = m.unit  # the clause rule binds a unit only from a definition or a confirmed KPI
+            else:
+                defined = [stated] + [by_id.get(e[4:], {}).get('unit') for e in json.loads(origin)['evidence'] if e.startswith('kpi:')]
+                unit = m.unit if _shown_unit(m.unit) in {_shown_unit(u) for u in defined if u} else None
+        units.append(unit)
+    return units
+
+
+def _one_line(label):
+    """validate_spec's label rule: one line without list or quote syntax."""
+    from dss.spec.validate import label_text
+    return '\n' not in label and '\r' not in label and label_text(label) == ' '.join(label.split())
+
+
+def observed_title(label, r, kpis=None):
+    """The screenshot title `label` of image observation `r` as code assigns it: without a trailing
+    fixed-period phrase, plus ` (<unit>)` when definition evidence gives every metric the same unit and
+    the label doesn't show it. `kpis`: the confirmed Context KPIs (without them a KPI-only unit is
+    unproven). A suffix that fails the label rule is dropped for this title only. Pure."""
+    base = _period_free(label)
+    units = _defined_units(r, kpis)
+    if units and None not in units and len({_shown_unit(u) for u in units}) == 1 and not _shows(base, units[0]):
+        titled = f"{base} ({' '.join(units[0].split())})"
+        if _one_line(titled):
+            return titled
+    return base
+
+
+def _observed_properties(r, properties, snapshot):
+    """`properties` of `r` with its screenshot title as code assigns it (observed_title)."""
+    if r.source.kind != 'image':
+        return properties
+    kpis = (snapshot or {}).get('confirmed_kpis')
+    return [p.model_copy(update={'value': observed_title(p.value, r, kpis)}) if p.path == 'label' and isinstance(p.value, str)
+            else p for p in properties]
+
+
+def reference_page(snapshot, r):
+    """The page a recreate image observation counts on: its screenshot's. Recreate reads one screenshot
+    and its interpretation items name no page, so it is page 1, where completion adds rows. None: any page."""
+    reference = snapshot.get('reference') or {}
+    if reference.get('mode') == 'recreate' and r.source.kind == 'image' and r.source.reference_id == reference.get('id'):
+        return 1
+    return None
+
+
+def placed_fulfills(component, page, requirement, needs, checker, snapshot, **options):
+    """The one page-aware observation predicate: `component` (on `page`: a Blueprint row's page or the spec
+    page index) fulfils `requirement` and sits on its reference page. The Blueprint check, completion,
+    accept, publish and revision coverage all decide with it."""
+    return reference_page(snapshot, requirement) in (None, page) and _component_fulfills(
+        component, requirement, needs, checker, snapshot, **options)
+
+
 def observed_labels(snapshot, ledger, checker):
     """{component id: label} titling recreate observations' charts with the label the screenshot
     shows (architecture.md#Recreate definition reconciliation). A Blueprint may name the observed
@@ -1750,7 +1865,9 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None, titles=None):
     for issue in assessment.issues:
         if issue.resolution == "unresolved":
             errors.append({"path": "requirements", "message": issue.reason})
-    components = [c for p in (snapshot["spec"] or {}).get("pages", []) for c in p.get("components", [])]
+    pages = (snapshot["spec"] or {}).get("pages", [])
+    components = [c for p in pages for c in p.get("components", [])]
+    page_of = {c["id"]: p.get("index") for p in pages for c in p.get("components", [])}
     from dss.recipe.compiler import compile_recipe
     from dss.spec.models import DashboardSpec
     ops = [json.loads(line) for line in compile_recipe(DashboardSpec.model_validate(snapshot['spec']), 1).split('\n')[1:-1]]
@@ -1778,6 +1895,7 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None, titles=None):
         needs, properties = covered
         if not needs and not properties and r.superseded and not r.mappings:
             continue
+        properties = _observed_properties(r, properties, snapshot)
         active = r.model_copy(update={'properties': properties})
         candidates = [c for c in components if not r.component_ids or c["id"] in r.component_ids]
         def compiled_need(need, component):
@@ -1795,7 +1913,7 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None, titles=None):
                             return override
             return need
         def fulfills(c, row):
-            return _component_fulfills(c, row, needs, checker, snapshot) and all(_recipe_fulfills(
+            return placed_fulfills(c, page_of[c['id']], row, needs, checker, snapshot) and all(_recipe_fulfills(
                 compiled_need(n, c), checker, [op for op in ops if op.get('component_id') in (None, c['id'])]) for n in needs)
         matches = [c for c in candidates if fulfills(c, active)]
         title = [p for p in properties if p.path == 'label']
@@ -1858,9 +1976,11 @@ def blueprint_observations(snapshot, ledger, checker):
     return result
 
 
-def observation_meaning(r, needs, properties, *, labels=True):
+def observation_meaning(r, needs, properties, *, labels=True, kpis=None):
     """One observation's reconciled meaning for the blueprint planner: kind, chart type, metrics,
-    dimensions, date field and title. No boxes, image bytes, rows or source text."""
+    dimensions, date field and title (observed_title; `kpis`: the confirmed Context KPIs). No boxes,
+    image bytes, rows or source text."""
+    properties = _observed_properties(r, properties, {'confirmed_kpis': kpis})
     item = json.loads(r.source.text) if r.source.kind == 'image' else {}
     metrics = [{k: v for k, v in m.model_dump().items() if v is not None and (labels or k != 'label')}
                for m in r.mappings if m.aggregation not in (None, 'none')]
@@ -1889,9 +2009,10 @@ def _row_ops(component, palette):
     return ops
 
 
-def observation_coverage(snapshot, ledger, checker, components, *, derived, palette, observations=None):
+def observation_coverage(snapshot, ledger, checker, components, *, pages, derived, palette, observations=None):
     """Publish coverage of each observation (blueprint_observations) on Blueprint rows, before layout.
-    `components`: {row index: the row as code lays it out}; `derived`: {name: sql} of the Blueprint's
+    `components`: {row index: the row as code lays it out}; `pages`: {row index: its page} (placed_fulfills);
+    `derived`: {name: sql} of the Blueprint's
     derived fields; `palette`: the design palette layout applies. A row fulfils an observation as
     coverage_errors checks a component, accept's code titling included (observed_labels: a chart that
     fulfils all but the screenshot title takes it unless another titled observation claims it).
@@ -1904,16 +2025,16 @@ def observation_coverage(snapshot, ledger, checker, components, *, derived, pale
     valid = {i for i, c in components.items() if not checker.component(c)}  # once per row, not per observation
 
     def fulfils(i, row, needs):
-        return i in valid and _component_fulfills(components[i], row, needs, checker, view, derived=derived, checked=True) and all(
-            _recipe_fulfills(n, checker, ops[i]) for n in needs)
+        return i in valid and placed_fulfills(components[i], pages[i], row, needs, checker, view, derived=derived,
+                                              checked=True) and all(_recipe_fulfills(n, checker, ops[i]) for n in needs)
     results, titles = [], {}
     for r, needs, properties in (blueprint_observations(snapshot, ledger, checker) if observations is None else observations):
         if r.component_ids or any(p.path != 'label' for p in properties):
             results.append([r, needs, properties, [], 'it names laid-out items or properties only the accepted spec can prove'])
             continue
-        active = r.model_copy(update={'properties': properties})
+        active = r.model_copy(update={'properties': _observed_properties(r, properties, snapshot)})
         matches = [i for i in components if fulfils(i, active, needs)]
-        title = [p.value for p in properties if p.path == 'label']
+        title = [p.value for p in active.properties if p.path == 'label']
         if not matches and r.source.kind == 'image' and len(title) == 1 and isinstance(title[0], str):
             rest = active.model_copy(update={'properties': []})
             titles[r.id] = (title[0], [i for i in components if fulfils(i, rest, needs)])

@@ -134,7 +134,8 @@ def observations(db, build_id, folder):
     as (meaning, label-free meaning) pairs. Reconciled meaning only; style and data builds have none."""
     snapshot = req.inputs(db, build_id, folder)
     found = req.blueprint_observations(snapshot, req.load(folder), Checker(load_registry()))
-    return [(req.observation_meaning(*o), req.observation_meaning(*o, labels=False)) for o in found]
+    kpis = snapshot.get('confirmed_kpis')
+    return [(req.observation_meaning(*o, kpis=kpis), req.observation_meaning(*o, labels=False, kpis=kpis)) for o in found]
 
 
 def inputs_path(folder):
@@ -258,8 +259,10 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
             ids = repair_ids()
             request_questions = {qid: selected[qid] for qid in ids if qid in selected}
             indices = {i for e in state['errors'] if e['repairable'] for i in e['indices']}
+            # A page-targeted observation error (feasibility.observation_errors) replaces its page's question rows: show them.
+            targeted = {qid for e in state['errors'] if e['repairable'] for qid in e.get('repair_qids', [])}
             repair = {'kind': 'rows', 'errors': state['errors'],
-                      'rows': [r.model_dump() for i, r in enumerate(state['rows']) if i in indices]}
+                      'rows': [r.model_dump() for i, r in enumerate(state['rows']) if i in indices or r.question_id in targeted]}
             schema = RowRepair
         elif phase == 'sql_repair':
             request_questions = {}
@@ -386,7 +389,8 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
 
     def repair_ids():
         return {qid for e in state['errors'] if e['repairable']
-                for qid in (e['qids'] + [state['rows'][i].question_id for i in e['indices']]) if qid is not None}
+                for qid in (e['qids'] + e.get('repair_qids', []) + [state['rows'][i].question_id for i in e['indices']])
+                if qid is not None}
 
     async def check_view(node_input):
         trace.span('validate_blueprint_view')

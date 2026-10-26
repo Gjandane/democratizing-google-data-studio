@@ -20,6 +20,8 @@ from dss.spec.models import DashboardSpec
 from dss.spec.patch import apply_scoped, PatchError
 from dss.spec.validate import validate_spec
 from fakes import FakeLLM
+from test_blueprint import blueprint_api  # noqa: F401  (fixture)
+from test_context_node import context_api  # noqa: F401  (fixture)
 from test_render import three_pages
 
 
@@ -1248,3 +1250,25 @@ def test_mixed_batch_designs_each_page_once(setup, designed, client, monkeypatch
     revised = DashboardSpec.model_validate_json((folder / 'spec.json').read_text(encoding='utf-8'))
     assert revised.pages[1].design == designed.pages[1].design and revised.pages[1].components[4].metrics[0].agg == 'avg'
     assert 'p3_bar_5' not in revised.pages[2].design.html and 'Sales overview' in revised.pages[0].design.html
+
+
+def test_recreate_revision_coverage_counts_observations_only_on_their_page(blueprint_api, monkeypatch):
+    """24.10: revision's coverage gate is the one page-aware predicate. Removing the published page-1 urban/rural
+    area, or moving it to page 3, fails it, although the planner's page-3 area still matches the observations."""
+    from test_render import COUNTRIES, accept, bound_components, placement_build
+    from dss.spec import requirements as req
+    from dss.spec.capabilities import Checker, load_registry
+    build = placement_build(blueprint_api, monkeypatch)
+    accept(build)
+    snapshot, ledger = req.inputs(build.app.state.db, build.bid, build.folder), req.load(build.folder)
+    checker = Checker(load_registry())
+    assert req.coverage_errors(snapshot, ledger, checker) == []
+    [area] = {cid for item in COUNTRIES['recorded'] for cid in bound_components(build)[item]}
+    countries = {'requirements.' + r.id for r in ledger.requirements if r.source.item_id in COUNTRIES['recorded']}
+    spec = deepcopy(snapshot['spec'])
+    moved = next(c for c in spec['pages'][0]['components'] if c['id'] == area)
+    spec['pages'][0]['components'].remove(moved)
+    assert countries <= {e['path'] for e in req.coverage_errors({**snapshot, 'spec': spec}, ledger, checker)}
+    spec['pages'][2]['components'].append({**moved, 'id': 'p3_moved_area'})
+    errors = req.coverage_errors({**snapshot, 'spec': spec}, ledger, checker)
+    assert {e['path'] for e in errors} == countries, errors

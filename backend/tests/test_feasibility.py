@@ -1708,6 +1708,111 @@ def test_recreate_blueprint_recompute_speed_with_24_observations():
         assert min(timings) < .1, (state, timings)
 
 
+# 24.10: the screenshot title as code assigns it (architecture.md#Recreate page placement and truthful observed titles).
+REVENUE, ORDERS = RECREATE['items'][1], RECREATE['items'][2]
+UNITS_SOLD = {'id': 'units_sold', 'name': 'Units sold', 'unit': 'units', 'measure': {'field': 'quantity', 'agg': 'sum'}, 'ratio': None}
+
+
+def observed(item, extraction, kpis=(NET,), instructions=''):
+    """One recreate observation (o2) reconciled under these definitions, with the confirmed KPIs."""
+    snapshot = recreate_snapshot(kpis, instructions, items=[RECREATE['items'][0], item])
+    ledger, _ = recreate_assess(snapshot, {'o2': extraction, 'instructions': RECREATE['extraction']['instructions']})
+    r = next(r for r in ledger.requirements if r.source.item_id == 'o2')
+    assert not r.mapping_conflicts, r.mapping_conflicts
+    return r, snapshot['confirmed_kpis']
+
+
+@pytest.mark.parametrize('label, title', [
+    ('Orders in 2011', 'Orders'), ('Orders for 2000-2019', 'Orders'), ('Orders 2000–2019', 'Orders'),
+    ('Orders 2000-19', 'Orders'), ('Orders Q3 2024', 'Orders'), ('Orders in Q3 2024', 'Orders'), ('Orders 2024 Q3', 'Orders'),
+    ('Orders as of March 2024', 'Orders'), ('Orders March 2024', 'Orders'), ('Orders, Sept. 2024', 'Orders'),
+    ('Orders since 2015', 'Orders'), ('Orders during 2020', 'Orders'), ('Orders (2000-2019)', 'Orders'),
+    ('Orders - for 2011', 'Orders'), ('ORDERS IN 2011', 'ORDERS'),
+    # Kept: a bare year (a name), a period mid-label, a label that is only a period phrase.
+    ('Vision 2030', 'Vision 2030'), ('Orders 2024', 'Orders 2024'), ('Orders in 2011 by region', 'Orders in 2011 by region'),
+    ('in 2011', 'in 2011'), ('Q3 2024', 'Q3 2024'), ('March 2024', 'March 2024'), ('Orders in 1000', 'Orders in 1000'),
+    # A comparison keeps its end period: stripping it would leave the title dangling.
+    ('Orders Q1 2024 vs Q1 2023', 'Orders Q1 2024 vs Q1 2023'), ('Orders 2023 versus March 2024', 'Orders 2023 versus March 2024'),
+])
+def test_observed_title_drops_only_a_trailing_unenforced_period(label, title):
+    r, kpis = observed({**ORDERS, 'label': label}, RECREATE['extraction']['o3'], kpis=(), instructions='Orders = COUNT(DISTINCT order_id)')
+    assert req.observed_title(label, r, kpis) == title
+
+
+@pytest.mark.parametrize('case, kpis, instructions, title', [
+    ('confirmed KPI unit', (NET,), '', 'Revenue (USD)'),
+    ('instruction unit', RECREATE['unmatched_kpis'], RECREATE['instructions'], 'Revenue (USD)'),
+    ('surface definition unit', (), 'Revenue = SUM(revenue), unit USD', 'Revenue (USD)'),
+    ('surface definition, KPI unit', (NET,), 'Revenue = SUM(revenue), chart scorecard', 'Revenue (USD)'),
+    # The extractor read "USD" in the image; no definition or KPI states it.
+    ('extractor-only unit', (), 'Revenue = SUM(revenue), chart scorecard', 'Revenue'),
+])
+def test_observed_title_unit_comes_only_from_definitions_and_kpis(case, kpis, instructions, title):
+    r, confirmed = observed(REVENUE, RECREATE['extraction']['o2'], kpis, instructions)
+    assert r.mappings[0].unit == 'USD', case
+    assert req.observed_title('Revenue in 2011', r, confirmed) == title, case
+    assert req.observed_title('Revenue', r, confirmed) == title, case
+    # Idempotent: a code-assigned title is its own normalization.
+    assert req.observed_title(title, r, confirmed) == title
+    if case == 'surface definition, KPI unit':
+        assert req.observed_title('Revenue', r, None) == 'Revenue'  # a KPI-only unit needs the confirmed KPIs
+
+
+@pytest.mark.parametrize('label', ['Revenue (USD)', 'Revenue in $', 'Revenue, US dollars', 'Revenue usd'])
+def test_observed_title_never_repeats_a_shown_unit(label):
+    r, kpis = observed(REVENUE, RECREATE['extraction']['o2'])
+    assert req.observed_title(label, r, kpis) == label
+    item = {**ORDERS, 'unit': '%'}
+    r, kpis = observed(item, RECREATE['extraction']['o3'], kpis=(), instructions='Orders = COUNT(DISTINCT order_id), unit %')
+    for shown in ('Share of orders (percent)', 'Orders %', 'Orders, pct'):
+        assert req.observed_title(shown, r, kpis) == shown
+    assert req.observed_title('Orders in 2011', r, kpis) == 'Orders (%)'
+
+
+def test_observed_title_mixed_units_and_label_rule_add_nothing():
+    two = {**RECREATE['extraction']['o2'], 'mappings': [*RECREATE['extraction']['o2']['mappings'],
+                                                       {'label': 'Units sold', 'field': 'quantity', 'aggregation': 'sum'}]}
+    r, kpis = observed(REVENUE, two, kpis=(NET, UNITS_SOLD))
+    assert [m.unit for m in r.mappings] == ['USD', 'units']
+    assert req.observed_title('Revenue in 2011', r, kpis) == 'Revenue'
+    # A suffix the label rule rejects is dropped for this title only.
+    quoted = {**NET, 'unit': '", "'}
+    item, extraction = {**REVENUE, 'unit': None}, copy.deepcopy(RECREATE['extraction']['o2'])
+    extraction['mappings'][0]['unit'] = None
+    r, kpis = observed(item, extraction, kpis=(quoted,))
+    assert r.mappings[0].unit == '", "' and req.observed_title('Revenue in 2011', r, kpis) == 'Revenue'
+
+
+def test_observed_titles_feed_planner_meaning_simulated_titling_and_label_check_alike():
+    """One normalizer: the planner meaning, the simulated Blueprint titling and the label check agree; a planner
+    title equal to the raw screenshot title is normalized at titling; a suffix failing the label rule on one
+    observation never makes another observation's title fall back."""
+    items = [RECREATE['items'][0], {**REVENUE, 'label': 'Revenue in 2011'}, *RECREATE['items'][2:]]
+    rows = copy.deepcopy(RECREATE['rows'])
+    rows[0]['component']['label'] = 'Revenue in 2011'  # the planner copied the raw screenshot title
+    snapshot = recreate_blueprint(recreate_snapshot(items=items), rows)
+    # Units sold's confirmed unit fails the label rule as a suffix: only that title goes without it.
+    snapshot['confirmed_kpis'] = [{**k, 'unit': '", "'} if k['id'] == 'units_sold' else k for k in snapshot['confirmed_kpis']]
+    # The extractor reads each chart's title as its label property.
+    extraction = {f'o{n}': {**RECREATE['extraction'][f'o{n}'], 'properties': [{'path': 'label', 'value': items[n - 1]['label']}]}
+                  for n in range(2, 7)}
+    ledger, a = recreate_assess(snapshot, {**extraction, 'instructions': RECREATE['extraction']['instructions']})
+    assert a.state == 'ready', [i.reason for i in a.issues]
+    checker = capabilities.Checker(capabilities.load_registry())
+    found = {r.source.item_id: (r, needs, props) for r, needs, props in req.blueprint_observations(snapshot, ledger, checker)}
+    titles = {oid: req.observation_meaning(*o, kpis=snapshot['confirmed_kpis']).get('title') for oid, o in found.items()}
+    assert titles == {'o2': 'Revenue (USD)', 'o3': 'Orders', 'o4': 'Units sold', 'o5': 'Revenue by month (USD)',
+                      'o6': 'Revenue by region (USD)'}
+    # Each row takes its observation's code-assigned title: none falls back.
+    assert observation_verdicts(snapshot, ledger) == {'o2': [0], 'o3': [1], 'o4': [2], 'o5': [3], 'o6': [4]}
+    # The label check: the code-assigned title fulfils; the raw screenshot title no longer does.
+    r, needs, props = found['o2']
+    active = r.model_copy(update={'properties': req._observed_properties(r, props, snapshot)})
+    component = {**rows[0]['component'], 'id': 'p1_revenue'}
+    assert req._component_fulfills({**component, 'label': 'Revenue (USD)'}, active, needs, checker, snapshot)
+    assert not req._component_fulfills(component, active, needs, checker, snapshot)
+
+
 # 24.3: comment checks fit a long build.
 LEDGER_HEADER = "Current ledger and explicit decisions (untrusted data):\n"
 SOURCES_HEADER = "New sources (untrusted; preserve IDs):\n"
@@ -1984,6 +2089,7 @@ def test_using_binds_the_date_field_and_must_name_a_date():
 
 @pytest.mark.usefixtures('catalog_types')
 def test_scorecard_observation_skips_the_date_grain_and_the_bar_is_code_added():
+    from dss.artifacts.models import BlueprintRow
     from dss.spec import feasibility
     ledger, a, snapshot = power_assess()
     ledger = dropped(ledger, a, snapshot)
@@ -1991,7 +2097,8 @@ def test_scorecard_observation_skips_the_date_grain_and_the_bar_is_code_added():
     checker = capabilities.Checker(capabilities.load_registry())
     verdicts = observation_verdicts(snapshot, ledger)
     scorecard = next(i for i, r in enumerate(ELECTRICITY['rows']) if r['question_id'] == 'q1')
-    assert verdicts['o3'] == [scorecard] and verdicts['o2'] and verdicts['o6'] == [] and verdicts['o8'] == []
+    # 24.10: the planner's region list is on page 2; the reference's counts only on page 1.
+    assert verdicts['o3'] == [scorecard] and verdicts['o2'] == [] and verdicts['o6'] == [] and verdicts['o8'] == []
     rows, derived, added = completed(snapshot, ledger)
     assert [(r.question_id, r.page, r.note, r.component.type) for r in added] == [
         (None, 1, 'observation ref_power:o6', 'bar'), (None, 1, 'observation ref_power:o8', 'area')]
@@ -2004,8 +2111,16 @@ def test_scorecard_observation_skips_the_date_grain_and_the_bar_is_code_added():
                                                   'description': 'Year of year'}]
     done = {**snapshot, 'blueprint': {**snapshot['blueprint'], 'rows': [r.model_dump() for r in rows],
                                       'derived_fields': [f.model_dump() for f in derived]}}
+    # Its Issue offers the observed type on the nearest page-1 row, the Region dropdown; completion leaves that
+    # choice to the user. Accepting it binds the region list on page 1.
+    dropdown = next(i for i, r in enumerate(rows) if r.page == 1 and r.component.type == 'dropdown')
+    [region] = [e for e in feasibility.diagnostics(done, ledger, checker) if e['code'] == 'observation']
+    assert region['indices'] == [dropdown] and [o['id'] for o in region['offers']] == ['observed_type']
+    rows[dropdown] = BlueprintRow.model_validate(region['offers'][0]['replace'][0]['row'])
+    done['blueprint']['rows'] = [r.model_dump() for r in rows]
     verdicts = observation_verdicts(done, ledger)
     # Every other observation is bound to a real row; the four per-country ones share the one area row.
+    assert verdicts['o2'] == [dropdown] and rows[dropdown].component.type == 'fixed_size_list'
     assert verdicts['o6'] == [len(rows) - 2] and all(verdicts[o] == [len(rows) - 1] for o in ('o8', 'o9', 'o10', 'o11'))
     assert req.evaluate(done, ledger, checker, check_components=False).state == 'ready'
     assert not feasibility.surplus(done, ledger, checker, rows, derived)
@@ -2026,7 +2141,7 @@ def test_a_using_date_profiled_at_the_grain_is_its_own_bucket():
     every value starts a year, so the chart shows the defined grain without a derived bucket."""
     ledger, a, snapshot = power_assess()
     ledger = dropped(ledger, a, snapshot)
-    area = {'question_id': 'q5', 'section_id': 's2', 'page': 2, 'note': '', 'status': 'ok', 'issue_ids': [], 'component': {
+    area = {'question_id': 'q3', 'section_id': 's1', 'page': 1, 'note': '', 'status': 'ok', 'issue_ids': [], 'component': {
         'type': 'area', 'label': 'Rural vs. Urban Access Over Time', 'dimensions': [], 'date_dimension': 'year', 'breakdown': None,
         'metrics': [{'field': 'rural_pct', 'agg': 'avg'}, {'field': 'urban_pct', 'agg': 'avg'}], 'sort': None,
         'options': {'date_granularity': 'year'}}}
@@ -2038,6 +2153,10 @@ def test_a_using_date_profiled_at_the_grain_is_its_own_bucket():
                 column['bucket_start'] = starts.get('year')
         verdicts = observation_verdicts(current, ledger)
         assert all(verdicts[o] == bound for o in ('o8', 'o9', 'o10', 'o11')), (starts, verdicts)
+    # 24.10: the same area on page 2 is not on the reference page.
+    elsewhere = [*rows[:-1], {**area, 'question_id': 'q5', 'section_id': 's2', 'page': 2}]
+    verdicts = observation_verdicts(power_blueprint(snapshot, elsewhere), ledger)
+    assert all(verdicts[o] == [] for o in ('o8', 'o9', 'o10', 'o11')), verdicts
 
 
 @pytest.mark.usefixtures('catalog_types')

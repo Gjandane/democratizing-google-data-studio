@@ -723,7 +723,8 @@ def test_recreate_draft_and_changed_kpis_never_authorize(blueprint_api, monkeypa
 
 
 RECREATE_DESIGNED = json.loads((Path(__file__).parent / 'data/recreate_designed.json').read_text(encoding='utf-8'))
-TITLES = {'Revenue', 'Orders', 'Units sold', 'Revenue by month', 'Revenue by region'}
+# 24.10: a code-assigned observed title shows its definition's unit (`Revenue = SUM(revenue) in USD`).
+TITLES = {'Revenue (USD)', 'Orders', 'Units sold', 'Revenue by month (USD)', 'Revenue by region (USD)'}
 
 
 def spans(app, run_id):
@@ -881,11 +882,18 @@ def gap_build(blueprint_api, monkeypatch, case):
     return build
 
 
-def gap_issues(assessment, build):
-    """{observation item id: its unresolved Blueprint issue} (instruction records get their own)."""
+def observed_titles(build):
+    """{observation item id: its code-assigned title} (24.10: requirements.observed_title)."""
     from dss.spec import requirements as req
-    titles = {r.source.item_id: next(p.value for p in r.properties if p.path == 'label')
-              for r in req.load(build.folder).requirements if r.source.kind == 'image'}
+    kpis = req.inputs(build.app.state.db, build.bid, build.folder).get('confirmed_kpis')
+    return {r.source.item_id: req.observed_title(next(p.value for p in r.properties if p.path == 'label'), r, kpis)
+            for r in req.load(build.folder).requirements if r.source.kind == 'image'}
+
+
+def gap_issues(assessment, build):
+    """{observation item id: its unresolved Blueprint issue} (instruction records get their own), named by
+    the observation's code-assigned title."""
+    titles = observed_titles(build)
     return {oid: issue for issue in assessment['issues'] for oid, title in titles.items()
             if issue['requirement'] == f'Observation {title!r}' and issue['resolution'] == 'unresolved'}
 
@@ -936,10 +944,11 @@ def test_recreate_gaps_show_at_the_blueprint_and_publish_after_the_decision(blue
     # Only the user's own earlier drops: code dropped no observation.
     assert {r.source.item_id for r in observations(build) if r.id in drops} == set(build.data['dropped']) - {'instructions'}
     spec = DashboardSpec.model_validate_json((build.folder / 'spec.json').read_text(encoding='utf-8'))
-    components = {c.label: c for p in spec.pages for c in p.components}
-    assert (components['Revenue by month'].type, components['Revenue by month'].date_dimension) == ('time_series', 'order_date_month')
+    components, titles = {c.label: c for p in spec.pages for c in p.components}, observed_titles(build)
+    assert titles['o5'] == 'Revenue by month (USD)'  # 24.10: its definition's unit
+    assert (components[titles['o5']].type, components[titles['o5']].date_dimension) == ('time_series', 'order_date_month')
     if case == 'table':
-        assert components['Top products by revenue'].type == 'table'
+        assert components[titles['o7']].type == 'table'
     fresh = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
     assert fresh['state'] == 'ready' and not fresh['prototype_stale'], fresh
     executes(build.client, build.app, build.bid, monkeypatch)
@@ -1003,7 +1012,7 @@ def test_recreate_planner_that_follows_the_observations_is_ready_on_first_draft(
     bq.dry_run = lambda sql: bq.sql.append(sql) or [SimpleNamespace(name='order_date_month', field_type='DATE', mode='NULLABLE')]
     confirm(build.client, build.app, build.bid)
     section = str(planner.seen[0].config.system_instruction).split('Recreate observations:', 1)[1].split('\n\n', 1)[0]
-    assert '"title":"Top products by revenue"' in section and 'box' not in section and 'confidence' not in section
+    assert '"title":"Top products by revenue (USD)"' in section and 'box' not in section and 'confidence' not in section
     assessment = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
     assert planner.calls == 1 and assessment['state'] == 'ready', [i['reason'] for i in assessment['issues'] if i['resolution'] == 'unresolved']
     accept(build)
@@ -1051,8 +1060,9 @@ ELECTRICITY = json.loads((Path(__file__).parent / 'data/recreate_electricity.jso
 YEAR_RUNS = json.loads((Path(__file__).parent / 'data/recreate_year_buckets.json').read_text(encoding='utf-8'))
 
 
-def saved_year_build(blueprint_api, monkeypatch, case):
-    """Install the sanitized saved artifacts/profiles/ledger, without pretending replies were captured."""
+def saved_year_build(blueprint_api, monkeypatch, case, data=None):
+    """Install the sanitized saved artifacts/profiles/ledger, without pretending replies were captured
+    (`data`: another saved-run fixture case of the same shape)."""
     from types import SimpleNamespace
     from dss.artifacts.models import Context, Outline, Design
     from dss.spec import requirements as req
@@ -1061,7 +1071,7 @@ def saved_year_build(blueprint_api, monkeypatch, case):
     from test_references import png
     monkeypatch.setenv('DSS_ALLOWED_TYPES', ','.join(TYPES))
     client, app, bid, sid, folder, bq, llm, value = blueprint_api
-    data = copy.deepcopy(YEAR_RUNS['cases'][case])
+    data = copy.deepcopy(YEAR_RUNS['cases'][case] if data is None else data)
     old_id = data['sources'][0]['id']
     data = json.loads(json.dumps(data).replace(old_id, sid))
     source = data['sources'][0]
@@ -1242,6 +1252,209 @@ def test_saved_year_proof_removal_blocks_accept_reload_and_redraft(blueprint_api
     refused = build.client.post(f'/api/builds/{build.bid}/blueprint/accept')
     assert refused.status_code == 409 and refused.json()['error']['code'] == 'feasibility_blocked'
     assert build.bq.created == []
+PLACEMENT = json.loads((Path(__file__).parent / 'data/recreate_page_placement.json').read_text(encoding='utf-8'))
+# The per-country urban/rural observations: the run extracted three; the reconstructed variant adds Belize.
+COUNTRIES = {'recorded': ['o6', 'o7', 'o8'], 'four_countries': ['o6', 'o7', 'o8', 'o9']}
+ACCESS_TITLE = 'have access to electricity worldwide (%)'
+QUESTIONS_HEADER = 'Only these selected questions need rows (untrusted):\n'
+REPAIR_HEADER = 'Repair only the named errors; return structured JSON, never SQL DDL:\n'
+
+
+def placement_build(blueprint_api, monkeypatch, variant='recorded', repair='repair'):
+    """Run 20261026-045323's saved inputs (task 24.10 block), the approved geo_map drop replayed. The
+    planner's draft is the persisted Blueprint: the urban/rural area on page 3, a country table on page 1."""
+    data = copy.deepcopy(PLACEMENT['case'])
+    if variant == 'four_countries':
+        data['items'].append(data['four_countries']['item'])
+        data['requirements']['requirements'].append(data['four_countries']['requirement'])
+    build = saved_year_build(blueprint_api, monkeypatch, None, data=data)
+    build.llm.replies = [json.dumps(build.data[key]) for key in ('draft', repair, 'view_reply')]
+    return build
+
+
+def section_value(text, header):
+    return json.JSONDecoder().raw_decode(text.split(header, 1)[1])[0]
+
+
+def placement_snapshot(build, rows):
+    """The Blueprint check's inputs for these rows, as the blueprint node drafts them."""
+    from dss.artifacts import design as design_node
+    from dss.artifacts.models import Blueprint
+    from dss.harness.nodes import context as context_node, outline as outline_node
+    from dss.spec import requirements as req
+    snapshot = req.inputs(build.app.state.db, build.bid, build.folder)
+    view = {k: build.data['draft'][k] for k in ('view_sources', 'derived_fields')}
+    snapshot.update(blueprint=Blueprint(revision=1, **view, rows=rows, view_table=None, assessment_id=None).model_dump(),
+                    context=context_node.load(build.folder).model_dump(), outline=outline_node.load(build.folder).model_dump(),
+                    design=design_node.load(build.folder).model_dump(), blueprint_errors=[])
+    return snapshot
+
+
+def later_rows(rows):
+    return [(r['page'], r['question_id'], r['component']) for r in rows if r['page'] > 1]
+
+
+def bound_components(build):
+    """{observation item id: the published component ids publish coverage bound it to}."""
+    from dss.spec import requirements as req
+    ledger = req.load(build.folder)
+    return {r.source.item_id: next(e['fulfilled_by'] for e in ledger.verification[r.id] if 'fulfilled_by' in e)
+            for r in ledger.requirements if r.source.kind == 'image' and r.source.item_id not in build.data['dropped']}
+
+
+@pytest.mark.parametrize('variant', list(COUNTRIES))
+def test_saved_page_placement_completes_the_urban_rural_area_on_page_one(blueprint_api, monkeypatch, variant):
+    """Task 24.10 block (run 20261026-045323-8f75b9ce): coverage proved a binding on any page, so the per-country
+    observations bound to a page-3 area while page 1 kept a country table, and the access scorecard read
+    "in 2011" although AVG(access_pct) spans every year, with no `%`. Now they count only on page 1: the sole
+    row repair targets page 1's questions, and when the planner leaves the area out, code adds it there."""
+    from test_blueprint import confirm
+    from dss.spec import requirements as req
+    build = placement_build(blueprint_api, monkeypatch, variant)
+    draft = build.data['draft']['rows']
+    confirm(build.client, build.app, build.bid)
+    assert build.llm.calls == 2  # the draft and the sole row repair; code adds the rest
+    repair = str(build.llm.seen[1].config.system_instruction)
+    assert sorted(q['id'] for q in section_value(repair, QUESTIONS_HEADER)) == ['q1', 'q2', 'q3']
+    sent = section_value(repair, REPAIR_HEADER)
+    owners = {r.id: r.source.item_id for r in req.load(build.folder).requirements}
+    errors = [e for e in sent['errors'] if e['code'] == 'observation']
+    assert sorted(owners[e['requirement_id']] for e in errors) == COUNTRIES[variant], [e['message'] for e in errors]
+    for e in errors:
+        assert e['repairable'] and e['indices'] == [] and e['repair_qids'] == ['q1', 'q2', 'q3']
+        assert all(s in e['message'] for s in ('page 1', 'a area of AVG(urban_pct) and AVG(rural_pct) by year of year')), e
+        assert 'Urban vs. Rural Electricity Access Over Time' not in e['message']  # never the off-page row's gap
+    # The repair shows the page-1 question rows it replaces.
+    assert sorted({r['question_id'] for r in sent['rows']}) == ['q1', 'q2', 'q3']
+    blueprint = build.client.get(f'/api/builds/{build.bid}/blueprint').json()
+    added = [r for r in blueprint['rows'] if r['note'].startswith('observation ')]
+    assert [(r['page'], r['component']['type'], r['component']['date_dimension'], [m['field'] for m in r['component']['metrics']])
+            for r in added] == [(1, 'area', 'year', ['urban_pct', 'rural_pct'])]
+    # Code moved, deleted and retyped nothing: the page-2 and page-3 rows are the planner's own.
+    assert later_rows(blueprint['rows']) == later_rows(draft)
+    assessment = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+    assert assessment['state'] == 'ready', [i['reason'] for i in assessment['issues'] if i['resolution'] == 'unresolved']
+    accept(build)
+    spec = DashboardSpec.model_validate_json((build.folder / 'spec.json').read_text(encoding='utf-8'))
+    pages = {c.id: p.index for p in spec.pages for c in p.components}
+    components = {c.id: c for p in spec.pages for c in p.components}
+    bound = bound_components(build)
+    assert all(pages[cid] == 1 for ids in bound.values() for cid in ids), bound
+    [area] = {cid for item in COUNTRIES[variant] for cid in bound[item]}
+    assert components[area].type == 'area' and [m.field for m in components[area].metrics] == ['urban_pct', 'rural_pct']
+    # The page-3 urban/rural area and the Fiji area remain as additional analysis.
+    page3 = [(c.type, c.label) for c in spec.pages[2].components]
+    assert sorted(page3) == sorted((r['component']['type'], r['component']['label']) for r in draft if r['page'] == 3)
+    assert components[bound['o3'][0]].label == ACCESS_TITLE
+    # No other planner title is rewritten.
+    observed = {cid for ids in bound.values() for cid in ids}
+    planner = {r['component']['label'] for r in draft}
+    assert all(c.label in planner for cid, c in components.items() if cid not in observed)
+    executes(build.client, build.app, build.bid, monkeypatch)
+    from jsonschema import Draft202012Validator
+    schema = json.loads((Path(__file__).parents[2] / 'contracts/recipe.schema.json').read_text(encoding='utf-8'))
+    recipe = [json.loads(line) for line in (build.folder / 'recipe.jsonl').read_text(encoding='utf-8').splitlines()]
+    for op in recipe[1:]:
+        Draft202012Validator({'$ref': '#/$defs/op', '$defs': schema['$defs']}).validate(op)
+    assert {op['title'] for op in recipe[1:] if op['op'] == 'add_chart' and op['component_id'] == bound['o3'][0]} == {ACCESS_TITLE}
+
+
+def test_saved_page_placement_compliant_repair_needs_no_completion_row(blueprint_api, monkeypatch):
+    from test_blueprint import confirm
+    build = placement_build(blueprint_api, monkeypatch, repair='repair_compliant')
+    confirm(build.client, build.app, build.bid)
+    assert build.llm.calls == 2
+    blueprint = build.client.get(f'/api/builds/{build.bid}/blueprint').json()
+    assert not [r for r in blueprint['rows'] if r['note'].startswith('observation ')]
+    assert [r['component']['type'] for r in blueprint['rows'] if r['question_id'] == 'q3'] == ['table', 'area']
+    assessment = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+    assert assessment['state'] == 'ready', [i['reason'] for i in assessment['issues'] if i['resolution'] == 'unresolved']
+    accept(build)
+    spec = DashboardSpec.model_validate_json((build.folder / 'spec.json').read_text(encoding='utf-8'))
+    components = {c.id: (p.index, c) for p in spec.pages for c in p.components}
+    [area] = {cid for item in COUNTRIES['recorded'] for cid in bound_components(build)[item]}
+    assert components[area][0] == 1 and components[area][1].question_ref == 'q3'
+
+
+def test_saved_page_placement_full_page_one_stays_an_issue(blueprint_api, monkeypatch):
+    """With 12 rows on page 1 (two controls, three rows per question and the code-added yearly bar), completion
+    has no room for the area: the observations stay Issues and accept is refused. Nothing moves to page 1."""
+    from test_blueprint import confirm
+    build = placement_build(blueprint_api, monkeypatch)
+    draft = build.data['draft']['rows']
+    q = {qid: next(r for r in draft if r['question_id'] == qid) for qid in ('q1', 'q2', 'q3')}
+
+    def row(qid, kind, dimensions, field, agg, label):
+        value = copy.deepcopy(q[qid])
+        value['component'] = {**value['component'], 'type': kind, 'label': label, 'dimensions': dimensions, 'options': {},
+                              'metrics': [{'field': field, 'agg': agg}], 'date_dimension': None, 'sort': None, 'breakdown': None}
+        return value
+    # The planner keeps no yearly bar: completion adds it (the 12th page-1 row) before it reaches the area.
+    full = [q['q1'], row('q1', 'table', ['region'], 'access_pct', 'avg', 'Access by region'),
+            row('q1', 'bar', ['country'], 'access_pct', 'avg', 'Access by country'),
+            q['q2'], row('q2', 'bar', ['region'], 'people_without_access', 'sum', 'Unserved by region'),
+            row('q2', 'table', ['country'], 'people_without_access', 'sum', 'Unserved by country'),
+            q['q3'], row('q3', 'bar', ['region'], 'access_pct', 'avg', 'Regional access'),
+            row('q3', 'table', ['country'], 'access_pct', 'avg', 'Country access')]
+    build.llm.replies[1] = json.dumps({'rows': full})
+    confirm(build.client, build.app, build.bid)
+    assert build.llm.calls == 2
+    blueprint = build.client.get(f'/api/builds/{build.bid}/blueprint').json()
+    assert sum(r['page'] == 1 for r in blueprint['rows']) == 12
+    assert [r['component']['type'] for r in blueprint['rows'] if r['note'].startswith('observation ')] == ['bar']
+    assert later_rows(blueprint['rows']) == later_rows(draft)
+    assessment = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+    reasons = {i['requirement']: i['reason'] for i in assessment['issues'] if i['resolution'] == 'unresolved'}
+    assert assessment['state'] == 'blocked' and len(reasons) == 3 and all('on page 1' in r for r in reasons.values()), reasons
+    refused = build.client.post(f'/api/builds/{build.bid}/blueprint/accept')
+    assert refused.status_code == 409 and refused.json()['error']['code'] == 'feasibility_blocked'
+    assert build.bq.created == []
+
+
+def test_saved_page_placement_matches_and_offers_only_page_one_rows(blueprint_api, monkeypatch):
+    """Matching and code-built offers consider only reference-page rows: a page-1 urban/rural time series is the
+    nearest row, never the exactly matching page-3 area; the yearly bar's offer retypes a page-1 table, never
+    the page-3 bar of the same metric."""
+    from dss.artifacts.models import BlueprintRow
+    from dss.spec import requirements as req
+    from dss.spec.capabilities import Checker, load_registry
+    build = placement_build(blueprint_api, monkeypatch)
+    checker, ledger = Checker(load_registry()), req.load(build.folder)
+    draft = [BlueprintRow.model_validate(r) for r in build.data['draft']['rows']]
+    owners = {r.id: r.source.item_id for r in ledger.requirements}
+
+    def gaps(rows):
+        return {owners[e['requirement_id']]: e for e in feasibility.diagnostics(placement_snapshot(build, rows), ledger, checker)
+                if e['code'] == 'observation'}
+    found = gaps(draft)
+    assert sorted(found) == COUNTRIES['recorded']
+    area = next(i for i, r in enumerate(draft) if r.page == 3 and r.component.type == 'area' and r.question_id == 'q7')
+    assert all(area not in e['indices'] and not e['offers'] for e in found.values())
+    trend = draft[area].model_copy(deep=True)
+    trend.question_id, trend.section_id, trend.page = 'q3', 's1', 1
+    trend.component = trend.component.model_copy(update={'type': 'time_series', 'options': {'date_granularity': 'year'}})
+    rows = [*draft, trend]
+    found = gaps(rows)
+    assert sorted(found) == COUNTRIES['recorded']
+    for e in found.values():
+        assert e['indices'] == [len(draft)] and e['qids'] == ['q3'] and 'on page 1' in e['message']
+        assert "row 'Urban vs. Rural Electricity Access Over Time' is a time_series, the observation is a area" in e['message']
+    # The yearly bar as a page-1 table by year: its nearest row and offer are there, not the page-3 bar of SUM(people_without_access).
+    # (Placed before the q2 scorecard, which ties with it as the nearest page-1 row.)
+    bar = next(i for i, r in enumerate(draft) if r.page == 1 and r.component.type == 'bar')
+    scorecard = next(i for i, r in enumerate(draft) if r.question_id == 'q2' and r.component.type == 'scorecard')
+    table = draft[bar].model_copy(deep=True)
+    table.component = table.component.model_copy(update={'type': 'table'})
+    rows = list(draft)
+    rows[scorecard], rows[bar] = table, draft[scorecard]
+    e = gaps(rows)['o5']
+    assert e['indices'] == [scorecard] and 'on page 1' in e['message']
+    assert e['offers'] and all([r['index'] for r in o['replace']] == [scorecard] for o in e['offers'])
+    offer = next(o for o in e['offers'] if o['id'] == 'observed_type')
+    rows[scorecard] = BlueprintRow.model_validate(offer['replace'][0]['row'])
+    assert rows[scorecard].page == 1 and rows[scorecard].component.type == 'bar' and 'o5' not in gaps(rows)
+
+
 INPUTS = Path(__file__).parents[1] / ELECTRICITY['provenance']['run'] / 'build'
 
 
@@ -1295,10 +1508,13 @@ def test_electricity_recreate_reaches_ready_and_publishes_every_observation(blue
     assert build.llm.calls == 2  # the draft and the one row repair; code adds the rest
     blueprint = build.client.get(f'/api/builds/{build.bid}/blueprint').json()
     added = [r for r in blueprint['rows'] if r['note'].startswith('observation ')]
-    assert {(r['question_id'], r['page'], r['component']['type']) for r in added} == {(None, 1, 'bar'), (None, 1, 'area')}
+    # 24.10: the planner's region list is on page 2, so code adds the observed one on page 1 too.
+    assert {(r['question_id'], r['page'], r['component']['type']) for r in added} == {
+        (None, 1, 'bar'), (None, 1, 'area'), (None, 1, 'fixed_size_list')}
     notes = {r['component']['type']: r['note'].rsplit(':', 1)[1] for r in added}
     # One area row for the four per-country observations (the first of them in ledger order adds it).
-    assert notes['bar'] == 'o6' and notes['area'] in ('o8', 'o9', 'o10', 'o11') and len(added) == 2
+    assert notes['bar'] == 'o6' and notes['area'] in ('o8', 'o9', 'o10', 'o11') and notes['fixed_size_list'] == 'o2'
+    assert len(added) == 3
     assert not {'year_year', 'year_trunc', 'year_grain'} & {f['name'] for f in blueprint['derived_fields']}
     assert all('DATE_TRUNC' not in sql and 'AS `year`' in sql for sql in blueprint_api[5].sql)
     assessment = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
@@ -1351,7 +1567,8 @@ def test_electricity_sql_repair_that_fulfils_the_observation_drops_the_code_adde
     confirm(build.client, build.app, build.bid)
     assert build.llm.calls == 3 and len(attempts) == 2  # draft, row repair, the one SQL repair
     rows = build.client.get(f'/api/builds/{build.bid}/blueprint').json()['rows']
-    assert [r['component']['type'] for r in rows if r['note'].startswith('observation ')] == ['area']  # the bar is the planner's
+    # The bar is the planner's; the page-1 region list is code-added (24.10: the planner's is on page 2).
+    assert [r['component']['type'] for r in rows if r['note'].startswith('observation ')] == ['area', 'fixed_size_list']
     assessment = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
     assert assessment['state'] == 'ready', (assessment['state'], [i['reason'] for i in assessment['issues']])
 
@@ -1384,7 +1601,7 @@ def test_electricity_removed_instructions_remove_the_code_added_rows(blueprint_a
     build = electricity_build(blueprint_api, monkeypatch)
     confirm(build.client, build.app, build.bid)
     rows = build.client.get(f'/api/builds/{build.bid}/blueprint').json()['rows']
-    assert len([r for r in rows if r['note'].startswith('observation ')]) == 2
+    assert len([r for r in rows if r['note'].startswith('observation ')]) == 3  # 24.10: with the page-1 region list
     upload_recreate(build)
     blocked = feasibility_check(build.client, build.app, build.bid)
     assert blocked['state'] == 'blocked' and any('Define ' in i['reason'] for i in blocked['issues'])
