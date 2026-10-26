@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import { useBuildEvents, type OpenBuildEvents, type StreamStatus } from '../../api/events';
-import { ApiError, ARTIFACTS, type ArtifactName, type Build, type BuildEvent, type Message } from '../../api/types';
+import { ApiError, ARTIFACTS, type ArtifactName, type Build, type BuildEvent, type BuildEventMap, type Message } from '../../api/types';
 import { reduceActivity, type Activity } from './activity';
 import { publishWorkspace } from '../workspace/stretch';
 import { idleRun, reduceBuildRun, type BuildRun } from '../workspace/build/buildRun';
@@ -40,6 +40,9 @@ export type ArtifactSeq = Readonly<Record<ArtifactName, number>>;
 const NO_ARTIFACT_CHANGES: ArtifactSeq = { context: 0, outline: 0, design: 0, blueprint: 0 };
 const isRunErrorNode = (node: string): node is RunErrorNode => node in RUN_ERROR_FALLBACK;
 
+/** What `brief.review` announces: the review to fetch with `getDesignPages`. */
+export type BriefReviewPause = BuildEventMap['brief.review'];
+
 export interface BuildStream {
   /** Runs of this build seen on the stream since it opened (client-only; events aren't replayed). */
   activity: Activity;
@@ -59,6 +62,8 @@ export interface BuildStream {
   commentsError: { seq: number; text: string } | null;
   /** The error of the latest failed staged run per node; cleared when that node runs again. */
   runErrors: RunErrors;
+  /** The latest `brief.review` pause (api.md 3.0): the run finished ok and waits for the user. Cleared when a run starts and on reconnect (refetch the design pages). */
+  briefReview: BriefReviewPause | null;
   /** The engine run of the build stage, folded from build.* and run.* events. */
   buildRun: BuildRun;
   status: StreamStatus;
@@ -76,6 +81,7 @@ const errorText = (error: unknown, fallback: string) => (error instanceof ApiErr
 export function useBuildStream(build: Build, onBuildChange: (build: Build) => void, open?: OpenBuildEvents): BuildStream {
   const [messages, setMessageState] = useState<Message[] | null>(null);
   const [runErrors, setRunErrors] = useState<RunErrors>({});
+  const [briefReview, setBriefReview] = useState<BriefReviewPause | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [artifactSeq, setArtifactSeq] = useState<ArtifactSeq>(NO_ARTIFACT_CHANGES);
@@ -157,6 +163,7 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
       case 'ready':
         // Events aren't replayed: a run.finished missed while disconnected must not lock the stage.
         setApplying(false);
+        setBriefReview(null);
         setStretchRuns((runs) => {
           const kept = Object.entries(runs).filter(([, run]) => run.status !== 'running');
           return kept.length === Object.keys(runs).length ? runs : (Object.fromEntries(kept) as StretchRuns);
@@ -206,7 +213,11 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
         buildSeq.current += 1;
         setBuild({ ...latest.current, spec_version: event.data.spec_version });
         break;
+      case 'brief.review':
+        setBriefReview(event.data);
+        break;
       case 'run.started':
+        setBriefReview(null);
         if (isStretchNode(event.data.node)) {
           const { node, run_id } = event.data;
           setStretchRuns((runs) => ({ ...runs, [node]: { run_id, status: 'running', error: null } }));
@@ -254,5 +265,5 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
 
   const running = [...activity].reverse().find((run) => run.status === 'running')?.node ?? null;
 
-  return { activity, messages, loadError, drafts, running, artifactSeq, applying, commentsError, runErrors, buildRun, stretchRuns, status, reload: load };
+  return { activity, messages, loadError, drafts, running, artifactSeq, applying, commentsError, runErrors, briefReview, buildRun, stretchRuns, status, reload: load };
 }

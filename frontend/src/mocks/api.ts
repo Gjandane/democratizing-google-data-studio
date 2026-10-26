@@ -8,8 +8,21 @@ import {
   type ArtifactName,
   type Assessment,
   type Blueprint,
+  type BriefReview,
+  type BuildCost,
   type Context,
   type Design,
+  type DesignPage,
+  type DesignPages,
+  type GenerationProfile,
+  type GenerationStageId,
+  GENERATION_STAGE_IDS,
+  type PageBrief,
+  type RunCalls,
+  type SettingsUpdate,
+  type StageId,
+  STAGE_IDS,
+  type ThinkingLevel,
   type Issue,
   type Outline,
   type OutlineQuestion,
@@ -90,6 +103,10 @@ interface MockState {
   stagedBusy: Set<string>;
   messages: Map<string, Message[]>;
   settings: Settings;
+  /** Per build: the published pages and the pending brief review (api.md 3.0); filled on first read. */
+  designPages: Map<string, DesignPages>;
+  /** Consumed reviews by `<build id>:<review_id>` with the run their approval started, so a repeated approve answers the same run. */
+  approvedReviews: Map<string, string>;
   traces: Trace[];
   engine: EngineStatus;
   engineBusy: boolean;
@@ -126,6 +143,8 @@ function seed(): MockState {
     stagedBusy: new Set(),
     messages: new Map([[fixtures.build.id, clone(fixtures.messages)]]),
     settings: clone(fixtures.settings),
+    designPages: new Map(),
+    approvedReviews: new Map(),
     traces: clone(fixtures.traces),
     engine: clone(fixtures.engineStatusLocal),
     engineBusy: false,
@@ -175,6 +194,12 @@ export function setMockScreencast(on: boolean): void {
 /** Changes the stored settings (for example no key or no project). For tests and the dev server. */
 export function setMockSettings(settings: Partial<Settings>): void {
   Object.assign(state.settings, settings);
+}
+
+/** Replaces a build's design pages and pending brief review (pass `review` to wait for one) without events. For tests and previews. */
+export function setMockDesignPages(buildId: string, pages: DesignPages): void {
+  findBuild(buildId);
+  state.designPages.set(buildId, clone(pages));
 }
 
 /** Makes model actions or Google Cloud actions answer 503 until reset with null. For tests and the dev server. */
@@ -446,7 +471,7 @@ const opName = (line: string) => (line.split(' ')[1] ?? 'op').replace(/-/g, '_')
 const agentMode = () => state.engine.mode === 'agent';
 
 /** Settings the hosted app lets the user change (contracts/api.md, PUT /api/settings). */
-const UNLOCKED_SETTINGS = new Set(['planner_model', 'worker_model']);
+const UNLOCKED_SETTINGS = new Set(['stages', 'fallback_model', 'review_briefs']);
 
 /** Calls that work without the access code (contracts/api.md, Access), plus the URL builders. */
 const UNGATED = new Set(['health', 'getSession', 'createSession', 'prototypeUrl', 'fileUrl', 'syntheticCsvUrl']);
@@ -513,6 +538,158 @@ function requireEditable(build: Build, name: ArtifactName): void {
 
 function requireIdle(build: Build): void {
   if (state.stagedBusy.has(build.id)) throw new ApiError(409, 'action_in_progress', 'Wait for the current action to finish.');
+  // api.md 3.0: while a brief review waits, the other mutating routes refuse (reads and settings still work).
+  if (state.designPages.get(build.id)?.review) throw new ApiError(409, 'brief_review_pending', 'Approve or cancel the brief review first.', { review_id: state.designPages.get(build.id)!.review!.review_id });
+}
+
+/** The prototype run's result: the plan docs, the next spec version and the Prototype stage (api.md 2.0). */
+function publishPrototype(build: Build): void {
+  const id = build.id;
+  build.artifacts.blueprint = 'confirmed';
+  build.docs = clone(fixtures.build.docs);
+  emit(id, { name: 'docs.updated', data: { docs: clone(build.docs) } });
+  build.spec_version = (build.spec_version ?? 0) + 1;
+  emit(id, { name: 'prototype.updated', data: { spec_version: build.spec_version } });
+  setStage(build, 'prototype');
+  announce(build);
+  // A build that had no pages yet gets the fixture's layout once its first prototype is published.
+  const pages = pagesOf(build);
+  if (pages.pages.length === 0) pages.pages = clone(fixtures.designPages.pages);
+  pages.version = build.current_version;
+  pages.spec_version = build.spec_version;
+}
+
+// ---------- Stage settings and design briefs (api.md 3.0) ----------
+
+const noPages = (build: Build): DesignPages => ({ version: build.current_version, spec_version: null, pages: [], review: null });
+
+/** The build's design pages: the fixture's once it has a spec, until a test or a review replaces them. */
+function pagesOf(build: Build): DesignPages {
+  let pages = state.designPages.get(build.id);
+  if (!pages) {
+    pages = build.spec_version === null ? noPages(build) : clone(fixtures.designPages);
+    state.designPages.set(build.id, pages);
+  }
+  return pages;
+}
+
+/** A value that changes with the content: the mock needs a stable stand-in for the canonical JSON's sha256, not a real digest. */
+function fakeSha256(text: string): string {
+  // Eight FNV-1a style chunks of 8 hex digits, each seeded differently and mixing every character.
+  let out = '';
+  for (let chunk = 0; chunk < 8; chunk++) {
+    let hash = (0x811c9dc5 ^ Math.imul(chunk + 1, 0x9e3779b1)) >>> 0;
+    for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619) >>> 0;
+    out += hash.toString(16).padStart(8, '0');
+  }
+  return out;
+}
+
+/** The code's readable rendering of a brief (the shape of the contract's `markdown`). */
+function briefMarkdown(brief: PageBrief, components: BriefReview['components']): string {
+  const slots = brief.slots.map((slot) => {
+    const component = components.find((c) => c.id === slot.id);
+    return `## ${slot.id}${component ? ` (${component.type}: ${component.label})` : ''}\n\n${slot.treatment.trim()}\n\n`;
+  });
+  return `# Page ${brief.page} brief\n\n## Overall\n\n${brief.overall.trim()}\n\n${slots.join('')}`.trimEnd() + '\n';
+}
+
+/** The issues the backend's content checks would report for an edited brief (paths into the PageBrief). */
+function briefIssues(brief: PageBrief, components: BriefReview['components']): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  if (brief.overall.trim() === '') issues.push({ path: '/overall', message: 'Write the overall look of this page.' });
+  const ids = brief.slots.map((slot) => slot.id);
+  if (ids.length !== components.length || components.some((c, i) => ids[i] !== c.id)) {
+    issues.push({ path: '/slots', message: "Keep one treatment for each of this page's components." });
+  }
+  brief.slots.forEach((slot, i) => {
+    if (slot.treatment.trim() === '') {
+      const label = components.find((c) => c.id === slot.id)?.label ?? slot.id;
+      issues.push({ path: `/slots/${i}/treatment`, message: `Write a treatment for ${label}.` });
+    }
+  });
+  return issues;
+}
+
+/** The run stops before this page's HTML: `brief.review`, then `run.finished` ok (the steps' caller adds it). */
+function pauseForReview(build: Build, action: BriefReview['action']): void {
+  const pages = pagesOf(build);
+  const review = clone(fixtures.designPagesReview.review!);
+  review.review_id = `br_${(state.nextSeq++).toString(16).padStart(12, '0')}`;
+  review.action = action;
+  review.created_at = now();
+  pages.review = review;
+  emit(build.id, { name: 'brief.review', data: { review_id: review.review_id, page: review.page, pages: review.pages } });
+}
+
+/** Approve: the reviewed page is generated and published under the review's node. */
+function publishReviewed(build: Build, review: BriefReview): RunAccepted {
+  state.stagedBusy.add(build.id);
+  return startRun(build, review.action, (runId) => [
+    () => emit(build.id, { name: 'node.progress', data: { run_id: runId, node: review.action, text: 'Writing the page HTML' } }),
+    () => {
+      const pages = pagesOf(build);
+      const page: DesignPage = { page: review.page, layout: 'designed', standard_reason: null, brief: clone(review.brief), html_model: fixtures.settings.stages.html_no_reference.model };
+      pages.pages = [...pages.pages.filter((p) => p.page !== page.page), page].sort((a, b) => a.page - b.page);
+      if (review.action === 'prototype') publishPrototype(build);
+      else {
+        build.spec_version = (build.spec_version ?? 0) + 1;
+        emit(build.id, { name: 'prototype.updated', data: { spec_version: build.spec_version } });
+        touch(build);
+        announce(build);
+      }
+      pages.spec_version = build.spec_version;
+    },
+    () => state.stagedBusy.delete(build.id),
+  ]);
+}
+
+/** Issues of a merged Settings update, for the stages it names and the fallback model (api.md 3.0, Validation). */
+function settingsUpdateIssues(next: Settings, update: SettingsUpdate): ValidationIssue[] {
+  const { models, limits } = fixtures.capabilities;
+  const issues: ValidationIssue[] = [];
+  const known = (id: string) => models.find((m) => m.id === id);
+  const within = (path: string, value: number, [lo, hi]: [number, number], what: string) => {
+    if (value < lo || value > hi) issues.push({ path, message: `${what} must be between ${lo} and ${hi}.` });
+  };
+  const stages = update.stages ?? {};
+  for (const stage of Object.keys(stages)) {
+    if (!(STAGE_IDS as readonly string[]).includes(stage)) {
+      issues.push({ path: `/stages/${stage}`, message: 'This is not a stage.' });
+      continue;
+    }
+    const id = stage as StageId;
+    const profile = next.stages[id] as unknown as Record<string, unknown>;
+    for (const key of Object.keys(stages[id] ?? {})) {
+      if (!(key in profile)) issues.push({ path: `/stages/${stage}/${key}`, message: 'This stage has no such setting.' });
+    }
+    const at = (key: string) => `/stages/${stage}/${key}`;
+    const model = known(profile.model as string);
+    if (!model) {
+      issues.push({ path: at('model'), message: `${String(profile.model)} is not a known model.` });
+      continue;
+    }
+    if (!model.thinking_levels.includes(profile.thinking as ThinkingLevel)) {
+      issues.push({ path: at('thinking'), message: `${model.id} supports ${model.thinking_levels.join(', ')} thinking.` });
+    }
+    const generation = (GENERATION_STAGE_IDS as readonly string[]).includes(stage);
+    within(at('timeout_s'), profile.timeout_s as number, generation ? limits.generation_timeout_s : limits.model_timeout_s, 'The timeout');
+    if (!generation) continue;
+    const g = profile as unknown as GenerationProfile;
+    if (g.input_tokens < limits.min_input_tokens || g.input_tokens > model.max_input_tokens) {
+      issues.push({ path: at('input_tokens'), message: `${model.id} allows ${limits.min_input_tokens} to ${model.max_input_tokens} input tokens.` });
+    }
+    if (g.output_tokens < limits.min_output_tokens) issues.push({ path: at('output_tokens'), message: `Output needs at least ${limits.min_output_tokens} tokens.` });
+    else if (g.output_tokens > model.max_output_tokens) issues.push({ path: at('output_tokens'), message: `${model.id} allows at most ${model.max_output_tokens} output tokens.` });
+    within(at('transport_retries'), g.transport_retries, limits.transport_retries, 'Retries');
+    within(at('validation_repairs'), g.validation_repairs, limits.validation_repairs[id as GenerationStageId], 'Repairs');
+    within(at('input_margin_pct'), g.input_margin_pct, limits.input_margin_pct, 'The margin');
+    if (!model.images && id !== 'native_planning' && id !== 'html_no_reference') issues.push({ path: at('model'), message: `${model.id} can't read images.` });
+  }
+  if (update.fallback_model !== undefined && !known(update.fallback_model)) {
+    issues.push({ path: '/fallback_model', message: `${update.fallback_model} is not a known model.` });
+  }
+  return issues;
 }
 
 /** `recipe` and `run` need all four artifacts confirmed; a build made before 2.0 (all missing, with a spec) is exempt. */
@@ -737,12 +914,21 @@ export function createMockApi(): ApiClient {
         if (agentMode() && locked.length > 0) {
           throw new ApiError(403, 'settings_locked', 'The hosted app fixes the API key and Google Cloud settings. Change only the models here.', { fields: locked });
         }
-        const { google_api_key, ...fields } = update;
-        Object.assign(state.settings, fields);
+        const { google_api_key, stages, ...fields } = update;
+        const next = clone(state.settings);
+        for (const [stage, patchOf] of Object.entries(stages ?? {})) {
+          if (stage in next.stages) Object.assign(next.stages[stage as StageId], patchOf);
+        }
+        Object.assign(next, fields);
+        const issues = settingsUpdateIssues(next, update);
+        if (issues.length > 0) throw new ApiError(422, 'invalid_settings', 'Fix the highlighted settings and save again.', { issues });
+        state.settings = next;
         // The key is write-only: the mock only remembers that one is set.
         if (google_api_key !== undefined) state.settings.google_api_key_set = google_api_key !== '';
         return state.settings;
       }),
+
+    getSettingsCapabilities: () => respond(() => fixtures.capabilities),
 
     listBuilds: () => respond(() => newestFirst([...state.builds.values()].map(summary), (b) => b.updated_at)),
 
@@ -1299,16 +1485,51 @@ export function createMockApi(): ApiClient {
         // On failure the stage stays Blueprint and nothing is confirmed (run.finished carries the error).
         return stagedRun(build, 'prototype', (runId) => [
           () => emit(id, { name: 'node.progress', data: { run_id: runId, node: 'prototype', text: 'Rendering the prototype' } }),
-          () => {
-            build.artifacts.blueprint = 'confirmed';
-            build.docs = clone(fixtures.build.docs);
-            emit(id, { name: 'docs.updated', data: { docs: clone(build.docs) } });
-            build.spec_version = (build.spec_version ?? 0) + 1;
-            emit(id, { name: 'prototype.updated', data: { spec_version: build.spec_version } });
-            setStage(build, 'prototype');
-            announce(build);
-          },
+          // With review_briefs on, the run pauses for the user's brief review instead of publishing (stage stays Blueprint).
+          () => (state.settings.review_briefs ? pauseForReview(build, 'prototype') : publishPrototype(build)),
         ]);
+      }),
+
+    getDesignPages: (id) => respond(() => pagesOf(findBuild(id))),
+
+    saveBriefReview: (id, body) =>
+      respond(() => {
+        const review = pagesOf(findBuild(id)).review;
+        if (!review || review.review_id !== body.review_id) throw new ApiError(404, 'review_not_found', 'There is no brief waiting for review. Reload the page.');
+        if (body.revision !== review.revision) throw new ApiError(409, 'brief_review_conflict', 'The brief changed since you opened it. Reload it, then edit again.', { revision: review.revision });
+        const brief = clone(body.brief);
+        review.revision += 1;
+        review.brief = { ...review.brief, origin: 'edited', brief, markdown: briefMarkdown(brief, review.components), sha256: fakeSha256(JSON.stringify(brief)) };
+        review.issues = briefIssues(brief, review.components);
+        return review;
+      }),
+
+    approveBriefReview: (id, body) =>
+      respond(() => {
+        const build = findBuild(id);
+        const pages = pagesOf(build);
+        const done = state.approvedReviews.get(`${id}:${body.review_id}`);
+        if (done && pages.review?.review_id !== body.review_id) return { run_id: done };
+        const review = pages.review;
+        if (!review || review.review_id !== body.review_id) throw new ApiError(404, 'review_not_found', 'There is no brief waiting for review. Reload the page.');
+        if (body.revision !== review.revision || body.sha256 !== review.brief.sha256) {
+          throw new ApiError(409, 'brief_review_conflict', 'The brief changed since you opened it. Reload it, then approve again.', { revision: review.revision });
+        }
+        if (review.issues.length > 0) throw artifactInvalid(review.issues);
+        if (review.stale) throw new ApiError(409, 'brief_review_stale', 'The inputs changed since this brief was written. Cancel the review and run it again.');
+        requireModel();
+        pages.review = null;
+        const accepted = publishReviewed(build, review);
+        state.approvedReviews.set(`${id}:${body.review_id}`, accepted.run_id);
+        return accepted;
+      }),
+
+    cancelBriefReview: (id, reviewId) =>
+      respond(() => {
+        const build = findBuild(id);
+        const pages = pagesOf(build);
+        if (pages.review?.review_id === reviewId) pages.review = null;
+        return build;
       }),
 
     getDoc: (id, path) =>
@@ -1483,6 +1704,21 @@ export function createMockApi(): ApiClient {
 
     listTraces: (buildId) =>
       respond(() => newestFirst(state.traces.filter((t) => !buildId || t.build_id === buildId), (t) => t.started_at)),
+
+    getRunCalls: (runId) =>
+      respond((): RunCalls => {
+        if (runId === fixtures.runCalls.run_id) return fixtures.runCalls;
+        // A run before 3.0 has a Trace but no recorded calls or settings snapshot.
+        if (state.traces.some((t) => t.run_id === runId)) return { run_id: runId, settings: null, calls: [], cost_usd_estimate: null, cost_complete: false };
+        throw new ApiError(404, 'run_not_found', 'This run is not recorded.', { run_id: runId });
+      }),
+
+    getBuildCost: (id) =>
+      respond((): BuildCost => {
+        const build = findBuild(id);
+        if (build.id === fixtures.buildCost.build_id) return fixtures.buildCost;
+        return { build_id: build.id, cost_usd_estimate: null, complete: true, runs: [], prices_checked_on: null };
+      }),
 
     getEngineStatus: () => respond(() => state.engine),
 

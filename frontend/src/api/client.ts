@@ -21,7 +21,12 @@ import {
   type ReferenceMode,
   isApiErrorBody,
   type Build,
+  type BuildCost,
+  type BriefReview,
+  type BriefReviewApproval,
+  type BriefReviewSave,
   type BuildSummary,
+  type DesignPages,
   type Comment,
   type GenerationRequest,
   type Proposal,
@@ -34,7 +39,13 @@ import {
   type Design,
   type DesignUpdate,
   isBlueprint,
+  isBriefReview,
   isBuild,
+  isBuildCost,
+  isDesignPages,
+  isRunCalls,
+  isSettings,
+  isSettingsCapabilities,
   isContext,
   isDesign,
   isOutline,
@@ -48,8 +59,10 @@ import {
   oversizeError,
   type Recipe,
   type RunAccepted,
+  type RunCalls,
   type Session,
   type Settings,
+  type SettingsCapabilities,
   type SettingsUpdate,
   type Source,
   type SourcesUploaded,
@@ -67,7 +80,10 @@ export interface ApiClient {
   /** Sends the access code once; the backend answers with the session cookie. The code is never kept. */
   createSession(code: string): Promise<Session>;
   getSettings(): Promise<Settings>;
+  /** Any validation issue answers `422 invalid_settings` (`detail.issues`, read with `artifactIssues`) and saves nothing. */
   updateSettings(update: SettingsUpdate): Promise<Settings>;
+  /** The model table, defaults and limits the stage editor validates against (3.0). */
+  getSettingsCapabilities(): Promise<SettingsCapabilities>;
   /** Newest `updated_at` first. */
   listBuilds(): Promise<BuildSummary[]>;
   createBuild(body: NewBuild): Promise<Build>;
@@ -126,6 +142,14 @@ export interface ApiClient {
   regenerateBlueprint(buildId: string): Promise<RunAccepted>;
   /** Needs a ready assessment and an ok row; lays out the spec and renders (node `prototype`). */
   acceptBlueprint(buildId: string): Promise<RunAccepted>;
+  /** The current version's per-page layout, published briefs and the pending brief review, if any (3.0). */
+  getDesignPages(buildId: string): Promise<DesignPages>;
+  /** Saves an edit of the pending review's brief: `409 brief_review_conflict` (`detail.revision`) on a stale revision, `404 review_not_found`. */
+  saveBriefReview(buildId: string, body: BriefReviewSave): Promise<BriefReview>;
+  /** Approves what the user saw (revision and sha256); needs no issues (`409 artifact_invalid`) and fresh inputs (`409 brief_review_stale`). */
+  approveBriefReview(buildId: string, body: BriefReviewApproval): Promise<RunAccepted>;
+  /** Drops the unpublished candidate; repeating it returns the current Build. */
+  cancelBriefReview(buildId: string, reviewId: string): Promise<Build>;
   /** Markdown of one build doc. */
   getDoc(buildId: string, path: string): Promise<string>;
   /** The current spec JSON, for read-only display. */
@@ -142,6 +166,10 @@ export interface ApiClient {
   fileUrl(buildId: string, name: string): string;
   /** Newest first. */
   listTraces(buildId?: string): Promise<Trace[]>;
+  /** The Settings snapshot a run used and its model calls in order; `404 run_not_found` for an unknown run (3.0). */
+  getRunCalls(runId: string): Promise<RunCalls>;
+  /** Every run of the build, newest first, with its estimated cost (3.0). */
+  getBuildCost(buildId: string): Promise<BuildCost>;
   getEngineStatus(): Promise<EngineStatus>;
   engineLogin(): Promise<RunAccepted>;
 }
@@ -218,6 +246,12 @@ const UNREADABLE = {
   outline: "Couldn't read the outline. Try again.",
   design: "Couldn't read the design. Try again.",
   blueprint: "Couldn't read the blueprint. Try again.",
+  settings: "Couldn't read the settings: the backend may predate API 3.0. Update it, then try again.",
+  capabilities: "Couldn't read the model list. Try again.",
+  designPages: "Couldn't read the page designs. Try again.",
+  review: "Couldn't read the brief review. Try again.",
+  calls: "Couldn't read this run's model calls. Try again.",
+  cost: "Couldn't read the cost estimate. Try again.",
   build: "Couldn't read this build: the backend may predate API 2.0. Update it, then try again.",
 };
 
@@ -228,8 +262,9 @@ export const httpApi: ApiClient = {
   health: () => json('GET', '/health'),
   getSession: () => json('GET', '/session'),
   createSession: (code) => json('POST', '/session', { code }),
-  getSettings: () => json('GET', '/settings'),
-  updateSettings: (update) => json('PUT', '/settings', update),
+  getSettings: () => checkedJson('GET', '/settings', isSettings, UNREADABLE.settings),
+  updateSettings: (update) => checkedJson('PUT', '/settings', isSettings, UNREADABLE.settings, update),
+  getSettingsCapabilities: () => checkedJson('GET', '/settings/capabilities', isSettingsCapabilities, UNREADABLE.capabilities),
   listBuilds: () => json('GET', '/builds'),
   createBuild: (body) => checkedJson('POST', '/builds', isBuild, UNREADABLE.build, body),
   getBuild: (id) => checkedJson('GET', buildPath(id), isBuild, UNREADABLE.build),
@@ -302,6 +337,10 @@ export const httpApi: ApiClient = {
   getBlueprint: (id) => checkedJson('GET', buildPath(id, '/blueprint'), nullable(isBlueprint), UNREADABLE.blueprint),
   regenerateBlueprint: (id) => accepted(buildPath(id, '/blueprint/regenerate')),
   acceptBlueprint: (id) => accepted(buildPath(id, '/blueprint/accept')),
+  getDesignPages: (id) => checkedJson('GET', buildPath(id, '/design-pages'), isDesignPages, UNREADABLE.designPages),
+  saveBriefReview: (id, body) => checkedJson('PUT', buildPath(id, '/briefs/review'), isBriefReview, UNREADABLE.review, body),
+  approveBriefReview: (id, body) => accepted(buildPath(id, '/briefs/review/approve'), body),
+  cancelBriefReview: (id, reviewId) => checkedJson('POST', buildPath(id, '/briefs/review/cancel'), isBuild, UNREADABLE.build, { review_id: reviewId }),
   getDoc: (id, path) => text(buildPath(id, `/docs/${segs(path)}`)),
   getSpec: (id) => json('GET', buildPath(id, '/spec')),
   prototypeUrl: (id, v, layer = 'all') =>
@@ -313,6 +352,8 @@ export const httpApi: ApiClient = {
   createVersion: (id) => json('POST', buildPath(id, '/versions')),
   fileUrl: (id, name) => `/api${buildPath(id, `/files/${segs(name)}`)}`,
   listTraces: (buildId) => json('GET', buildId ? `/traces?build_id=${seg(buildId)}` : '/traces'),
+  getRunCalls: (runId) => checkedJson('GET', `/traces/${seg(runId)}/calls`, isRunCalls, UNREADABLE.calls),
+  getBuildCost: (id) => checkedJson('GET', buildPath(id, '/cost'), isBuildCost, UNREADABLE.cost),
   getEngineStatus: () => json('GET', '/engine/status'),
   engineLogin: () => json('POST', '/engine/login'),
 };

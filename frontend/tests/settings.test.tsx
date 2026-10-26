@@ -17,7 +17,7 @@ afterEach(() => {
 
 async function openModal(onSaved = vi.fn()) {
   render(<SettingsModal open onClose={() => {}} onSaved={onSaved} />);
-  await screen.findByLabelText('Planner model');
+  await screen.findByLabelText('GCP project');
   return onSaved;
 }
 
@@ -26,7 +26,10 @@ const saveButton = () => screen.getByRole('button', { name: 'Save settings' }) a
 describe('settings modal', () => {
   it('loads the saved values and keeps Save disabled until something changes', async () => {
     await openModal();
-    expect((screen.getByLabelText('Planner model') as HTMLInputElement).value).toBe(fixtures.settings.planner_model);
+    expect((screen.getByLabelText('GCP project') as HTMLInputElement).value).toBe(fixtures.settings.gcp_project_id);
+    // The model profiles come with the Models tab (16.2): no planner or worker inputs remain.
+    expect(screen.queryByLabelText('Planner model')).toBeNull();
+    expect(screen.queryByLabelText('Worker model')).toBeNull();
     expect((screen.getByLabelText('BigQuery dataset') as HTMLInputElement).value).toBe(fixtures.settings.bq_dataset);
     expect(saveButton().disabled).toBe(true);
     fireEvent.change(screen.getByLabelText('BigQuery dataset'), { target: { value: 'other' } });
@@ -74,7 +77,7 @@ describe('settings modal', () => {
   it('says what to do when saving fails', async () => {
     await openModal();
     vi.spyOn(api, 'updateSettings').mockRejectedValue(new Error('boom'));
-    fireEvent.change(screen.getByLabelText('Worker model'), { target: { value: 'x' } });
+    fireEvent.change(screen.getByLabelText('GCS bucket'), { target: { value: 'x' } });
     fireEvent.click(saveButton());
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain("Couldn't save the settings");
@@ -87,21 +90,19 @@ describe('settings modal', () => {
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain("Couldn't load the settings");
     fireEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
-    await screen.findByLabelText('Planner model');
+    await screen.findByLabelText('GCP project');
     expect(get).toHaveBeenCalledTimes(2);
   });
 
   it('computes the update from the differences only', () => {
     const draft = {
-      planner_model: fixtures.settings.planner_model,
-      worker_model: 'w',
       gcp_project_id: fixtures.settings.gcp_project_id,
       bq_dataset: fixtures.settings.bq_dataset,
       bq_location: fixtures.settings.bq_location,
-      gcs_bucket: fixtures.settings.gcs_bucket,
+      gcs_bucket: 'w',
     };
-    expect(changedFields(fixtures.settings, draft, '')).toEqual({ worker_model: 'w' });
-    expect(changedFields(fixtures.settings, draft, 'k')).toEqual({ worker_model: 'w', google_api_key: 'k' });
+    expect(changedFields(fixtures.settings, draft, '')).toEqual({ gcs_bucket: 'w' });
+    expect(changedFields(fixtures.settings, draft, 'k')).toEqual({ gcs_bucket: 'w', google_api_key: 'k' });
   });
 
   it('traps focus inside and closes on Esc', async () => {
@@ -112,7 +113,7 @@ describe('settings modal', () => {
         <SettingsModal open onClose={onClose} onSaved={() => {}} />
       </>,
     );
-    await screen.findByLabelText('Planner model');
+    await screen.findByLabelText('GCP project');
     const dialog = screen.getByRole('dialog', { name: 'Settings' });
     const items = Array.from(dialog.querySelectorAll<HTMLElement>('button:not([disabled]), input'));
     const first = items[0] as HTMLElement;

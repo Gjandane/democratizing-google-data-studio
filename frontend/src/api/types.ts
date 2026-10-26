@@ -276,14 +276,221 @@ export interface Trace {
   started_at: string;
 }
 
+// Stage settings and design briefs (api.md 3.0, Stage settings and design briefs).
+
+export const STAGE_IDS = ['interview', 'routine', 'reference_interpretation', 'native_planning', 'html_brief', 'reference_html', 'html_no_reference'] as const;
+/** The stages with a generation profile (token caps, retries, repairs). */
+export const GENERATION_STAGE_IDS = ['reference_interpretation', 'native_planning', 'html_brief', 'reference_html', 'html_no_reference'] as const;
+export const THINKING_LEVELS = ['low', 'medium', 'high'] as const;
+export type StageId = (typeof STAGE_IDS)[number];
+export type GenerationStageId = (typeof GENERATION_STAGE_IDS)[number];
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+
+export interface ModelProfile {
+  model: string;
+  thinking: ThinkingLevel;
+  /** Per provider request. */
+  timeout_s: number;
+}
+export interface GenerationProfile extends ModelProfile {
+  /** The complete counted request. */
+  input_tokens: number;
+  /** Thinking included. */
+  output_tokens: number;
+  /** One total clock: per action (analysis) or per page (brief, HTML). */
+  timeout_s: number;
+  transport_retries: number;
+  validation_repairs: number;
+  input_margin_pct: number;
+}
+export interface NoReferenceProfile extends GenerationProfile {
+  layout_fallback: boolean;
+}
+export interface StageProfiles {
+  interview: ModelProfile;
+  routine: ModelProfile;
+  reference_interpretation: GenerationProfile;
+  native_planning: GenerationProfile;
+  html_brief: GenerationProfile;
+  reference_html: GenerationProfile;
+  html_no_reference: NoReferenceProfile;
+}
+
 export interface Settings {
-  planner_model: string;
-  worker_model: string;
+  stages: StageProfiles;
+  fallback_model: string;
+  review_briefs: boolean;
   gcp_project_id: string;
   bq_dataset: string;
   bq_location: string;
   gcs_bucket: string;
   google_api_key_set: boolean;
+  /** One line per stage seeded from a legacy model on first read. */
+  notices: string[];
+  /** Stored values that fail validation now; the UI shows each on its field (paths like `/stages/html_brief/model`). */
+  issues: ValidationIssue[];
+}
+
+export interface ModelPrice {
+  input_usd_per_mtok: number;
+  /** Thinking is billed as output. */
+  output_usd_per_mtok: number;
+  /** Prompt tokens above which the long-context rates apply. */
+  long_context_over: number | null;
+  long_input_usd_per_mtok: number | null;
+  long_output_usd_per_mtok: number | null;
+  /** Date the backend's table was checked on Google's pricing page. */
+  checked_on: string;
+}
+export interface ModelCapability {
+  id: string;
+  thinking_levels: ThinkingLevel[];
+  max_input_tokens: number;
+  /** Thinking included. */
+  max_output_tokens: number;
+  images: boolean;
+  /** From the last model listing; null = no key or the listing failed. */
+  available: boolean | null;
+  /** null = no verified price: costs show as unknown. */
+  price: ModelPrice | null;
+}
+export interface SettingsCapabilities {
+  models: ModelCapability[];
+  defaults: { stages: StageProfiles; fallback_model: string; review_briefs: boolean };
+  limits: {
+    model_timeout_s: [number, number];
+    generation_timeout_s: [number, number];
+    transport_retries: [number, number];
+    validation_repairs: Record<GenerationStageId, [number, number]>;
+    input_margin_pct: [number, number];
+    min_input_tokens: number;
+    min_output_tokens: number;
+  };
+}
+
+/** A design page's brief (api.md 3.0): the treatments are the only parts a user edits. */
+export interface BriefSlot {
+  /** A component id on the page; fixed. */
+  id: string;
+  /** Non-empty. */
+  treatment: string;
+}
+export interface PageBrief {
+  page: number;
+  /** Non-empty. */
+  overall: string;
+  /** Exactly the page's component ids. */
+  slots: BriefSlot[];
+}
+export interface BriefRecord {
+  page: number;
+  origin: 'generated' | 'edited';
+  brief: PageBrief;
+  /** The code's readable rendering of `brief`. */
+  markdown: string;
+  /** Of the canonical JSON. */
+  sha256: string;
+  /** The actual brief model. */
+  model: string;
+  created_at: string;
+}
+export interface DesignPage {
+  page: number;
+  layout: 'designed' | 'standard';
+  /** null when designed; `not_designed` = code layout with no designer attempt. */
+  standard_reason: 'layout_fallback' | 'not_designed' | null;
+  brief: BriefRecord | null;
+  html_model: string | null;
+}
+export interface BriefReview {
+  review_id: string;
+  /** 1 = as generated; +1 on every saved edit. */
+  revision: number;
+  action: 'prototype' | 'revise';
+  page: number;
+  pages: number;
+  /** This page's components, read-only. */
+  components: Array<{ id: string; type: string; label: string }>;
+  brief: BriefRecord;
+  /** Paths into the PageBrief (`/overall`, `/slots/<i>/treatment`); "" for the whole brief. */
+  issues: ValidationIssue[];
+  stale: boolean;
+  created_at: string;
+}
+export interface DesignPages {
+  version: number;
+  spec_version: number | null;
+  pages: DesignPage[];
+  review: BriefReview | null;
+}
+/** PUT /api/builds/{id}/briefs/review */
+export interface BriefReviewSave {
+  review_id: string;
+  revision: number;
+  brief: PageBrief;
+}
+/** POST /api/builds/{id}/briefs/review/approve: what the user saw. */
+export interface BriefReviewApproval {
+  review_id: string;
+  revision: number;
+  sha256: string;
+}
+
+export const CALL_OUTCOMES = ['ok', 'invalid', 'output_cutoff', 'input_over_limit', 'timeout', 'provider_error', 'cancelled'] as const;
+export type CallOutcome = (typeof CALL_OUTCOMES)[number];
+export interface StageCall {
+  run_id: string;
+  stage: StageId;
+  node: string;
+  page: number | null;
+  /** Content attempt, 1 = first generation. */
+  attempt: number;
+  transport_attempt: number;
+  requested_model: string;
+  /** Actual. */
+  model: string;
+  fallback: boolean;
+  thinking: ThinkingLevel;
+  /** Provider count. */
+  input_measured: number | null;
+  /** Provider-reported billed prompt tokens. */
+  input_billed: number | null;
+  input_enforced: number | null;
+  input_limit: number | null;
+  output_limit: number | null;
+  output_tokens: number | null;
+  /** null = unknown, never 0 by default. */
+  thinking_tokens: number | null;
+  outcome: CallOutcome;
+  duration_ms: number;
+  started_at: string;
+  cost_usd_estimate: number | null;
+}
+export interface RunCalls {
+  run_id: string;
+  /** The run's snapshot; null before 3.0. */
+  settings: { stages: StageProfiles; fallback_model: string; review_briefs: boolean } | null;
+  calls: StageCall[];
+  cost_usd_estimate: number | null;
+  /** false when any call is unpriced or lacks usage. */
+  cost_complete: boolean;
+}
+export interface RunCost {
+  run_id: string;
+  node: string;
+  started_at: string;
+  cost_usd_estimate: number | null;
+  complete: boolean;
+  /** `trace` = a run before 3.0, priced from its Trace; always incomplete. */
+  basis: 'calls' | 'trace';
+}
+export interface BuildCost {
+  build_id: string;
+  cost_usd_estimate: number | null;
+  complete: boolean;
+  /** Newest first. */
+  runs: RunCost[];
+  prices_checked_on: string | null;
 }
 
 // Staged workflow artifacts (api.md 2.0, Staged workflow endpoints). Colors are `#RRGGBB`.
@@ -447,8 +654,17 @@ export interface Blueprint {
 
 // ---------- Request and response bodies ----------
 
-/** PUT /api/settings: partial fields, plus the write-only key. */
-export type SettingsUpdate = Partial<Omit<Settings, 'google_api_key_set'>> & { google_api_key?: string };
+/** PUT /api/settings (3.0): a partial profile per stage and the other fields, plus the write-only key. */
+export interface SettingsUpdate {
+  stages?: { [S in StageId]?: Partial<StageProfiles[S]> };
+  fallback_model?: string;
+  review_briefs?: boolean;
+  gcp_project_id?: string;
+  bq_dataset?: string;
+  bq_location?: string;
+  gcs_bucket?: string;
+  google_api_key?: string;
+}
 
 /** POST /api/builds */
 export interface NewBuild {
@@ -791,17 +1007,174 @@ export const isTrace = shape<Trace>({
   started_at: isString,
 });
 
+export const isValidationIssue = shape<ValidationIssue>({ path: isString, message: isString });
+
+// ---------- Stage settings and design briefs (api.md 3.0) ----------
+
+export const isStageId = oneOf(STAGE_IDS);
+export const isThinkingLevel = oneOf(THINKING_LEVELS);
+const modelFields = { model: isString, thinking: isThinkingLevel, timeout_s: isInt };
+const generationFields = {
+  ...modelFields,
+  input_tokens: isInt,
+  output_tokens: isInt,
+  transport_retries: isInt,
+  validation_repairs: isInt,
+  input_margin_pct: isInt,
+};
+export const isModelProfile = shape<ModelProfile>(modelFields);
+export const isGenerationProfile = shape<GenerationProfile>(generationFields);
+export const isNoReferenceProfile = shape<NoReferenceProfile>({ ...generationFields, layout_fallback: isBoolean });
+export const isStageProfiles = shape<StageProfiles>({
+  interview: isModelProfile,
+  routine: isModelProfile,
+  reference_interpretation: isGenerationProfile,
+  native_planning: isGenerationProfile,
+  html_brief: isGenerationProfile,
+  reference_html: isGenerationProfile,
+  html_no_reference: isNoReferenceProfile,
+});
+
 export const isSettings = shape<Settings>({
-  planner_model: isString,
-  worker_model: isString,
+  stages: isStageProfiles,
+  fallback_model: isString,
+  review_briefs: isBoolean,
   gcp_project_id: isString,
   bq_dataset: isString,
   bq_location: isString,
   gcs_bucket: isString,
   google_api_key_set: isBoolean,
+  notices: arrayOf(isString),
+  issues: arrayOf(isValidationIssue),
 });
 
-export const isValidationIssue = shape<ValidationIssue>({ path: isString, message: isString });
+/** `[min, max]`, both integers. */
+const isIntRange: Guard<[number, number]> = (v, path = '$', problems): v is [number, number] => {
+  if (!Array.isArray(v) || v.length !== 2) return fail(path, problems, 'expected [min, max]');
+  const min = isInt(v[0], `${path}[0]`, problems);
+  const max = isInt(v[1], `${path}[1]`, problems);
+  return min && max;
+};
+
+export const isModelPrice = shape<ModelPrice>({
+  input_usd_per_mtok: isNumber,
+  output_usd_per_mtok: isNumber,
+  long_context_over: nullable(isInt),
+  long_input_usd_per_mtok: nullable(isNumber),
+  long_output_usd_per_mtok: nullable(isNumber),
+  checked_on: isString,
+});
+export const isModelCapability = shape<ModelCapability>({
+  id: isString,
+  thinking_levels: arrayOf(isThinkingLevel),
+  max_input_tokens: isInt,
+  max_output_tokens: isInt,
+  images: isBoolean,
+  available: nullable(isBoolean),
+  price: nullable(isModelPrice),
+});
+export const isSettingsCapabilities = shape<SettingsCapabilities>({
+  models: arrayOf(isModelCapability),
+  defaults: shape<SettingsCapabilities['defaults']>({ stages: isStageProfiles, fallback_model: isString, review_briefs: isBoolean }),
+  limits: shape<SettingsCapabilities['limits']>({
+    model_timeout_s: isIntRange,
+    generation_timeout_s: isIntRange,
+    transport_retries: isIntRange,
+    validation_repairs: shape<SettingsCapabilities['limits']['validation_repairs']>({
+      reference_interpretation: isIntRange,
+      native_planning: isIntRange,
+      html_brief: isIntRange,
+      reference_html: isIntRange,
+      html_no_reference: isIntRange,
+    }),
+    input_margin_pct: isIntRange,
+    min_input_tokens: isInt,
+    min_output_tokens: isInt,
+  }),
+});
+
+export const isBriefSlot = shape<BriefSlot>({ id: isString, treatment: isString });
+export const isPageBrief = shape<PageBrief>({ page: isInt, overall: isString, slots: arrayOf(isBriefSlot) });
+export const isBriefRecord = shape<BriefRecord>({
+  page: isInt,
+  origin: oneOf(['generated', 'edited']),
+  brief: isPageBrief,
+  markdown: isString,
+  sha256: isString,
+  model: isString,
+  created_at: isString,
+});
+export const isDesignPage = shape<DesignPage>({
+  page: isInt,
+  layout: oneOf(['designed', 'standard']),
+  standard_reason: nullable(oneOf(['layout_fallback', 'not_designed'])),
+  brief: nullable(isBriefRecord),
+  html_model: nullable(isString),
+});
+export const isBriefReview = shape<BriefReview>({
+  review_id: isString,
+  revision: isInt,
+  action: oneOf(['prototype', 'revise']),
+  page: isInt,
+  pages: isInt,
+  components: arrayOf(shape<BriefReview['components'][number]>({ id: isString, type: isString, label: isString })),
+  brief: isBriefRecord,
+  issues: arrayOf(isValidationIssue),
+  stale: isBoolean,
+  created_at: isString,
+});
+export const isDesignPages = shape<DesignPages>({
+  version: isInt,
+  spec_version: nullable(isInt),
+  pages: arrayOf(isDesignPage),
+  review: nullable(isBriefReview),
+});
+
+export const isStageCall = shape<StageCall>({
+  run_id: isString,
+  stage: isStageId,
+  node: isString,
+  page: nullable(isInt),
+  attempt: isInt,
+  transport_attempt: isInt,
+  requested_model: isString,
+  model: isString,
+  fallback: isBoolean,
+  thinking: isThinkingLevel,
+  input_measured: nullable(isInt),
+  input_billed: nullable(isInt),
+  input_enforced: nullable(isInt),
+  input_limit: nullable(isInt),
+  output_limit: nullable(isInt),
+  output_tokens: nullable(isInt),
+  thinking_tokens: nullable(isInt),
+  outcome: oneOf(CALL_OUTCOMES),
+  duration_ms: isInt,
+  started_at: isString,
+  cost_usd_estimate: nullable(isNumber),
+});
+export const isRunCalls = shape<RunCalls>({
+  run_id: isString,
+  settings: nullable(shape<NonNullable<RunCalls['settings']>>({ stages: isStageProfiles, fallback_model: isString, review_briefs: isBoolean })),
+  calls: arrayOf(isStageCall),
+  cost_usd_estimate: nullable(isNumber),
+  cost_complete: isBoolean,
+});
+export const isRunCost = shape<RunCost>({
+  run_id: isString,
+  node: isString,
+  started_at: isString,
+  cost_usd_estimate: nullable(isNumber),
+  complete: isBoolean,
+  basis: oneOf(['calls', 'trace']),
+});
+export const isBuildCost = shape<BuildCost>({
+  build_id: isString,
+  cost_usd_estimate: nullable(isNumber),
+  complete: isBoolean,
+  runs: arrayOf(isRunCost),
+  prices_checked_on: nullable(isString),
+});
 export const isDerivedField = shape<DerivedField>({ name: isString, expression: isString, type: oneOf(COLUMN_TYPES), description: isString });
 export const isKpi = shape<Kpi>({
   id: isString,
@@ -970,6 +1343,8 @@ export interface BuildEventMap {
   /** Base64 JPEG (stretch, screencast). */
   'build.frame': { data: string };
   'build.finished': { status: 'ok' | 'partial' | 'failed'; report_url: string | null; version: number };
+  /** 3.0: the run paused before this page's HTML for the user's brief review; `run.finished` (ok) follows. */
+  'brief.review': { review_id: string; page: number; pages: number };
 }
 
 export type BuildEventName = keyof BuildEventMap;
@@ -1004,6 +1379,7 @@ export const buildEventGuards: { [K in BuildEventName]: Guard<M[K]> } = {
     report_url: nullable(isString),
     version: isInt,
   }),
+  'brief.review': shape<M['brief.review']>({ review_id: isString, page: isInt, pages: isInt }),
 };
 
 export const BUILD_EVENT_NAMES = Object.keys(buildEventGuards) as BuildEventName[];

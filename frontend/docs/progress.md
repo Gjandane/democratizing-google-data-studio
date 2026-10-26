@@ -514,3 +514,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none
 - Left open: P3 area with stacked_percent still reads "Area chart" (recipe.md 1.3 allows it; out of scope) - src/features/workspace/blueprint/BlueprintTable.tsx
 - Next: Task 16.1. Start by reading ../contracts/api.md 3.0 Stage settings and design briefs and ../contracts/fixtures/stage-settings/.
+
+## 2026-10-26: Task 16.1 Contract 3.0 types, guards, client and mocks
+- Status: done
+- Plan check: unattended
+- What changed: types.ts adds api.md 3.0 Settings (stages, fallback_model, review_briefs, notices, issues), capabilities, design pages, brief review, run calls, build cost types + exact guards and the `brief.review` event guard; client.ts adds 7 calls; mocks serve stage-settings fixtures (422 invalid_settings, review save/approve/cancel, 409 brief_review_pending); SettingsModal loses planner/worker inputs; useBuildStream exposes `briefReview`.
+- Checks: tests/contract.test.ts errored before (guards/mock missing); `npm test` PASS 21 files 453/453 (rerun twice); `npm run typecheck` PASS; Grep `planner_model|worker_model` in src/ 0 matches.
+- Decisions: fixtures/api/settings.json (2.0) explicitly unguarded in the contract test; getSettings/updateSettings guard-checked (502 invalid_response on 2.0 shape). Mock: `fakeSha256` deterministic whole-string stand-in; brief_review_pending (with detail.review_id) only on routes calling `requireIdle`; approve finishes the run (no next-page review chain), repeat approve returns same run_id; cancel idempotent; getRunCalls empty record for pre-3.0 runs, 404 run_not_found for unknown; getBuildCost for non-fixture builds `{cost:null, complete:true, runs:[], prices_checked_on:null}`; design pages seeded from fixture on first read, refreshed by publishPrototype; `review_briefs` on makes acceptBlueprint emit `brief.review` then run.finished ok. useBuildStream `briefReview` set on brief.review, cleared on run.started and ready. Agent-status "models stay editable" assertion dropped (moves to 16.2). Review fix round: sha256, review_id detail, design pages version.
+- Digest: types.ts Settings 3.0, StageId/STAGE_IDS, SettingsCapabilities, DesignPages, BriefReview, RunCalls, BuildCost + is* guards; api.getSettingsCapabilities/getDesignPages/save|approve|cancelBriefReview/getRunCalls/getBuildCost; mock setMockDesignPages; BuildStream.briefReview
+- Tried and failed: none
+- Gotchas: one unexplained full-suite failure (452/453) seen once by the worker, not reproduced in three later runs.
+- Left open: P3 lock notice still says "You can still change the models" (16.2 rewrites) - src/features/settings/SettingsModal.tsx; P3 mock brief_review_pending misses non-requireIdle routes (uploads, references, synthetic, research) - src/mocks/api.ts; P3 mock settings skips fallback-compatibility check and accepts unknown top-level keys - src/mocks/api.ts
+- Next: Task 16.2. Start by reading docs/stage-settings-ui.md#Settings and fixtures/stage-settings/capabilities.json.

@@ -18,6 +18,14 @@ import {
   isOutline,
   isThemePreset,
   isBuildSummary,
+  artifactIssues,
+  isBuildCost,
+  isBriefReview,
+  isDesignPages,
+  isRunCalls,
+  isSettingsCapabilities,
+  isStageCall,
+  isValidationIssue,
   isEngineStatus,
   isGenerationRequest,
   isGenerationStatus,
@@ -39,7 +47,7 @@ import {
   toBuildEvent,
   type Guard,
 } from '../src/api/types';
-import { createMockApi, resetMockState, setMockAssessment, setMockRunFailure } from '../src/mocks/api';
+import { createMockApi, resetMockState, setMockAssessment, setMockDesignPages, setMockRunFailure } from '../src/mocks/api';
 import { openMockBuildEvents } from '../src/mocks/events';
 import { fixtures } from '../src/mocks/fixtures';
 import { parseSse } from '../src/mocks/sse';
@@ -61,6 +69,13 @@ const fixture: Record<string, string> = Object.fromEntries(
 );
 const json = (name: string): unknown => JSON.parse(fixture[name] ?? 'null');
 
+// contracts/fixtures/stage-settings/ (api.md 3.0).
+const rawStage = import.meta.glob<string>('../../contracts/fixtures/stage-settings/*', { eager: true, query: '?raw', import: 'default' });
+const stageFixture: Record<string, string> = Object.fromEntries(
+  Object.entries(rawStage).map(([path, body]) => [path.slice(path.lastIndexOf('/') + 1), body]),
+);
+const stageJson = (name: string): unknown => JSON.parse(stageFixture[name] ?? 'null');
+
 const jsonGuards: Record<string, Guard<unknown>> = {
   'build.json': isBuild,
   'build.done.json': isBuild,
@@ -79,14 +94,40 @@ const jsonGuards: Record<string, Guard<unknown>> = {
   'recipe.json': isRecipe,
   'run_accepted.json': isRunAccepted,
   'session.json': isSession,
-  'settings.json': isSettings,
+  // 'settings.json' is the 2.0 Settings (planner_model, worker_model), kept in the contract until its removal:
+  // it has no guard on purpose; the 3.0 guard checks stage-settings/settings.json (below).
   'traces.json': arrayOf(isTrace),
+};
+
+const stageGuards: Record<string, Guard<unknown>> = {
+  'settings.json': isSettings,
+  'capabilities.json': isSettingsCapabilities,
+  'design_pages.json': isDesignPages,
+  'design_pages.review.json': isDesignPages,
+  'design_pages.review.issue.json': isDesignPages,
+  'run_calls.json': isRunCalls,
+  'build_cost.json': isBuildCost,
+  'error.invalid_settings.json': isApiErrorBody,
 };
 
 describe('shared fixtures match the contract', () => {
   it('has a check for every fixture file', () => {
-    const checked = [...Object.keys(jsonGuards), 'events.sse', 'events.usage.sse', 'prototype.sample.html', 'prototype.multipage.html'];
+    const checked = [...Object.keys(jsonGuards), 'settings.json', 'events.sse', 'events.usage.sse', 'prototype.sample.html', 'prototype.multipage.html'];
     expect(Object.keys(fixture).sort()).toEqual(checked.sort());
+  });
+
+  it('has a check for every stage-settings fixture file', () => {
+    expect(Object.keys(stageFixture).sort()).toEqual([...Object.keys(stageGuards), 'events.review.sse'].sort());
+  });
+
+  it.each(Object.keys(stageGuards))('stage-settings/%s', (name) => {
+    expect(problemsOf(stageGuards[name]!, stageJson(name), name)).toEqual([]);
+  });
+
+  it('stage-settings/error.invalid_settings.json carries its issues in detail.issues', () => {
+    const body = stageJson('error.invalid_settings.json') as { error: { code: string; detail: { issues: unknown } } };
+    expect(body.error.code).toBe('invalid_settings');
+    expect(problemsOf(arrayOf(isValidationIssue), body.error.detail.issues)).toEqual([]);
   });
 
   it.each(Object.keys(jsonGuards))('%s', (name) => {
@@ -100,8 +141,8 @@ describe('shared fixtures match the contract', () => {
   });
 
   const names = new Set<string>();
-  it.each(['events.sse', 'events.usage.sse'])('%s: starts with ready, and every event matches its data shape', (file) => {
-    const events = parseSse(fixture[file] ?? '');
+  it.each(['events.sse', 'events.usage.sse', 'events.review.sse'])('%s: starts with ready, and every event matches its data shape', (file) => {
+    const events = parseSse(fixture[file] ?? stageFixture[file] ?? '');
     expect(events[0]?.event).toBe('ready');
     events.forEach(({ event, data }, i) => {
       const problems: string[] = [];
@@ -112,6 +153,7 @@ describe('shared fixtures match the contract', () => {
   });
 
   // 2.0's fixtures stream no assistant message; message.delta and message.done keep their 1.x shapes (checked below).
+  // brief.review (3.0) is covered by stage-settings/events.review.sse above.
   it('the event fixtures cover every event but the screencast frame and the message stream', () => {
     const expected = Object.keys(buildEventGuards).filter((name) => !['build.frame', 'message.delta', 'message.done'].includes(name));
     expect([...names].sort()).toEqual(expected.sort());
@@ -760,5 +802,284 @@ describe('mock staged workflow (api.md 2.0)', () => {
     const accept = await api.acceptBlueprint(id);
     expect(await finished(id, accept.run_id)).toMatchObject({ status: 'error', error: 'Rendering failed: the view dry run timed out.' });
     expect(await api.getBuild(id)).toMatchObject({ stage: 'blueprint', spec_version: fixtures.build.spec_version, artifacts: { blueprint: 'draft' } });
+  });
+});
+
+describe('stage settings and design briefs: the guards reject what api.md 3.0 forbids', () => {
+  const settings = stageJson('settings.json') as Record<string, unknown>;
+  const calls = stageJson('run_calls.json') as { calls: Array<Record<string, unknown>> } & Record<string, unknown>;
+  const call = calls.calls[0]!;
+  const pages = stageJson('design_pages.json') as { pages: Array<Record<string, unknown>> } & Record<string, unknown>;
+  const reviewPages = stageJson('design_pages.review.json') as { review: Record<string, unknown> } & Record<string, unknown>;
+
+  it('a Settings that still has planner_model or worker_model, or lacks the 3.0 fields, fails', () => {
+    expect(problemsOf(isSettings, { ...settings, planner_model: 'gemini-4-argon' })).toEqual(['$.planner_model: not in the contract']);
+    expect(problemsOf(isSettings, { ...settings, worker_model: 'gemini-3.8-flash' })).toEqual(['$.worker_model: not in the contract']);
+    expect(isSettings(json('settings.json'))).toBe(false);
+    const { review_briefs: _dropped, ...missing } = settings;
+    expect(problemsOf(isSettings, missing)).toEqual(['$.review_briefs: missing']);
+  });
+
+  it('an unknown StageId, a bad thinking level and a missing profile field fail', () => {
+    const stages = settings.stages as Record<string, Record<string, unknown>>;
+    expect(problemsOf(isSettings, { ...settings, stages: { ...stages, designer: stages.html_no_reference } })).toEqual(['$.stages.designer: not in the contract']);
+    expect(problemsOf(isSettings, { ...settings, stages: { ...stages, routine: { ...stages.routine, thinking: 'max' } } })).toEqual([
+      '$.stages.routine.thinking: expected one of low | medium | high, got "max"',
+    ]);
+    const { layout_fallback: _dropped, ...noFallback } = stages.html_no_reference!;
+    expect(problemsOf(isSettings, { ...settings, stages: { ...stages, html_no_reference: noFallback } })).toEqual(['$.stages.html_no_reference.layout_fallback: missing']);
+    expect(problemsOf(isSettings, { ...settings, stages: { ...stages, interview: { ...stages.interview, input_tokens: 10 } } })).toEqual(['$.stages.interview.input_tokens: not in the contract']);
+    expect(isStageCall({ ...call, stage: 'designer' })).toBe(false);
+  });
+
+  it('a StageCall with thinking_tokens "0" or a string cost_usd_estimate fails; null means unknown', () => {
+    expect(isStageCall(call)).toBe(true);
+    expect(problemsOf(isStageCall, { ...call, thinking_tokens: '0' })).toEqual(['$.thinking_tokens: expected an integer']);
+    expect(problemsOf(isStageCall, { ...call, cost_usd_estimate: '0.05' })).toEqual(['$.cost_usd_estimate: expected a finite number']);
+    expect(isStageCall({ ...call, thinking_tokens: null, cost_usd_estimate: null })).toBe(true);
+    expect(isStageCall({ ...call, outcome: 'failed' })).toBe(false);
+    expect(isRunCalls({ ...calls, cost_usd_estimate: '0.05' })).toBe(false);
+    expect(isRunCalls({ ...calls, settings: null })).toBe(true);
+  });
+
+  it('a standard_reason of design_failed fails; a review without revision fails', () => {
+    const page = pages.pages[1]!;
+    expect(isDesignPages({ ...pages, pages: [{ ...page, standard_reason: 'design_failed' }] })).toBe(false);
+    expect(isDesignPages({ ...pages, pages: [{ ...page, standard_reason: 'not_designed' }] })).toBe(true);
+    const { revision: _dropped, ...noRevision } = reviewPages.review;
+    expect(problemsOf(isBriefReview, noRevision)).toEqual(['$.revision: missing']);
+    expect(isDesignPages({ ...reviewPages, review: noRevision })).toBe(false);
+    expect(isBriefReview({ ...reviewPages.review, action: 'accept' })).toBe(false);
+  });
+
+  it('capabilities, build cost and the brief.review event keep exact shapes', () => {
+    const capabilities = stageJson('capabilities.json') as { limits: Record<string, unknown> } & Record<string, unknown>;
+    expect(isSettingsCapabilities({ ...capabilities, limits: { ...capabilities.limits, model_timeout_s: [10] } })).toBe(false);
+    expect(isSettingsCapabilities({ ...capabilities, models: [{ id: 'x' }] })).toBe(false);
+    const cost = stageJson('build_cost.json') as { runs: Array<Record<string, unknown>> } & Record<string, unknown>;
+    expect(isBuildCost({ ...cost, runs: [{ ...cost.runs[0], basis: 'estimate' }] })).toBe(false);
+    expect(toBuildEvent('brief.review', { review_id: 'br_1', page: 1, pages: 2 })).toEqual({ name: 'brief.review', data: { review_id: 'br_1', page: 1, pages: 2 } });
+    expect(toBuildEvent('brief.review', { review_id: 'br_1', page: 1 })).toBeNull();
+    expect(toBuildEvent('brief.review', { review_id: 'br_1', page: '1', pages: 2 })).toBeNull();
+  });
+});
+
+describe('the HTTP client speaks the stage-settings contract (api.md 3.0)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const headers = { 'Content-Type': 'application/json' };
+  const stub = (body: string) => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  };
+  const review = fixtures.designPagesReview.review!;
+
+  it('reads Settings and capabilities from their exact paths and fails closed on a 2.0 Settings', async () => {
+    let fetchMock = stub(stageFixture['settings.json']!);
+    await expect(httpApi.getSettings()).resolves.toEqual(stageJson('settings.json'));
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith('/api/settings', { method: 'GET' });
+    fetchMock = stub(stageFixture['capabilities.json']!);
+    await expect(httpApi.getSettingsCapabilities()).resolves.toEqual(stageJson('capabilities.json'));
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith('/api/settings/capabilities', { method: 'GET' });
+    stub(fixture['settings.json']!);
+    await expect(httpApi.getSettings()).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+    const update = { stages: { html_brief: { model: 'gemini-3.8-flash', thinking: 'medium' as const } }, review_briefs: true, google_api_key: 'k' };
+    fetchMock = stub(stageFixture['settings.json']!);
+    await httpApi.updateSettings(update);
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith('/api/settings', { method: 'PUT', headers, body: JSON.stringify(update) });
+  });
+
+  it('design pages, review save, approve (with revision and sha256), cancel, run calls and build cost', async () => {
+    let fetchMock = stub(stageFixture['design_pages.review.json']!);
+    await expect(httpApi.getDesignPages('b/one')).resolves.toEqual(stageJson('design_pages.review.json'));
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith('/api/builds/b%2Fone/design-pages', { method: 'GET' });
+
+    fetchMock = stub(JSON.stringify(review));
+    const save = { review_id: review.review_id, revision: review.revision, brief: review.brief.brief };
+    await expect(httpApi.saveBriefReview('b/one', save)).resolves.toEqual(review);
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith('/api/builds/b%2Fone/briefs/review', { method: 'PUT', headers, body: JSON.stringify(save) });
+
+    fetchMock = stub(fixture['run_accepted.json']!);
+    const approval = { review_id: review.review_id, revision: review.revision, sha256: review.brief.sha256 };
+    await expect(httpApi.approveBriefReview('b/one', approval)).resolves.toEqual(json('run_accepted.json'));
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith('/api/builds/b%2Fone/briefs/review/approve', { method: 'POST', headers, body: JSON.stringify(approval) });
+
+    fetchMock = stub(fixture['build.json']!);
+    await expect(httpApi.cancelBriefReview('b/one', review.review_id)).resolves.toEqual(json('build.json'));
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith('/api/builds/b%2Fone/briefs/review/cancel', { method: 'POST', headers, body: JSON.stringify({ review_id: review.review_id }) });
+
+    fetchMock = stub(stageFixture['run_calls.json']!);
+    await expect(httpApi.getRunCalls('r/1')).resolves.toEqual(stageJson('run_calls.json'));
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith('/api/traces/r%2F1/calls', { method: 'GET' });
+
+    fetchMock = stub(stageFixture['build_cost.json']!);
+    await expect(httpApi.getBuildCost('b/one')).resolves.toEqual(stageJson('build_cost.json'));
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith('/api/builds/b%2Fone/cost', { method: 'GET' });
+  });
+
+  it('fails closed on a malformed answer from any of them', async () => {
+    stub(JSON.stringify({ ...review, revision: undefined }));
+    await expect(httpApi.saveBriefReview('b', { review_id: 'x', revision: 1, brief: review.brief.brief })).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+    stub('{"pages": []}');
+    await expect(httpApi.getDesignPages('b')).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+    stub('{"calls": []}');
+    await expect(httpApi.getRunCalls('r')).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+    stub('{"runs": []}');
+    await expect(httpApi.getBuildCost('b')).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+  });
+
+  it('keeps the invalid_settings issues in the error detail', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(stageFixture['error.invalid_settings.json']!, { status: 422, headers: { 'Content-Type': 'application/json' } })));
+    const error = (await httpApi.updateSettings({}).catch((reason: unknown) => reason)) as ApiError;
+    expect(error).toMatchObject({ status: 422, code: 'invalid_settings' });
+    expect(artifactIssues(error)).toEqual([{ path: '/stages/html_brief/output_tokens', message: 'gemini-4-argon allows at most 65536 output tokens.' }]);
+  });
+});
+
+describe('mock stage settings and brief review (api.md 3.0)', () => {
+  const id = fixtures.build.id;
+  afterEach(() => resetMockState());
+
+  /** Resolves with the events up to and including the run's run.finished. */
+  function playRun(buildId: string, runId: string, seen: Array<{ name: string; data: Record<string, unknown> }> = []) {
+    return new Promise<Array<{ name: string; data: Record<string, unknown> }>>((resolve) => {
+      if (seen.some((e) => e.name === 'run.finished' && e.data.run_id === runId)) return resolve(seen);
+      const close = openMockBuildEvents(buildId, {
+        onEvent: (event) => {
+          seen.push({ name: event.name, data: event.data as unknown as Record<string, unknown> });
+          if (event.name === 'run.finished' && event.data.run_id === runId) {
+            close();
+            resolve(seen);
+          }
+        },
+      });
+    });
+  }
+
+  it('serves the fixtures for Settings, capabilities, design pages, run calls and build cost', async () => {
+    const api = createMockApi();
+    expect(await api.getSettings()).toEqual(fixtures.settings);
+    expect(await api.getSettingsCapabilities()).toEqual(fixtures.capabilities);
+    expect(await api.getDesignPages(id)).toEqual(fixtures.designPages);
+    expect(await api.getRunCalls(fixtures.runCalls.run_id)).toEqual(fixtures.runCalls);
+    expect(await api.getBuildCost(id)).toEqual(fixtures.buildCost);
+    await expect(api.getRunCalls('r_unknown')).rejects.toMatchObject({ status: 404, code: 'run_not_found' });
+    await expect(api.getDesignPages('b_missing')).rejects.toMatchObject({ status: 404, code: 'build_not_found' });
+  });
+
+  it('merges a partial stage update and answers 422 invalid_settings with issues for an unknown model or a cap over the model limit', async () => {
+    const api = createMockApi();
+    const saved = await api.updateSettings({ stages: { html_brief: { thinking: 'medium' } }, review_briefs: true });
+    expect(saved.stages.html_brief).toEqual({ ...fixtures.settings.stages.html_brief, thinking: 'medium' });
+    expect(saved.stages.routine).toEqual(fixtures.settings.stages.routine);
+    expect(saved.review_briefs).toBe(true);
+    expect(problemsOf(isSettings, saved)).toEqual([]);
+    await expect(api.updateSettings({ stages: { html_brief: { output_tokens: 100000 } } })).rejects.toMatchObject({
+      status: 422,
+      code: 'invalid_settings',
+      detail: { issues: [{ path: '/stages/html_brief/output_tokens', message: expect.stringContaining('65536') }] },
+    });
+    await expect(api.updateSettings({ fallback_model: 'nope' })).rejects.toMatchObject({ status: 422, detail: { issues: [{ path: '/fallback_model', message: expect.any(String) }] } });
+    // Nothing was saved by the refused updates.
+    expect((await api.getSettings()).fallback_model).toBe(fixtures.settings.fallback_model);
+    expect((await api.getSettings()).stages.html_brief.output_tokens).toBe(fixtures.settings.stages.html_brief.output_tokens);
+  });
+
+  it('editing a review bumps the revision, fills issues for a blank treatment and changes the sha256', async () => {
+    const api = createMockApi();
+    setMockDesignPages(id, fixtures.designPagesReview);
+    const review = (await api.getDesignPages(id)).review!;
+    const blank = { ...review.brief.brief, slots: review.brief.brief.slots.map((slot, i) => (i === 0 ? { ...slot, treatment: ' ' } : slot)) };
+    const saved = await api.saveBriefReview(id, { review_id: review.review_id, revision: review.revision, brief: blank });
+    expect(problemsOf(isBriefReview, saved)).toEqual([]);
+    expect(saved.revision).toBe(review.revision + 1);
+    expect(saved.brief.origin).toBe('edited');
+    expect(saved.brief.sha256).not.toBe(review.brief.sha256);
+    expect(saved.issues).toEqual([{ path: '/slots/0/treatment', message: 'Write a treatment for Total access.' }]);
+    // The next save must carry the new revision.
+    await expect(api.saveBriefReview(id, { review_id: review.review_id, revision: review.revision, brief: review.brief.brief })).rejects.toMatchObject({
+      status: 409,
+      code: 'brief_review_conflict',
+      detail: { revision: saved.revision },
+    });
+    await expect(api.saveBriefReview(id, { review_id: 'br_other', revision: saved.revision, brief: blank })).rejects.toMatchObject({ status: 404, code: 'review_not_found' });
+    // Open issues block approval.
+    await expect(api.approveBriefReview(id, { review_id: saved.review_id, revision: saved.revision, sha256: saved.brief.sha256 })).rejects.toMatchObject({ status: 409, code: 'artifact_invalid' });
+  });
+
+  it('the sha256 follows the whole content: other edits differ, the same edit repeats', async () => {
+    const api = createMockApi();
+    setMockDesignPages(id, fixtures.designPagesReview);
+    const review = (await api.getDesignPages(id)).review!;
+    const edit = (text: string) => ({ ...review.brief.brief, slots: review.brief.brief.slots.map((slot, i) => (i === 1 ? { ...slot, treatment: text } : slot)) });
+    const first = await api.saveBriefReview(id, { review_id: review.review_id, revision: 1, brief: edit('Card with a thin border.') });
+    const second = await api.saveBriefReview(id, { review_id: review.review_id, revision: 2, brief: edit('Card with a thick border.') });
+    const again = await api.saveBriefReview(id, { review_id: review.review_id, revision: 3, brief: edit('Card with a thin border.') });
+    expect(first.brief.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(second.brief.sha256).not.toBe(first.brief.sha256);
+    expect(again.brief.sha256).toBe(first.brief.sha256);
+  });
+
+  it('a build without a spec gets its design pages when the first prototype is published', async () => {
+    const api = createMockApi();
+    const build = await api.createBuild({ archetype: 'executive', mode: 'data' });
+    const empty = await api.getDesignPages(build.id);
+    expect(empty).toMatchObject({ version: build.current_version, spec_version: null, pages: [], review: null });
+  });
+
+  it('a pending review blocks other mutating routes with brief_review_pending; reads and settings still work', async () => {
+    const api = createMockApi();
+    setMockDesignPages(id, fixtures.designPagesReview);
+    await expect(api.regenerateBlueprint(id)).rejects.toMatchObject({ status: 409, code: 'brief_review_pending', detail: { review_id: fixtures.designPagesReview.review!.review_id } });
+    await expect(api.getBuild(id)).resolves.toMatchObject({ id });
+    await expect(api.updateSettings({ review_briefs: false })).resolves.toMatchObject({ review_briefs: false });
+  });
+
+  it('approve checks revision and sha256, consumes the review, emits run events and repeats with the same run_id', async () => {
+    const api = createMockApi();
+    setMockDesignPages(id, fixtures.designPagesReview);
+    const review = fixtures.designPagesReview.review!;
+    const approval = { review_id: review.review_id, revision: review.revision, sha256: review.brief.sha256 };
+    await expect(api.approveBriefReview(id, { ...approval, revision: 9 })).rejects.toMatchObject({ status: 409, code: 'brief_review_conflict', detail: { revision: review.revision } });
+    await expect(api.approveBriefReview(id, { ...approval, sha256: 'old' })).rejects.toMatchObject({ status: 409, code: 'brief_review_conflict' });
+    const seen: Array<{ name: string; data: Record<string, unknown> }> = [];
+    const close = openMockBuildEvents(id, { onEvent: (event) => void seen.push({ name: event.name, data: event.data as unknown as Record<string, unknown> }) });
+    const accepted = await api.approveBriefReview(id, approval);
+    expect(problemsOf(isRunAccepted, accepted)).toEqual([]);
+    expect((await api.getDesignPages(id)).review).toBeNull();
+    expect(await api.approveBriefReview(id, approval)).toEqual(accepted);
+    const events = await playRun(id, accepted.run_id, seen);
+    close();
+    expect(events.map((e) => e.name)).toEqual(expect.arrayContaining(['run.started', 'run.usage', 'run.finished']));
+    expect(events.find((e) => e.name === 'run.started')?.data).toEqual({ run_id: accepted.run_id, node: review.action });
+    expect(events.find((e) => e.name === 'run.finished')?.data).toEqual({ run_id: accepted.run_id, node: review.action, status: 'ok', error: null });
+    expect((await api.getDesignPages(id)).pages.length).toBeGreaterThan(0);
+  });
+
+  it('cancel drops the review, returns the Build and repeats harmlessly', async () => {
+    const api = createMockApi();
+    setMockDesignPages(id, fixtures.designPagesReview);
+    const before = await api.getBuild(id);
+    const cancelled = await api.cancelBriefReview(id, fixtures.designPagesReview.review!.review_id);
+    expect(problemsOf(isBuild, cancelled)).toEqual([]);
+    expect(cancelled.stage).toBe(before.stage);
+    expect((await api.getDesignPages(id)).review).toBeNull();
+    expect(await api.cancelBriefReview(id, fixtures.designPagesReview.review!.review_id)).toEqual(cancelled);
+  });
+
+  it('with review_briefs on, an accepted blueprint pauses with brief.review, finishes ok and leaves the stage at blueprint', async () => {
+    const api = createMockApi();
+    await api.updateSettings({ review_briefs: true });
+    const regenerate = await api.regenerateBlueprint(id);
+    await playRun(id, regenerate.run_id);
+    const accept = await api.acceptBlueprint(id);
+    const events = await playRun(id, accept.run_id);
+    const paused = events.find((e) => e.name === 'brief.review');
+    expect(paused?.data).toMatchObject({ page: 1, pages: 2 });
+    expect(events.at(-1)?.data).toMatchObject({ status: 'ok', error: null });
+    expect(events.findIndex((e) => e.name === 'brief.review')).toBeLessThan(events.findIndex((e) => e.name === 'run.finished'));
+    expect((await api.getBuild(id)).stage).toBe('blueprint');
+    const { review } = await api.getDesignPages(id);
+    expect(review).toMatchObject({ review_id: (paused?.data as { review_id: string }).review_id, action: 'prototype', revision: 1 });
   });
 });

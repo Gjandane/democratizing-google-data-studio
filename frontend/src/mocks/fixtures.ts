@@ -31,7 +31,16 @@ import prototypeHtml from '../../../contracts/fixtures/api/prototype.sample.html
 import recipeJson from '../../../contracts/fixtures/api/recipe.json';
 import runAcceptedJson from '../../../contracts/fixtures/api/run_accepted.json';
 import sessionJson from '../../../contracts/fixtures/api/session.json';
-import settingsJson from '../../../contracts/fixtures/api/settings.json';
+// api.md 3.0: the Settings come from stage-settings/ (api/settings.json is the 2.0 shape, kept by the contract until removal).
+import buildCostJson from '../../../contracts/fixtures/stage-settings/build_cost.json';
+import capabilitiesJson from '../../../contracts/fixtures/stage-settings/capabilities.json';
+import designPagesJson from '../../../contracts/fixtures/stage-settings/design_pages.json';
+import designPagesReviewIssueJson from '../../../contracts/fixtures/stage-settings/design_pages.review.issue.json';
+import designPagesReviewJson from '../../../contracts/fixtures/stage-settings/design_pages.review.json';
+import invalidSettingsJson from '../../../contracts/fixtures/stage-settings/error.invalid_settings.json';
+import eventsReviewSse from '../../../contracts/fixtures/stage-settings/events.review.sse?raw';
+import runCallsJson from '../../../contracts/fixtures/stage-settings/run_calls.json';
+import settingsJson from '../../../contracts/fixtures/stage-settings/settings.json';
 import tracesJson from '../../../contracts/fixtures/api/traces.json';
 import {
   arrayOf,
@@ -39,8 +48,10 @@ import {
   isApiErrorBody,
   isBlueprint,
   isBuild,
+  isBuildCost,
   isBuildSummary,
   isContext,
+  isDesignPages,
   isDesign,
   isEngineStatus,
   isGenerationRequest,
@@ -51,8 +62,10 @@ import {
   isRecipe,
   isReferenceSet,
   isRunAccepted,
+  isRunCalls,
   isSession,
   isSettings,
+  isSettingsCapabilities,
   isSource,
   isSyntheticDataset,
   isThemePreset,
@@ -119,8 +132,22 @@ export const fixtures = /* @__PURE__ */ (() => ({
   recipe: checked(isRecipe, recipeJson, 'recipe.json'),
   runAccepted: checked(isRunAccepted, runAcceptedJson, 'run_accepted.json'),
   session: checked(isSession, sessionJson, 'session.json'),
-  settings: checked(isSettings, settingsJson, 'settings.json'),
+  settings: checked(isSettings, settingsJson, 'stage-settings/settings.json'),
   traces: checked(arrayOf(isTrace), tracesJson, 'traces.json'),
+  // contracts/fixtures/stage-settings/ (api.md 3.0)
+  capabilities: checked(isSettingsCapabilities, capabilitiesJson, 'stage-settings/capabilities.json'),
+  /** A designed page and a standard page, no review. */
+  designPages: checked(isDesignPages, designPagesJson, 'stage-settings/design_pages.json'),
+  /** A pending brief review, revision 1, no issues. */
+  designPagesReview: checked(isDesignPages, designPagesReviewJson, 'stage-settings/design_pages.review.json'),
+  /** A pending review, revision 2, with issues. */
+  designPagesReviewIssue: checked(isDesignPages, designPagesReviewIssueJson, 'stage-settings/design_pages.review.issue.json'),
+  runCalls: checked(isRunCalls, runCallsJson, 'stage-settings/run_calls.json'),
+  buildCost: checked(isBuildCost, buildCostJson, 'stage-settings/build_cost.json'),
+  /** The 422 invalid_settings body. */
+  invalidSettings: checked(isApiErrorBody, invalidSettingsJson, 'stage-settings/error.invalid_settings.json'),
+  /** A prototype run that pauses for a brief review (brief.review, then run.finished ok). */
+  eventsReview: checkedEvents(eventsReviewSse, 'stage-settings/events.review.sse'),
 }))();
 
 /** A deep copy, so mock state never mutates the imported fixture. */

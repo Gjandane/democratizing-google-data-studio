@@ -105,14 +105,15 @@ describe('build agent status (agent mode)', () => {
 });
 
 describe('settings locked by the deployment', () => {
-  it('403 settings_locked marks the API key and GCP fields as fixed; the models stay editable', async () => {
+  // The "models stay editable" half of this check moves to the Models tab (16.2).
+  it('403 settings_locked marks the API key and GCP fields as fixed', async () => {
     setMockEngine(agent);
     const update = vi.spyOn(api, 'updateSettings');
     render(<SettingsModal open onClose={() => {}} onSaved={() => {}} />);
     const project = (await screen.findByLabelText('GCP project')) as HTMLInputElement;
     fireEvent.change(project, { target: { value: 'other-project' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-    await screen.findByText('The hosted app fixes the API key and Google Cloud settings. You can still change the models.');
+    await screen.findByText(/The hosted app fixes the API key and Google Cloud settings\./);
     await expect(update.mock.results[0]!.value).rejects.toMatchObject({ status: 403, code: 'settings_locked' });
 
     for (const label of ['GCP project', 'BigQuery dataset', 'BigQuery location', 'GCS bucket', 'Google API key']) {
@@ -121,13 +122,8 @@ describe('settings locked by the deployment', () => {
     }
     expect(project.value).toBe(fixtures.settings.gcp_project_id);
     expect(screen.getAllByText('Fixed by the deployment.').length).toBe(5);
-    const planner = screen.getByLabelText('Planner model') as HTMLInputElement;
-    expect(planner.disabled).toBe(false);
-
-    fireEvent.change(planner, { target: { value: 'gemini-next' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-    await screen.findByText('Settings saved.');
-    expect(update).toHaveBeenLastCalledWith({ planner_model: 'gemini-next' });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect((screen.getByRole('button', { name: 'Save settings' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
 

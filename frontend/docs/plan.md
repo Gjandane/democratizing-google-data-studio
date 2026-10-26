@@ -252,7 +252,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: labels only; no new API field (types come from ../contracts/recipe.md 1.3 through the blueprint's existing `type`/`options`).
 
 ## Phase 16: Configurable model stages (change 2026-10-26; split by delta audit 2026-10-26)
-- [ ] 16.1 Contract 3.0 types, guards, client and mocks
+- [x] 16.1 Contract 3.0 types, guards, client and mocks
   - Goal: the app speaks api.md 3.0: Settings with stage profiles, capabilities, design-pages, brief review, run calls and the `brief.review` event, served by the mock from the stage-settings fixtures; the Settings modal keeps working without the planner/worker inputs until 16.2. Shapes: ../contracts/api.md 3.0, Stage settings and design briefs.
   - Files: src/api/types.ts, src/api/client.ts, src/api/events.ts, src/mocks/*.ts, src/features/settings/SettingsModal.tsx, src/features/activity/useBuildStream.ts, tests/contract.test.ts, tests/settings.test.tsx, tests/agent-status.test.tsx
   - Depends on: 15.1

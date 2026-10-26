@@ -10,11 +10,10 @@ import { LoadingState } from '../../components/Spinner';
 
 const FORM_ID = 'settings-form';
 
-type TextField = Exclude<keyof Settings, 'google_api_key_set'>;
+// The per-stage model profiles get their own tab in 16.2; until then this form holds the key and the Google Cloud targets.
+type TextField = 'gcp_project_id' | 'bq_dataset' | 'bq_location' | 'gcs_bucket';
 
 const FIELDS: Array<{ key: TextField; label: string; hint?: string }> = [
-  { key: 'planner_model', label: 'Planner model', hint: 'Drafts the context, outline and blueprint, and lays out the prototype.' },
-  { key: 'worker_model', label: 'Worker model', hint: 'Handles the smaller, faster steps.' },
   { key: 'gcp_project_id', label: 'GCP project', hint: 'Where uploaded data is loaded into BigQuery.' },
   { key: 'bq_dataset', label: 'BigQuery dataset' },
   { key: 'bq_location', label: 'BigQuery location', hint: 'For example US or EU.' },
@@ -40,8 +39,6 @@ export function changedFields(saved: Settings, draft: Record<TextField, string>,
 }
 
 const draftOf = (settings: Settings): Record<TextField, string> => ({
-  planner_model: settings.planner_model,
-  worker_model: settings.worker_model,
   gcp_project_id: settings.gcp_project_id,
   bq_dataset: settings.bq_dataset,
   bq_location: settings.bq_location,
@@ -59,7 +56,7 @@ interface SettingsModalProps {
   onSaved: (settings: Settings) => void;
 }
 
-/** Planner and worker model, the write-only API key and the Google Cloud targets. */
+/** The write-only API key and the Google Cloud targets. */
 export function SettingsModal({ open, onClose, onSaved }: SettingsModalProps) {
   const [load, setLoad] = useState<Load>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
@@ -142,7 +139,7 @@ export function SettingsModal({ open, onClose, onSaved }: SettingsModalProps) {
       open={open}
       onClose={onClose}
       title="Settings"
-      description="Models, Google Cloud targets and your API key. They are stored by the backend."
+      description="Google Cloud targets and your API key. They are stored by the backend."
       footer={
         <>
           <Button onClick={onClose}>Close</Button>
@@ -168,9 +165,6 @@ export function SettingsModal({ open, onClose, onSaved }: SettingsModalProps) {
           <p role="status" className={saved ? 'flex items-center gap-1 text-label text-success' : 'sr-only'}>
             {saved ? 'Settings saved.' : ''}
           </p>
-          {FIELDS.slice(0, 2).map(({ key: field, label, hint }) => (
-            <Input key={field} label={label} hint={hint} value={draft[field]} onChange={(e) => edit(field, e.target.value)} autoComplete="off" spellCheck={false} />
-          ))}
           <div className="flex flex-col gap-1">
             <Input
               id="settings-key"
@@ -197,7 +191,7 @@ export function SettingsModal({ open, onClose, onSaved }: SettingsModalProps) {
               <p id="settings-key-status" className="text-label font-medium text-danger">No key yet</p>
             )}
           </div>
-          {FIELDS.slice(2).map(({ key: field, label, hint }) => {
+          {FIELDS.map(({ key: field, label, hint }) => {
             const fixed = locked && DEPLOYMENT_FIELDS.has(field);
             return (
               <Input
