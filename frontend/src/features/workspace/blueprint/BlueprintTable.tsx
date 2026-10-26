@@ -2,6 +2,7 @@
 // status), grouped by page; a blocked row expands into its Feasibility issue (docs/staged-ui.md).
 import {
   CalendarRange,
+  ChartArea,
   ChartColumn,
   ChartBar,
   ChartLine,
@@ -11,6 +12,7 @@ import {
   Grid3x3,
   Hash,
   Image,
+  ListChecks,
   ListFilter,
   Map as MapIcon,
   OctagonAlert,
@@ -38,11 +40,18 @@ const TYPES: Record<string, { label: string; icon: LucideIcon }> = {
   image: { label: 'Image', icon: Image },
   date_range: { label: 'Date range control', icon: CalendarRange },
   dropdown: { label: 'Dropdown control', icon: ListFilter },
+  area: { label: 'Area chart', icon: ChartArea },
+  fixed_size_list: { label: 'Fixed-size list control', icon: ListChecks },
 };
 
 /** A catalog type as an icon plus a label; an unknown type keeps its id as the label. */
 export function chartType(component: BlueprintComponent): { label: string; icon: LucideIcon } {
-  if (component.type === 'bar' && component.options.orientation === 'horizontal') return { label: 'Bar chart (horizontal)', icon: ChartBar };
+  if (component.type === 'bar') {
+    const horizontal = component.options.orientation === 'horizontal';
+    const percent = component.options.stacked_percent === true;
+    const notes = [horizontal && 'horizontal', percent && '100% stacked'].filter(Boolean).join(', ');
+    if (notes) return { label: `Bar chart (${notes})`, icon: horizontal ? ChartBar : ChartColumn };
+  }
   return TYPES[component.type] ?? { label: component.type, icon: Shapes };
 }
 

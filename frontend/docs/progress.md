@@ -502,3 +502,15 @@ context. Task status lives in docs/plan.md, not here.
 - Re-audit of existing tasks: done 3.3 (Settings), 10.3, 14.5 stay as built (history unchanged); their rework is new tasks. 15.1 unaffected. Affected source mapped: settings/SettingsModal.tsx, AppServices.tsx (openSettings has no stage), trace/TraceModal.tsx, activity/RunCard.tsx and useBuildStream.ts, workspace/ArtifactStage.tsx, prototype/*, build/*, FeasibilityPanel.tsx (no central lock: 16.4 adds one), api/types.ts exact guards.
 - What changed: docs/stage-settings-ui.md (new), essentials section and contract rows, PRD goal and Decided by default, AGENTS.md read list; Phase 16: 16.1 contract 3.0 types and mocks (M), 16.2 stage settings editor with cost per call (M), 16.3 brief panel and Standard layout chip (S), 16.4 brief review gate (M), 16.5 stage calls, costs and stage-limit errors (M), 16.6 live walkthrough (S, Needs backend 25.6).
 - Next: 16.1 in frontend/ (after 15.1).
+
+## 2026-10-26: Task 15.1 Blueprint labels for area charts, 100% stacked bars and fixed-size lists
+- Status: done
+- Plan check: unattended
+- What changed: BlueprintTable.tsx `chartType()` labels `area` (ChartArea icon), `fixed_size_list` (ListChecks), and bar with `options.stacked_percent === true` as "Bar chart (100% stacked)" / "Bar chart (horizontal, 100% stacked)"; tests/blueprint.test.tsx adds a chartType labels block.
+- Checks: `npx vitest run tests/blueprint.test.tsx` FAIL before (1 failed / 11 passed), PASS after; Test (all) `npm test` PASS 425/425; `npm run typecheck` PASS.
+- Decisions: lucide's area icon is `ChartArea` (no `AreaChart` export); 100% bars keep ChartColumn/ChartBar icons; only boolean `true` counts as stacked_percent; tests call exported `chartType` directly (table renders its label/icon unchanged, rendered path covered by the horizontal-bar row test).
+- Digest: BlueprintTable.tsx exported `chartType(component: BlueprintComponent)` -> {label, icon}: area "Area chart", fixed_size_list "Fixed-size list control", bar+stacked_percent "Bar chart (100% stacked)" / "(horizontal, 100% stacked)"; unknown type falls back to its id with Shapes.
+- Tried and failed: none
+- Gotchas: none
+- Left open: P3 area with stacked_percent still reads "Area chart" (recipe.md 1.3 allows it; out of scope) - src/features/workspace/blueprint/BlueprintTable.tsx
+- Next: Task 16.1. Start by reading ../contracts/api.md 3.0 Stage settings and design briefs and ../contracts/fixtures/stage-settings/.

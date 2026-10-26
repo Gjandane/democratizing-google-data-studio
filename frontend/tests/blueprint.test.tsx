@@ -1,8 +1,11 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ChartArea, ChartBar, ChartColumn, ListChecks, Shapes } from 'lucide-react';
 import { api, httpApi } from '../src/api/client';
 import type { Assessment, Build } from '../src/api/types';
+import type { BlueprintComponent } from '../src/api/types';
+import { chartType } from '../src/features/workspace/blueprint/BlueprintTable';
 import { WorkspaceShell } from '../src/features/workspace/WorkspaceShell';
 import { mockRatioIssue, patchMockBuild, resetMockState, setMockArtifact, setMockAssessment, setMockBlueprintBlocked, setMockRunFailure } from '../src/mocks/api';
 import { fixtures } from '../src/mocks/fixtures';
@@ -194,5 +197,23 @@ describe('Blueprint table', () => {
     await renderBlueprint();
     const heading = screen.getByRole('heading', { level: 2, name: 'Blueprint' });
     expect(heading.parentElement?.textContent).toMatch(/Stale.*Changed:/);
+  });
+});
+
+describe('chartType labels', () => {
+  const comp = (type: string, options: Record<string, unknown> = {}): BlueprintComponent => ({
+    type, label: 'x', dimensions: [], metrics: [], date_dimension: null, breakdown: null, sort: null, options,
+  });
+  it('names area charts, fixed-size lists and 100% stacked bars', () => {
+    expect(chartType(comp('area'))).toEqual({ label: 'Area chart', icon: ChartArea });
+    expect(chartType(comp('fixed_size_list'))).toEqual({ label: 'Fixed-size list control', icon: ListChecks });
+    expect(chartType(comp('bar', { stacked_percent: true }))).toEqual({ label: 'Bar chart (100% stacked)', icon: ChartColumn });
+    expect(chartType(comp('bar', { orientation: 'horizontal', stacked_percent: true }))).toEqual({ label: 'Bar chart (horizontal, 100% stacked)', icon: ChartBar });
+  });
+  it('keeps existing labels', () => {
+    expect(chartType(comp('bar')).label).toBe('Bar chart');
+    expect(chartType(comp('bar', { orientation: 'horizontal' })).label).toBe('Bar chart (horizontal)');
+    expect(chartType(comp('pivot_table')).label).toBe('Pivot table');
+    expect(chartType(comp('mystery'))).toEqual({ label: 'mystery', icon: Shapes });
   });
 });

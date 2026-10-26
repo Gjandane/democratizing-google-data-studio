@@ -243,7 +243,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: ../contracts/api.md 2.0 (blueprint, Prototype HTML) and dashboard-intent.md 1.2; Feasibility panel reuse per docs/reference-ui.md; stale states after editing an earlier step.
 
 ## Phase 15: Reference fidelity (change 2026-10-24)
-- [ ] 15.1 Blueprint labels for area charts, 100% stacked bars and fixed-size lists
+- [x] 15.1 Blueprint labels for area charts, 100% stacked bars and fixed-size lists
   - Goal: the Blueprint table names recipe 1.3's new types instead of showing raw ids: today `chartType()` falls back to the type id with the Shapes icon for `area` and `fixed_size_list`, and a `bar` with `stacked_percent` reads as a plain bar.
   - Files: src/features/workspace/blueprint/BlueprintTable.tsx, tests/blueprint.test.tsx
   - Depends on: 14.5
