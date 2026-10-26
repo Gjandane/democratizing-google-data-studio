@@ -35,6 +35,12 @@ view of the dashboard being built.
 9. Screenshot-only builds offer Generate sample data, schema/assumption review, row count/seed,
    CSV download and persistent synthetic-data labeling.
 
+## Goals added by change 2026-10-26
+- Every model stage's settings are editable in the app, briefs are readable and downloadable per
+  page, the user can review and approve each page's brief before HTML when they turn that on, and
+  the actual model, fallback and token limits of each call are visible, with estimated costs per
+  stage, call, run and build (api.md 3.0).
+
 ## Non-goals
 - No auth or accounts (POC, one user): only the shared access code of ../contracts/api.md#Access.
 - No mobile layout: desktop only, 1280 px wide and up.
@@ -83,6 +89,13 @@ view of the dashboard being built.
 - Against the real backend, flow 5 reaches a labeled prototype without uploading a CSV.
 
 ## Decided by default
+- Change configurable model stages 2026-10-26 (program root, user interview closed; architect
+  defaults): Settings becomes two tabs (Models first, Google Cloud); stage rows collapse to keep the
+  modal scannable; the review panel sits at the top of the stage area in whatever stage the run
+  paused; Standard layout is a text chip, not color alone; stage calls load lazily per run in the
+  Trace modal. Cost estimates (user request 2026-10-26) are labeled estimates from the backend's
+  prices: per stage in Settings, per call, run and build in Trace; no budgets, alerts or billing
+  data. No per-build overrides, no brief diff view.
 - Change staged workflow 2026-10-21: the chat input is removed (api.md 2.0 has no POST
   messages); the left column keeps the message log, run cards and activity strip. Other text and
   KPI edits are the only typing. Reference attach moves from the chat to the References panel in

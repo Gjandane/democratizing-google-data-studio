@@ -15,7 +15,7 @@ semantic / episodic memory, consolidation, guardrails, trace).
 | Storage | SQLite (stdlib sqlite3) + FTS5 | episodic memory without a server | Postgres, vector DB |
 | Semantic memory | OKF markdown bundles, pyyaml frontmatter | user's constraint: OKF instead of RAG | embeddings |
 | Data | google-cloud-bigquery (load jobs, views, dry runs, aggregates) | every source lands in BigQuery | pandas pipelines |
-| Rendering | string templates + ECharts (CDN) in the HTML; Playwright Chromium for background.png; designed pages: planner HTML without a reference, Argon brief -> Flash HTML with one, sanitized and measured by code (#Designed pages) | deterministic components; the user wants AI-designed backgrounds | LLM-written component/chart HTML |
+| Rendering | string templates + ECharts (CDN) in the HTML; Playwright Chromium for background.png; designed pages: Argon brief -> Flash HTML with and without a reference (models per stage, #Stage settings), sanitized and measured by code (#Designed pages) | deterministic components; the user wants AI-designed backgrounds | LLM-written component/chart HTML |
 | Hosting | Cloud Run, one instance, image from the root `Dockerfile` (release part); serves the built frontend; builds through the local `dss-agent` | one service, same origin; the engine needs the user's signed-in Chrome | engine on Cloud Run with a stored session; separate frontend service |
 
 ## Folder structure
@@ -327,6 +327,10 @@ Final-audit corrections (2026-10-19):
   issue. Manual: the preset sheet PNG reviewed by the user.
 
 ### Blueprint
+- Change 2026-10-26: model, thinking, token caps and the time bound now come from the stage
+  profile (#Stage settings, #Stage execution); numbers below are historical where they differ.
+  Droppable-section fits described here still run first, against the profile's input_tokens,
+  then the hard overflow stop.
 - Problem: map each selected question to one buildable component, the user's KPI definitions
   intact, and prove it buildable before any prototype work.
 - Input (planner model, one generation): context (derived fields, KPIs, thresholds), the compact
@@ -443,6 +447,10 @@ Final-audit corrections (2026-10-19):
   gates in tasks 24.9/24.11; offline success cannot approve fidelity.
 
 ### Blueprint observation coverage
+- Change 2026-10-26: model, thinking, token caps and the time bound now come from the stage
+  profile (#Stage settings, #Stage execution); numbers below are historical where they differ.
+  Droppable-section fits described here still run first, against the profile's input_tokens,
+  then the hard overflow stop.
 - Problem (final audit 2026-10-23): in recreate mode the Blueprint planner never sees the image
   observations and Blueprint feasibility never checks rows against them, so a Blueprint reports
   ready and accept then fails publish coverage (`422 invalid_request`, "Candidate no longer
@@ -521,8 +529,8 @@ Final-audit corrections (2026-10-19):
 
 ### Graph
 - Problem: one ADK 2.0 `Workflow` that is the harness's agent run for every action.
-- Model check: at startup and when settings change, list the available models; if the planner
-  model is missing, log a warning and use the worker model for blueprint.
+- Model check: at startup and when settings change, list the available models; a stage whose
+  model a successful listing omits runs on `fallback_model` (#Stage execution, change 2026-10-26).
 - Inputs and outputs: `{action, build_id, payload}` -> SSE events, DB writes, one trace.
 - Rules (change staged workflow 2026-10-21): START -> router(action) -> the action's branch. LLM
   nodes: context, outline_propose, outline_suggest, outline_other, blueprint, revise, ux_audit,
@@ -544,6 +552,10 @@ Final-audit corrections (2026-10-19):
 - Oracle: tests run each branch with FakeLLM and assert the node order recorded in the trace spans.
 
 ### Working memory assembly
+- Change 2026-10-26: model, thinking, token caps and the time bound now come from the stage
+  profile (#Stage settings, #Stage execution); numbers below are historical where they differ.
+  Droppable-section fits described here still run first, against the profile's input_tokens,
+  then the hard overflow stop.
 - Problem: give each LLM node only what it needs, in a cache-friendly order, under a token budget.
 - Inputs and outputs: node name, build, user input -> ordered list of context sections + the
   token count per section (recorded in the trace span).
@@ -625,6 +637,10 @@ Final-audit corrections (2026-10-19):
   file has parseable frontmatter with non-empty `type`.
 
 ### Reference interpretation
+- Change 2026-10-26: model, thinking, token caps and the time bound now come from the stage
+  profile (#Stage settings, #Stage execution); numbers below are historical where they differ.
+  It runs on Argon HIGH with no repair (profile bound [0,0]). Droppable-section fits described here still run first, against the profile's input_tokens,
+  then the hard overflow stop.
 - Problem/objective: derive reviewable visual intent from screenshots, preserving the existing
   deterministic spec -> prototype -> recipe path. Source rules: ../contracts/dashboard-intent.md
   1.1 (Reference set and Required oracle cases); that contract owns API/lifecycle behavior.
@@ -1085,6 +1101,10 @@ Final-audit corrections (2026-10-19):
   and under 2 MB (designed pages: 3x, or 2x when 3x would reach 2 MB).
 
 ### Designed pages
+- Change 2026-10-26 (configurable model stages): models, thinking, token caps, clocks, retry and
+  repair counts, output-cutoff handling and the no-reference route now follow #Stage settings,
+  #Stage execution and #Design briefs; numbers and route statements below are historical where
+  they differ.
 - Problem (change 2026-10-22, user; target look docs/change-2026-10-22-reference.webp: light
   gray page, white rounded cards with soft shadows, KPI cards with pastel icon tiles, section
   cards with a title, a header with a bold title and subtitle): the planner designs each page's
@@ -1174,6 +1194,10 @@ Final-audit corrections (2026-10-19):
   chart inside its card.
 
 ### Reference design brief
+- Change 2026-10-26 (configurable model stages): models, thinking, token caps, clocks, retry and
+  repair counts, output-cutoff handling and the no-reference route now follow #Stage settings,
+  #Stage execution and #Design briefs; the prose caps, the ephemeral-brief rule, numbers and route statements below are historical where
+  they differ.
 - Problem/objective (change 2026-10-25): separate visual reasoning from HTML coding while
   retaining native Data Studio charts. A detailed, feasible Argon brief tells Flash how to
   reproduce the reference's regions, proportions, hierarchy, typography, palette and art.
@@ -1208,7 +1232,8 @@ Final-audit corrections (2026-10-19):
   new nodes; missing/corrupt required reference bytes fail the reference stage, never silently
   reduce the image set or select the generic designer. Artifact/feasibility freshness is rechecked
   at the existing publication boundary; no brief reuse across changed inputs.
-- Budget: reference_brief uses the configured planner (normally Argon), LOW thinking, full
+- Budget: reference_brief uses the configured planner (normally Argon), HIGH thinking (user,
+  change 2026-10-26; supersedes 24.6's LOW setting), full
   counted input <= 12k including images and output <= 4k including thinking. One generation,
   no semantic repair; existing single transport retry on 429/500/503 only. A 120 s total stage
   bound includes counting and any retry; cancellation propagates. Validate raw output under
@@ -1222,6 +1247,8 @@ Final-audit corrections (2026-10-19):
   no tools; malformed/cut brief prevents the worker call. No-reference request fingerprint unchanged.
 
 ### Reference HTML composition
+- Change 2026-10-26: budgets, clocks, repairs and cutoff follow #Stage execution; numbers below
+  are historical where they differ.
 - Problem/output: Flash implements the validated visual brief as the existing FirstPage/LaterPage
   JSON containing sanitized background HTML around the exact native component slots. The
   renderer/compiler stay deterministic; chart definitions, data and recipe ops remain code-owned.
@@ -1240,7 +1267,7 @@ Final-audit corrections (2026-10-19):
 - Budget (change 24.8, user): initial input <= 12k; the one repair input <= 24k. Both use
   the existing conservative complete-request bound, including schema and ordered images.
   Only the internally selected second HTML attempt may use 24k; not the brief, first attempt,
-  no-reference designer or another worker. Output <= 16k including LOW thinking on both
+  no-reference designer or another worker. Output <= 16k including HIGH thinking on both
   attempts. Give the reference_html client
   a 600,000 ms timeout independent of planner/worker defaults. One 600 s wall-clock budget
   covers each page's entire HTML stage: token counting, generation, the existing transport
@@ -1308,6 +1335,243 @@ Final-audit corrections (2026-10-19):
   a later page, a design revision, style mode and no-reference regression. The user approves
   fidelity at the STOP; passing tests alone cannot mark the live task done. Full engine/report
   integration remains the release part's responsibility.
+
+### Reference thinking comparison
+- Historical (superseded 2026-10-26 by #Stage settings and #Stage execution): the HIGH-first
+  trial ran in blocked 24.11 (brief MAX_TOKENS at 3 answer + 3,997 thinking of 4,000); its evidence
+  stays under .blueprint/qa/task-24.11/high-comparison/. Live verification moved to task 25.7.
+- User decision (2026-10-26): allow HIGH thinking for both Argon's reference brief and Flash
+  3.8's reference HTML, and test that first. Earlier reference LOW settings are superseded;
+  the four-task draft in docs/change-24.11-fidelity.md is not approved for implementation first.
+- Change only the requested level on the two reference stages. Brief: HIGH on every first,
+  later-page and revision request. HTML: HIGH on both initial and existing repair requests,
+  including later pages and revisions. The shared designer code must keep LOW when there is
+  no reference. Do not change extraction, ordinary worker/planner nodes, routing, prompt
+  contents, PageBrief/HTML schemas, fixture definitions or component meaning for this test.
+- All current bounds remain: brief input 12k/output 4k including thinking/120 s; HTML input
+  12k initially and 24k on its sole repair/output 16k including thinking/600 s total per page.
+  Retain count-before-generation, LOW thinking on the no-reference designer, one existing
+  transport retry on eligible errors, reference failure/rollback and every sanitizer, slot,
+  native-component, text-fit, footer, coverage and publication guard. HIGH is not permission
+  for larger caps, longer waits, extra generations, fallback publication or fake charts.
+- Test order: request-configuration regressions and the relevant offline suite first, then
+  one fresh bounded live comparison using the same backend electricity image, synthetic
+  schema/CSV, INSTRUCTIONS, RECREATE_NOTES and other settings as the resumed LOW runs under
+  .blueprint/qa/task-24.11/RESUMED.md. Existing recreate/style/none cases and their allowed
+  transient retry rule remain the limit; no repeated generation to bypass deterministic errors.
+  Do not implement the proposed alias grammar, footer wrapper or native preview fixes first.
+- Evidence: preserve earlier runs/hashes immutably; use a new HIGH-comparison run folder.
+  Retain source/fixture/input hashes, actual model identities, requested thinking level per
+  stage/page/attempt, supplied-image counts, durations, token counts/caps, finish/truncation
+  status, publication outcome and sanitized validation evidence. A missing provider thinking
+  count is unavailable, not proof of zero thinking; never save hidden thought content. The
+  requested HIGH setting is not independent proof of the provider's effective reasoning level.
+  Existing runtime trace privacy rules stay unchanged; any new observation is test-owned.
+- Compare visual screenshots, layout failures and published component structure with the
+  historical LOW evidence, and report upstream/model variation as a confound. This is a
+  practical comparison, not a statistically controlled claim that thinking caused a change.
+  When a known title/structure assertion fails after publication, retain the candidate's
+  screenshots and a read-only diagnostic inventory of the other known issues before reporting
+  the failure; do not weaken the assertion, call it a passed run or continue gated execution.
+  Separate requested level, successful generation, successful publication and visual approval.
+- If HIGH exhausts output, times out or the provider refuses it, retain stage/page/attempt,
+  safe category, duration and token/cap evidence and follow the existing failure policy. Never
+  silently fall back to LOW or increase a cap. The user's choice settles the experiment order,
+  not its outcome. Unresolved fidelity still blocks completion and returns to the architect
+  with evidence; a successful trial still needs the existing visual STOP.
+- Oracle: fake requests pin HIGH for brief/HTML first and later pages, their allowed repair
+  and revision paths, with strict schemas and unchanged limits. No-reference requests stay
+  LOW and retain their request/artifact/fallback fingerprints. Existing cut-output/deadline,
+  failed-reference publication and cleanup tests still pass. The existing reproducible live
+  check supplies the comparison; no live success or visual acceptance can be inferred offline.
+
+### Stage settings
+- Problem (change 2026-10-26, user interview closed after 30 answers;
+  docs/change-runtime-assumptions-interview.md): every model call is adjustable from app Settings
+  per stage, with independent stored profiles, instead of code constants and two global models.
+- Shapes, stage list, defaults, bounds, validation and the legacy migration:
+  ../contracts/api.md 3.0 #Stage settings and design briefs (the contract wins). Settings stay
+  global; no per-build override.
+- Storage: one `stages` JSON value (plus `fallback_model`, `review_briefs`) in the existing SQLite
+  settings table; read through SettingsStore like today. The env names keep only their migration
+  role (conventions.md 1.4). Agent mode keeps every model setting from the DB and still locks the
+  key and GCP fields.
+- Capabilities: a code-owned table of known model ids with thinking levels, max input/output
+  tokens and image support. Values come from Google's model pages (verified 2026-10-26: Flash 3.8
+  and Argon allow 65,536 output tokens, thinking included:
+  https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash ,
+  https://ai.google.dev/gemini-api/docs/models/gemini-4-argon ,
+  https://ai.google.dev/gemini-api/docs/thinking); the builder checks each max input on the same
+  pages and records the dates, and never infers a value. `available` comes from the existing
+  model listing (refresh at startup and after a settings change); a failed listing is `null`
+  (unknown), never absence.
+- Validation runs on the merged result before anything is written (atomic; `422 invalid_settings`
+  with one JSON-pointer issue per problem). A stored profile that fails validation (after a code
+  change, or a migrated unknown model id) is listed in `Settings.issues` on its field, never
+  blocks a PUT that does not touch it, and makes an action that needs that stage fail before any
+  model call with `stage_model_unavailable`.
+- Migration (user choice 2026-10-26: keep every explicit value): the contract's rule, run once
+  inside a transaction at first read; idempotent across restarts; stored rows count as explicit
+  even when equal to the old default, env values only when they differ from the conventions
+  default (.env.example ships the defaults). Role map covers every stage the role served
+  (planner -> native_planning, html_brief, html_no_reference; worker -> interview, routine,
+  reference_interpretation, reference_html). The seeded result is validated like a stored value
+  (issues listed, never replaced). A trace-free log line names which stages were seeded.
+- Prices (user request 2026-10-26, cost estimates): the capability table holds each model's
+  ModelPrice from Google's pricing page (https://ai.google.dev/gemini-api/docs/pricing), checked by
+  the builder with the date in `checked_on`; a model without a verified price has `price: null`.
+  Never guess a rate.
+- Snapshot: every action run reads Settings once at start into an immutable snapshot passed to its
+  nodes; attempts, retries, repairs and fallback use it. A brief-review approval is a new run with
+  a new snapshot (#Design briefs).
+- Edge cases: PUT with only GCP fields leaves stages untouched; partial stage updates merge per
+  field; validation_repairs uses per-stage bounds (interpretation 0 only, native planning 0-1,
+  brief/HTML 0-5), so no stage gains a repair loop; a value equal to the default is still stored explicitly; reset in the UI is a PUT of the
+  capability defaults; unknown stage or field -> issue.
+- Oracle: tests/test_stage_settings.py: defaults equal the contract table; every bound and
+  capability rule has a rejecting case with its path; nothing is written on a rejected PUT;
+  migration cases (no legacy; stored planner/worker incl. a default-equal value -> every stage of
+  that role; env equal to the shipped default not seeded, different seeded; unknown legacy id ->
+  copied, listed in Settings.issues, a PUT of another field succeeds; second read and restart
+  unchanged); prices verified or null; agent-mode lock; GET/PUT match contracts/fixtures/stage-settings/
+  settings.json and GET capabilities matches capabilities.json (same keys and JSON types).
+
+### Stage execution
+- Problem (change 2026-10-26): run each model node from its stage profile with one honest clock,
+  bounded retries, visible model fallback and clear stops, replacing the planner/worker split and
+  the per-node constants (12k/24k/4k/16k, 120 s/600 s, one retry).
+- Routing: node -> stage per the contract table; the no-reference designer and the reference HTML
+  node read their own HTML profiles; reference_brief reads html_brief on both routes. Interview
+  and routine nodes keep their existing token caps, repair counts and transport retry; their
+  profile sets model, thinking and the per-request timeout. Every node requests its profile's
+  thinking level explicitly (routine work becomes LOW where a node used the provider default; user
+  direction 2026-10-26).
+- Clock (generation profiles): one cancellable deadline of `timeout_s` per action (analysis) or per
+  page (brief, HTML) covers counting, every generation, transport waits, validation repairs,
+  measurement and fallback. Each provider client gets the remaining time as its timeout; no attempt
+  starts with less than 1 s left; the deadline never restarts. Expiry stops with `stage_timeout`.
+  Later pages each get their own page clock.
+- Counting: the complete request (instructions, schema, images, brief, prior HTML/CSS, comments)
+  as `max(text estimate, ceil(provider count * (1 + margin/100)) + 512)`; models without a counter
+  use the estimate. Sections a node already defines as droppable (Blueprint observation labels
+  then the observation section, profile compression, comment-ledger trimming) are fitted first,
+  unchanged, against the profile's `input_tokens`; then over the limit -> stop before generation
+  with `stage_input_over_limit`; never trim, summarize or drop mandatory facts. StageCall keeps
+  measured and enforced counts apart.
+- Transport retry: on 429/500/503 before any response only (never 504, invalid content, cutoff or a
+  stream that already yielded), up to `transport_retries`, waiting 1 s, 2 s, 4 s ... within the clock.
+- Model fallback (generation profiles): after the primary's eligible failures use up its retries,
+  or when a successful listing omits the selected model, run the same request once more as a
+  sequence on `fallback_model` (its own transport retries, same thinking, caps and clock). Never when
+  the primary already is the fallback model, never a second fallback, never on cutoff, invalid
+  output, measurement failure or input overflow. Interview and routine use the listing check only
+  (it generalizes today's planner -> worker swap); their runtime errors keep today's behavior.
+  Exhausted -> `stage_model_unavailable`.
+- Output cutoff (MAX_TOKENS or equivalent finish) in any generation stage: stop with
+  `stage_output_cutoff`; no repair, continuation, regeneration, fallback or lower thinking. This
+  supersedes 24.8's "truncation uses the HTML repair". No partial brief reaches HTML; no partial
+  HTML publishes. Every stop error's message starts with the StageId (api.md 3.0).
+- Evidence: the run's effective Settings snapshot and one StageCall per provider request
+  (contract shapes), persisted with the trace and served by `GET /api/traces/{run_id}/calls`; Design.model and the page record hold the actual HTML
+  model. Each StageCall carries `cost_usd_estimate` from the contract's formula (null when the
+  model has no price or usage is missing; unknown thinking makes the run's estimate incomplete);
+  `GET /api/builds/{id}/cost` sums a build's runs per the contract's Cost estimates rules,
+  estimating pre-3.0 runs from their Trace model and tokens (`basis: "trace"`, always incomplete).
+  StageCall records the provider's billed prompt count as `input_billed` when reported. Thinking tokens come from provider usage when reported, else null. No hidden thoughts,
+  prompts, raw provider messages or credentials in StageCalls, spans or logs. run.usage totals
+  include every call as today.
+- Failure: every stop keeps the previous published spec/prototype/briefs, cleans the unpublished
+  candidate, releases the build lock and emits the `"<code>: <message>"` error. Cancellation and
+  server shutdown keep today's drain and cleanup.
+- Edge cases: a listing that fails -> selected model used, `available` null; fallback model
+  missing from a successful listing -> no fallback; a profile changed mid-run -> no effect on
+  that run; thinking count missing -> null; a 5-page build -> page clocks, not one report clock.
+- Budget: routing and snapshot add no model call; the stage clock is the only wait bound.
+- Oracle: tests/test_stage_execution.py with fake clocks and fake models (no real sleeps):
+  routing per node and stage, thinking per profile on every first/later-page/repair/revision
+  request; shared clock across retries, repairs and fallback; retry waits 1/2/4 s; eligible vs
+  ineligible errors; fallback once and visible; no fallback when primary = fallback; cutoff and
+  overflow stop with their codes and no fallback; previous publication unchanged and lock released;
+  the run's snapshot and StageCalls match contracts/fixtures/stage-settings/run_calls.json and
+  carry null, never 0, for unknown thinking. Existing request regressions update only the numbers the profiles change.
+
+### Design briefs
+- Problem (change 2026-10-26): the brief is the full design intent handed from Argon to Flash on
+  every designed page, inspectable and optionally reviewed by the user.
+- Routes: with a reference, unchanged order (#Reference design brief -> #Reference HTML
+  composition). Without a reference, the designer's single call becomes html_brief (Argon, no
+  image, the dashboard-design skill's look and the approved component report) -> Flash HTML on
+  html_no_reference. Never an invented reference image. Page 1 first; later pages in parallel
+  unless review is on (then one at a time).
+- Brief content: no prose character target or ceiling anywhere (skill text, provider schema, local
+  model): remove the 6,000-character guidance and the 12,000 aggregate, 8,000 overall and 2,000
+  per-slot limits; output tokens bound length. Keep non-empty overall and slot text, exact slot-id
+  set, no duplicates, content/asset/security checks and refusal of real truncation. The brief's
+  input report carries full requirement text (drop the 240-character cut in reference_brief's
+  report); HTML gets the whole validated brief. Other planning contexts keep their limits.
+- Brief repair: up to `validation_repairs` (default 1) with the concrete validation errors and the
+  same inputs; HTML never starts until the brief passes. HTML keeps its repair context rules
+  (#Reference HTML composition) with up to `validation_repairs` (default 2) repairs.
+- Artifacts: each page's validated brief is saved as canonical JSON plus a deterministic Markdown
+  rendering (page heading, overall, one section per slot named by id, type and label) with the
+  candidate, and published atomically with the prototype as `brief_p<n>.json`/`.md` in the
+  version folder. The page record keeps origin, sha256, brief model, HTML model and layout. The
+  JSON is the brief exactly as used for that page's HTML; not the whole Flash request.
+  `GET design-pages` serves the current version; a pre-3.0 version returns designed pages as
+  `designed` with null briefs and code-layout pages as `standard`, `not_designed` (also used when
+  designed pages are off).
+- No-reference standard layout (user choice 2026-10-26: only after HTML repairs): when
+  html_no_reference's completed HTML still fails sanitize/measure/HTML validation after its
+  repairs and `layout_fallback` is on, that page uses today's code layout and kit (page 1 -> whole
+  build, as today), recorded as layout `standard`, reason `layout_fallback`, plus the existing
+  assistant message and span. A timeout, unavailable model, invalid brief, overflow, cutoff or
+  cancel stops the run instead (stricter than before 3.0, where any designer failure fell back). Every approved native
+  component, definition and coverage check stays. Switch off -> the page failure stops publication
+  like a reference failure. Reference builds never use it (change 24.8 stays).
+- Review gate (`review_briefs`): after a page's brief validates, persist a review record (build,
+  version, action, page, pages, brief, candidate folder, input digest of artifact revisions,
+  assessment id/state, reference set id and candidate spec) and the candidate, emit `brief.review`,
+  finish the run ok and release the lock. The wait has no clock. PUT validates an edited brief
+  (exact slot ids from the candidate, non-empty text, the security and content checks, and a count
+  of the HTML request against the current reference_html/html_no_reference input limit) and
+  stores it as origin `edited` with `revision` + 1, only when the request names the current
+  revision (else `409 brief_review_conflict`). Approve names the revision and sha256 the user saw
+  (mismatch -> conflict), consumes the review atomically (a repeated identical approve returns the
+  same run_id; a repeated cancel returns the Build), rechecks the digest (stale -> `409 brief_review_stale`),
+  snapshots Settings and continues that page's HTML, then the next page's brief (pausing again
+  while review is on). Cancel removes the candidate and the review. Other mutating routes get
+  `409 brief_review_pending`. A restart keeps the review and its candidate; startup cleanup skips
+  a candidate that a review owns.
+- Edge cases: revise regenerating two designed pages -> two reviews, in page order; a review on
+  page 2 after page 1 HTML -> page 1's width/CSS stay in the candidate; turning review off while a
+  review waits -> that review still needs approve or cancel; empty edit -> issues, approve refused.
+- Oracle: tests/test_design_briefs.py and tests/test_brief_review.py with fake models: no prose
+  cap in schema, skill or validator; long brief survives to the HTML request byte for byte; brief
+  repair count; no-reference route makes an Argon brief call then a Flash HTML call; standard
+  layout only on allowed failures and only with the switch on; artifacts and design-pages match
+  the stage-settings fixtures; review pause/edit/approve/cancel, stale digest, restart persistence,
+  409 on other routes, sequential pages, and publication bytes unchanged by a cancelled review.
+
+### Feasibility recomputation performance preservation
+- Problem (24.11's block, 2026-10-26): `test_recreate_blueprint_recompute_speed_with_24_observations`
+  measured 107.786 ms and 103.568 ms (best) against its unchanged <100 ms assertion; cause unproven.
+- Inputs: current snapshot, ledger, checker, environment/allowed types, 24 observations and the
+  existing candidate alternatives; output: identical assessment semantics, digest and alternatives
+  (compare with only the newly generated assessment id normalized).
+- Diagnose with stdlib profiling of the exact ready and blocked fixtures first (at most five
+  evaluations per state per before/after profile; profiling outside timed assertions). The builder
+  picks the smallest measured optimization, preferring reuse scoped to one evaluate call. Cache keys
+  cover every semantic dependency; no global mutable cache; never retain snapshot/ledger objects or
+  authorization across calls, builds, revisions or allowed-type changes; never skip candidate
+  validation. Existing catalog and per-pass coverage caches already exist.
+- Preserve issue ids/order/evidence/resolutions, alternatives, truncation/scope rules, digests,
+  stale/provenance/reference/source checks, page placement and truthful titles; no model or query
+  call; no mutation of inputs.
+- Oracle: before/after semantic comparison on both fixtures, repeated-call purity and targeted
+  mutations (instructions, KPI meaning/unit, source/reference identity, page, title, mappings,
+  decisions, allowed types). Every existing speed test keeps its workload, loop and threshold.
+- Budget: the unchanged <100 ms test in its module and in the full suite. A correction that
+  cannot pass blocks with evidence; never rerun until a lucky sample passes.
 
 ### Revise
 - Problem: comments -> the smallest spec change.
@@ -1530,3 +1794,12 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-25 | Compact duplicate reference repair input; 12k initial / 24k repair input, unchanged conservative count allowance, 16k output and 600 s/one repair; reference design failure prevents publication and preserves prior artifacts | keep every request at 12k; publish the standard kit after reference failure; keep retrying live | 24.8 evidence: repair bound 14,117 exceeded 12k; another repair retained one measurement error. User chose the 24k repair limit and stopping failed reference builds. Native-slot validation and visual acceptance stay mandatory | change 24.8 (user answers in architect session) |
 | 2026-10-26 | Reconstruct recreate yearly dates onto the projected base DATE with active full-column proof plus explicit field/grain intent or a selected native date-axis use of a complete recognized truncation; undeclared aliases need explicit intent; share completion/ingress rules and give exact missing-KPI feedback | infer aliases/observations from names or metrics; simplify arbitrary SQL; repeat live until ready; waive q4's missing KPI | 24.9 failed twice before design: mismatched year aliases/invalid DATE arithmetic, including overall series without observation links, plus an independent missing confirmed q4 measure. Retain typed SQL, KPI and coverage gates | change 24.9 (architect ruling; implementation 24.9, live/visual verification 24.10) |
 | 2026-10-26 | Recreate observations count only on their reference page (shared coverage rule; existing one repair names the page, then completion adds the row there); code-assigned observed titles drop an unenforced trailing period phrase and gain the mapped unit | rely on planner notes for placement; accept the untruthful label as a substitution; add a number-format option (contract change) | 24.10 run 045323 published the urban/rural area on page 3 with a table on page 1, and a scorecard titled "...in 2011" showing an all-years 55.11 with no %; the corrected-input run blocked on a prose instruction needing a date field | change 24.10 (user answers; implementation 24.10, live/visual verification 24.11) |
+| 2026-10-26 | HIGH thinking on Argon's reference brief and Flash's reference HTML; test this change first in existing 24.11 with current caps/guards and unchanged fixtures; no-reference remains LOW | implement the proposed shared-chart/footer/preview fixes first; retain LOW; raise output caps at the same time | user explicitly chose HIGH for both reference stages and a comparison before structural corrections; keep the experiment narrow and distinguish test results from fidelity approval | change 24.11 HIGH comparison (user) |
+| 2026-10-26 | Every model call runs from a global per-stage Settings profile (api.md 3.0): interview/routine set model, thinking and request timeout; reference interpretation, native planning, HTML brief and both HTML stages also set caps, one total clock, transport retries, validation repairs and count margin; defaults per the contract table | keep planner/worker plus code constants; per-build overrides; an 8k brief trial | user interview 2026-10-26 (30 answers); the HIGH brief hit 4k twice | change configurable model stages (user) |
+| 2026-10-26 | Explicit `fallback_model` (Flash 3.8) after eligible provider failures or a model a successful listing omits; never on cutoff, invalid output or overflow; never the same model; listing failure = unknown | silent planner->worker swap only; no fallback | user answers 11-12 | change configurable model stages (user) |
+| 2026-10-26 | Output cutoff and input overflow stop the stage with stage/count/limit; no repair, continuation, fallback, trimming or cap change (supersedes 24.8's cutoff repair) | repair at the same cap; auto-raise caps | user answers 8 and 17 | change configurable model stages (user) |
+| 2026-10-26 | Argon brief -> Flash HTML on pages without a reference too; brief prose uncapped (tokens bound it); briefs saved as JSON + Markdown per page/version; optional per-page review pauses outside every clock | keep the one-call no-reference designer; keep 12k/8k/2k prose caps; ephemeral briefs | user answers 4, 19, 20, 24 | change configurable model stages (user) |
+| 2026-10-26 | No-reference pages use the labeled standard layout behind `layout_fallback` (default on) only when completed HTML still fails validation after its repairs; timeouts, model, brief, overflow and cutoff failures stop the run; reference builds stay strict | keep today's fall-back-on-anything triggers (labeled design_failed) | user answer 30 and card 2026-10-26 (only after HTML repairs) | change configurable model stages (user) |
+| 2026-10-26 | Migration keeps every explicit legacy model (stored even if default-equal; env only when it differs from the shipped default) on every stage its role served; unknown ids carried over as Settings issues | seed only non-default known ids | user card 2026-10-26 | change configurable model stages (user) |
+| 2026-10-26 | Cost estimates: verified per-model prices in the backend capability table; per-call, per-run and per-build USD estimates (StageCall, RunCalls, `GET /builds/{id}/cost`), labeled estimated with the price date | prices in the frontend; no costs (interview closing default) | user request 2026-10-26 after the interview | change configurable model stages (user) |
+| 2026-10-26 | Restore the <100 ms recomputation oracle by measured, evaluation-local reuse before the live fidelity run | relax or rerun the timing test; defer | 24.11 block: 107.8/103.6 ms; the oracle stays | change configurable model stages (architect, from the 24.11 follow-up draft) |

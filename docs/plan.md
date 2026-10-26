@@ -1,5 +1,5 @@
 # Plan: release
-Target: POC · Audit: done 2026-10-21 (delta, staged workflow: 16 findings, 16 applied; earlier audits in progress.md)
+Target: POC · Audit: done 2026-10-26 (change configurable model stages: 2.6 gate, 2.8 added; delta audit: 2 P1 + 9 P2 + 5 P3, all applied; user cards on 4 conflicts; re-review after cards and the cost request: 0 P0/P1, 3 P2 + 5 P3, all applied; earlier audits in progress.md)
 Change 2026-10-20 final phases: local integration and manual acceptance, then README and GitHub,
 then Cloud Run last; unstarted tasks renumbered (old 3.3 split into 2.5 and 4.3; old deck task dropped).
 
@@ -88,7 +88,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Goal: test whether the current version can recreate the user's "Access to electricity" screenshot (data/references/electricity-access.jpg, gitignored) from fake data through the local UI: the AI codes the HTML prototype, its decoration layer (headline, panels, region list box, legend, the globe as an SVG illustration) renders to `background_p<n>.png`, and the recipe places live charts on that background (change 2026-10-21: the user's capability test; runs right after 2.3, before 2.4 and 2.5).
   - Files: docs/acceptance.md, docs/img/*.png, .env.example
   - Depends on: 2.3
-  - Needs: backend 21.1; engine 12.1; backend 23.1; backend 23.2; engine 13.3; backend 24.5; frontend 15.1
+  - Needs: backend 21.1; engine 12.1; backend 23.1; backend 23.2; engine 13.3; backend 24.5; frontend 15.1; backend 25.7; frontend 16.6
   - Size: M
   - Done when: with `./start.sh` running and the signed-in Chrome profile, through http://localhost:5173 with no CSV: reference mode with the screenshot; synthetic schema proposed, then edited to the fake data (default: country, region, year 2000-2019, access_pct, urban_pct, rural_pct, people_without_access; the user may change it on the card), row count set, CSV generated and downloaded; outline and design prefilled from the reference; prototype; recipe; live run whose `run_finished` in data/builds/<id>/v<n>/events.jsonl has `failed: 0`, and the `https://datastudio.google.com/` link; change 2026-10-24 (reference fidelity): .env.example's `DSS_ALLOWED_TYPES` equals contracts/conventions.md 1.3's default list, character for character, the prototype's designer span shows `images: 1` with the 24.4 globe art, the region list is a live `fixed_size_list`, the country charts are `area`, the rural/urban split is a `bar` with `stacked_percent`, both yearly charts carry `date_granularity: year` and no op fails on breakdown colors. docs/acceptance.md gets a row "Screenshot + synthetic data (user screenshot)" with the date, build id, link, the "Synthetic sample data" label seen in the prototype and in the report, and a capability matrix: each screenshot element (headline, region checkbox list, 78 % KPI and caption, globe, color legend, year bar chart with 2011 highlighted, year slider, rural/urban split bar, four country area charts) marked live chart (its type), background decoration, substituted (by what) or missing, plus whether each chart box sits on its background panel; the user's verdict; one cropped screenshot of the finished report (not the source image) in docs/img/. `uv run --project integration python integration/check_contracts.py` passes.
   - STOP: show the screenshot, the prototype and the finished report side by side with the matrix; the user confirms the verdict on a card. PASS means the pipeline ran end to end; substituted or missing elements are recorded findings, not failures.
@@ -107,6 +107,14 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Done when: with the parts started by `./start.sh` and the engine in dry-run (`DSS_ENGINE_DRY_RUN=1`, AGENTS.md Known gotchas), `uv run --project integration python integration/e2e_references.py --cases synthetic` exits 0 with the flipped check (rerun once on a live-model failure, per the gotcha), and the same check run over a recipe preview that still holds the label text fails (shown once in the progress entry, not kept as code); deck/data/bench-references-local.json unchanged; `uv run --project integration python integration/check_contracts.py` passes.
   - If: the synthetic case fails at a step before the recipe -> block naming the part, the step and the API error body; never weaken another check.
   - Review focus: only the recipe-label assertion changes; the prototype/background label check and every other case stay as they are.
+- [ ] 2.8 E2e waits and contract check follow api.md 3.0
+  - Goal: the e2e drivers wait as long as the configured stage clocks allow instead of a fixed 600 s per action, and check_contracts also validates the stage-settings fixtures (change configurable model stages 2026-10-26, delta audit).
+  - Files: integration/e2e_flow1.py, integration/e2e_references.py, integration/check_contracts.py
+  - Depends on: 2.7
+  - Size: S
+  - Needs: backend 25.1
+  - Done when: both drivers read `GET /api/settings` (3.0) once per run and wait per action: blueprint accept and comments 2 x (html_brief + the larger HTML profile's timeout_s) + 300 s (page 1 then later pages), design confirm native_planning.timeout_s + 300 s, reference upload reference_interpretation.timeout_s + 300 s, never under 600 s; a unit check in check_contracts (or a driver `--print-waits`) prints the waits for contracts/fixtures/stage-settings/settings.json (3,900 s, 900 s, 900 s); `uv run --project integration python integration/check_contracts.py` also parses every stage-settings fixture, finds every event in events.review.sse in contracts/api.md, and rejects a mutated copy with an unknown event; with `./start.sh` and `DSS_ENGINE_DRY_RUN=1`, `uv run --project integration python integration/e2e_flow1.py` exits 0 (rerun once on a live-model failure, per the gotcha); deck/data bench files unchanged except a new dry-run bench of today.
+  - Review focus: no other assertion changes; waits derive from Settings, never a hardcoded larger constant.
 
 ## Phase 3: GitHub
 - [ ] 3.1 README: pitch, features and simplified architecture
@@ -141,7 +149,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
 - [ ] 4.2 Deployed end-to-end through the local build agent
   - Goal: `e2e_flow1.py --server <URL>` runs flow 1 against the deployed service with the access code while `dss-agent` runs locally, first in dry-run and then live.
   - Files: integration/e2e_flow1.py, deck/data/*.json
-  - Depends on: 4.1
+  - Depends on: 4.1; 2.8
   - Size: S
   - Needs: backend 5.2; backend 5.3; frontend 5.1
   - Done when: with `uv run --project backend dss-agent --server <URL> --dry-run` running locally, `uv run --project integration python integration/e2e_flow1.py --server <URL>` exits 0 with stage `done`; with the agent restarted without `--dry-run`, `uv run --project integration python integration/e2e_flow1.py --server <URL> --live` exits 0, prints a `https://datastudio.google.com/` link plus the seconds-per-stage table and token totals, and writes its bench JSON; manual: the same flow clicked through the UI at the URL reaches the link, and the Build stage shows the agent as connected.
@@ -150,7 +158,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Goal: the same rules as 2.5 hold on the hosted service, plus the persisted synthetic CSV across a service restart.
   - Spec: contracts/dashboard-intent.md#Required oracle cases; contracts/dashboard-intent.md#Scope; contracts/synthetic-data.md#Acceptance oracle
   - Files: deck/data/bench-references-hosted.json
-  - Depends on: 4.2; 2.5; 2.7
+  - Depends on: 4.2; 2.5; 2.7; 2.8
   - Size: M
   - Done when: with `dss-agent` running locally against the URL, `uv run --project integration python integration/e2e_references.py --server https://dss-frontend-872000338860.asia-southeast1.run.app --live` exits 0 with the same cases as 2.5, and records the tested git revision and the Cloud Run revision; after a restart of the service (a new revision from `bash deploy/deploy.sh`), the synthetic CSV downloaded again has the same checksum; manual: the screenshot + synthetic source clicked through the hosted UI reaches the Data Studio link with the "Synthetic sample data" label; results, timing and run date go to deck/data/bench-references-hosted.json with no secrets or private images.
   - STOP: the user watches the hosted click-through and approves the result on a card.

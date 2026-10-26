@@ -1,11 +1,11 @@
-<!-- essentials-of: docs/architecture.md sha256:62862b6068a5 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:baabb9fe2c4e (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 docs/architecture.md wins.
 
 ## Stack
-- Python 3.12/uv; FastAPI/uvicorn (no reload), SSE; ADK 2.x Workflow/LlmAgent; Gemini planner
-  `gemini-4-argon` (blueprint, designer, reference brief), worker `gemini-3.8-flash` (reference
-  HTML and rest), set in settings.
+- Python 3.12/uv; FastAPI/uvicorn (no reload), SSE; ADK 2.x Workflow/LlmAgent; Gemini models
+  per stage from Settings (api.md 3.0; defaults Argon for analysis and briefs, Flash 3.8 for
+  interview, routine and HTML; architecture.md#Stage settings).
   SQLite/FTS5; BigQuery/ADC; Playwright Chromium; httpx. Cloud: one instance, local dss-agent.
 
 ## Folder map
@@ -25,20 +25,25 @@ tests/          offline fakes; tests/live/ marked live
   question IDs never recycle; dry runs establish types. Only consolidate writes semantic memory
   (git knowledge = seed); OKF needs `type`, folder index/log. Config: ../.env + settings.
 - Engine argument list/cwd, whole-tree cleanup; Playwright sync in a worker thread. Provider:
-  response_json_schema, guarded raw output, sanitized errors. Gemini: planner 120 s, worker 30 s;
-  one retry on 429/500/503, never 504. Reference HTML: 600 s/page including counting/retry/repair.
-  Shutdown cancels active work.
+  response_json_schema, guarded raw output, sanitized errors. Every model node runs from its
+  stage profile snapshot (#Stage execution): one total clock per action/page for generation
+  stages, retries only on 429/500/503 before a response (1 s, 2 s, 4 s), Flash fallback on
+  availability/provider failure, hard stops on overflow/cutoff, one StageCall per request.
+  Interview/routine keep per-node caps and a 30 s request timeout. Shutdown cancels active work.
 - Types: `DSS_ALLOWED_TYPES`; sort `{field, order}`. COUNT variants allow dimensions; dropdown
   uses one dimension. Chart colors override theme (no scorecards); accents affect only their target.
 - Cloud: SPA/$PORT, code cookie/header, fail-closed startup; backup API every 30 s when dirty;
   agent token, 60 s retry. Run recompiles the current spec; dev routes need DSS_DEV=1.
 - Accept publishes its candidate view/spec/artifacts atomically; never clean a published view.
   Backgrounds: background.write_pages per page, 3x, <2 MB.
-- Designed pages: no-reference planner unchanged; ready native slots + reference -> Argon brief
-  -> Flash HTML. Count images; brief 12k/4k; HTML 12k initial input, 24k repair input, 16k
-  output. One HTML repair, one 600 s stage. Repair deduplicates facts/current HTML, retains
-  intent/images. Chromium measures slots -> `box`; width 1200 (> ~1380 misplaces). Reference
-  failure stops publication and preserves prior artifacts; no-reference keeps its kit fallback.
+- Designed pages: Argon brief (html_brief) -> Flash HTML (reference_html or html_no_reference),
+  with or without a reference image (#Design briefs). Brief prose uncapped; brief JSON + Markdown
+  saved per page/version; optional per-page review gate outside every clock. Count images;
+  budgets, clocks and repair counts come from the profiles. Repair deduplicates facts/current
+  HTML, retains intent/images. Chromium measures slots -> `box`; width 1200 (> ~1380 misplaces).
+  Reference failure stops publication and preserves prior artifacts; no-reference uses the
+  labeled standard layout only with `layout_fallback` and never for overflow/cutoff/cancel.
+  No structural fidelity proposal (docs/change-24.11-fidelity.md) without a new user decision.
   `data-art` art; no new web access, fake charts or slot changes.
   Text fit: architecture.md#Implementation conventions.
 - Feasibility: structured Blueprint rows; extraction only for Other, comments, references;
@@ -69,9 +74,9 @@ tests/          offline fakes; tests/live/ marked live
 ## Contracts
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
-| ../contracts/api.md | 2.0 | provides | `uv run pytest tests/test_api_contract.py` |
+| ../contracts/api.md | 3.0 | provides | `uv run pytest tests/test_api_contract.py` |
 | ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.3 | provides recipes; consumes events | `uv run pytest tests/test_recipe_contract.py` |
-| ../contracts/conventions.md | 1.3 | consumes | manual: env names, ports, paths and IDs match |
+| ../contracts/conventions.md | 1.4 | consumes | manual: env names, ports, paths and IDs match |
 | ../contracts/dashboard-intent.md | 1.2 | provides | `uv run pytest tests/test_api_contract.py tests/test_feasibility.py` |
 | ../contracts/synthetic-data.md | 1.2 | provides | `uv run pytest tests -k synthetic` |
 

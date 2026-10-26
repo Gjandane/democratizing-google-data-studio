@@ -104,6 +104,35 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
   the two-source GPS-style fixture reaches a blueprint with a union and a flagged ratio KPI.
 
 ## Decided by default
+- Change 2026-10-26 (configurable model stages, architect defaults after the user ended the
+  interview; source: user "stop the questioning ... proceed", backend/docs/HANDOFF-stage-settings.md):
+  interview = context and outline nodes, routine = every other non-generation model node; both
+  expose model, thinking and the 30 s request timeout only, because their nodes have different
+  token caps and the user did not authorize blanket budget changes. Analysis stages keep their
+  current transport retry (1) and repair counts (interpretation 0, native planning 1 row repair;
+  the view SQL repair stays fixed at 1). Retry waits continue doubling past 2 s (4 s ...) when a
+  count above 2 is chosen. The count margin is per generation profile. One global
+  `fallback_model`; interview/routine keep only the listing-based swap. Unknown model ids are
+  rejected against a code-owned capability table. Legacy planner/worker values seed only the
+  stages whose role did not change. A paused brief review blocks other mutating build actions
+  until approved or cancelled. No-reference pages keep a code-layout fallback behind
+  `layout_fallback` (narrowed below); the label
+  is shown in the app, not drawn into the Data Studio report. Interview's free-text input stays
+  removed (api 2.0). Contracts: api.md 3.0, conventions.md 1.4. Superseding parts of this entry
+  (user cards 2026-10-26, after the delta audits): the standard layout applies only when completed
+  HTML still fails validation after its repairs (timeouts, model and brief failures stop); the
+  migration keeps every explicit legacy model value (env only when it differs from the shipped
+  default) on every stage its role served, and an unknown legacy id is kept and listed as a
+  Settings issue (unknown ids are still rejected on PUT); cost estimates are in scope (user request), from verified backend prices, labeled
+  estimated, per call, run and build; no budgets, alerts or billing data.
+- Change 2026-10-26 (explicit user decision; superseded by the configurable-model-stages entry
+  above: HIGH stays the default, caps/deadlines now come from stage profiles, the trial ran in
+  blocked 24.11 and live verification moved to 25.7): enable HIGH thinking for both reference-generation
+  stages, Argon's visual brief and Flash 3.8's HTML, and test that change first in task 24.11.
+  Keep the current prompt/brief surface, fixtures, native slots, renderers, guards, model routes,
+  caps, deadlines and retry limits for this comparison. The proposed shared-chart/footer/preview
+  changes in docs/change-24.11-fidelity.md were not selected for implementation first. No-reference
+  designer thinking stays LOW. A HIGH trial is evidence, not automatic fidelity acceptance.
 - Change 2026-10-26 (24.9 block): repair planner-only recreate year buckets in code only when
   the actual projected source's aggregate profile proves the base DATE already supplies that
   grain, and each use has explicit date/grain intent or is a selected native date-axis slot
@@ -170,8 +199,87 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
   local DSS_DATA_DIR or existing GCS-backed /data volume; one new synthetic dataset in an empty
   build, no mixing with real data. User requested schema/count parameterization and sample CSVs.
 
+## Accepted configuration change (2026-10-26)
+- The user closed the runtime-assumptions interview after answer 30 and directs necessary
+  planning updates plus a frontend-task re-audit, with a fresh-context handoff. Preserve
+  existing behavior for unasked hypotheticals; ask only for a real break or material ambiguity.
+  Detailed decisions: [change-runtime-assumptions-interview.md](change-runtime-assumptions-interview.md).
+  Continuation: [HANDOFF-stage-settings.md](HANDOFF-stage-settings.md).
+  Answer 1: app Settings with separate defaults per stage (A).
+  Answer 2: Flash HTML generation/repair output defaults to 65,536 tokens per call including
+  thinking, adjustable in Settings (A).
+  Answer 3: Argon reference-brief output defaults to 32,768 tokens per call including HIGH
+  thinking, adjustable in Settings (A).
+  Answer 4: remove the brief's fixed prose-character ceilings and 6,000-character target;
+  retain output-token bounds and structured/content validation (A).
+  Answer 5: Flash reference-HTML input defaults to 131,072 tokens per call across initial,
+  later-page, repair and revision paths, adjustable in Settings (A).
+  Answer 6: Argon reference-brief input defaults to 131,072 tokens per initial/later-page/
+  revision call, adjustable in Settings (A).
+  Answer 7: keep conservative counting (maximum of text estimate and provider count plus
+  20% plus 512), with the 20% margin adjustable in Advanced Settings (A). Show measured
+  versus enforced counts separately.
+  Answer 8: when mandatory input exceeds its configured cap, stop before generation and
+  show stage/count/limit; user adjusts Settings and retries (A). No automatic cap expansion
+  or loss of required context.
+  Answer 9: independent thinking-level selectors for the reference brief and HTML stages,
+  both defaulting to HIGH and offering model-supported levels (A).
+  Answer 10: independent reference-brief and reference-HTML model selectors, defaulting to
+  Argon and Flash 3.8 respectively (A).
+  Answer 11: explicitly configured fallback model is Gemini 3.8 Flash (B); clearly identify
+  actual use and avoid a duplicate fallback when primary is already Flash. Trigger/time
+  policies are refined below.
+  Answer 12: fallback triggers on model unavailability/overload/eligible provider errors
+  after allowed retries (A). Content/truncation/layout failures follow their own repair
+  policy.
+  Answer 13: reference-brief stage defaults to 600 seconds per page, adjustable in Settings,
+  shared across counting/generation/retries/fallback (A).
+  Answer 14: reference-HTML stage defaults to 1,200 seconds per page, adjustable in Settings,
+  shared across counting/generation/retries/measurement/repair/fallback (A).
+  Answer 15: reference HTML defaults to two automatic validation repairs after initial
+  generation (three generation attempts total/page), adjustable in Settings, within the
+  existing selected 20-minute allowance and validity gates (A).
+  Answer 16: reference brief defaults to one automatic validation repair before HTML starts,
+  adjustable in Settings, sharing the 10-minute stage allowance (A).
+  Answer 17: output-token cutoff stops either reference stage, showing stage/cap/available
+  usage and retaining old published artifacts for manual adjustment/retry (A). No automatic
+  continuation, regeneration, model fallback or thinking downgrade for token cutoff.
+  Answer 18: reference-stage generation transport defaults to two retries, with 1 s then 2 s
+  delay, count adjustable per stage in Settings (A). Eligible errors remain 429/500/503
+  before any response, within the stage's time allowance; fallback considered afterward.
+  Answer 19: save Argon's brief as readable Markdown alongside canonical validated JSON,
+  per page/version, viewable/downloadable (A).
+  Answer 20: automatic HTML handoff by default, with a Settings option to pause per page
+  for brief review/edit/approval (A). Edits retain validation and authoritative native bindings;
+  this does not replace final fidelity approval.
+  Answer 21: also expose an independent configurable "HTML without a reference" profile
+  (yes/A, user explicitly reiterated configurability).
+  Answer 22: its token defaults match reference HTML (131,072 input / 65,536 output including
+  thinking), stored/editable independently (A).
+  Answer 23: Flash 3.8 for no-reference HTML execution (B). Expanded user direction: model
+  selection at every LLM stage including interview; defaults Flash 3.8 for interview and HTML
+  execution, Argon for dashboard analysis and a fully detailed HTML brief, Flash 3.8 LOW for
+  routine model work. Preserve existing approved reference-stage HIGH. This does not add
+  LLMs to deterministic steps.
+  Answer 24: use Argon briefing followed by Flash HTML execution even without a reference
+  image, reusing the configured brief stage and preserving independently editable no-reference
+  execution settings (A).
+  Answer 25: reference interpretation and native chart/metric/data planning default to Argon
+  HIGH, independently configurable per stage (A).
+  Answer 26: both analytical stages default to 131,072 input / 32,768 output including
+  thinking, independently stored/editable per stage (A).
+  Answer 27: each Argon analysis stage defaults to 600 seconds total for its action,
+  independently adjustable, sharing count/generation/retry/repair/fallback time (A).
+  Answer 28: no-reference Flash HTML execution also defaults to HIGH, independently
+  configurable; routine Flash work remains LOW (A).
+  Answer 29: no-reference execution also starts with 1,200 s total/page, two validation
+  repairs and two eligible transport retries with 1 s/2 s waits, stored/editable independently
+  of reference execution (A).
+  Answer 30: automatic standard-layout fallback after no-reference HTML exhausts layout
+  validation repairs, clearly labeled and with a Settings enable/disable switch (A).
+
 ## Open questions
-- none
+- none (program-root planning applied 2026-10-26: tasks 24.11, 25.1-25.7; the visual STOP stays in 25.7).
 
 ## Later
 - Outline Other text may lose behavior: empty extraction adds no blocking record, and tagged

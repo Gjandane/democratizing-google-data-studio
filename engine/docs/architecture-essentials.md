@@ -56,7 +56,7 @@ tests/                   offline tests (fake driver); tests/live/ marked `live`
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
 | ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.3 | consumes recipes; provides events | `uv run pytest tests/test_contract.py` |
-| ../contracts/conventions.md | 1.3 | consumes | manual: env names, ports and paths match (1.1-1.3 add nothing the engine reads; the engine stays local) |
+| ../contracts/conventions.md | 1.4 | consumes | manual: env names, ports and paths match (1.1-1.4 add nothing the engine reads; the engine stays local) |
 
 ## Dependencies
 | Package | Registry | Version | Why | Verified |

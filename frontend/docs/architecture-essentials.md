@@ -50,6 +50,11 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
 - Viewports: 1280x800 and 1440x900; screenshots in screenshots/.
 - Avoid: emoji as icons, gray-on-gray text, popovers covering the element being commented, layout shift when pins appear.
 
+## Stage settings and design briefs UI
+- Settings Models tab (per-stage profiles, fallback, brief review), brief panel and Standard
+  layout chip in Prototype, brief review panel, stage calls in Trace, stage-limit errors (api.md
+  3.0). Full rules and visual oracle: docs/stage-settings-ui.md.
+
 ## References and feasibility UI
 - Style/recreate and synthetic-data controls, explicit decisions, stale/blocked gates; Studio
   Light. Full rules and visual oracle: docs/reference-ui.md (both sections).
@@ -57,8 +62,8 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
 ## Contracts
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
-| ../contracts/api.md | 2.0 | consumes | `npm test -- contract` |
-| ../contracts/conventions.md | 1.3 | consumes | manual: port 5173, `/api` proxy to 8000 |
+| ../contracts/api.md | 3.0 | consumes | `npm test -- contract` (fixtures/api/ and, from 16.1, fixtures/stage-settings/) |
+| ../contracts/conventions.md | 1.4 | consumes | manual: port 5173, `/api` proxy to 8000 |
 | ../contracts/dashboard-intent.md | 1.2 | consumes | `npm test -- contract` |
 | ../contracts/synthetic-data.md | 1.2 | consumes | `npm test -- synthetic` |
 

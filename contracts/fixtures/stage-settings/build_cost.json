@@ -1,0 +1,24 @@
+{
+  "build_id": "b_3f9a0c12d4e5",
+  "cost_usd_estimate": 0.054645,
+  "complete": false,
+  "runs": [
+    {
+      "run_id": "r_00000000001c",
+      "node": "prototype",
+      "started_at": "2026-10-26T10:00:00Z",
+      "cost_usd_estimate": 0.054645,
+      "complete": false,
+      "basis": "calls"
+    },
+    {
+      "run_id": "r_00000000000b",
+      "node": "plan",
+      "started_at": "2026-10-18T09:10:00Z",
+      "cost_usd_estimate": null,
+      "complete": false,
+      "basis": "trace"
+    }
+  ],
+  "prices_checked_on": "2026-10-26"
+}

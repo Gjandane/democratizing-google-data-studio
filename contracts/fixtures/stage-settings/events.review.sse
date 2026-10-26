@@ -1,0 +1,15 @@
+event: ready
+data: {"build_id": "b_3f9a0c12d4e5"}
+
+event: run.started
+data: {"run_id": "r_00000000001c", "node": "prototype"}
+
+event: run.usage
+data: {"run_id": "r_00000000001c", "node": "prototype", "input_tokens": 18432, "output_tokens": 14990}
+
+event: brief.review
+data: {"review_id": "br_7d1e2f3a4b5c", "page": 1, "pages": 2}
+
+event: run.finished
+data: {"run_id": "r_00000000001c", "node": "prototype", "status": "ok", "error": null}
+

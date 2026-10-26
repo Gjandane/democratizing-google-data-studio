@@ -1,5 +1,5 @@
 # Contract: backend HTTP API (REST + SSE)
-Version 2.0 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
+Version 3.0 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
 (recipe ops with ids, stage rules, engine_busy, shared fixtures). 1.1 (2026-10-19) Cloud Run:
 Access (session endpoints, `access_required`), engine status `mode`/agent fields, Agent endpoints,
 errors `access_denied`, `login_on_agent`, `agent_offline`, `agent_timeout`; fixtures
@@ -35,6 +35,19 @@ blueprint.blocked.json, prototype.multipage.html; prototype.sample.html wraps it
 Revised the same day by the delta audit before any build: re-confirm keeps downstream work
 (`outline/propose`, `design/prefill` replace explicitly), no edits in build/done, legacy builds,
 page sections in Prototype HTML.
+3.0 (2026-10-26, change configurable model stages; breaking for `Settings` only): `Settings` drops
+`planner_model`/`worker_model` and adds `stages` (one profile per model stage), `fallback_model`,
+`review_briefs` and `notices`; new `GET /api/settings/capabilities`, error `422 invalid_settings`,
+the agent-mode lock now covers only the key and GCP fields; new section Stage settings and design
+briefs (design-pages, brief review, stage calls), event `brief.review`, errors
+`409 brief_review_pending` and `409 brief_review_stale`, and `run.finished` error codes for stage
+limits. Every other shape and route is unchanged. Fixtures for 3.0 live in
+contracts/fixtures/stage-settings/; `fixtures/api/settings.json` is the 2.0 Settings, kept until
+backend 25.1 and frontend 16.1 switch to `stage-settings/settings.json` (then the architect removes it).
+Revised the same day by the delta audits before any build: per-stage repair bounds, run snapshot
+(RunCalls), brief review revisions, migration keeps every explicit legacy value (`issues`), the
+no-reference standard layout only after HTML repairs, and cost estimates (user request): model
+prices in capabilities, per-call/run costs and `GET /api/builds/{id}/cost`.
 Requirements and feasibility follow contracts/dashboard-intent.md 1.2.
 Provider: backend. Consumers: frontend, release. Base: `http://localhost:8000/api` (the frontend
 uses relative `/api`, proxied by Vite; contracts/conventions.md). JSON bodies, UTF-8. Errors use
@@ -74,9 +87,11 @@ Comment    = { component_id: string, text: string }
 Trace      = { run_id: string, build_id: string|null, node: string, model: string|null,
                input_tokens: int, output_tokens: int, latency_ms: int, tool_calls: int,
                status: "ok"|"error", error: string|null, started_at: string }
-Settings   = { planner_model: string, worker_model: string, gcp_project_id: string,
-               bq_dataset: string, bq_location: string, gcs_bucket: string,
-               google_api_key_set: boolean }
+Settings   = { stages: StageProfiles, fallback_model: string, review_briefs: boolean,
+               gcp_project_id: string, bq_dataset: string, bq_location: string, gcs_bucket: string,
+               google_api_key_set: boolean, notices: string[],
+               issues: ValidationIssue[] /* stored values that fail validation now, e.g. a migrated
+               unknown model id; the UI shows each on its field */ }   /* 3.0; types in Stage settings */
 Session    = { required: boolean /* DSS_ACCESS_CODE is set */, ok: boolean /* this request carries a valid code */ }
 EngineStatus = { mode: "local"|"agent", chrome_running: boolean, signed_in: boolean,
                agent_connected: boolean /* a heartbeat in the last 30 s; false in local mode */,
@@ -104,7 +119,8 @@ folder; otherwise `400 invalid_name`.
 | `GET /api/session` | — | `Session` |
 | `POST /api/session` | `{code: string}` | `200 Session` with `Set-Cookie: dss_session=...`; wrong code -> `401 access_denied` |
 | `GET /api/settings` | — | `Settings` |
-| `PUT /api/settings` | partial `Settings` fields, plus `google_api_key?: string` (write-only) | `Settings`. Agent mode (Cloud Run): any field other than `planner_model`/`worker_model` -> `403 settings_locked` |
+| `PUT /api/settings` | `SettingsUpdate` (Stage settings), plus `google_api_key?: string` (write-only) | `Settings`; any validation issue -> `422 invalid_settings` and nothing is saved. Agent mode (Cloud Run): `google_api_key` or a GCP field -> `403 settings_locked` |
+| `GET /api/settings/capabilities` | — | `SettingsCapabilities` (3.0) |
 | `GET /api/builds` | — | `BuildSummary[]`, newest `updated_at` first |
 | `POST /api/builds` | `{title?: string, archetype: Archetype, mode: Mode}` | `201 Build` (stage `connect`) |
 | `GET /api/builds/{id}` | — | `Build` |
@@ -294,7 +310,183 @@ on both 503s. Cloud Run: `401 access_required` (the UI shows the access-code gat
 start the build agent); `403 settings_locked` (Settings shows the field as fixed by the
 deployment); `413` from Cloud Run (an HTML page, not the JSON shape) on uploads over 32 MB: the UI
 checks file size first and maps any 413 to "Files over 32 MB can't be uploaded to the hosted app";
-`400 invalid_name`.
+`400 invalid_name`. 3.0: `422 invalid_settings` (`detail.issues`: ValidationIssue[] with paths
+into the update, such as `/stages/html_brief/output_tokens`); `409 brief_review_pending`
+(`detail.review_id`; a review waits, so every other mutating build route is refused);
+`409 brief_review_stale`; `409 brief_review_conflict` (`detail.revision`); the stage-limit error
+codes under Stage settings and design briefs.
+
+## Stage settings and design briefs (added in 3.0)
+Every model call belongs to one stage, and each stage has an editable profile in Settings. Stage
+profiles are global (no per-build overrides). Each action run snapshots the Settings when it
+starts; a change applies to the next action, never to a running attempt or retry. Approving a
+brief review starts a new run, which snapshots the Settings again.
+
+```text
+StageId    = "interview" | "routine" | "reference_interpretation" | "native_planning"
+             | "html_brief" | "reference_html" | "html_no_reference"
+ThinkingLevel = "low" | "medium" | "high"
+ModelProfile = { model: string, thinking: ThinkingLevel, timeout_s: int /* per provider request */ }
+GenerationProfile = { model: string, thinking: ThinkingLevel,
+               input_tokens: int /* complete counted request */, output_tokens: int /* thinking included */,
+               timeout_s: int /* one total clock: per action (analysis) or per page (brief, HTML) */,
+               transport_retries: int, validation_repairs: int, input_margin_pct: int }
+NoReferenceProfile = GenerationProfile & { layout_fallback: boolean }
+StageProfiles = { interview: ModelProfile, routine: ModelProfile,
+               reference_interpretation: GenerationProfile, native_planning: GenerationProfile,
+               html_brief: GenerationProfile, reference_html: GenerationProfile,
+               html_no_reference: NoReferenceProfile }
+SettingsUpdate = { stages?: { [StageId]?: partial profile }, fallback_model?: string,
+               review_briefs?: boolean, gcp_project_id?, bq_dataset?, bq_location?, gcs_bucket? }
+ModelCapability = { id: string, thinking_levels: ThinkingLevel[], max_input_tokens: int,
+               max_output_tokens: int /* thinking included */, images: boolean,
+               available: boolean|null /* from the last model listing; null = no key or the listing failed */,
+               price: ModelPrice|null /* null = no verified price: costs show as unknown */ }
+ModelPrice = { input_usd_per_mtok: number, output_usd_per_mtok: number /* thinking billed as output */,
+               long_context_over: int|null /* prompt tokens above which the long-context rates apply */,
+               long_input_usd_per_mtok: number|null, long_output_usd_per_mtok: number|null,
+               checked_on: string /* date the backend's table was checked on Google's pricing page */ }
+SettingsCapabilities = { models: ModelCapability[],
+               defaults: { stages: StageProfiles, fallback_model: string, review_briefs: boolean },
+               limits: { model_timeout_s: [int, int], generation_timeout_s: [int, int],
+                         transport_retries: [int, int],
+                         validation_repairs: { [generation StageId]: [int, int] } /* interpretation [0,0],
+                           native planning [0,1] (its row repair), brief and HTML [0,5] */,
+                         input_margin_pct: [int, int], min_input_tokens: int, min_output_tokens: int } }
+```
+
+Stages, the model nodes they cover and their defaults (`input_margin_pct` 20 on every generation
+profile; `fallback_model` `gemini-3.8-flash`; `review_briefs` false):
+
+| Stage | Nodes | Model | Thinking | Input / output tokens | timeout_s | Retries / repairs |
+|---|---|---|---|---|---|---|
+| interview | context, outline_propose, outline_suggest, outline_other | gemini-3.8-flash | low | each node's existing caps (not a setting) | 30 | existing (not a setting) |
+| routine | every other model node (capability_check, revise, synthetic_schema, consolidate, ux_audit, style_extract, research) | gemini-3.8-flash | low | each node's existing caps | 30 | existing |
+| reference_interpretation | reference_extract | gemini-4-argon | high | 131,072 / 32,768 | 600 per action | 1 / 0 |
+| native_planning | blueprint | gemini-4-argon | high | 131,072 / 32,768 | 600 per action | 1 / 1 (row repair; the one view SQL repair stays fixed) |
+| html_brief | reference_brief, for pages with and without a reference | gemini-4-argon | high | 131,072 / 32,768 | 600 per page | 2 / 1 |
+| reference_html | reference_html | gemini-3.8-flash | high | 131,072 / 65,536 | 1,200 per page | 2 / 2 |
+| html_no_reference | designer (pages without a reference), plus `layout_fallback: true` | gemini-3.8-flash | high | 131,072 / 65,536 | 1,200 per page | 2 / 2 |
+
+Validation (`PUT` merges the update into the stored Settings and checks the result as a whole):
+`model` and `fallback_model` must be ids in `SettingsCapabilities.models` (a code-owned table;
+`available` never decides validity); `thinking` must be one of that model's `thinking_levels`;
+`input_tokens` within `min_input_tokens`..`max_input_tokens` and `output_tokens` within
+`min_output_tokens`..`max_output_tokens` of the profile's model; the other numbers within `limits`
+(validation_repairs per stage: no stage gains a repair loop it does not have);
+reference_interpretation, html_brief and reference_html need a model with `images`; for each
+generation profile whose model differs from `fallback_model`, the fallback model must support
+that profile's thinking level, token caps and image need. Unknown keys are issues too. Stored
+values that already fail (listed in `Settings.issues`) never block a PUT that does not touch them.
+
+Migration (user choice 2026-10-26: keep every explicit value): Settings stored before 3.0 have no
+`stages`. On first read, the backend seeds them once from the defaults, then copies each explicit
+legacy model to every stage its role served: planner -> native_planning, html_brief,
+html_no_reference; worker -> interview, routine, reference_interpretation, reference_html.
+Explicit = a value saved in the settings table (even one equal to the old default), or a
+`DSS_PLANNER_MODEL`/`DSS_WORKER_MODEL` env value that differs from its conventions default
+(`.env.example` ships the defaults, so an env value equal to them is not a choice). An unknown id
+is copied too and listed in `Settings.issues` on each field it fills, never replaced silently; a
+stage holding it fails before any model call (`stage_model_unavailable`) until fixed. Each seeded
+stage adds one line to `notices`. Idempotent across restarts; the legacy keys are ignored afterwards.
+
+Run behavior (backend docs/architecture.md, Stage execution, holds the full rules): a generation
+profile's `timeout_s` is one clock shared by token counting, generation, transport retries
+(eligible errors only: 429/500/503 before any response; waits 1 s, 2 s, 4 s ...), validation
+repairs, measurement and model fallback; it never restarts per attempt. Input is counted as
+`max(text estimate, ceil(provider count * (1 + input_margin_pct/100)) + 512)` over the complete
+request. A selected model missing from a successful listing, or one that still fails after its
+transport retries with an eligible error, is replaced by `fallback_model` for that attempt
+sequence (generation profiles; interview and routine use only the listing check); never the same
+model twice, never a lower thinking level or cap. Output cutoff and input over the limit are not
+fallback triggers.
+
+Run errors: a run that stops on a stage limit finishes with `run.finished.error` =
+`"<code>: <stage> <message>"` (the message starts with the StageId), where code is one of `stage_input_over_limit` (message names the stage,
+page, enforced count and limit), `stage_output_cutoff` (stage, page, attempt, output limit, answer
+and thinking tokens or "unknown"), `stage_timeout` (stage, page, seconds), `stage_model_unavailable`
+(stage, requested and fallback model), `brief_invalid` or `html_invalid` (stage, page, attempts;
+validation repairs used up). The previous published spec, prototype and briefs stay; nothing is
+published from a failed run. The one exception (user choice 2026-10-26): on a page without a
+reference with `layout_fallback` on, completed HTML that still fails its layout/HTML validation
+after its repairs gives that page the standard layout (`standard_reason` `layout_fallback`) instead
+of `html_invalid`; a page-1 standard layout makes the whole build standard, as before 3.0. Every
+other failure on those pages (timeout, unavailable model, invalid brief, overflow, cutoff, cancel)
+stops the run like any other page.
+
+```text
+BriefSlot  = { id: string /* a component id on the page; fixed */, treatment: string /* non-empty */ }
+PageBrief  = { page: int, overall: string /* non-empty */, slots: BriefSlot[] /* exactly the page's component ids */ }
+BriefRecord = { page: int, origin: "generated"|"edited", brief: PageBrief,
+               markdown: string /* code's readable rendering of brief */, sha256: string /* of the canonical JSON */,
+               model: string /* actual brief model */, created_at: string }
+DesignPage = { page: int, layout: "designed"|"standard",
+               standard_reason: "layout_fallback"|"not_designed"|null /* null when designed; not_designed =
+               code layout with no designer attempt (designed pages off, or a pre-3.0 page recorded as
+               fallen back); a pre-3.0 designed page is `designed` with brief null */,
+               brief: BriefRecord|null, html_model: string|null }
+BriefReview = { review_id: string, revision: int /* 1 = as generated; +1 on every saved edit */, action: "prototype"|"revise", page: int, pages: int,
+               components: [{id: string, type: string, label: string}] /* this page's, read-only */,
+               brief: BriefRecord, issues: ValidationIssue[] /* paths into PageBrief: `/overall`,
+               `/slots/<i>/treatment`; "" for the whole brief (the HTML input-fit issue names the
+               enforced count and limit) */, stale: boolean, created_at: string }
+DesignPages = { version: int, spec_version: int|null, pages: DesignPage[], review: BriefReview|null }
+StageCall  = { run_id: string, stage: StageId, node: string, page: int|null,
+               attempt: int /* content attempt, 1 = first generation */, transport_attempt: int,
+               requested_model: string, model: string /* actual */, fallback: boolean,
+               thinking: ThinkingLevel, input_measured: int|null /* provider count */,
+               input_billed: int|null /* provider-reported billed prompt tokens */,
+               input_enforced: int|null, input_limit: int|null, output_limit: int|null,
+               output_tokens: int|null, thinking_tokens: int|null /* null = unknown, never 0 by default */,
+               outcome: "ok"|"invalid"|"output_cutoff"|"input_over_limit"|"timeout"|"provider_error"|"cancelled",
+               duration_ms: int, started_at: string,
+               cost_usd_estimate: number|null /* see Cost estimates */ }
+RunCalls   = { run_id: string, settings: { stages: StageProfiles, fallback_model: string,
+               review_briefs: boolean }|null /* the run's snapshot; null before 3.0 */, calls: StageCall[],
+               cost_usd_estimate: number|null, cost_complete: boolean /* false when any call is unpriced or lacks usage */ }
+RunCost    = { run_id: string, node: string, started_at: string, cost_usd_estimate: number|null,
+               complete: boolean, basis: "calls"|"trace" /* trace = a run before 3.0, priced from its Trace
+               model and tokens; always complete false (no thinking counts, mixed models) */ }
+BuildCost  = { build_id: string, cost_usd_estimate: number|null, complete: boolean, runs: RunCost[],
+               prices_checked_on: string|null }
+```
+
+Cost estimates: per call `input x input rate + (answer + thinking) x output rate`, per million
+tokens, at the long-context rates when the call's input exceeds `long_context_over`; input is
+`input_billed`, else `input_measured`, else `input_enforced`. A call's estimate is null when its
+model has no price or its answer or thinking count is unknown; a provider error before any
+response costs 0 (known). A run's or build's estimate is the sum of its non-null estimates (null
+only when none has one); `cost_complete`/`complete` is false when any call or run is null or
+incomplete; a run with no model calls is 0 and complete. Estimates only: no cached-token discounts, free tiers,
+taxes or invoices; the UI always labels them "Estimated" with `checked_on`. Prices live only in the
+backend's table, never in the frontend.
+
+| Method and path | Body | Response |
+|---|---|---|
+| `GET /api/builds/{id}/design-pages` | — | `200 DesignPages` for the current version (`pages` [] before a prototype); published briefs are also files `brief_p<n>.json` (canonical PageBrief) and `brief_p<n>.md` (the markdown) |
+| `PUT /api/builds/{id}/briefs/review` | `{review_id, revision, brief: PageBrief}` (at most 256 KiB, else `413`) | `200 BriefReview` with `revision` + 1; a `revision` other than the current one -> `409 brief_review_conflict` (`detail.revision`: the current one); (origin `edited`; code fills `issues`: slot ids, non-empty text, content and security checks, and the HTML request still fitting its input limit); no pending review or another id -> `404 review_not_found` |
+| `POST /api/builds/{id}/briefs/review/approve` | `{review_id, revision, sha256}` (what the user saw) | `202 {run_id}` under the review's `action` node; another revision or sha256 -> `409 brief_review_conflict`; the review is consumed atomically and repeating the same approve returns the same `run_id`; needs `issues` [] (else `409 artifact_invalid`) and fresh inputs (else `409 brief_review_stale`, `stale` true); generates that page's HTML with the reviewed brief, then the next page's brief (and its review when `review_briefs` is still on) |
+| `POST /api/builds/{id}/briefs/review/cancel` | `{review_id}` | `200 Build`; drops the unpublished candidate; nothing is published; pending comments stay pending; repeating it (or cancelling an approved review) returns the current Build |
+| `GET /api/builds/{id}/cost` | — | `200 BuildCost`: every run of the build, newest first, with its estimate |
+| `GET /api/traces/{run_id}/calls` | — | `200 RunCalls`: the effective Settings snapshot the run used and its calls in order (one per provider request); unknown run -> `404 run_not_found` |
+
+Brief review rules: with `review_briefs` on, every designed page (prototype and design revision,
+with or without a reference) pauses after its brief is generated and validated: the run emits
+`brief.review` and finishes `ok`, the build lock is released, and the stage stays where it was
+(`blueprint` for an accept, `prototype` for a revision). The review and its candidate persist
+across restarts and wait outside every stage clock. Pages then run one at a time (a later page's
+brief needs page 1's measured width and CSS). Only the review's slot treatments and overall text
+are editable; component ids, types, bindings and coverage stay code-owned. Approve rechecks the
+build's artifact revisions, assessment, reference set and candidate before any model call. While
+a review waits, every other mutating build route answers `409 brief_review_pending`; reads and
+`PUT /api/settings` still work. Turning `review_briefs` off applies from the next page's brief.
+
+Fixtures (contracts/fixtures/stage-settings/): `settings.json`, `capabilities.json`,
+`design_pages.json` (a designed page with its brief and standard pages), `design_pages.review.json`
+(a pending review), `design_pages.review.issue.json` (a review with issues), `run_calls.json`
+(the snapshot plus a fallback and an output cutoff, with costs), `build_cost.json`,
+`error.invalid_settings.json`, `events.review.sse`. Fixture prices are placeholders for shape only;
+the backend's table holds the verified prices.
 
 ## Event stream: `GET /api/builds/{id}/events`
 Server-Sent Events. Each event has an `event:` name and a JSON `data:` line. The stream starts
@@ -318,8 +510,10 @@ the client re-reads `GET /api/builds/{id}` and `GET /api/builds/{id}/messages`.
 | `build.op` | the engine's `op_finished` event (contracts/recipe.md) |
 | `build.frame` | `{data}` base64 JPEG (stretch, screencast) |
 | `build.finished` | `{status: "ok"\|"partial"\|"failed", report_url: string\|null, version: int}` |
+| `brief.review` | `{review_id, page, pages}` (3.0): the run paused before this page's HTML for the user's brief review; `run.finished` (ok) follows and the build lock is released |
 
-`node` in `run.*` and `node.progress` is the action that started the run: `context`,
+`node` in `run.*` and `node.progress` is the action that started the run (approving a brief review continues under the
+paused action's node): `context`,
 `outline_propose`, `outline_other`, `outline_suggest`, `blueprint`, `prototype` (2.0), `revise`, `research`, `style_extract`, `ux_audit`, `intake`, `create_build`, `versions`,
 `load_spec`, `recipe`, `execute` (the Data Studio build), `engine_login`, `consolidate`,
 `reference_extract`, `reference_delete`, `capability_check` (1.3), `synthetic_schema`,

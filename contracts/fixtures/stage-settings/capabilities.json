@@ -1,0 +1,146 @@
+{
+  "models": [
+    {
+      "id": "gemini-3.8-flash",
+      "thinking_levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 65536,
+      "images": true,
+      "available": true,
+      "price": {
+        "input_usd_per_mtok": 0.5,
+        "output_usd_per_mtok": 3.0,
+        "long_context_over": null,
+        "long_input_usd_per_mtok": null,
+        "long_output_usd_per_mtok": null,
+        "checked_on": "2026-10-26"
+      }
+    },
+    {
+      "id": "gemini-4-argon",
+      "thinking_levels": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 65536,
+      "images": true,
+      "available": null,
+      "price": null
+    }
+  ],
+  "defaults": {
+    "stages": {
+      "interview": {
+        "model": "gemini-3.8-flash",
+        "thinking": "low",
+        "timeout_s": 30
+      },
+      "routine": {
+        "model": "gemini-3.8-flash",
+        "thinking": "low",
+        "timeout_s": 30
+      },
+      "reference_interpretation": {
+        "model": "gemini-4-argon",
+        "thinking": "high",
+        "input_tokens": 131072,
+        "output_tokens": 32768,
+        "timeout_s": 600,
+        "transport_retries": 1,
+        "validation_repairs": 0,
+        "input_margin_pct": 20
+      },
+      "native_planning": {
+        "model": "gemini-4-argon",
+        "thinking": "high",
+        "input_tokens": 131072,
+        "output_tokens": 32768,
+        "timeout_s": 600,
+        "transport_retries": 1,
+        "validation_repairs": 1,
+        "input_margin_pct": 20
+      },
+      "html_brief": {
+        "model": "gemini-4-argon",
+        "thinking": "high",
+        "input_tokens": 131072,
+        "output_tokens": 32768,
+        "timeout_s": 600,
+        "transport_retries": 2,
+        "validation_repairs": 1,
+        "input_margin_pct": 20
+      },
+      "reference_html": {
+        "model": "gemini-3.8-flash",
+        "thinking": "high",
+        "input_tokens": 131072,
+        "output_tokens": 65536,
+        "timeout_s": 1200,
+        "transport_retries": 2,
+        "validation_repairs": 2,
+        "input_margin_pct": 20
+      },
+      "html_no_reference": {
+        "model": "gemini-3.8-flash",
+        "thinking": "high",
+        "input_tokens": 131072,
+        "output_tokens": 65536,
+        "timeout_s": 1200,
+        "transport_retries": 2,
+        "validation_repairs": 2,
+        "input_margin_pct": 20,
+        "layout_fallback": true
+      }
+    },
+    "fallback_model": "gemini-3.8-flash",
+    "review_briefs": false
+  },
+  "limits": {
+    "model_timeout_s": [
+      10,
+      600
+    ],
+    "generation_timeout_s": [
+      30,
+      3600
+    ],
+    "transport_retries": [
+      0,
+      5
+    ],
+    "validation_repairs": {
+      "reference_interpretation": [
+        0,
+        0
+      ],
+      "native_planning": [
+        0,
+        1
+      ],
+      "html_brief": [
+        0,
+        5
+      ],
+      "reference_html": [
+        0,
+        5
+      ],
+      "html_no_reference": [
+        0,
+        5
+      ]
+    },
+    "input_margin_pct": [
+      0,
+      100
+    ],
+    "min_input_tokens": 1024,
+    "min_output_tokens": 256
+  }
+}

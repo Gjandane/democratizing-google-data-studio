@@ -1,0 +1,74 @@
+{
+  "stages": {
+    "interview": {
+      "model": "gemini-3.8-flash",
+      "thinking": "low",
+      "timeout_s": 30
+    },
+    "routine": {
+      "model": "gemini-3.8-flash",
+      "thinking": "low",
+      "timeout_s": 30
+    },
+    "reference_interpretation": {
+      "model": "gemini-4-argon",
+      "thinking": "high",
+      "input_tokens": 131072,
+      "output_tokens": 32768,
+      "timeout_s": 600,
+      "transport_retries": 1,
+      "validation_repairs": 0,
+      "input_margin_pct": 20
+    },
+    "native_planning": {
+      "model": "gemini-4-argon",
+      "thinking": "high",
+      "input_tokens": 131072,
+      "output_tokens": 32768,
+      "timeout_s": 600,
+      "transport_retries": 1,
+      "validation_repairs": 1,
+      "input_margin_pct": 20
+    },
+    "html_brief": {
+      "model": "gemini-4-argon",
+      "thinking": "high",
+      "input_tokens": 131072,
+      "output_tokens": 32768,
+      "timeout_s": 600,
+      "transport_retries": 2,
+      "validation_repairs": 1,
+      "input_margin_pct": 20
+    },
+    "reference_html": {
+      "model": "gemini-3.8-flash",
+      "thinking": "high",
+      "input_tokens": 131072,
+      "output_tokens": 65536,
+      "timeout_s": 1200,
+      "transport_retries": 2,
+      "validation_repairs": 2,
+      "input_margin_pct": 20
+    },
+    "html_no_reference": {
+      "model": "gemini-3.8-flash",
+      "thinking": "high",
+      "input_tokens": 131072,
+      "output_tokens": 65536,
+      "timeout_s": 1200,
+      "transport_retries": 2,
+      "validation_repairs": 2,
+      "input_margin_pct": 20,
+      "layout_fallback": true
+    }
+  },
+  "fallback_model": "gemini-3.8-flash",
+  "review_briefs": false,
+  "gcp_project_id": "my-gcp-project",
+  "bq_dataset": "dss_demo",
+  "bq_location": "US",
+  "gcs_bucket": "",
+  "google_api_key_set": true,
+  "notices": [],
+  "issues": []
+}

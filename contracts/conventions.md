@@ -1,5 +1,5 @@
 # Conventions (shared by every part)
-Version 1.3 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
+Version 1.4 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
 (added DSS_ALLOWED_TYPES, DSS_CONSOLIDATE_EVERY, DSS_ENGINE_TIMEOUT_S, background_p<n>.png, engine lock).
 1.1 (2026-10-19) Cloud Run deployment: one hosted service, access code, local build agent, DB backup
 (added PORT, DSS_STATIC_DIR, DSS_ACCESS_CODE, DSS_ENGINE_MODE, DSS_AGENT_SERVER,
@@ -11,6 +11,9 @@ https://dss-frontend-872000338860.asia-southeast1.run.app; the full image replac
 static-frontend revision of that service). No other name, path or behaviour changed.
 1.3 (2026-10-24, change reference fidelity) `DSS_ALLOWED_TYPES` default adds `area` and
 `fixed_size_list` (recipe 1.3); no name added.
+1.4 (2026-10-26, change configurable model stages) model choice moves to per-stage Settings
+(contracts/api.md 3.0): `DSS_PLANNER_MODEL`/`DSS_WORKER_MODEL` only seed the one-time migration;
+the agent-mode lock fixes the key and GCP values, not model settings. No name added or removed.
 Only the architect at the program root edits this file. Parts read it; they never edit it.
 
 ## Ports and URLs
@@ -30,8 +33,8 @@ values. Names:
 | Name | Default | Used by | Meaning |
 |---|---|---|---|
 | `GOOGLE_API_KEY` | (empty) | backend | Gemini API key |
-| `DSS_PLANNER_MODEL` | `gemini-4-argon` | backend | heavy planning model (plan, spec nodes) |
-| `DSS_WORKER_MODEL` | `gemini-3.8-flash` | backend | every other LLM node |
+| `DSS_PLANNER_MODEL` | `gemini-4-argon` | backend | legacy planner model: seeds the stages it served at the one-time 3.0 Settings migration (contracts/api.md, Stage settings); unused afterwards |
+| `DSS_WORKER_MODEL` | `gemini-3.8-flash` | backend | legacy worker model: seeds its stages at the same migration; unused afterwards |
 | `GCP_PROJECT_ID` | (empty) | backend, engine | BigQuery project and billing project |
 | `BQ_DATASET` | `dss_demo` | backend, engine | dataset that holds uploaded tables and build views |
 | `BQ_LOCATION` | `US` | backend | dataset location |
@@ -56,7 +59,7 @@ values. Names:
 | `DSS_DB_PATH` | (empty = `<DSS_DATA_DIR>/dss.sqlite`) | backend | live SQLite file; when it is outside `DSS_DATA_DIR`, the backend keeps a backup at `<DSS_DATA_DIR>/dss.sqlite` (Cloud deployment) |
 | `GCP_REGION` | `asia-southeast1` | release (deploy) | Cloud Run region, Artifact Registry and the state bucket |
 
-Settings saved in the UI (models, GCP values, API key) override the env values at runtime; the
+Settings saved in the UI (stage profiles, GCP values, API key) override the env values at runtime; the
 backend stores them in SQLite. The API key is write-only through the API: it is never returned.
 
 ## Paths (all under `<repo>/data/`, git-ignored)
@@ -65,7 +68,9 @@ backend stores them in SQLite. The API key is write-only through the API: it is 
 - `data/builds/<build_id>/v<n>/`: one folder per build version:
   `docs/` (OKF build docs), `spec.json`, `prototype.html`, `background_p<n>.png` (one per page,
   `background_p1.png` for page 1), `recipe.jsonl`,
-  `events.jsonl`, `screens/` (engine screenshots).
+  `events.jsonl`, `screens/` (engine screenshots), `brief_p<n>.json` and `brief_p<n>.md` (each
+  designed page's saved brief, api.md 3.0). A waiting brief review keeps its unpublished
+  candidate under `data/.publications/` until it is approved or cancelled.
 - `data/knowledge/`: semantic memory written at runtime (consolidated facts), OKF format.
 - `<repo>/.chrome-profile/`: the engine's Chrome profile, git-ignored, never copied.
 - `data/agent/<build_id>/v<n>/`: the build agent's local copy of a job (`recipe.jsonl`, background
@@ -126,7 +131,8 @@ backend stores them in SQLite. The API key is write-only through the API: it is 
 - Secrets: `GOOGLE_API_KEY`, `DSS_ACCESS_CODE` and `DSS_AGENT_TOKEN` come from Secret Manager as env
   vars; never in the image, the repo, the deploy script's output or the deck.
 - Settings: on Cloud Run (agent mode) the API key and GCP values are fixed by the deployment;
-  `PUT /api/settings` may change only the models (contracts/api.md).
+  `PUT /api/settings` may change only model settings: stage profiles, fallback model and brief
+  review (contracts/api.md 3.0).
 - The runtime service account has BigQuery Data Editor and BigQuery Job User on `GCP_PROJECT_ID`,
   Secret Manager Secret Accessor on the three secrets, and Storage Object User on the state bucket;
   BigQuery on Cloud Run uses it as ADC. The Google account signed into the agent's Chrome

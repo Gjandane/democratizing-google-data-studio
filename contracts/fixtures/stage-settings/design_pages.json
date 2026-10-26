@@ -1,0 +1,59 @@
+{
+  "version": 2,
+  "spec_version": 5,
+  "pages": [
+    {
+      "page": 1,
+      "layout": "designed",
+      "standard_reason": null,
+      "brief": {
+        "page": 1,
+        "origin": "generated",
+        "brief": {
+          "page": 1,
+          "overall": "Dark navy page with a bold headline band across the top left. Three white KPI cards sit in one row under it; the yearly trend spans the full width at the bottom.",
+          "slots": [
+            {
+              "id": "c_kpi_total",
+              "treatment": "White card, 12 px radius, label above the value in muted text."
+            },
+            {
+              "id": "c_trend",
+              "treatment": "Full-width card titled 'Yearly access', no inner border."
+            }
+          ]
+        },
+        "markdown": "# Page 1 brief\n\n## Overall\n\nDark navy page with a bold headline band across the top left. Three white KPI cards sit in one row under it; the yearly trend spans the full width at the bottom.\n\n## c_kpi_total (scorecard: Total access)\n\nWhite card, 12 px radius, label above the value in muted text.\n\n## c_trend (time_series: Yearly access)\n\nFull-width card titled 'Yearly access', no inner border.\n",
+        "sha256": "5f2b7c0e9a41d3c6b8e7f0a1d2c3b4a5968778695a4b3c2d1e0f9a8b7c6d5e4f",
+        "model": "gemini-4-argon",
+        "created_at": "2026-10-26T10:00:00Z"
+      },
+      "html_model": "gemini-3.8-flash"
+    },
+    {
+      "page": 2,
+      "layout": "standard",
+      "standard_reason": "layout_fallback",
+      "brief": {
+        "page": 2,
+        "origin": "generated",
+        "brief": {
+          "page": 2,
+          "overall": "Same navy frame and headline band as page 1; one full-width card for the region table.",
+          "slots": [
+            {
+              "id": "c_region_table",
+              "treatment": "Plain white card with a short title."
+            }
+          ]
+        },
+        "markdown": "# Page 2 brief\n\n## Overall\n\nSame navy frame and headline band as page 1; one full-width card for the region table.\n\n## c_region_table (table: Regions)\n\nPlain white card with a short title.\n",
+        "sha256": "0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0c9d",
+        "model": "gemini-3.8-flash",
+        "created_at": "2026-10-26T10:00:00Z"
+      },
+      "html_model": "gemini-3.8-flash"
+    }
+  ],
+  "review": null
+}

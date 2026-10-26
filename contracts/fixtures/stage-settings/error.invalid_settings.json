@@ -1,0 +1,14 @@
+{
+  "error": {
+    "code": "invalid_settings",
+    "message": "Fix the highlighted settings and save again.",
+    "detail": {
+      "issues": [
+        {
+          "path": "/stages/html_brief/output_tokens",
+          "message": "gemini-4-argon allows at most 65536 output tokens."
+        }
+      ]
+    }
+  }
+}

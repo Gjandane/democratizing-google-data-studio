@@ -538,3 +538,6 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: Data Studio auto-fills controlField with some dimension on insert (status or created_at); always set it. List rows are md-virtual-repeat: only rows in view exist.
 - Left open: P3 live test hard-codes order_items status values - tests/live/test_charts_b.py
 - Next: no task left in this part's plan.
+
+## 2026-10-26: Change configurable model stages (program root)
+- What changed: essentials contract row conventions.md 1.3 -> 1.4 (model settings move to per-stage Settings; nothing the engine reads). No task change.
