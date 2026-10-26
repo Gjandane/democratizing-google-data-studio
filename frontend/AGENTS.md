@@ -50,6 +50,7 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - A Python patch passed through a Bash heredoc can turn a regex's `\b` into a backspace byte (0x08): write regex edits with the Edit tool, then check the file for `\x08`.
 - Live walkthrough: the browser pane has no file upload; upload the CSV with `curl -F files=@../samples/ecommerce_sales.csv localhost:5173/api/builds/<id>/sources/upload`, then drive the UI. Pane `computer` clicks can fail "not on screen": a `javascript_tool` `button.click()` still drives the flow.
 - Live preview: `preview_start` config `frontend-live` (.claude/launch.json) runs plain `npm run dev` against the backend on 8000.
+- A full `npm test` run can fail one untouched test under load (seen twice in Phase 16, e.g. tests/blueprint.test.tsx "groups the rows by page"): rerun that file alone, then the full suite, before chasing it; report both runs.
 
 ## Skills
 Use each skill only at its step, on that task's files. If one isn't installed in your tool, skip it and say so under Gotchas. The essentials' UI design section wins over a skill's generic advice.

@@ -1,5 +1,5 @@
-import { CircleCheck, MousePointerClick, ScanSearch } from 'lucide-react';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { CircleCheck, FileText, MousePointerClick, ScanSearch } from 'lucide-react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { api } from '../../../api/client';
 import { ApiError, type Assessment, type Build } from '../../../api/types';
 import { Button } from '../../../components/Button';
@@ -10,7 +10,10 @@ import { useRefocusAfter, useStretchAction } from '../stretch';
 import { PendingList } from './PendingList';
 import { ReferencePanel } from '../ReferencePanel';
 import { SampleDataBanner } from '../connect/SyntheticDataPanel';
-import { PrototypeCanvas } from './PrototypeCanvas';
+import { BriefPanel } from '../briefs/BriefPanel';
+import { StandardLayoutChip } from '../briefs/StandardLayout';
+import { useDesignPages } from '../briefs/useDesignPages';
+import { PrototypeCanvas, type ShownPage } from './PrototypeCanvas';
 import type { PendingComment, Target } from './types';
 
 interface PrototypeStageProps {
@@ -56,6 +59,12 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
   const seenError = useRef(commentsError?.seq ?? 0);
   const specVersion = build.spec_version;
   const seenVersion = useRef(specVersion);
+  const designPages = useDesignPages(build.id);
+  const [briefOpen, setBriefOpen] = useState(false);
+  const [shownPage, setShownPage] = useState<ShownPage>({ n: 1, name: null, tabbed: false });
+  const briefButton = useRef<HTMLButtonElement>(null);
+  const briefPanelId = useId();
+  const standardPage = (n: number) => designPages.data?.pages.find((p) => p.page === n)?.layout === 'standard';
 
   // The new version arrived: the comments of the batch are applied, so their pins go.
   useLayoutEffect(() => {
@@ -132,22 +141,35 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
     <div className="mt-6 flex flex-col gap-4">
       {/* Collapsed so the canvas top shows above the fold; the header toggle opens it. */}
       <ReferencePanel buildId={build.id} version={build.current_version} disabled={busy} defaultOpen={false} onReadyChange={onReferenceReadyChange} />
-      {!audit.hidden && (
-        <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
-          <div aria-live="polite" className="text-body text-text-muted">
-            {auditing && (
-              <span className="inline-flex items-center gap-2">
-                <Spinner />
-                Auditing…
-              </span>
-            )}
-            {audit.state === 'ok' && (
-              <span className="inline-flex items-center gap-2 text-success">
-                <CircleCheck aria-hidden="true" className="size-4 shrink-0" />
-                Audit done. The findings are in the activity column.
-              </span>
-            )}
-          </div>
+      {/* Always shown with a prototype, so the canvas below never moves when data arrives. */}
+      <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+        <div aria-live="polite" className="min-w-0 flex-1 text-right text-body text-text-muted">
+          {auditing && (
+            <span className="inline-flex items-center gap-2">
+              <Spinner />
+              Auditing…
+            </span>
+          )}
+          {audit.state === 'ok' && (
+            <span className="inline-flex items-center gap-2 text-success">
+              <CircleCheck aria-hidden="true" className="size-4 shrink-0" />
+              Audit done. The findings are in the activity column.
+            </span>
+          )}
+        </div>
+        {/* With page tabs the chip sits on the tab; a one-page prototype shows it here. */}
+        {!shownPage.tabbed && standardPage(shownPage.n) && <StandardLayoutChip />}
+        <Button
+          ref={briefButton}
+          variant="secondary"
+          icon={<FileText aria-hidden="true" />}
+          aria-expanded={briefOpen}
+          aria-controls={briefOpen ? briefPanelId : undefined}
+          onClick={() => setBriefOpen((open) => !open)}
+        >
+          Design brief
+        </Button>
+        {!audit.hidden && (
           <Button
             ref={auditButton}
             variant="secondary"
@@ -157,29 +179,48 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
           >
             Run UX audit
           </Button>
-          {audit.state === 'error' && audit.error && (
-            <p role="alert" className="basis-full text-right text-label text-danger">
-              {audit.error}
-            </p>
-          )}
-        </div>
-      )}
+        )}
+        {!audit.hidden && audit.state === 'error' && audit.error && (
+          <p role="alert" className="basis-full text-right text-label text-danger">
+            {audit.error}
+          </p>
+        )}
+      </div>
       <SampleDataBanner sources={build.sources}>
         The prototype runs on invented rows, so its numbers are placeholders, not your data or the values in your screenshot.
       </SampleDataBanner>
       {assessment?.prototype_stale && <p className="flex items-center gap-2 text-body text-text-muted"><span className="rounded-control bg-accent px-2 py-1 font-semibold text-on-accent">Stale</span> This preview shows the previous prototype. Replan or reapply saved comments to update it.</p>}
-      <PrototypeCanvas
-        url={api.prototypeUrl(build.id, specVersion)}
-        title={`Prototype of ${build.title}`}
-        pending={pending}
-        disabled={busy}
-        hoveredId={hoveredId}
-        onAdd={add}
-        onRead={(cids, names) => {
-          setPresentCids(cids);
-          setPageNames(names);
-        }}
-      />
+      {/* The brief sits beside the canvas, never over it: the canvas rescales and its pins with it. */}
+      <div className="flex items-start gap-4">
+        <div className="min-w-0 flex-1">
+          <PrototypeCanvas
+            url={api.prototypeUrl(build.id, specVersion)}
+            title={`Prototype of ${build.title}`}
+            pending={pending}
+            disabled={busy}
+            hoveredId={hoveredId}
+            onAdd={add}
+            onRead={(cids, names) => {
+              setPresentCids(cids);
+              setPageNames(names);
+            }}
+            onPageShown={setShownPage}
+            pageBadge={(n) => (standardPage(n) ? <StandardLayoutChip /> : null)}
+          />
+        </div>
+        {briefOpen && (
+          <BriefPanel
+            id={briefPanelId}
+            buildId={build.id}
+            page={shownPage}
+            pages={designPages}
+            onClose={() => {
+              setBriefOpen(false);
+              briefButton.current?.focus();
+            }}
+          />
+        )}
+      </div>
       <PendingList
         comments={pending}
         presentCids={presentCids}

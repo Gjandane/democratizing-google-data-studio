@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type SyntheticEvent } from 'react';
+import { useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type SyntheticEvent } from 'react';
 import { ErrorState } from '../../../components/ErrorState';
 import { focusRing } from '../../../components/focus';
 import { Pin } from '../../../components/Pin';
@@ -76,6 +76,16 @@ interface PrototypeCanvasProps {
   onAdd: (target: Target, text: string) => void;
   /** The component ids found in the page after each read, and each one's page name (only with 2+ pages). */
   onRead: (cids: Set<string>, pageNames: Map<string, string>) => void;
+  /** A short status after a page's name on its tab, by its `data-page` number. */
+  pageBadge?: (n: number) => ReactNode;
+  /** Told the page shown: its `data-page` number (1 before the first read), its name, and whether page tabs show. */
+  onPageShown?: (page: ShownPage) => void;
+}
+
+export interface ShownPage {
+  n: number;
+  name: string | null;
+  tabbed: boolean;
 }
 
 const byReading = (a: Target, b: Target) => a.box.top - b.box.top || a.box.left - b.box.left;
@@ -85,7 +95,7 @@ const byReading = (a: Target, b: Target) => a.box.top - b.box.top || a.box.left 
  * holds the iframe and the pin layer, so both share the canvas coordinates at any stage width.
  * A page with 2+ sections gets page tabs: the wrapper shows one section, and only its targets and pins.
  */
-export function PrototypeCanvas({ url, title, pending, disabled, hoveredId, onAdd, onRead }: PrototypeCanvasProps) {
+export function PrototypeCanvas({ url, title, pending, disabled, hoveredId, onAdd, onRead, pageBadge, onPageShown }: PrototypeCanvasProps) {
   const id = useId();
   const [attempt, setAttempt] = useState(0);
   const [read, setRead] = useState<Read | null>(null);
@@ -109,6 +119,17 @@ export function PrototypeCanvas({ url, title, pending, disabled, hoveredId, onAd
   const page = multi ? (pages[Math.min(pageIndex, pages.length - 1)] ?? null) : null;
   const failed = current !== null && current.targets === null;
   const loading = current === null;
+  // One page (or none read yet) is page 1 unless its section says otherwise.
+  const shownN = (page ?? pages[0])?.n ?? 1;
+  const shownName = (page ?? pages[0])?.name ?? null;
+  const tabbed = multi && page !== null;
+  const pageShown = useRef(onPageShown);
+  useLayoutEffect(() => {
+    pageShown.current = onPageShown;
+  });
+  useLayoutEffect(() => {
+    pageShown.current?.({ n: shownN, name: shownName, tabbed });
+  }, [shownN, shownName, tabbed]);
 
   useLayoutEffect(() => {
     const node = outer.current;
@@ -193,6 +214,7 @@ export function PrototypeCanvas({ url, title, pending, disabled, hoveredId, onAd
           {pages.map((p) => {
             const selected = p.index === page.index;
             const count = countOn(p.index);
+            const badge = pageBadge?.(p.n);
             return (
               <button
                 key={p.index}
@@ -208,11 +230,18 @@ export function PrototypeCanvas({ url, title, pending, disabled, hoveredId, onAd
                 title={p.name}
                 onClick={() => choose(p.index)}
                 onKeyDown={(event) => onTabKey(event, p.index)}
-                className={`-mb-px flex h-9 min-w-0 max-w-64 items-center gap-2 rounded-t-control border-b-2 px-3 text-body ${focusRing} ${
+                className={`-mb-px flex h-9 min-w-0 ${badge ? 'max-w-96' : 'max-w-64'} items-center gap-2 rounded-t-control border-b-2 px-3 text-body ${focusRing} ${
                   selected ? 'border-primary font-semibold text-primary' : 'border-transparent text-text-muted hover:bg-surface-muted hover:text-text'
                 }`}
               >
                 <span className="truncate">{p.name}</span>
+                {/* Fits the 36 px tab, so the row and the canvas below never move when it arrives. */}
+                {badge && (
+                  <>
+                    <span className="sr-only">, </span>
+                    {badge}
+                  </>
+                )}
                 {count > 0 && (
                   <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-accent px-1.5 text-caption font-semibold text-on-accent tabular-nums">
                     <span className="sr-only">, </span>
