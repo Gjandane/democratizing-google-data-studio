@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, httpApi } from '../src/api/client';
@@ -105,25 +105,46 @@ describe('build agent status (agent mode)', () => {
 });
 
 describe('settings locked by the deployment', () => {
-  // The "models stay editable" half of this check moves to the Models tab (16.2).
-  it('403 settings_locked marks the API key and GCP fields as fixed', async () => {
+  it('403 settings_locked locks only the Google Cloud tab fields, and a later Models save succeeds', async () => {
     setMockEngine(agent);
     const update = vi.spyOn(api, 'updateSettings');
     render(<SettingsModal open onClose={() => {}} onSaved={() => {}} />);
+    await screen.findByRole('list', { name: 'Stages' });
+    // A model change and a GCP change go together: the hosted app refuses the whole save.
+    const brief = screen.getByRole('button', { name: /^HTML brief / });
+    fireEvent.click(brief);
+    fireEvent.change(within(screen.getByRole('region', { name: 'HTML brief' })).getByLabelText('Output tokens'), { target: { value: '40000' } });
+    fireEvent.click(screen.getByRole('tab', { name: 'Google Cloud' }));
     const project = (await screen.findByLabelText('GCP project')) as HTMLInputElement;
     fireEvent.change(project, { target: { value: 'other-project' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
     await screen.findByText(/The hosted app fixes the API key and Google Cloud settings\./);
     await expect(update.mock.results[0]!.value).rejects.toMatchObject({ status: 403, code: 'settings_locked' });
+    expect(screen.getByText(/Nothing was saved: .* Save again to keep your model changes\./)).toBeTruthy();
 
     for (const label of ['GCP project', 'BigQuery dataset', 'BigQuery location', 'GCS bucket', 'Google API key']) {
       const input = screen.getByLabelText(label) as HTMLInputElement;
       expect(input.disabled, label).toBe(true);
     }
-    expect(project.value).toBe(fixtures.settings.gcp_project_id);
+    expect((screen.getByLabelText('GCP project') as HTMLInputElement).value).toBe(fixtures.settings.gcp_project_id);
     expect(screen.getAllByText('Fixed by the deployment.').length).toBe(5);
-    expect(update).toHaveBeenCalledTimes(1);
-    expect((screen.getByRole('button', { name: 'Save settings' }) as HTMLButtonElement).disabled).toBe(true);
+
+    // The Models tab stays editable and keeps the change; saving it alone goes through.
+    fireEvent.click(screen.getByRole('tab', { name: 'Models' }));
+    const region = screen.getByRole('region', { name: 'HTML brief' });
+    const output = within(region).getByLabelText('Output tokens') as HTMLInputElement;
+    expect(output.disabled).toBe(false);
+    expect(output.value).toBe('40000');
+    for (const el of within(region).getAllByRole('combobox')) expect((el as HTMLSelectElement).disabled).toBe(false);
+    expect((screen.getByLabelText('Fallback model') as HTMLSelectElement).disabled).toBe(false);
+    const save = screen.getByRole('button', { name: 'Save settings' }) as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    await screen.findByText('Settings saved.');
+    expect(update).toHaveBeenCalledTimes(2);
+    expect(update.mock.calls[1]![0]).toEqual({ stages: { html_brief: { output_tokens: 40000 } } });
+    await expect(update.mock.results[1]!.value).resolves.toMatchObject({ stages: { html_brief: { output_tokens: 40000 } } });
+    expect(save.disabled).toBe(true);
   });
 });
 

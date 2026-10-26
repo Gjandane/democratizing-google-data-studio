@@ -13,11 +13,12 @@ interface ModalProps {
   footer?: ReactNode;
   /** Element to focus on open; defaults to the first focusable one in the body. */
   initialFocus?: RefObject<HTMLElement | null>;
-  size?: 'sm' | 'md' | 'lg';
+  /** `wide`: 720 px at most (Settings). */
+  size?: 'sm' | 'md' | 'wide' | 'lg';
   children: ReactNode;
 }
 
-const widths = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-4xl' } as const;
+const widths = { sm: 'max-w-sm', md: 'max-w-lg', wide: 'max-w-180', lg: 'max-w-4xl' } as const;
 
 /**
  * A modal dialog: focus is trapped inside while it is open and returns to where it was on close;
@@ -48,7 +49,7 @@ export function Modal({ open, onClose, title, description, footer, initialFocus,
         return;
       }
       if (event.key !== 'Tab') return;
-      const items = focusableIn(node);
+      const items = focusableIn(node).filter((el) => el.getAttribute('tabindex') !== '-1');
       const first = items[0];
       const last = items[items.length - 1];
       const active = document.activeElement;

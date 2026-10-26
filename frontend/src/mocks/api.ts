@@ -14,15 +14,11 @@ import {
   type Design,
   type DesignPage,
   type DesignPages,
-  type GenerationProfile,
-  type GenerationStageId,
-  GENERATION_STAGE_IDS,
   type PageBrief,
   type RunCalls,
   type SettingsUpdate,
   type StageId,
   STAGE_IDS,
-  type ThinkingLevel,
   type Issue,
   type Outline,
   type OutlineQuestion,
@@ -53,6 +49,7 @@ import {
   syntheticOversizeError,
   type Trace,
 } from '../api/types';
+import { newIssues, validateSettings } from '../features/settings/stageSettings';
 import { emit } from './events';
 import { clone, fixtures } from './fixtures';
 import { mockFrame } from './frame';
@@ -644,52 +641,31 @@ function publishReviewed(build: Build, review: BriefReview): RunAccepted {
   ]);
 }
 
-/** Issues of a merged Settings update, for the stages it names and the fallback model (api.md 3.0, Validation). */
-function settingsUpdateIssues(next: Settings, update: SettingsUpdate): ValidationIssue[] {
-  const { models, limits } = fixtures.capabilities;
+/** Fields PUT /api/settings knows; anything else is an issue (api.md 3.0, Validation). */
+const SETTINGS_KEYS = new Set(['stages', 'fallback_model', 'review_briefs', 'gcp_project_id', 'bq_dataset', 'bq_location', 'gcs_bucket', 'google_api_key']);
+
+/**
+ * Issues of a merged Settings update (api.md 3.0, Validation): unknown keys, plus every check on the
+ * merged whole that the stored Settings didn't already fail (stored failures never block a PUT).
+ */
+function settingsUpdateIssues(current: Settings, next: Settings, update: SettingsUpdate): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  const known = (id: string) => models.find((m) => m.id === id);
-  const within = (path: string, value: number, [lo, hi]: [number, number], what: string) => {
-    if (value < lo || value > hi) issues.push({ path, message: `${what} must be between ${lo} and ${hi}.` });
-  };
-  const stages = update.stages ?? {};
-  for (const stage of Object.keys(stages)) {
+  for (const key of Object.keys(update)) {
+    if (!SETTINGS_KEYS.has(key)) issues.push({ path: `/${key}`, message: 'This is not a setting.' });
+  }
+  for (const [stage, patch] of Object.entries(update.stages ?? {})) {
     if (!(STAGE_IDS as readonly string[]).includes(stage)) {
       issues.push({ path: `/stages/${stage}`, message: 'This is not a stage.' });
       continue;
     }
-    const id = stage as StageId;
-    const profile = next.stages[id] as unknown as Record<string, unknown>;
-    for (const key of Object.keys(stages[id] ?? {})) {
+    const profile = current.stages[stage as StageId] as unknown as Record<string, unknown>;
+    for (const key of Object.keys(patch ?? {})) {
       if (!(key in profile)) issues.push({ path: `/stages/${stage}/${key}`, message: 'This stage has no such setting.' });
     }
-    const at = (key: string) => `/stages/${stage}/${key}`;
-    const model = known(profile.model as string);
-    if (!model) {
-      issues.push({ path: at('model'), message: `${String(profile.model)} is not a known model.` });
-      continue;
-    }
-    if (!model.thinking_levels.includes(profile.thinking as ThinkingLevel)) {
-      issues.push({ path: at('thinking'), message: `${model.id} supports ${model.thinking_levels.join(', ')} thinking.` });
-    }
-    const generation = (GENERATION_STAGE_IDS as readonly string[]).includes(stage);
-    within(at('timeout_s'), profile.timeout_s as number, generation ? limits.generation_timeout_s : limits.model_timeout_s, 'The timeout');
-    if (!generation) continue;
-    const g = profile as unknown as GenerationProfile;
-    if (g.input_tokens < limits.min_input_tokens || g.input_tokens > model.max_input_tokens) {
-      issues.push({ path: at('input_tokens'), message: `${model.id} allows ${limits.min_input_tokens} to ${model.max_input_tokens} input tokens.` });
-    }
-    if (g.output_tokens < limits.min_output_tokens) issues.push({ path: at('output_tokens'), message: `Output needs at least ${limits.min_output_tokens} tokens.` });
-    else if (g.output_tokens > model.max_output_tokens) issues.push({ path: at('output_tokens'), message: `${model.id} allows at most ${model.max_output_tokens} output tokens.` });
-    within(at('transport_retries'), g.transport_retries, limits.transport_retries, 'Retries');
-    within(at('validation_repairs'), g.validation_repairs, limits.validation_repairs[id as GenerationStageId], 'Repairs');
-    within(at('input_margin_pct'), g.input_margin_pct, limits.input_margin_pct, 'The margin');
-    if (!model.images && id !== 'native_planning' && id !== 'html_no_reference') issues.push({ path: at('model'), message: `${model.id} can't read images.` });
   }
-  if (update.fallback_model !== undefined && !known(update.fallback_model)) {
-    issues.push({ path: '/fallback_model', message: `${update.fallback_model} is not a known model.` });
-  }
-  return issues;
+  if (issues.length > 0) return issues;
+  const { capabilities } = fixtures;
+  return newIssues(validateSettings(next.stages, next.fallback_model, capabilities), validateSettings(current.stages, current.fallback_model, capabilities));
 }
 
 /** `recipe` and `run` need all four artifacts confirmed; a build made before 2.0 (all missing, with a spec) is exempt. */
@@ -920,8 +896,15 @@ export function createMockApi(): ApiClient {
           if (stage in next.stages) Object.assign(next.stages[stage as StageId], patchOf);
         }
         Object.assign(next, fields);
-        const issues = settingsUpdateIssues(next, update);
+        const issues = settingsUpdateIssues(state.settings, next, update);
         if (issues.length > 0) throw new ApiError(422, 'invalid_settings', 'Fix the highlighted settings and save again.', { issues });
+        // A stored issue goes once the update fixes its field (a new failure answered 422 above).
+        const stillFailing = validateSettings(next.stages, next.fallback_model, fixtures.capabilities);
+        const touched = new Set([
+          ...Object.keys(fields).map((k) => `/${k}`),
+          ...Object.entries(stages ?? {}).flatMap(([stage, patch]) => Object.keys(patch ?? {}).map((k) => `/stages/${stage}/${k}`)),
+        ]);
+        next.issues = next.issues.filter((i) => !touched.has(i.path) || stillFailing.some((f) => f.path === i.path));
         state.settings = next;
         // The key is write-only: the mock only remembers that one is set.
         if (google_api_key !== undefined) state.settings.google_api_key_set = google_api_key !== '';

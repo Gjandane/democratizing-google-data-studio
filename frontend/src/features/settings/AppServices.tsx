@@ -4,10 +4,12 @@ import type { Settings } from '../../api/types';
 import { TraceModal } from '../trace/TraceModal';
 import { ServiceBanner } from './ServiceBanner';
 import { SettingsModal } from './SettingsModal';
+import { asSettingsTarget, type SettingsTarget } from './stageSettings';
 import { onServiceError, type ServiceError } from './serviceNotice';
 
 interface AppServices {
-  openSettings: () => void;
+  /** Opens at a tab, or at a stage of the Models tab with its row expanded (from a stage-limit error). */
+  openSettings: (target?: SettingsTarget) => void;
   /** With a build id the table starts on that build's runs. */
   openTrace: (buildId?: string) => void;
 }
@@ -49,7 +51,7 @@ export function AppServicesProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [failure, setFailure] = useState<Notice | null>(null);
   const [dismissed, setDismissed] = useState<string | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsAt, setSettingsAt] = useState<{ target?: SettingsTarget } | null>(null);
   const [trace, setTrace] = useState<{ buildId?: string } | null>(null);
 
   useEffect(() => {
@@ -76,7 +78,8 @@ export function AppServicesProvider({ children }: { children: ReactNode }) {
   );
 
   const services = useMemo<AppServices>(
-    () => ({ openSettings: () => setSettingsOpen(true), openTrace: (buildId) => setTrace({ buildId }) }),
+    // A button's onClick passes its event: only a real target counts.
+    () => ({ openSettings: (target) => setSettingsAt({ target: asSettingsTarget(target) }), openTrace: (buildId) => setTrace({ buildId }) }),
     [],
   );
 
@@ -96,13 +99,13 @@ export function AppServicesProvider({ children }: { children: ReactNode }) {
           <ServiceBanner
             title={shown.title}
             message={shown.message}
-            onOpenSettings={services.openSettings}
+            onOpenSettings={() => services.openSettings({ tab: 'google' })}
             onDismiss={() => setDismissed(shown.message)}
           />
         )}
         <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
       </div>
-      {settingsOpen && <SettingsModal open onClose={() => setSettingsOpen(false)} onSaved={onSaved} />}
+      {settingsAt && <SettingsModal open at={settingsAt.target} onClose={() => setSettingsAt(null)} onSaved={onSaved} />}
       {trace && <TraceModal open onClose={() => setTrace(null)} buildId={trace.buildId} />}
     </Services.Provider>
   );
