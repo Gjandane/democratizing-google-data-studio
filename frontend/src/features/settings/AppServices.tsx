@@ -10,8 +10,8 @@ import { onServiceError, type ServiceError } from './serviceNotice';
 interface AppServices {
   /** Opens at a tab, or at a stage of the Models tab with its row expanded (from a stage-limit error). */
   openSettings: (target?: SettingsTarget) => void;
-  /** With a build id the table starts on that build's runs. */
-  openTrace: (buildId?: string) => void;
+  /** With a build id the table starts on that build's runs; with a run id too, that run opens on its model calls. */
+  openTrace: (buildId?: string, runId?: string) => void;
 }
 
 const Services = createContext<AppServices | null>(null);
@@ -52,7 +52,7 @@ export function AppServicesProvider({ children }: { children: ReactNode }) {
   const [failure, setFailure] = useState<Notice | null>(null);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [settingsAt, setSettingsAt] = useState<{ target?: SettingsTarget } | null>(null);
-  const [trace, setTrace] = useState<{ buildId?: string } | null>(null);
+  const [trace, setTrace] = useState<{ buildId?: string; runId?: string } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -79,7 +79,7 @@ export function AppServicesProvider({ children }: { children: ReactNode }) {
 
   const services = useMemo<AppServices>(
     // A button's onClick passes its event: only a real target counts.
-    () => ({ openSettings: (target) => setSettingsAt({ target: asSettingsTarget(target) }), openTrace: (buildId) => setTrace({ buildId }) }),
+    () => ({ openSettings: (target) => setSettingsAt({ target: asSettingsTarget(target) }), openTrace: (buildId, runId) => setTrace({ buildId, runId }) }),
     [],
   );
 
@@ -106,7 +106,7 @@ export function AppServicesProvider({ children }: { children: ReactNode }) {
         <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
       </div>
       {settingsAt && <SettingsModal open at={settingsAt.target} onClose={() => setSettingsAt(null)} onSaved={onSaved} />}
-      {trace && <TraceModal open onClose={() => setTrace(null)} buildId={trace.buildId} />}
+      {trace && <TraceModal open onClose={() => setTrace(null)} buildId={trace.buildId} runId={trace.runId} />}
     </Services.Provider>
   );
 }

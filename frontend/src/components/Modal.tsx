@@ -13,12 +13,12 @@ interface ModalProps {
   footer?: ReactNode;
   /** Element to focus on open; defaults to the first focusable one in the body. */
   initialFocus?: RefObject<HTMLElement | null>;
-  /** `wide`: 720 px at most (Settings). */
-  size?: 'sm' | 'md' | 'wide' | 'lg';
+  /** `wide`: 720 px at most (Settings); `xl`: 1280 px at most (Trace, whose run rows expand into a wide table). */
+  size?: 'sm' | 'md' | 'wide' | 'lg' | 'xl';
   children: ReactNode;
 }
 
-const widths = { sm: 'max-w-sm', md: 'max-w-lg', wide: 'max-w-180', lg: 'max-w-4xl' } as const;
+const widths = { sm: 'max-w-sm', md: 'max-w-lg', wide: 'max-w-180', lg: 'max-w-4xl', xl: 'max-w-7xl' } as const;
 
 /**
  * A modal dialog: focus is trapped inside while it is open and returns to where it was on close;

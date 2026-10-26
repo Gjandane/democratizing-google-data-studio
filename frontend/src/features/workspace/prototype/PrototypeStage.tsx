@@ -4,8 +4,10 @@ import { api } from '../../../api/client';
 import { ApiError, type Assessment, type Build } from '../../../api/types';
 import { Button } from '../../../components/Button';
 import { EmptyState } from '../../../components/EmptyState';
+import { ErrorState } from '../../../components/ErrorState';
 import { Spinner } from '../../../components/Spinner';
 import type { BuildStream, StretchRuns } from '../../activity/useBuildStream';
+import { parseStageError, StageErrorActions } from '../../trace/stageErrors';
 import { useRefocusAfter, useStretchAction } from '../stretch';
 import { PendingList } from './PendingList';
 import { ReferencePanel } from '../ReferencePanel';
@@ -52,6 +54,8 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The failed revise run behind `error`, for "View model calls".
+  const [errorRun, setErrorRun] = useState<string | null>(null);
   const sent = useRef<PendingComment[] | null>(null);
   // A revise failure may persist the blocked batch before its assessment GET arrives.
   const savedCandidate = useRef<PendingComment[] | null>(null);
@@ -102,6 +106,7 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
     sent.current = null;
     setSubmitting(false);
     setError(commentsError.text);
+    setErrorRun(commentsError.runId ?? null);
   }, [commentsError]);
 
   if (specVersion === null) {
@@ -126,6 +131,7 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
     sent.current = batch;
     savedCandidate.current = batch;
     setError(null);
+    setErrorRun(null);
     setSubmitting(true);
     // The button disables as the batch starts: keep keyboard focus on the page.
     heading.current?.focus();
@@ -134,11 +140,14 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
       else { sent.current = null; savedCandidate.current = null; }
       setSubmitting(false);
       setError(reason instanceof ApiError ? reason.message : "Couldn't apply the comments. Try again.");
+      setErrorRun(null);
     });
   };
 
   const busy = submitting || applying;
   const batchSize = sent.current?.length ?? pending.length;
+  // A revise run that stopped on a stage limit: its message and actions sit above the comments.
+  const stageError = parseStageError(error);
 
   return (
     <div className="mt-6 flex flex-col gap-4">
@@ -225,6 +234,13 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
           />
         )}
       </div>
+      {stageError && (
+        <ErrorState
+          title="Couldn't apply the comments"
+          message={stageError.message}
+          actions={<StageErrorActions error={stageError} runId={errorRun} />}
+        />
+      )}
       <PendingList
         comments={pending}
         presentCids={presentCids}
@@ -232,7 +248,7 @@ export function PrototypeStage({ build, applying, commentsError, stretchRuns = n
         applying={busy}
         lockReason={reviewLock}
         batchSize={batchSize}
-        error={error}
+        error={stageError ? null : error}
         headingRef={heading}
         onRemove={(id) => setPending((list) => list.filter((c) => c.id !== id))}
         onApply={apply}

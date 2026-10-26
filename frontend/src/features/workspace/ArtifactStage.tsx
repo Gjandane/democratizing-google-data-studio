@@ -23,6 +23,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { ErrorState } from '../../components/ErrorState';
 import { LoadingState } from '../../components/Spinner';
 import { presetFor } from '../activity/presets';
+import { parseStageError, StageErrorActions } from '../trace/stageErrors';
 import type { BuildStream, RunErrorNode } from '../activity/useBuildStream';
 import { BlueprintTable } from './blueprint/BlueprintTable';
 import { IssueSlotContext, IssueSlotProvider, rowResolved } from './blueprint/issueSlots';
@@ -122,7 +123,7 @@ function Issues({ issues }: { issues: ValidationIssue[] }) {
 type ArtifactStageProps = {
   build: Build;
   name: ArtifactName;
-  stream: Pick<BuildStream, 'artifactSeq' | 'running' | 'runErrors'> & Partial<Pick<BuildStream, 'activity'>>;
+  stream: Pick<BuildStream, 'artifactSeq' | 'running' | 'runErrors'> & Partial<Pick<BuildStream, 'activity' | 'runErrorIds'>>;
   /** The Feasibility panel, under the header. */
   feasibility?: ReactNode;
   /** Blueprint only: feasibility resolved and references ready, so Accept may run. */
@@ -285,6 +286,8 @@ function ArtifactStageBody({
   const startedRuns = (stream.activity ?? []).map((run) => run.runId);
   const runError = copy.runs.map((node) => ({ node, text: stream.runErrors[node] })).find((e) => e.text);
   const retryNode = runError?.node;
+  // A stage limit or used-up repairs (api.md 3.0): the message without its code, and where to look next.
+  const stageError = parseStageError(runError?.text);
   const why = state === 'stale' ? staleCause(build, name) : null;
 
   let body: ReactNode;
@@ -329,7 +332,8 @@ function ArtifactStageBody({
         <ErrorState
           className="mt-4"
           title={retryNode === 'prototype' ? "Couldn't render the prototype" : `The ${STAGE_LABELS[name].toLowerCase()} run failed`}
-          message={runError.text}
+          message={stageError?.message ?? runError.text}
+          actions={stageError && <StageErrorActions error={stageError} runId={stream.runErrorIds?.[retryNode]} />}
           onRetry={() => void act(retryNode === 'prototype' ? 'primary' : 'secondary')}
           retryDisabled={locked || (retryNode === 'prototype' ? !here || !valid : !copy.secondaryIn.includes(build.stage))}
         />

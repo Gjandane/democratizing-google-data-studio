@@ -1,5 +1,5 @@
 import { Activity, ArrowLeft, ChartColumn, Hammer, Settings } from 'lucide-react';
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import { ApiError, ARTIFACTS, type ArtifactName, type Assessment, type Build, type Stage } from '../../api/types';
@@ -10,6 +10,8 @@ import { LoadingState } from '../../components/Spinner';
 import { ActivityColumn } from '../activity/ActivityColumn';
 import { useBuildStream, type BuildStream } from '../activity/useBuildStream';
 import { DoneStage } from '../history/DoneStage';
+import type { SettingsTarget } from '../settings/stageSettings';
+import { RunErrorActionsContext, type RunErrorActions } from '../trace/stageErrors';
 import { ConnectStage } from './connect/ConnectStage';
 import { BuildStage } from './build/BuildStage';
 import { failedCount, idleRun } from './build/buildRun';
@@ -36,9 +38,10 @@ const STAGE_LEADS: Record<'connect' | 'prototype' | 'build' | 'done', string> = 
 const isArtifact = (stage: Stage): stage is ArtifactName => (ARTIFACTS as readonly string[]).includes(stage);
 
 interface WorkspaceShellProps {
-  /** The Trace and Settings buttons stay disabled until something handles them. */
-  onOpenTrace?: () => void;
-  onOpenSettings?: () => void;
+  /** The Trace and Settings buttons stay disabled until something handles them. A run error's "View model calls" passes its run. */
+  onOpenTrace?: (runId?: string) => void;
+  /** A stage-limit error's "Adjust in Settings" passes its stage. */
+  onOpenSettings?: (target?: SettingsTarget) => void;
 }
 
 function TopBar({ build, viewing, onSelect, onOpenTrace, onOpenSettings }: { build: Build | null; viewing: Stage | null; onSelect: (stage: Stage) => void } & WorkspaceShellProps) {
@@ -61,10 +64,10 @@ function TopBar({ build, viewing, onSelect, onOpenTrace, onOpenSettings }: { bui
       <div className="min-w-0 px-4">{build && <Stepper build={build} viewing={viewing ?? build.stage} onSelect={onSelect} />}</div>
       {/* Below 1440 px the eight-step stepper needs the room: Trace and Settings keep their names for screen readers only. */}
       <div className="flex items-center gap-1 px-3">
-        <Button variant="ghost" size="sm" icon={<Activity aria-hidden="true" />} disabled={!onOpenTrace} onClick={onOpenTrace} title="Trace" className="max-[1439px]:gap-0 max-[1439px]:px-1.5">
+        <Button variant="ghost" size="sm" icon={<Activity aria-hidden="true" />} disabled={!onOpenTrace} onClick={() => onOpenTrace?.()} title="Trace" className="max-[1439px]:gap-0 max-[1439px]:px-1.5">
           <span className="max-[1439px]:sr-only">Trace</span>
         </Button>
-        <Button variant="ghost" size="sm" icon={<Settings aria-hidden="true" />} disabled={!onOpenSettings} onClick={onOpenSettings} title="Settings" className="max-[1439px]:gap-0 max-[1439px]:px-1.5">
+        <Button variant="ghost" size="sm" icon={<Settings aria-hidden="true" />} disabled={!onOpenSettings} onClick={() => onOpenSettings?.()} title="Settings" className="max-[1439px]:gap-0 max-[1439px]:px-1.5">
           <span className="max-[1439px]:sr-only">Settings</span>
         </Button>
       </div>
@@ -365,6 +368,12 @@ export function WorkspaceShell({ onOpenTrace, onOpenSettings }: WorkspaceShellPr
     setReopened(next === stage ? null : { stage: next, from: stage });
   };
 
+  // Run errors anywhere in the workspace open Settings at a stage or Trace at a run.
+  const runErrorActions = useMemo<RunErrorActions>(
+    () => ({ openSettings: onOpenSettings && ((target) => onOpenSettings(target)), openTrace: onOpenTrace && ((runId) => onOpenTrace(runId)) }),
+    [onOpenSettings, onOpenTrace],
+  );
+
   const title = load.status === 'ready' ? load.build.title : null;
   useEffect(() => {
     if (!title) return;
@@ -376,28 +385,30 @@ export function WorkspaceShell({ onOpenTrace, onOpenSettings }: WorkspaceShellPr
   }, [title]);
 
   return (
-    <div className="grid h-full grid-rows-[var(--layout-topbar)_minmax(0,1fr)]">
-      <TopBar build={load.status === 'ready' ? load.build : null} viewing={shown} onSelect={select} onOpenTrace={onOpenTrace} onOpenSettings={onOpenSettings} />
-      {load.status === 'ready' && shown !== null ? (
-        <Workspace build={load.build} shown={shown} mainRef={main} onBuildChange={(b) => setLoad({ status: 'ready', build: b })} />
-      ) : (
-        <main ref={main} tabIndex={-1} className="mx-auto w-full max-w-(--layout-page) px-6 py-8 outline-none">
-          {load.status === 'error' ? (
-            <ErrorState
-              title="Couldn't open this build"
-              message={load.message}
-              onRetry={retry}
-              actions={
-                <Link to="/" className={buttonClass('ghost', 'sm')}>
-                  Back to dashboards
-                </Link>
-              }
-            />
-          ) : (
-            <LoadingState>Loading the build…</LoadingState>
-          )}
-        </main>
-      )}
-    </div>
+    <RunErrorActionsContext.Provider value={runErrorActions}>
+      <div className="grid h-full grid-rows-[var(--layout-topbar)_minmax(0,1fr)]">
+        <TopBar build={load.status === 'ready' ? load.build : null} viewing={shown} onSelect={select} onOpenTrace={onOpenTrace} onOpenSettings={onOpenSettings} />
+        {load.status === 'ready' && shown !== null ? (
+          <Workspace build={load.build} shown={shown} mainRef={main} onBuildChange={(b) => setLoad({ status: 'ready', build: b })} />
+        ) : (
+          <main ref={main} tabIndex={-1} className="mx-auto w-full max-w-(--layout-page) px-6 py-8 outline-none">
+            {load.status === 'error' ? (
+              <ErrorState
+                title="Couldn't open this build"
+                message={load.message}
+                onRetry={retry}
+                actions={
+                  <Link to="/" className={buttonClass('ghost', 'sm')}>
+                    Back to dashboards
+                  </Link>
+                }
+              />
+            ) : (
+              <LoadingState>Loading the build…</LoadingState>
+            )}
+          </main>
+        )}
+      </div>
+    </RunErrorActionsContext.Provider>
   );
 }

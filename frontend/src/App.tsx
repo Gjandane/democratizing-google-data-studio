@@ -27,7 +27,7 @@ function NotFound() {
 function WorkspaceRoute() {
   const { id } = useParams();
   const { openSettings, openTrace } = useAppServices();
-  return <WorkspaceShell onOpenTrace={() => openTrace(id)} onOpenSettings={openSettings} />;
+  return <WorkspaceShell onOpenTrace={(runId) => openTrace(id, runId)} onOpenSettings={openSettings} />;
 }
 
 export function App() {

@@ -68,7 +68,7 @@ export type MockServiceFault = 'llm_unavailable' | 'gcp_not_configured' | null;
 /** The staged workflow's runs (api.md 2.0 `node` values). */
 type StagedNode = 'context' | 'outline_propose' | 'outline_other' | 'outline_suggest' | 'blueprint' | 'prototype';
 /** The runs the mock can fail (setMockRunFailure). */
-export type MockFailingNode = StagedNode | 'synthetic_schema' | 'synthetic_generate';
+export type MockFailingNode = StagedNode | 'revise' | 'synthetic_schema' | 'synthetic_generate';
 
 /** The four artifacts of a build; null until first written. */
 interface Artifacts {
@@ -389,6 +389,7 @@ function startRun(
 ): RunAccepted {
   const run_id = nextId('r');
   const buildId = build.id;
+  const startedAt = Date.now();
   // Every mocked run reports growing token totals, before each step so run.finished follows the last.
   let input = 0;
   let output = 0;
@@ -412,6 +413,20 @@ function startRun(
         : [
             () => {
               const failure = options.failure?.() ?? null;
+              // Trace records the run, so "View model calls" finds it.
+              state.traces.push({
+                run_id,
+                build_id: buildId,
+                node,
+                model: state.settings.stages.routine.model,
+                input_tokens: input,
+                output_tokens: output,
+                latency_ms: Date.now() - startedAt,
+                tool_calls: 0,
+                status: failure ? 'error' : 'ok',
+                error: failure?.error ?? null,
+                started_at: new Date(startedAt).toISOString().replace(/\.\d{3}Z$/, 'Z'),
+              });
               emit(buildId, { name: 'run.finished', data: { run_id, node, status: failure ? 'error' : 'ok', error: failure?.error ?? null } });
             },
           ]),
@@ -1581,15 +1596,18 @@ export function createMockApi(): ApiClient {
           throw new ApiError(409, 'feasibility_blocked', 'Comments saved. Resolve the requirements, then reapply the saved batch.');
         }
         requireModel();
+        const failure = failureOf('revise');
         return startRun(build, 'revise', (runId) => [
           () => emit(id, { name: 'node.progress', data: { run_id: runId, node: 'revise', text: `Applying ${comments.length} comments` } }),
           () => {
+            // A failed revise publishes nothing (api.md 3.0, Run errors).
+            if (failure()) return;
             build.spec_version = (build.spec_version ?? 0) + 1;
             touch(build);
             emit(id, { name: 'prototype.updated', data: { spec_version: build.spec_version } });
             announce(build);
           },
-        ]);
+        ], { failure });
       }),
 
     runAudit: (id) =>
@@ -1712,8 +1730,13 @@ export function createMockApi(): ApiClient {
     getRunCalls: (runId) =>
       respond((): RunCalls => {
         if (runId === fixtures.runCalls.run_id) return fixtures.runCalls;
-        // A run before 3.0 has a Trace but no recorded calls or settings snapshot.
-        if (state.traces.some((t) => t.run_id === runId)) return { run_id: runId, settings: null, calls: [], cost_usd_estimate: null, cost_complete: false };
+        // A run before 3.0 (the fixture traces) has no recorded calls or settings snapshot; a mocked run
+        // reports the settings in force and no calls (the mock calls no model).
+        if (fixtures.traces.some((t) => t.run_id === runId)) return { run_id: runId, settings: null, calls: [], cost_usd_estimate: null, cost_complete: false };
+        if (state.traces.some((t) => t.run_id === runId)) {
+          const { stages, fallback_model, review_briefs } = state.settings;
+          return { run_id: runId, settings: { stages, fallback_model, review_briefs }, calls: [], cost_usd_estimate: 0, cost_complete: true };
+        }
         throw new ApiError(404, 'run_not_found', 'This run is not recorded.', { run_id: runId });
       }),
 

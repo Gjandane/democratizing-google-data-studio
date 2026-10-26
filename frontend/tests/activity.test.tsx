@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../src/api/client';
@@ -7,6 +7,7 @@ import type { Build, BuildEvent } from '../src/api/types';
 import { formatTokens } from '../src/features/activity/activity';
 import { ActivityColumn } from '../src/features/activity/ActivityColumn';
 import { useBuildStream } from '../src/features/activity/useBuildStream';
+import { RunErrorActionsContext, type RunErrorActions } from '../src/features/trace/stageErrors';
 import { openMockBuildEvents } from '../src/mocks/events';
 import { fixtures } from '../src/mocks/fixtures';
 import { resetMockState } from '../src/mocks/api';
@@ -39,10 +40,14 @@ function fakeStream() {
   return { open, fire };
 }
 
-function Holder({ initial, open }: { initial: Build; open: OpenBuildEvents }) {
+function Holder({ initial, open, actions = {} }: { initial: Build; open: OpenBuildEvents; actions?: RunErrorActions }) {
   const [build, setBuild] = useState(initial);
   const stream = useBuildStream(build, setBuild, open);
-  return <ActivityColumn build={build} stream={stream} />;
+  return (
+    <RunErrorActionsContext.Provider value={actions}>
+      <ActivityColumn build={build} stream={stream} />
+    </RunErrorActionsContext.Provider>
+  );
 }
 
 function PropHolder({ build, open }: { build: Build; open: OpenBuildEvents }) {
@@ -58,11 +63,11 @@ async function contextBuild() {
   return created;
 }
 
-async function setup() {
+async function setup(actions?: RunErrorActions) {
   const created = await contextBuild();
   const build = await call(api.getBuild(created.id));
   const stream = fakeStream();
-  const view = render(<Holder initial={build} open={stream.open} />);
+  const view = render(<Holder initial={build} open={stream.open} actions={actions} />);
   await stream.fire({ name: 'ready', data: { build_id: build.id } });
   await advance(0);
   const start = (node: string, run_id = 'r_1') => stream.fire({ name: 'run.started', data: { run_id, node } });
@@ -282,6 +287,45 @@ describe('Run checklist card', () => {
     await finish('blueprint');
     expect(statuses()).toEqual(['done', 'done', 'done']);
     expect(strip()).toMatch(/^Done in/);
+  });
+
+  it('a stage-limit error shows its message without the code, Adjust in Settings and View model calls', async () => {
+    const openSettings = vi.fn();
+    const openTrace = vi.fn();
+    const { start, fire } = await setup({ openSettings, openTrace });
+    const message = 'reference_html page 1 attempt 1 stopped at the 65536-token output limit (answer 1210 tokens, thinking unknown).';
+    await start('prototype', 'r_cut');
+    await advance(12_000);
+    await fire({ name: 'run.finished', data: { run_id: 'r_cut', node: 'prototype', status: 'error', error: `stage_output_cutoff: ${message}` } });
+    expect(statuses()).toEqual(['done', 'failed', 'pending']);
+    const box = card()!;
+    expect(within(box).getByText(message)).toBeTruthy();
+    expect(box.textContent).not.toContain('stage_output_cutoff');
+    expect(within(box).getAllByRole('button').map((b) => b.textContent)).toEqual(['Adjust in Settings', 'View model calls']);
+    fireEvent.click(within(box).getByRole('button', { name: 'Adjust in Settings' }));
+    expect(openSettings).toHaveBeenCalledExactlyOnceWith({ stage: 'reference_html', field: 'output_tokens' });
+    fireEvent.click(within(box).getByRole('button', { name: 'View model calls' }));
+    expect(openTrace).toHaveBeenCalledExactlyOnceWith('r_cut');
+  });
+
+  it('html_invalid shows the message and only View model calls; other errors show no text, as before', async () => {
+    const openTrace = vi.fn();
+    const { start, fire } = await setup({ openSettings: vi.fn(), openTrace });
+    await start('prototype', 'r_inv');
+    await advance(12_000);
+    await fire({ name: 'run.finished', data: { run_id: 'r_inv', node: 'prototype', status: 'error', error: 'html_invalid: reference_html page 2 still failed its HTML checks after 2 repairs.' } });
+    expect(within(card()!).getByText('reference_html page 2 still failed its HTML checks after 2 repairs.')).toBeTruthy();
+    expect(within(card()!).getAllByRole('button').map((b) => b.textContent)).toEqual(['View model calls']);
+    fireEvent.click(within(card()!).getByRole('button', { name: 'View model calls' }));
+    expect(openTrace).toHaveBeenCalledExactlyOnceWith('r_inv');
+
+    await start('blueprint', 'r_other');
+    await advance(25_000);
+    await fire({ name: 'run.finished', data: { run_id: 'r_other', node: 'blueprint', status: 'error', error: 'Gemini timed out' } });
+    expect(card()?.dataset.runCard).toBe('r_other');
+    expect(statuses()).toEqual(['done', 'failed', 'pending']);
+    expect(card()!.textContent).not.toContain('Gemini timed out');
+    expect(within(card()!).queryAllByRole('button')).toHaveLength(0);
   });
 
   it('a node.progress text replaces the current step label', async () => {

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 
 export interface Column<T> {
   id: string;
@@ -20,6 +20,8 @@ interface TableProps<T> {
   showCaption?: boolean;
   /** Footer cells (totals) by column id. */
   footer?: Partial<Record<string, ReactNode>>;
+  /** A full-width row under a row (an expanded detail), or null for none. */
+  rowDetail?: (row: T) => ReactNode;
   className?: string;
 }
 
@@ -28,7 +30,7 @@ const cellClass = <T,>(column: Column<T>, mono = column.mono) =>
   `px-3 ${column.align === 'right' ? 'text-right tabular-nums' : 'text-left'} ${mono ? 'font-mono' : ''} ${column.className ?? ''}`;
 
 /** A dense data table. */
-export function Table<T>({ columns, rows, rowKey, caption, showCaption = false, footer, className = '' }: TableProps<T>) {
+export function Table<T>({ columns, rows, rowKey, caption, showCaption = false, footer, rowDetail, className = '' }: TableProps<T>) {
   return (
     <div className={`overflow-x-auto ${className}`}>
       <table className="w-full border-collapse text-label text-text">
@@ -43,15 +45,27 @@ export function Table<T>({ columns, rows, rowKey, caption, showCaption = false, 
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={rowKey(row)} className="border-b border-border last:border-b-0">
-              {columns.map((column) => (
-                <td key={column.id} className={`h-9 py-1.5 ${cellClass(column)}`}>
-                  {column.cell(row)}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {rows.map((row) => {
+            const detail = rowDetail?.(row) ?? null;
+            return (
+              <Fragment key={rowKey(row)}>
+                <tr className="border-b border-border last:border-b-0">
+                  {columns.map((column) => (
+                    <td key={column.id} className={`h-9 py-1.5 ${cellClass(column)}`}>
+                      {column.cell(row)}
+                    </td>
+                  ))}
+                </tr>
+                {detail !== null && (
+                  <tr className="border-b border-border bg-surface-muted last:border-b-0">
+                    <td colSpan={columns.length} className="px-3 py-3">
+                      {detail}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
         {footer && (
           <tfoot>

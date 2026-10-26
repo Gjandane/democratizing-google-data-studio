@@ -59,9 +59,11 @@ export interface BuildStream {
   /** A `revise` run (applying comments) has started and not finished. */
   applying: boolean;
   /** Set when a `revise` run ends in error; `seq` changes on every failure, even an identical one. */
-  commentsError: { seq: number; text: string } | null;
+  commentsError: { seq: number; text: string; runId?: string } | null;
   /** The error of the latest failed staged run per node; cleared when that node runs again. */
   runErrors: RunErrors;
+  /** The run each `runErrors` entry came from (Trace opens at it). */
+  runErrorIds: Partial<Record<RunErrorNode, string>>;
   /** The latest `brief.review` pause (api.md 3.0): the run finished ok and waits for the user. Cleared when a run starts and on reconnect (refetch the design pages). */
   briefReview: BriefReviewPause | null;
   /** The engine run of the build stage, folded from build.* and run.* events. */
@@ -81,12 +83,13 @@ const errorText = (error: unknown, fallback: string) => (error instanceof ApiErr
 export function useBuildStream(build: Build, onBuildChange: (build: Build) => void, open?: OpenBuildEvents): BuildStream {
   const [messages, setMessageState] = useState<Message[] | null>(null);
   const [runErrors, setRunErrors] = useState<RunErrors>({});
+  const [runErrorIds, setRunErrorIds] = useState<Partial<Record<RunErrorNode, string>>>({});
   const [briefReview, setBriefReview] = useState<BriefReviewPause | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [artifactSeq, setArtifactSeq] = useState<ArtifactSeq>(NO_ARTIFACT_CHANGES);
   const [applying, setApplying] = useState(false);
-  const [commentsError, setCommentsError] = useState<{ seq: number; text: string } | null>(null);
+  const [commentsError, setCommentsError] = useState<BuildStream['commentsError']>(null);
   const [buildRun, setBuildRun] = useState<BuildRun>(idleRun);
   const [stretchRuns, setStretchRuns] = useState<StretchRuns>({});
   const [activityOf, setActivityOf] = useState<{ buildId: string; runs: Activity }>({ buildId: build.id, runs: [] });
@@ -242,13 +245,14 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
           setStretchRuns((runs) => ({ ...runs, [node]: { run_id, status: status === 'ok' ? 'ok' : 'error', error } }));
         }
         if (isRunErrorNode(event.data.node) && event.data.status === 'error') {
-          const { node, error } = event.data;
+          const { node, error, run_id } = event.data;
           setRunErrors((errors) => ({ ...errors, [node]: error ?? RUN_ERROR_FALLBACK[node] }));
+          setRunErrorIds((ids) => ({ ...ids, [node]: run_id }));
         }
         if (event.data.node === 'revise') {
           setApplying(false);
           if (event.data.status === 'error') {
-            setCommentsError({ seq: ++errorSeq.current, text: event.data.error ?? "Couldn't apply the comments. Try again." });
+            setCommentsError({ seq: ++errorSeq.current, text: event.data.error ?? "Couldn't apply the comments. Try again.", runId: event.data.run_id });
           }
         }
         // A failed run never sends message.done for its draft.
@@ -265,5 +269,5 @@ export function useBuildStream(build: Build, onBuildChange: (build: Build) => vo
 
   const running = [...activity].reverse().find((run) => run.status === 'running')?.node ?? null;
 
-  return { activity, messages, loadError, drafts, running, artifactSeq, applying, commentsError, runErrors, briefReview, buildRun, stretchRuns, status, reload: load };
+  return { activity, messages, loadError, drafts, running, artifactSeq, applying, commentsError, runErrors, runErrorIds, briefReview, buildRun, stretchRuns, status, reload: load };
 }

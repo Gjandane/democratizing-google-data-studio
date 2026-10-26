@@ -1,6 +1,7 @@
 import { Check, Circle, CirclePause, X } from 'lucide-react';
 import { useLayoutEffect } from 'react';
 import { Spinner } from '../../components/Spinner';
+import { parseStageError, StageErrorActions } from '../trace/stageErrors';
 import { presetFor } from './presets';
 import { cardRun, currentStep, nextChange, useActivityClock, type Activity } from './activity';
 
@@ -22,7 +23,8 @@ function StepIcon({ status }: { status: StepStatus }) {
 /**
  * The preset checklist of the newest run with steps. Steps tick on their preset timer; the last
  * one waits for `run.finished` ok, so the card never claims a result before the server does.
- * A run that paused for a brief review ends on "Paused for brief review" instead of a tick.
+ * A run that paused for a brief review ends on "Paused for brief review" instead of a tick. A run
+ * that stopped on a stage limit (api.md 3.0) says why, with Adjust in Settings and View model calls.
  */
 export function RunCard({ activity, onShow }: { activity: Activity; onShow?: () => void }) {
   const now = Date.now();
@@ -37,6 +39,7 @@ export function RunCard({ activity, onShow }: { activity: Activity; onShow?: () 
   if (!run || !preset?.steps) return null;
 
   const current = currentStep(preset.steps, now - run.startedAt);
+  const stageError = run.status === 'error' ? parseStageError(run.error) : null;
   const last = preset.steps.length - 1;
   const pausedHere = run.paused && run.status === 'ok';
   const statusOf = (i: number): StepStatus => {
@@ -71,6 +74,14 @@ export function RunCard({ activity, onShow }: { activity: Activity; onShow?: () 
           );
         })}
       </ol>
+      {stageError && (
+        <div className="mt-2 border-t border-border pt-2">
+          <p className="text-label text-text [overflow-wrap:anywhere]">{stageError.message}</p>
+          <div className="mt-1.5 flex flex-wrap gap-2">
+            <StageErrorActions error={stageError} runId={run.runId} />
+          </div>
+        </div>
+      )}
     </section>
   );
 }

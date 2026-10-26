@@ -24,6 +24,8 @@ export interface ActivityRun {
   labels: Readonly<Record<number, string>>;
   /** The step that was current when the run failed. */
   failedStep: number | null;
+  /** `run.finished.error` of a failed run, else null. */
+  error: string | null;
   /** The run emitted `brief.review` (api.md 3.0): it finishes ok but paused for the user's brief review. */
   paused: boolean;
   /**
@@ -65,6 +67,7 @@ export function reduceActivity(runs: Activity, event: BuildEvent, now: number, m
         ops: 0,
         labels: {},
         failedStep: null,
+        error: null,
         paused: false,
         after: messages,
       };
@@ -99,6 +102,7 @@ export function reduceActivity(runs: Activity, event: BuildEvent, now: number, m
           status: ok ? 'ok' : 'error',
           finishedAt: now,
           failedStep: ok || !steps ? null : currentStep(steps, now - r.startedAt),
+          error: ok ? null : event.data.error,
         };
       });
     }
