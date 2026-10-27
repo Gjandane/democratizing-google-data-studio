@@ -707,7 +707,7 @@ Final-audit corrections (2026-10-19):
   one permitted fresh recreate case (run 20261027-173624-405b4862) extracted cleanly and
   blocked at feasibility on an unlabeled control (#Unlabeled reference control binding). One
   clean response does not prove the intermittent failure fixed.
-- Live ruling for 25.9: the full three-case check runs at unchanged inputs and contract
+- Live ruling for 25.9 (now 25.10): the full three-case check runs at unchanged inputs and contract
   defaults. A recreate reference_extract answer that is rejected (`llm_unavailable` from an
   invalid/unparseable answer, any diagnostic boundary) blocks with its saved diagnostic and no
   rerun; no separate paid probe. A provider-transient failure there (429/500/503 after retries
@@ -1100,6 +1100,44 @@ Final-audit corrections (2026-10-19):
   style/data/no-reference builds are byte-identical; the 18.2, 21.1, 22.1, 24.9 and 24.10
   fixtures publish unchanged.
 
+### Unlabeled control binding enforcement
+- Problem (25.9 block, change 2026-10-27): capability_check supplied
+  `control.dropdown {control_field: region}` for the electricity image's unlabeled control.
+  That made its need valid before the 25.8 explicit offer path ran. A proposed mapping can
+  also claim an instruction label or leak an inferred dimension to the Blueprint.
+- Inputs: the active recreate reference's original image observation, its extracted field-control
+  candidate, worker/persisted requirement rows, instructions/schema and existing decisions.
+  Output: an unresolved control_field issue with the existing binding offers, or the needs of
+  a currently valid explicit decision. Scope is the existing `_unlabeled_control` predicate;
+  a null/blank original label stays unlabeled regardless of a worker's generated labels.
+- Invariant: an unlabeled field control gets its field/type binding only through an accepted,
+  currently applying need-substitution decision (#Unlabeled reference control binding).
+  The undecided typed need uses the extracted candidate with no control_field. Worker-proposed
+  need fields, mappings and their binding origins cannot authorize a field, consume an unused
+  instruction clause or become planner dimensions. Position, order, a sole field/clause,
+  metric_label or a generated label are not binding evidence. Original source evidence and
+  unrelated requested behavior remain intact; named observations retain existing reconciliation.
+- Normalize in shared deterministic reconciliation, including after saved surface restoration;
+  node-only filtering is insufficient. Repeated reconciliation must be idempotent, including
+  the saved baseline/origins, so inferred fields cannot reappear. Do not mutate the requirement
+  into the accepted binding: existing decisions remain the sole substitution/provenance path.
+- Existing clean 25.8 clause/field decisions remain applying when prerequisites are unchanged;
+  changed/removed clauses, reference identity or schema still revoke them normally. Polluted
+  persisted rows cannot be reported ready or reach plan/publish/recipe/run without a valid
+  binding: pure checks block through the existing observation-stale/feasibility gate without
+  writing on reads, and explicit Check feasibility normalizes before presenting offers.
+  Reconciliation must not manufacture fresh authorization from a pre-normalization decision.
+- Oracle: copy the recorded 25.9 run-2 unlabeled row into a sanitized offline fixture (no live
+  call), plus a variant with a proposed mapping/label and a saved surface baseline. Before the
+  repair the model-filled region need bypasses clarification; after it the Region Selector
+  clause is available and the control remains unresolved with no inferred planner dimension.
+  Accept that offer through the real API: page 1 publishes fixed_size_list/region, coverage and
+  recipe pass, fake engine done. Exercise repeated checks, reload/version copy, pure evaluation
+  of an old polluted row, and unchanged clean accepted decisions; invalidated choices block.
+  Labeled controls, other reference modes and existing accepted fixtures remain unchanged.
+- Budget: no new model/query call, dependency, contract, grammar or automatic user decision;
+  the existing <100 ms oracle and operation-local reuse below still apply.
+
 ### Build docs
 - Problem: the durable design brief (OKF bundle per version), written by code (change 2026-10-21).
 - Rules (change staged workflow 2026-10-21): `data/builds/<id>/v<n>/docs/` holds `index.md`,
@@ -1244,7 +1282,8 @@ Final-audit corrections (2026-10-19):
     overlapping another box is a measure error.
   - No text, icon or image element intersects any slot box; every text element fits its box
     (no overflow or clipping, same rule as #Prototype renderer's text fit); on page 1 of a
-    synthetic build, nothing intersects the reserved 64 px footer, which code still draws.
+    synthetic build, no visible paint/text intersects the reserved 64 px code-drawn footer
+    (#Synthetic footer geometry).
   - Sanitizer (stdlib parser, allowlist): structural/text tags, one `<style>` scoped to the page
     root, inline SVG limited to shape elements; strip scripts, event attributes, iframes,
     forms, links, `<use>`, `foreignObject`, `href`/`src`, CSS `url()`, `@import`, `@font-face`
@@ -1310,6 +1349,16 @@ Final-audit corrections (2026-10-19):
   cover repair, per-page fallback and page-1 fallback. Live: the user approves the real
   planner's pages against the reference image (STOP), and the Data Studio report shows each
   chart inside its card.
+
+### Synthetic footer geometry
+- The approved 25.9 implementation checks visible element paint and text glyphs in the
+  reserved 64 px synthetic footer. Transparent flex/grid containers stretched by the final
+  root height do not occupy that band visually; descendants are checked independently.
+  Slots, SVG shapes, icons/art and list markers always count, as do supported backgrounds,
+  borders and shadows. Retain existing native-slot/overlap checks.
+- Oracle: preserve tests/test_design_page.py's transparent-stretch positive cases and paint,
+  text, slot, SVG-shape and list-marker negatives. Re-measuring the sanitized failed drafts
+  from 25.9 run 1 must no longer reject the transparent container; no live call is needed.
 
 ### Reference design brief
 - Change 2026-10-26 (configurable model stages): models, thinking, token caps, clocks, retry and
@@ -1454,6 +1503,21 @@ Final-audit corrections (2026-10-19):
   a later page, a design revision, style mode and no-reference regression. The user approves
   fidelity at the STOP; passing tests alone cannot mark the live task done. Full engine/report
   integration remains the release part's responsibility.
+- Resume after the 25.9 block (user answer 2026-10-27): first finish offline binding/performance
+  repair 25.9, then 25.10 gets one new acceptance campaign at unchanged api.md 3.1 defaults
+  (native_planning 1,200 s). Recreate first with `-x`; the existing per-case transient retry
+  rule stays, deterministic timeout/cap/coverage/fidelity failures stop without another run.
+  Prior 25.9 evidence is immutable. No larger clock or automatic timeout retry is authorized.
+- The fixture harness tracks Region Selector acceptance across every assessment in the recreate
+  case, not just one response. For an unlabeled field control, readiness without the approved
+  clause decision is a block before native_planning. At most one observation may receive
+  that clause; a second distinct binding blocks. Re-reading the same applying decision is not
+  another acceptance. Before accept and after publication verify the bound page-1 component
+  is fixed_size_list on region and record its observation, issue, alternative and component ids.
+  An originally labeled region control may instead use the existing exact-label instruction
+  reconciliation, with its type/field and provenance checked; never identify a control by box,
+  item order or assuming that its id is o5. Offline helper tests cover sequential assessments,
+  duplicate decision reads, readiness with no authorized binding, and labeled reconciliation.
 
 ### Reference thinking comparison
 - Historical (superseded 2026-10-26 by #Stage settings and #Stage execution): the HIGH-first
@@ -1672,6 +1736,20 @@ Final-audit corrections (2026-10-19):
   409 on other routes, sequential pages, and publication bytes unchanged by a cancelled review.
 
 ### Feasibility recomputation performance preservation
+- Final POC closure ruling (user answer, 2026-10-27): the acceptance limit is now
+  **250 ms warm**, superseding every earlier 100 ms deterministic recomputation budget in
+  this document and completed task checks. Keep each existing fixture, timed workload,
+  sample count, semantic assertion and state variant. Existing multi-sample checks retain
+  their best-sample comparison with a 0.250 s threshold; single-sample checks keep their
+  current call count with the same threshold. Save every existing sample, identifying the
+  first sample separately; do not claim a process-cold measurement unless it was actually
+  measured. The prior complete-workload first/warm measurements (1,076.885 / 105.065 /
+  104.367 ms) remain recorded. No cold-start SLO is introduced. No extra warm-up, dropped
+  reconciliation step, favorable rerun or runtime optimization is needed to apply this
+  user-approved POC concession. A failure at the revised limit still blocks with evidence.
+  Preserve explicit binding, stale-proof rejection, purity, operation-local cache scope,
+  configuration invalidation and before/after semantic comparisons. Task 25.9's remaining
+  work is acceptance-test alignment and full offline verification; live acceptance is 25.10.
 - Problem (24.11's block, 2026-10-26): `test_recreate_blueprint_recompute_speed_with_24_observations`
   measured 107.786 ms and 103.568 ms (best) against its unchanged <100 ms assertion; cause unproven.
 - Inputs: current snapshot, ledger, checker, environment/allowed types, 24 observations and the
@@ -1691,6 +1769,22 @@ Final-audit corrections (2026-10-19):
   decisions, allowed types). Every existing speed test keeps its workload, loop and threshold.
 - Budget: the unchanged <100 ms test in its module and in the full suite. A correction that
   cannot pass blocks with evidence; never rerun until a lucky sample passes.
+- 25.9 follow-up (change 2026-10-27): the binding-offer fixture measured 125-166 ms; the saved
+  profile attributes about 55% to repeated `_offered_types` dotenv/environment reads. Extend
+  the same measured, operation-local reuse to effective offered types: one immutable snapshot
+  per merge/reconciliation or evaluate operation, reused by all nested offer, clause, stale
+  and observation checks. Standalone callers get a fresh scope. The next operation reads the
+  current environment/.env again; retain existing os.environ precedence, empty allowlist,
+  catalog intersection and default semantics. Do not read/write actual secret values in QA.
+  Keep the complete effective allowlist in Checker digests, including text/image and unknown
+  configured names; intersect catalog chart/control types only for offered alternatives.
+- Additional oracle: unchanged `test_binding_offers_recompute_within_budget` workload (24
+  observations, 24 clauses, 16 unlabeled controls) passes <100 ms alongside the earlier speed
+  tests, both in-module and in the full suite. A spy proves bounded (at most one) dotenv read
+  per outer operation; synthetic env/dotenv fixtures prove that changing either is seen by the
+  next operation. Compare assessments and choices with the allowlist fixed and test purity,
+  cross-build isolation and invalidation. Binding changes intentionally alter polluted rows;
+  compare speed-only semantics on clean blocked/ready/decided rows, ignoring only fresh ids.
 
 ### Revise
 - Problem: comments -> the smallest spec change.
@@ -1846,8 +1940,24 @@ Admin 0 countries (public domain, v5.1.2) as the source of the generated `render
   normalization accepts only provably redundant bindings, not fabricated capability evidence.
 - Typed synthetic CSV loads use an empty null_marker so a single-column all-null csv.writer
   record (`""`) remains NULL and still counts as a row (live-checked task 12.2).
+- Nodes that alias dss.artifacts.state as `stages` import the execution hooks as
+  `execution_stages`, avoiding namespace collisions.
+- Revision change detection includes collected briefs even when a redraw produces identical
+  HTML and boxes, so changed brief files and provenance still publish.
+- Brief-review guards run before body intake and again at mutation/reservation after awaits
+  (`episodic.require_no_brief_review`, `prototype.mutation_current`). Recovery retains a
+  pending brief candidate only for a journal that is neither committed nor restored;
+  terminal journals retire stale review ownership restored from an older SQLite backup.
 
 ## Testing
+Durable test conventions folded from the final-audit gotcha sweep:
+- Fake-clock retry tests assert fake elapsed time; constructing mocked genai clients can
+  still consume real seconds.
+- Check existing module-level helper names before adding one to a large test file:
+  tests/test_feasibility.py already has API `choose(client, bid, assessment, *items)`.
+- The definition speed oracle includes `_reconcile_definitions`, `_reconcile_grains` and
+  `evaluate`; evaluate-only profiles do not prove the full workload's 250 ms acceptance.
+
 pytest, offline by default: FakeLLM (scripted responses by node), FakeBigQuery (in-memory rows
 from a CSV), fake engine (a script that prints ../contracts/fixtures/events.sample.jsonl).
 Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
@@ -1925,3 +2035,7 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-27 | native_planning defaults 131,072 / 65,536 tokens and 1,200 s per action (api.md 3.1); stored Settings keep their values. In 25.8: `llm_unavailable` from a schema-invalid answer on a 0-repair stage reruns once like a transient error; the Rural/Urban legend is dropped however it is extracted | thinking medium at 600 s / 32,768; a test-only Settings override; a reference_interpretation repair (contract change); keep blocking the legend-as-chart | 25.7 block: recreate blueprint timed out at 600 s; a 3,600 s benchmark used 25,240 thinking + 2,060 answer of 32,768 in 239 s; reference_extract schema failures ~3/26 runs | change 2026-10-27 (user cards) |
 | 2026-10-27 | Add sanitized extraction-boundary diagnostics inside 25.8, then one fresh recreate attempt with no further invalid-response retry; preserve all defaults, validators, inputs and the acceptance gate | guess a normalization/prompt fix; add interpretation repairs or fallback; repeat the old run without new evidence | both recreate attempts stopped before publication, but `invalid` is not proof of schema rejection and local validation discards its issue details; a repair needs a classified failure | change 25.8 diagnostics (architect ruling; no new contract or dependency) |
 | 2026-10-27 | An unlabeled field control's control_field issue offers unused instruction control clauses, then catalog-valid fields (only when they fit the issue scope), as code-built need substitutions; the user picks one and the decision record is its provenance. The 25.9 live harness pre-accepts only the `Region Selector` clause offer for an unlabeled control. In 25.9 a rejected recreate extraction answer blocks without rerun; provider-transient errors keep one rerun | label-free instruction form matched by control type; drop the region list; infer by position or a sole candidate | 25.8 fresh recreate blocked on o5 (unlabeled region list, label null); extractor type/labels vary per run; explicit choice keeps code from inferring | change 25.8 binding (user cards) |
+| 2026-10-27 | Enforce explicit unlabeled-control binding in shared reconciliation, including model-filled and restored field/mapping guesses; snapshot offered types per operation while retaining current config on the next; offline repair 25.9 precedes live acceptance 25.10 | filter only in the live harness or node; trust a model-filled region field; global config cache; relax the 100 ms oracle | run 2 bypassed the offers as dropdown/region; repeated dotenv reads dominate the failed speed oracle; both fixes restore existing guarantees | change 25.9 repair (architect ruling; user selected repair before live) |
+| 2026-10-27 | Retain the user-approved footer fix: visible paint/text is forbidden in the reserved band, transparent stretched containers alone are allowed; preserve tests and existing native-slot rules | reject every transparent container box; change generated HTML to avoid the false positive | 25.9 run 1 failed on a flex child stretched by measurement, with content above the footer; approved implementation is already present | change 25.9 repair (records prior user approval) |
+| 2026-10-27 | Keep native_planning's contract default at 1,200 s; after offline repairs allow one new 25.10 acceptance campaign under the existing stop rules; harness checks binding provenance across assessments | raise the default at the program root; defer live acceptance; rerun a deterministic timeout | user chose keep 1,200 seconds, repair, then one new live attempt; prior 25.9 runs stay immutable and unpublished | change 25.9 repair (user answer) |
+| 2026-10-27 | Final POC deterministic feasibility acceptance is 250 ms warm; retain existing workloads/samples/semantics and report first/cold time separately | another optimization campaign to retain 100 ms; favorable reruns | explicit user concession after full-workload 104-105 ms warm and 1.08 s first-sample evidence; no backend contract fixes 100 ms | final audit 2026-10-27 (user answer) |

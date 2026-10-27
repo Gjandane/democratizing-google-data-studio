@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:459ca0dc451b (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:6fd3f92c9e5e (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 docs/architecture.md wins.
 
@@ -60,13 +60,23 @@ tests/          offline fakes; tests/live/ marked live
   unenforced period phrases and show the mapped unit (#Recreate page placement and truthful
   observed titles). An unlabeled field control's control_field issue offers unused instruction
   control clauses, then catalog-valid fields; never auto-bound (#Unlabeled reference control
-  binding).
+  binding). Model-filled fields/mappings on an originally unlabeled field control cannot
+  bypass those decisions, including after reload (#Unlabeled control binding enforcement).
+  Reuse effective allowed types only within an operation; the next operation sees current
+  env/.env (#Feasibility recomputation performance preservation).
+  Final POC speed acceptance: 250 ms warm (user, 2026-10-27), with first/cold timings
+  reported separately. This supersedes earlier 100 ms gates; workloads and correctness stay.
 - Synthetic: opt-in schema/count/seed -> stdlib CSV -> typed BQ intake; protected page-1 footer.
+  Footer checks visible paint/text; a transparent stretched container does not fail on its own.
 - Reference extraction diagnostics: code-owned boundary/category + bounded schema paths on the
   existing span; no raw answers/validator messages/values (#Reference extraction diagnostics).
-  Local rejection marks its call invalid. 25.8 added diagnostics; in 25.9 a rejected
+  Local rejection marks its call invalid. 25.8 added diagnostics; in live acceptance a rejected
   recreate extraction answer blocks without rerun (provider-transient: one). Defaults stay 3.1.
+  After offline repair 25.9, one new live campaign is authorized in 25.10 at 1,200 s planning;
+  deterministic failures stop. Region Selector authorization is checked across assessments.
 - Tests offline unless marked live. Research <=20 fetches, no retries.
+  Durable stage-import, brief-publication/recovery and test-oracle rules live in
+  architecture.md#Implementation conventions and #Testing.
 
 ## Never do
 - No LangGraph, no vector store, no embeddings, no pandas.

@@ -773,7 +773,7 @@ def test_busy_stage_missing_and_empty_body(thin, monkeypatch):
     assert client.post(f"/api/builds/{bid}/feasibility/check").status_code == 409
 
 
-def test_deterministic_bounded_recompute_speed():
+def test_deterministic_bounded_recompute_speed(record_property):
     checker = capabilities.Checker(capabilities.load_registry())
     ledger = req.Ledger(requirements=[req.Requirement(id=f"r{i}", source=req.Source(id="m", kind="message", text="bar"),
         text=f"Bar {i}", needs=[capabilities.Need(capability="chart.bar")]) for i in range(40)])
@@ -781,10 +781,13 @@ def test_deterministic_bounded_recompute_speed():
         "pages": [{"components": [{"id": f"c{i}", "type": "bar"} for i in range(24)]}]}}
     start = time.perf_counter()
     a = req.evaluate(snapshot, ledger, checker)
-    assert a.state == "ready" and time.perf_counter() - start < .1
+    elapsed = time.perf_counter() - start
+    record_property('recompute_first_sample_s', elapsed)
+    record_property('recompute_samples_s', json.dumps([elapsed]))
+    assert a.state == "ready" and elapsed < .250
 
 
-def test_bounded_recompute_speed_with_definitions():
+def test_bounded_recompute_speed_with_definitions(record_property):
     # Definition reconciliation scans every message for every label/field pair.
     cols = [{'name': f'c{i}', 'type': 'number', 'bq_type': 'FLOAT'} for i in range(28)]
     cols += [{'name': 'region', 'type': 'string', 'bq_type': 'STRING'}, {'name': 'order_date', 'type': 'date', 'bq_type': 'DATE'}]
@@ -804,7 +807,9 @@ def test_bounded_recompute_speed_with_definitions():
         req._reconcile_grains(ledger, snapshot)
         req.evaluate(snapshot, ledger, checker)
         timings.append(time.perf_counter() - start)
-    assert min(timings) < .1, timings
+    record_property('recompute_first_sample_s', timings[0])
+    record_property('recompute_samples_s', json.dumps(timings))
+    assert min(timings) < .250, timings
 
 
 RECREATE = json.loads((Path(__file__).parent / 'data/recreate_definitions.json').read_text(encoding='utf-8'))
@@ -979,8 +984,8 @@ def test_recreate_changed_or_draft_kpis_and_schema_invalidate_without_a_check():
     assert any(i.status == 'needs_data' and 'revenue' in i.reason for i in missing.issues)
 
 
-def test_recreate_bounded_recompute_speed():
-    """24 observations (the interpretation maximum) reconcile with KPIs and instructions within 100 ms."""
+def test_recreate_bounded_recompute_speed(record_property):
+    """24 observations (the interpretation maximum) reconcile with KPIs and instructions within 250 ms warm."""
     items = [{**RECREATE['items'][1 + n % 5], 'label': f'Chart {n}'} for n in range(24)]
     extraction = {f'o{n + 1}': RECREATE['extraction'][f'o{2 + n % 5}'] for n in range(24)}
     extraction['instructions'] = RECREATE['extraction']['instructions']
@@ -993,7 +998,9 @@ def test_recreate_bounded_recompute_speed():
         start = time.perf_counter()
         req.evaluate(snapshot, ledger, checker, check_components=False)
         timings.append(time.perf_counter() - start)
-    assert min(timings) < .1, timings
+    record_property('recompute_first_sample_s', timings[0])
+    record_property('recompute_samples_s', json.dumps(timings))
+    assert min(timings) < .250, timings
 
 
 def test_ledger_mandatory_and_no_rows(thin, monkeypatch):
@@ -1397,7 +1404,7 @@ def test_static_map_alternative_checks_inherited_type_and_binding():
     assert req.evaluate(snapshot, ledger, checker).state == "blocked"
 
 
-def test_decision_recompute_budget():
+def test_decision_recompute_budget(record_property):
     checker = capabilities.Checker(capabilities.load_registry())
     snapshot = {"sources": [], "incoming": [], "reference": None, "definitions": {}, "spec": {
         "datasource": {"table": "p.d.view", "fields": [{"name": "observed_at", "type": "DATE"}]},
@@ -1412,7 +1419,9 @@ def test_decision_recompute_budget():
     started = time.perf_counter()
     a = req.evaluate(snapshot, ledger, checker)
     elapsed = time.perf_counter() - started
-    assert a.state == "ready" and elapsed < .1
+    record_property('recompute_first_sample_s', elapsed)
+    record_property('recompute_samples_s', json.dumps([elapsed]))
+    assert a.state == "ready" and elapsed < .250
 
 
 def staged_snapshot(pages, questions):
@@ -1683,8 +1692,8 @@ def test_style_and_data_builds_skip_observation_coverage(monkeypatch):
         assert not any(e['code'] == 'observation' for e in feasibility.diagnostics(snapshot, req.Ledger(), checker))
 
 
-def test_recreate_blueprint_recompute_speed_with_24_observations():
-    """The deterministic recomputation, observation coverage on Blueprint rows included, stays within 100 ms."""
+def test_recreate_blueprint_recompute_speed_with_24_observations(record_property):
+    """The deterministic recomputation, observation coverage on Blueprint rows included, stays within 250 ms warm."""
     items = [{**RECREATE['items'][1 + n % 5], 'label': f'Chart {n}'} for n in range(24)]
     extraction = {f'o{n + 1}': RECREATE['extraction'][f'o{2 + n % 5}'] for n in range(24)}
     extraction['instructions'] = RECREATE['extraction']['instructions']
@@ -1705,7 +1714,9 @@ def test_recreate_blueprint_recompute_speed_with_24_observations():
             start = time.perf_counter()
             req.evaluate(snapshot, ledger, checker, check_components=False)
             timings.append(time.perf_counter() - start)
-        assert min(timings) < .1, (state, timings)
+        record_property(f'recompute_{state}_first_sample_s', timings[0])
+        record_property(f'recompute_{state}_samples_s', json.dumps(timings))
+        assert min(timings) < .250, (state, timings)
 
 
 # 24.11: evaluation-local reuse must not become authorization across calls.
@@ -2276,8 +2287,8 @@ def test_removed_instructions_leave_code_added_rows_surplus():
     assert not any(feasibility.added(r) for r in Blueprint.model_validate(blueprint).rows[:len(ELECTRICITY['rows'])])
 
 
-def test_recreate_definitions_recompute_speed_with_24_observations_and_24_clauses(monkeypatch):
-    """The 100 ms recomputation oracle holds with 24 observations and 24 definition clauses, on the
+def test_recreate_definitions_recompute_speed_with_24_observations_and_24_clauses(monkeypatch, record_property):
+    """The 250 ms warm recomputation oracle holds with 24 observations and 24 definition clauses, on the
     catalog default (no DSS_ALLOWED_TYPES anywhere: the default re-reads no catalog per observation)."""
     from dss.spec import validate
     monkeypatch.delenv('DSS_ALLOWED_TYPES', raising=False)
@@ -2301,7 +2312,9 @@ def test_recreate_definitions_recompute_speed_with_24_observations_and_24_clause
         start = time.perf_counter()
         req.evaluate(snapshot, ledger, checker, check_components=False)
         timings.append(time.perf_counter() - start)
-    assert min(timings) < .1, timings
+    record_property('recompute_first_sample_s', timings[0])
+    record_property('recompute_samples_s', json.dumps(timings))
+    assert min(timings) < .250, timings
 
 
 def year_case(expression='DATE_TRUNC(year, YEAR)', explicit=True):
@@ -2715,8 +2728,8 @@ def test_labeled_controls_unlabeled_charts_and_other_modes_get_no_binding_offers
 
 
 @pytest.mark.usefixtures('catalog_types')
-def test_binding_offers_recompute_within_budget():
-    """24 observations (16 unlabeled controls) and 24 definition clauses (15 control clauses) within 100 ms."""
+def test_binding_offers_recompute_within_budget(record_property):
+    """24 observations (16 unlabeled controls) and 24 definition clauses (15 control clauses) within 250 ms warm."""
     items, rows = copy.deepcopy(UNLABELED['case']['items']), copy.deepcopy(UNLABELED['case']['requirements']['requirements'])
     rows = [r for r in rows if r['source']['item_id'] != 'o3']
     while len(rows) < 24:
@@ -2737,10 +2750,12 @@ def test_binding_offers_recompute_within_budget():
         start = time.perf_counter()
         req.evaluate(snapshot, decided, checker, check_components=False)
         timings.append(time.perf_counter() - start)
-    assert min(timings) < .1, timings
+    record_property('recompute_first_sample_s', timings[0])
+    record_property('recompute_samples_s', json.dumps(timings))
+    assert min(timings) < .250, timings
 
 
-def unlabeled_build(blueprint_api, monkeypatch):
+def unlabeled_build(blueprint_api, monkeypatch, polluted=False):
     """Run 20261027-173624's reference and extracted rows installed as a staged build, rechecked in code
     through the real gate; the planner answers with the fixture's reconstructed draft."""
     from types import SimpleNamespace
@@ -2769,6 +2784,13 @@ def unlabeled_build(blueprint_api, monkeypatch):
     (folder / 'reference_img_000000000000.png').write_bytes(png())
     snapshot = req.inputs(app.state.db, bid, folder)
     ledger = req.Ledger.model_validate(case['requirements'])
+    if polluted:
+        # Feed the real worker boundary the recorded run-2 guess, adapted only to
+        # this fixture's local source identity. It must not authorize the field.
+        proposed = copy.deepcopy(UNLABELED['polluted']['mapped_surface_variant'])
+        proposed['source'] = next(r for r in case['requirements']['requirements'] if r['source']['item_id'] == 'o5')['source']
+        ledger.requirements = [req.Requirement.model_validate(proposed) if r.source.item_id == 'o5' else r
+                               for r in ledger.requirements]
     ledger.processed_sources = {s['id']: req.digest(s) for s in snapshot['incoming']}
     ledger = req.merge(ledger, snapshot, req.Extraction(requirements=[]))
     checker = capabilities.Checker(capabilities.load_registry())
@@ -2797,14 +2819,15 @@ def owned_issues(build, assessment):
             for i in assessment['issues'] if i['resolution'] == 'unresolved']
 
 
-def test_unlabeled_region_list_binds_by_clause_and_publishes(blueprint_api, monkeypatch):
+@pytest.mark.parametrize('polluted', [False, True])
+def test_unlabeled_region_list_binds_by_clause_and_publishes(blueprint_api, monkeypatch, polluted):
     """The oracle: o5's issue offers the Region Selector clause first; accepting it with the approved geo map
     (and legend) drops makes the assessment ready, and accept publishes o5 as a page-1 fixed_size_list on
     region, its binding listed in feasibility.md. Recipe compiles; the fake engine finishes."""
     from test_blueprint import confirm
     from test_render import accept, executes
     from dss.spec.models import DashboardSpec
-    build = unlabeled_build(blueprint_api, monkeypatch)
+    build = unlabeled_build(blueprint_api, monkeypatch, polluted=polluted)
     url = f'/api/builds/{build.bid}'
     assessment = build.client.get(url + '/feasibility').json()
     pending = owned_issues(build, assessment)
@@ -2847,3 +2870,275 @@ def test_unlabeled_region_list_binds_by_clause_and_publishes(blueprint_api, monk
     recipe = [json.loads(line) for line in (build.folder / 'recipe.jsonl').read_text(encoding='utf-8').splitlines()]
     assert any(op['op'] == 'add_control' and op['component_id'] in bound and op['control_type'] == 'fixed_size_list'
                and op['field'] == 'region' for op in recipe[1:])
+    # Reload and a real version copy preserve the accepted proof, without carrying
+    # a reusable assessment id. Recompute verifies the choice in the copied version.
+    decisions = req.load(build.folder).decisions
+    assert build.client.post(url + '/versions').status_code == 201
+    copied = req.load(build.folder.parent / 'v2')
+    assert copied.assessment is None and copied.decisions == decisions
+    _, checked = check(build.client, build.app, build.bid)
+    assert checked['state'] == 'ready', checked
+    assert next(i for i in checked['issues'] if i['id'] == o5['id'])['resolution'] == 'accepted_alternative'
+
+
+# 25.9: originally blank controls can only acquire a field through an explicit decision.
+def polluted_row(mapped=False):
+    polluted = UNLABELED['polluted']
+    return req.Requirement.model_validate(polluted['mapped_surface_variant'] if mapped else next(
+        r for r in polluted['requirements'] if r['source']['item_id'] == 'o5'))
+
+
+def test_polluted_fixture_is_a_sanitized_read_only_run_copy():
+    import hashlib
+    polluted = UNLABELED['polluted']
+    root = Path(__file__).resolve().parents[1] / polluted['provenance']['run']
+    if not root.is_dir():
+        pytest.skip('recorded evidence is local to its recording machine')
+    for name, expected in polluted['provenance']['sha256'].items():
+        assert hashlib.sha256((root / name).read_bytes()).hexdigest() == expected
+    recorded = json.loads((root / 'build/requirements.json').read_text(encoding='utf-8'))['requirements']
+    # Replace only local source identities, never semantic keys (Property.path).
+    serialized = json.dumps(recorded, ensure_ascii=False)
+    for old, new in polluted['provenance']['identity_replacements'].items():
+        serialized = serialized.replace(old, new)
+    assert polluted['requirements'] == json.loads(serialized)
+    assert polluted_row().needs[0].fields == {'control_field': 'region'}
+    assert json.loads(polluted_row().source.text)['label'] is None
+
+
+@pytest.mark.usefixtures('catalog_types')
+@pytest.mark.parametrize('mapped', [False, True])
+@pytest.mark.parametrize('metric_label', [None, 'Region Selector'])
+def test_worker_guesses_and_restored_surfaces_cannot_bind_or_claim_clauses(mapped, metric_label):
+    snapshot = unlabeled_snapshot()
+    row = polluted_row(mapped)
+    item = json.loads(row.source.text)
+    item['metric_label'] = metric_label
+    row.source.text = json.dumps(item)
+    # Unrelated unsupported behavior and explicit property requests stay intact.
+    row.needs.append(capabilities.Need(capability='animation.temporal_playback'))
+    if mapped:
+        saved = json.loads(row.mapping_origins['surface'])
+        saved['needs'].append(row.needs[-1].model_dump())
+        row.mapping_origins['surface'] = json.dumps(saved)
+    original = row.model_copy(deep=True)
+    raw = req.Ledger(requirements=[row], processed_sources={s['id']: req.digest(s) for s in snapshot['incoming']})
+    checker = capabilities.Checker(capabilities.load_registry())
+    # A pure check cannot repair persisted guessed rows or leak them to planning.
+    value = raw.model_dump()
+    assert req.observation_stale(snapshot, row)
+    assert req.evaluate(snapshot, raw, checker, check_components=False).state == 'blocked'
+    assert req.blueprint_observations(snapshot, raw, checker) == []
+    assert raw.model_dump() == value
+    reconciled = req.merge(raw, snapshot, req.Extraction(requirements=[]))
+    [clean] = reconciled.requirements
+    assert clean.needs == [capabilities.Need(capability='control.dropdown'), row.needs[-1]]
+    assert clean.mappings == [] and clean.mapping_origins == {}
+    assert clean.properties == original.properties and clean.source == original.source
+    assert 'Region Selector' in req.unused_definitions(snapshot, reconciled)
+    issue = control_issues(reconciled, req.evaluate(snapshot, reconciled, checker))['o5']
+    assert issue.resolution == 'unresolved' and issue.alternatives[0].label == REGION_SELECTOR
+    assert req.blueprint_observations(snapshot, reconciled, checker) == []
+    assert not req.observation_stale(snapshot, clean)
+    assert req.merge(reconciled, snapshot, req.Extraction(requirements=[])) == reconciled
+    assert raw.model_dump() == value
+
+
+@pytest.mark.usefixtures('catalog_types')
+def test_legacy_polluted_ready_proof_blocks_pure_reads_without_writes():
+    snapshot, row = unlabeled_snapshot(), polluted_row()
+    ledger = req.Ledger(requirements=[row], processed_sources={s['id']: req.digest(s) for s in snapshot['incoming']})
+    checker = capabilities.Checker(capabilities.load_registry())
+    ledger.assessment = req.Assessment(id='old_ready', state='ready', input_digest=req.input_digest(snapshot, ledger, checker))
+    before = ledger.model_dump()
+    for _ in range(2):
+        current = req.get(snapshot, ledger, checker)
+        assert current.state == 'blocked' and current.id is None
+        assert any(i.id.startswith('obs_stale_') for i in current.issues)
+        with pytest.raises(req.RunError, match='Feasibility changed'):
+            req.require_current(snapshot, ledger, checker, 'old_ready')
+    assert ledger.model_dump() == before
+
+
+@pytest.mark.usefixtures('catalog_types')
+def test_old_polluted_rows_block_read_recipe_and_run_until_explicit_check(thin, monkeypatch):
+    client, app, bid, folder = thin
+    load(client, bid)
+    case = UNLABELED['case']
+    reference = {'id': case['reference']['id'], 'mode': 'recreate', 'instructions': case['instructions'],
+                 'images': [{'id': case['reference']['image_id'], 'name': 'reference.png',
+                             'file': 'reference_img_000000000000.png', 'mime_type': 'image/png', 'width': 1200, 'height': 900}],
+                 'summary': 'Saved reference', 'interpretation': {'items': UNLABELED['polluted']['items'], 'aspect_ratio': 1.7196}}
+    (folder / 'references.json').write_text(json.dumps(reference), encoding='utf-8')
+    (folder / 'reference_img_000000000000.png').write_bytes(png())
+    snapshot = req.inputs(app.state.db, bid, folder)
+    ledger = req.Ledger(requirements=[polluted_row()])
+    ledger.processed_sources = {s['id']: req.digest(s) for s in snapshot['incoming']}
+    checker = capabilities.Checker(capabilities.load_registry())
+    # Simulate an unmodified ready proof saved by the old reconciliation rule.
+    req.save(folder, ledger, req.Assessment(id='legacy_ready', state='ready',
+                                          input_digest=req.input_digest(snapshot, ledger, checker)))
+    before = {p: p.read_bytes() for p in folder.rglob('*') if p.is_file()}
+    with app.state.db.connect() as conn:
+        traces = conn.execute('SELECT count(*) FROM traces').fetchone()[0]
+    for _ in range(2):
+        current = client.get(f'/api/builds/{bid}/feasibility').json()
+        assert current['state'] == 'blocked' and any(i['id'].startswith('obs_stale_') for i in current['issues'])
+        for endpoint in ('recipe', 'run'):
+            response = client.post(f'/api/builds/{bid}/{endpoint}')
+            assert response.status_code == 409 and response.json()['error']['code'] == 'feasibility_blocked'
+    assert {p: p.read_bytes() for p in folder.rglob('*') if p.is_file()} == before
+    assert not app.state.engine_tasks and not app.state.agent_jobs.jobs
+    with app.state.db.connect() as conn:
+        assert conn.execute('SELECT count(*) FROM traces').fetchone()[0] == traces
+    model = use_model(monkeypatch, app)
+    _, checked = check(client, app, bid)
+    assert model.calls == 0
+    issue = control_issues(req.load(folder), req.Assessment.model_validate(checked))['o5']
+    assert issue.resolution == 'unresolved' and issue.alternatives[0].label == REGION_SELECTOR
+    assert req.load(folder).requirements[0].needs[0].fields == {}
+
+
+@pytest.mark.usefixtures('catalog_types')
+def test_polluted_decision_proof_is_never_reset_into_authorization():
+    snapshot = unlabeled_snapshot()
+    ledger, assessment = unlabeled_assess(snapshot)
+    issue = control_issues(ledger, assessment)['o5']
+    accepted, _ = decide_on(snapshot, ledger, (issue, REGION_SELECTOR))
+    row = next(r for r in accepted.requirements if r.source.item_id == 'o5')
+    row.mappings = [req.Mapping(label='Region Selector', field='region')]
+    row.needs[0].fields['control_field'] = 'region'
+    # An old decision referring to the polluted meaning is preserved as historical
+    # proof; normalization must not re-sign it with the newly clean meaning.
+    decision = next(d for d in accepted.decisions if d.get('observation'))
+    decision['meaning'] = req.meaning(row)
+    old = copy.deepcopy(accepted.decisions)
+    repaired, assessment = unlabeled_assess(snapshot, accepted)
+    assert repaired.decisions == old
+    assert control_issues(repaired, assessment)['o5'].resolution == 'unresolved'
+
+
+@pytest.mark.usefixtures('catalog_types')
+def test_pre_enforcement_mapped_binding_cannot_own_a_clause_on_pure_reads():
+    snapshot = unlabeled_snapshot()
+    ledger, _ = unlabeled_assess(snapshot)
+    row = next(r for r in ledger.requirements if r.source.item_id == 'o5')
+    # Historically this direct-field mapping passed mapping_verdict and consumed
+    # Region, while the missing-field issue still offered Region Selector. An API
+    # decision could therefore have been saved against this unnormalized meaning.
+    row.mappings = [req.Mapping(label='region', field='region')]
+    checker = capabilities.Checker(capabilities.load_registry())
+    assert req.mapping_verdict(row.mappings[0], row, req.schema(snapshot)) is None
+    alternative = next(o for o in req._offers(row, 'need:0', snapshot, checker, ledger) if o['label'] == REGION_SELECTOR)
+    needs = [capabilities.Need.model_validate(n) for n in alternative['needs']]
+    legacy = {'requirement_id': row.id, 'meaning': req.meaning(row), 'slot': 'need:0',
+              'action': 'accept_alternative', 'alternative': alternative,
+              'prerequisites': req._prerequisites(snapshot, needs, row.mappings),
+              'baseline': {}, 'applied': False, 'issue_id': 'legacy_issue', 'observation': 'o5'}
+    ledger.decisions.append(legacy)
+    item, other = second_control(UNLABELED['case']['items'])
+    snapshot['reference']['interpretation']['items'].append(item)
+    ledger.requirements.append(req.Requirement.model_validate(other))
+    value = ledger.model_dump()
+    assert req._choice(row, 'need:0', snapshot, ledger, checker) is None
+    assert req._bound_clauses(ledger.requirements[-1], snapshot, ledger, checker) == set()
+    offers = req._offers(ledger.requirements[-1], 'need:0', snapshot, checker, ledger)
+    assert REGION_SELECTOR in [o['label'] for o in offers]
+    assert req.evaluate(snapshot, ledger, checker).state == 'blocked'
+    assert ledger.model_dump() == value
+    repaired = req.merge(ledger, snapshot, req.Extraction(requirements=[]))
+    assert repaired.decisions == [legacy]
+    normalized = next(r for r in repaired.requirements if r.source.item_id == 'o5')
+    assert req._choice(normalized, 'need:0', snapshot, repaired, checker) is None
+
+
+@pytest.mark.usefixtures('catalog_types')
+@pytest.mark.parametrize('clause', [False, True])
+def test_clean_binding_proof_survives_reload_reconciliation_and_version_copy(tmp_path, monkeypatch, clause):
+    snapshot = unlabeled_snapshot(None if clause else '')
+    ledger, assessment = unlabeled_assess(snapshot)
+    issue = control_issues(ledger, assessment)['o5']
+    label = REGION_SELECTOR if clause else 'dropdown on region'
+    ledger, _ = decide_on(snapshot, ledger, (issue, label), *((i, None) for i in assessment.issues if i is not issue))
+    proof, rows = copy.deepcopy(ledger.decisions), [r.model_dump() for r in ledger.requirements]
+    checker = capabilities.Checker(capabilities.load_registry())
+    for _ in range(2):
+        ledger, assessment = unlabeled_assess(snapshot, ledger)
+        ledger = req.revalidate_decisions(snapshot, ledger, checker)
+        assert assessment.state == 'ready'
+        assert ledger.decisions == proof and [r.model_dump() for r in ledger.requirements] == rows
+        req.save(tmp_path, ledger, assessment)
+        ledger = req.load(tmp_path)
+    destination = tmp_path / 'copy'
+    destination.mkdir()
+    monkeypatch.setattr(req, 'inputs', lambda *_: snapshot)
+    req.copy_version(None, 'build', tmp_path, destination)
+    copied = req.load(destination)
+    assert copied.decisions == proof and copied.assessment is None
+    copied, assessment = unlabeled_assess(snapshot, copied)
+    assert assessment.state == 'ready' and copied.decisions == proof
+    changed = copy.deepcopy(snapshot)
+    region = next(c for c in changed['sources'][0]['columns'] if c['name'] == 'region')
+    region['bq_type'], region['type'] = 'BYTES', 'BYTES'
+    _, invalid = unlabeled_assess(changed, copied)
+    assert control_issues(copied, invalid)['o5'].resolution == 'unresolved'
+    assert copied.decisions == proof
+
+
+@pytest.mark.usefixtures('catalog_types')
+@pytest.mark.parametrize('operation', ['merge', 'evaluate', 'observation_stale', 'blueprint_observations',
+                                      'revalidate_decisions', 'get', 'decide'])
+def test_effective_allowlist_is_read_once_per_outer_operation(monkeypatch, operation):
+    from dss.spec import validate
+    snapshot = unlabeled_snapshot()
+    ledger, assessment = unlabeled_assess(snapshot)
+    checker = capabilities.Checker(capabilities.load_registry())
+    calls = []
+    monkeypatch.setattr(validate, 'dotenv_values', lambda path: calls.append(path) or {})
+    if operation == 'merge':
+        req.merge(ledger, snapshot, req.Extraction(requirements=[]))
+    elif operation == 'observation_stale':
+        req.observation_stale(snapshot, next(r for r in ledger.requirements if r.source.item_id == 'o5'))
+    elif operation == 'decide':
+        issue = control_issues(ledger, assessment)['o5']
+        req.decide(snapshot, ledger, checker, req.Decisions(assessment_id=assessment.id, decisions=[{
+            'issue_id': issue.id, 'action': 'accept_alternative',
+            'alternative_id': next(a.id for a in issue.alternatives if a.label == REGION_SELECTOR)}]))
+    else:
+        getattr(req, operation)(snapshot, ledger, checker)
+    assert len(calls) <= 1, (operation, len(calls))
+    assert req._operation_types.get() is None
+
+
+def test_operation_allowlist_refreshes_env_file_default_and_empty_semantics(monkeypatch):
+    from dss.spec import validate
+    from dss.spec.models import TYPES
+    snapshot = unlabeled_snapshot()
+    file_config = {'DSS_ALLOWED_TYPES': ','.join(TYPES)}
+    monkeypatch.delenv('DSS_ALLOWED_TYPES', raising=False)
+    monkeypatch.setattr(validate, 'dotenv_values', lambda _: file_config.copy())
+    checker = capabilities.Checker(capabilities.load_registry(), allowed=TYPES)
+    ledger, _ = unlabeled_assess(snapshot)
+    original = ledger.model_dump()
+    def offers():
+        assessment = req.evaluate(snapshot, ledger, checker)
+        return [a.label for a in control_issues(ledger, assessment)['o5'].alternatives]
+    wide = offers()
+    assert REGION_SELECTOR in wide
+    file_config['DSS_ALLOWED_TYPES'] = 'dropdown,unregistered'
+    assert REGION_SELECTOR not in offers() and REGION in offers()
+    monkeypatch.setenv('DSS_ALLOWED_TYPES', '')
+    assert offers() == []
+    monkeypatch.setenv('DSS_ALLOWED_TYPES', 'fixed_size_list')
+    assert offers() == [REGION_SELECTOR]
+    monkeypatch.delenv('DSS_ALLOWED_TYPES')
+    file_config.clear()
+    assert offers() == wide
+    assert ledger.model_dump() == original
+    # Exceptions cannot leave a scoped config cached for the next operation.
+    monkeypatch.setenv('DSS_ALLOWED_TYPES', '')
+    with pytest.raises(ValueError):
+        req.merge(ledger, snapshot, req.Extraction(requirements=[extracted('unknown-source')]))
+    assert req._operation_types.get() is None
+    monkeypatch.delenv('DSS_ALLOWED_TYPES')
+    assert offers() == wide

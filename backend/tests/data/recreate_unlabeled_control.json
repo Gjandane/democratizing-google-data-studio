@@ -1686,5 +1686,832 @@
     }
    ]
   }
+ },
+ "polluted": {
+  "provenance": {
+   "run": ".blueprint/qa/task-25.9/recreate/20261027-193414-26016e07",
+   "sha256": {
+    "build/references.json": "c845f722f4bf2d5ca58d56cb759ffb41d7aa421da10d0d84c3097817ca217cf0",
+    "build/requirements.json": "d81ddf341b24f70948eb8bb397bb8669b408303f120686484226bb1d06143c12"
+   },
+   "identity_replacements": {
+    "ref_dfeaa145b0cf": "ref_23acb02ee056",
+    "img_b2d704ee3365": "img_e72cc9ba8b3f"
+   },
+   "adjustments": "Only local reference/image ids adapted. Variant adds model-proposed mapping/label and saved surface baseline; semantic Property.path keys retained."
+  },
+  "items": [
+   {
+    "kind": "decoration",
+    "label": "Access to electricity has improved around the world in the last 20 years",
+    "box": {
+     "x": 0.04,
+     "y": 0.024,
+     "w": 0.255,
+     "h": 0.135
+    },
+    "chart_candidate": "text",
+    "metric_label": null,
+    "unit": null,
+    "aggregation": null,
+    "date_grain": null,
+    "confidence": "high",
+    "id": "o1"
+   },
+   {
+    "kind": "chart",
+    "label": "Location",
+    "box": {
+     "x": 0.755,
+     "y": 0.03,
+     "w": 0.215,
+     "h": 0.08
+    },
+    "chart_candidate": "bar",
+    "metric_label": null,
+    "unit": "%",
+    "aggregation": null,
+    "date_grain": null,
+    "confidence": "high",
+    "id": "o2"
+   },
+   {
+    "kind": "chart",
+    "label": "Population with access to electricity",
+    "box": {
+     "x": 0.28,
+     "y": 0.08,
+     "w": 0.405,
+     "h": 0.615
+    },
+    "chart_candidate": "geo_map",
+    "metric_label": "Population with access to electricity",
+    "unit": "%",
+    "aggregation": null,
+    "date_grain": "year",
+    "confidence": "high",
+    "id": "o3"
+   },
+   {
+    "kind": "chart",
+    "label": "Philippines",
+    "box": {
+     "x": 0.73,
+     "y": 0.132,
+     "w": 0.24,
+     "h": 0.185
+    },
+    "chart_candidate": "time_series",
+    "metric_label": null,
+    "unit": "%",
+    "aggregation": null,
+    "date_grain": "year",
+    "confidence": "high",
+    "id": "o4"
+   },
+   {
+    "kind": "control",
+    "label": null,
+    "box": {
+     "x": 0.045,
+     "y": 0.202,
+     "w": 0.114,
+     "h": 0.218
+    },
+    "chart_candidate": "dropdown",
+    "metric_label": null,
+    "unit": null,
+    "aggregation": null,
+    "date_grain": null,
+    "confidence": "high",
+    "id": "o5"
+   },
+   {
+    "kind": "chart",
+    "label": "Morocco",
+    "box": {
+     "x": 0.73,
+     "y": 0.325,
+     "w": 0.24,
+     "h": 0.185
+    },
+    "chart_candidate": "time_series",
+    "metric_label": null,
+    "unit": "%",
+    "aggregation": null,
+    "date_grain": "year",
+    "confidence": "high",
+    "id": "o6"
+   },
+   {
+    "kind": "chart",
+    "label": "have access to electricity worldwide in 2011",
+    "box": {
+     "x": 0.04,
+     "y": 0.465,
+     "w": 0.205,
+     "h": 0.105
+    },
+    "chart_candidate": "scorecard",
+    "metric_label": "have access to electricity",
+    "unit": "%",
+    "aggregation": null,
+    "date_grain": "year",
+    "confidence": "high",
+    "id": "o7"
+   },
+   {
+    "kind": "chart",
+    "label": "Fiji",
+    "box": {
+     "x": 0.73,
+     "y": 0.515,
+     "w": 0.24,
+     "h": 0.185
+    },
+    "chart_candidate": "time_series",
+    "metric_label": null,
+    "unit": "%",
+    "aggregation": null,
+    "date_grain": "year",
+    "confidence": "high",
+    "id": "o8"
+   },
+   {
+    "kind": "decoration",
+    "label": "Population with access to electricity",
+    "box": {
+     "x": 0.043,
+     "y": 0.635,
+     "w": 0.275,
+     "h": 0.025
+    },
+    "chart_candidate": "text",
+    "metric_label": null,
+    "unit": "%",
+    "aggregation": null,
+    "date_grain": null,
+    "confidence": "medium",
+    "id": "o9"
+   },
+   {
+    "kind": "chart",
+    "label": "People without access to electricity",
+    "box": {
+     "x": 0.045,
+     "y": 0.695,
+     "w": 0.642,
+     "h": 0.202
+    },
+    "chart_candidate": "bar",
+    "metric_label": "People without access to electricity",
+    "unit": null,
+    "aggregation": null,
+    "date_grain": "year",
+    "confidence": "high",
+    "id": "o10"
+   },
+   {
+    "kind": "chart",
+    "label": "Belize",
+    "box": {
+     "x": 0.73,
+     "y": 0.705,
+     "w": 0.242,
+     "h": 0.225
+    },
+    "chart_candidate": "time_series",
+    "metric_label": null,
+    "unit": "%",
+    "aggregation": null,
+    "date_grain": "year",
+    "confidence": "high",
+    "id": "o11"
+   }
+  ],
+  "instructions": "Region Selector = region, chart fixed_size_list. Region = region. Country = country. Access to electricity = AVG(access_pct), unit %, date grain year using year. have access to electricity = AVG(access_pct), unit %, date grain year using year. People without access to electricity = SUM(people_without_access), date grain year using year. Philippines = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Morocco = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Fiji = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Belize = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Urban = AVG(urban_pct), unit %, date grain year using year. Rural = AVG(rural_pct), unit %, date grain year using year.",
+  "requirements": [
+   {
+    "id": "req_14f872e5655b4b2de4517c4f",
+    "source": {
+     "id": "ref_23acb02ee056:o2",
+     "kind": "image",
+     "text": "{\"kind\": \"chart\", \"label\": \"Location\", \"box\": {\"x\": 0.755, \"y\": 0.03, \"w\": 0.215, \"h\": 0.08}, \"chart_candidate\": \"bar\", \"metric_label\": null, \"unit\": \"%\", \"aggregation\": null, \"date_grain\": null, \"confidence\": \"high\", \"id\": \"o2\"}",
+     "reference_id": "ref_23acb02ee056",
+     "image_id": "img_e72cc9ba8b3f",
+     "item_id": "o2",
+     "component_id": null,
+     "batch_id": null
+    },
+    "text": "Location bar chart",
+    "needs": [
+     {
+      "capability": "chart.bar",
+      "value": null,
+      "fields": {}
+     },
+     {
+      "capability": "argument.title",
+      "value": null,
+      "fields": {}
+     }
+    ],
+    "mappings": [],
+    "component_ids": [],
+    "resolution": "unresolved",
+    "clarifications": [],
+    "properties": [
+     {
+      "path": "label",
+      "value": "Location"
+     }
+    ],
+    "superseded": {},
+    "mapping_origins": {},
+    "mapping_conflicts": {}
+   },
+   {
+    "id": "req_8be5854fff04c727f57dfbb1",
+    "source": {
+     "id": "ref_23acb02ee056:o3",
+     "kind": "image",
+     "text": "{\"kind\": \"chart\", \"label\": \"Population with access to electricity\", \"box\": {\"x\": 0.28, \"y\": 0.08, \"w\": 0.405, \"h\": 0.615}, \"chart_candidate\": \"geo_map\", \"metric_label\": \"Population with access to electricity\", \"unit\": \"%\", \"aggregation\": null, \"date_grain\": \"year\", \"confidence\": \"high\", \"id\": \"o3\"}",
+     "reference_id": "ref_23acb02ee056",
+     "image_id": "img_e72cc9ba8b3f",
+     "item_id": "o3",
+     "component_id": null,
+     "batch_id": null
+    },
+    "text": "Population with access to electricity geo map",
+    "needs": [
+     {
+      "capability": "chart.geo_map",
+      "value": null,
+      "fields": {
+       "geo_field": "country"
+      }
+     },
+     {
+      "capability": "argument.title",
+      "value": null,
+      "fields": {}
+     }
+    ],
+    "mappings": [
+     {
+      "label": "Population with access to electricity",
+      "field": "access_pct",
+      "unit": "%",
+      "aggregation": "avg",
+      "date_grain": "year"
+     }
+    ],
+    "component_ids": [],
+    "resolution": "unresolved",
+    "clarifications": [],
+    "properties": [
+     {
+      "path": "label",
+      "value": "Population with access to electricity"
+     }
+    ],
+    "superseded": {},
+    "mapping_origins": {
+     "requested:0": "{\"label\":\"Population with access to electricity\",\"field\":\"access_pct\",\"unit\":\"%\",\"aggregation\":\"avg\",\"date_grain\":\"year\"}"
+    },
+    "mapping_conflicts": {
+     "0": "Define Population with access to electricity: confirm a matching Context KPI or add a reference instruction such as Population with access to electricity = SUM(<field>)"
+    }
+   },
+   {
+    "id": "req_ece3a5557997e538b5c85aed",
+    "source": {
+     "id": "ref_23acb02ee056:o4",
+     "kind": "image",
+     "text": "{\"kind\": \"chart\", \"label\": \"Philippines\", \"box\": {\"x\": 0.73, \"y\": 0.132, \"w\": 0.24, \"h\": 0.185}, \"chart_candidate\": \"time_series\", \"metric_label\": null, \"unit\": \"%\", \"aggregation\": null, \"date_grain\": \"year\", \"confidence\": \"high\", \"id\": \"o4\"}",
+     "reference_id": "ref_23acb02ee056",
+     "image_id": "img_e72cc9ba8b3f",
+     "item_id": "o4",
+     "component_id": null,
+     "batch_id": null
+    },
+    "text": "Philippines time series chart",
+    "needs": [
+     {
+      "capability": "chart.area",
+      "value": null,
+      "fields": {
+       "date_field": "year"
+      }
+     },
+     {
+      "capability": "option.area.date_granularity",
+      "value": "year",
+      "fields": {
+       "date_field": "year"
+      }
+     },
+     {
+      "capability": "argument.title",
+      "value": null,
+      "fields": {}
+     }
+    ],
+    "mappings": [
+     {
+      "label": "Philippines",
+      "field": "urban_pct",
+      "unit": "%",
+      "aggregation": "avg",
+      "date_grain": "year"
+     },
+     {
+      "label": "Philippines",
+      "field": "rural_pct",
+      "unit": "%",
+      "aggregation": "avg",
+      "date_grain": "year"
+     }
+    ],
+    "component_ids": [],
+    "resolution": "unresolved",
+    "clarifications": [
+     {
+      "id": "ref_23acb02ee056:instructions",
+      "kind": "reference",
+      "text": "Region Selector = region, chart fixed_size_list. Region = region. Country = country. Access to electricity = AVG(access_pct), unit %, date grain year using year. have access to electricity = AVG(access_pct), unit %, date grain year using year. People without access to electricity = SUM(people_without_access), date grain year using year. Philippines = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Morocco = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Fiji = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Belize = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Urban = AVG(urban_pct), unit %, date grain year using year. Rural = AVG(rural_pct), unit %, date grain year using year.",
+      "reference_id": "ref_23acb02ee056",
+      "image_id": null,
+      "item_id": null,
+      "component_id": null,
+      "batch_id": null
+     }
+    ],
+    "properties": [
+     {
+      "path": "label",
+      "value": "Philippines"
+     }
+    ],
+    "superseded": {
+     "property:0": "ref_23acb02ee056:instructions"
+    },
+    "mapping_origins": {
+     "surface": "{\"needs\": [{\"capability\": \"chart.time_series\", \"value\": null, \"fields\": {\"date_field\": \"year\"}}, {\"capability\": \"option.time_series.date_granularity\", \"value\": \"year\", \"fields\": {}}, {\"capability\": \"argument.title\", \"value\": null, \"fields\": {}}], \"mappings\": [], \"superseded\": {}, \"origins\": {}}",
+     "using": "year",
+     "observed:0": "{\"evidence\": [\"ref_23acb02ee056:instructions\"], \"key\": \"6cfe8394f12401abef1d7021b97291921d57f895da4a41df3049debb69e5c6be\"}",
+     "observed:1": "{\"evidence\": [\"ref_23acb02ee056:instructions\"], \"key\": \"d837f24f11e1849499b1ad151a56c48c2203058f720433a079188c727243d987\"}"
+    },
+    "mapping_conflicts": {}
+   },
+   {
+    "id": "req_ca86854f9ee34f746386d16d",
+    "source": {
+     "id": "ref_23acb02ee056:o5",
+     "kind": "image",
+     "text": "{\"kind\": \"control\", \"label\": null, \"box\": {\"x\": 0.045, \"y\": 0.202, \"w\": 0.114, \"h\": 0.218}, \"chart_candidate\": \"dropdown\", \"metric_label\": null, \"unit\": null, \"aggregation\": null, \"date_grain\": null, \"confidence\": \"high\", \"id\": \"o5\"}",
+     "reference_id": "ref_23acb02ee056",
+     "image_id": "img_e72cc9ba8b3f",
+     "item_id": "o5",
+     "component_id": null,
+     "batch_id": null
+    },
+    "text": "Dropdown control",
+    "needs": [
+     {
+      "capability": "control.dropdown",
+      "value": null,
+      "fields": {
+       "control_field": "region"
+      }
+     }
+    ],
+    "mappings": [],
+    "component_ids": [],
+    "resolution": "unresolved",
+    "clarifications": [],
+    "properties": [],
+    "superseded": {},
+    "mapping_origins": {},
+    "mapping_conflicts": {}
+   },
+   {
+    "id": "req_95c848b3425ddc199bfbbcfb",
+    "source": {
+     "id": "ref_23acb02ee056:o6",
+     "kind": "image",
+     "text": "{\"kind\": \"chart\", \"label\": \"Morocco\", \"box\": {\"x\": 0.73, \"y\": 0.325, \"w\": 0.24, \"h\": 0.185}, \"chart_candidate\": \"time_series\", \"metric_label\": null, \"unit\": \"%\", \"aggregation\": null, \"date_grain\": \"year\", \"confidence\": \"high\", \"id\": \"o6\"}",
+     "reference_id": "ref_23acb02ee056",
+     "image_id": "img_e72cc9ba8b3f",
+     "item_id": "o6",
+     "component_id": null,
+     "batch_id": null
+    },
+    "text": "Morocco time series chart",
+    "needs": [
+     {
+      "capability": "chart.area",
+      "value": null,
+      "fields": {
+       "date_field": "year"
+      }
+     },
+     {
+      "capability": "option.area.date_granularity",
+      "value": "year",
+      "fields": {
+       "date_field": "year"
+      }
+     },
+     {
+      "capability": "argument.title",
+      "value": null,
+      "fields": {}
+     }
+    ],
+    "mappings": [
+     {
+      "label": "Morocco",
+      "field": "urban_pct",
+      "unit": "%",
+      "aggregation": "avg",
+      "date_grain": "year"
+     },
+     {
+      "label": "Morocco",
+      "field": "rural_pct",
+      "unit": "%",
+      "aggregation": "avg",
+      "date_grain": "year"
+     }
+    ],
+    "component_ids": [],
+    "resolution": "unresolved",
+    "clarifications": [
+     {
+      "id": "ref_23acb02ee056:instructions",
+      "kind": "reference",
+      "text": "Region Selector = region, chart fixed_size_list. Region = region. Country = country. Access to electricity = AVG(access_pct), unit %, date grain year using year. have access to electricity = AVG(access_pct), unit %, date grain year using year. People without access to electricity = SUM(people_without_access), date grain year using year. Philippines = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Morocco = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Fiji = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Belize = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Urban = AVG(urban_pct), unit %, date grain year using year. Rural = AVG(rural_pct), unit %, date grain year using year.",
+      "reference_id": "ref_23acb02ee056",
+      "image_id": null,
+      "item_id": null,
+      "component_id": null,
+      "batch_id": null
+     }
+    ],
+    "properties": [
+     {
+      "path": "label",
+      "value": "Morocco"
+     }
+    ],
+    "superseded": {
+     "property:0": "ref_23acb02ee056:instructions"
+    },
+    "mapping_origins": {
+     "surface": "{\"needs\": [{\"capability\": \"chart.time_series\", \"value\": null, \"fields\": {\"date_field\": \"year\"}}, {\"capability\": \"option.time_series.date_granularity\", \"value\": \"year\", \"fields\": {}}, {\"capability\": \"argument.title\", \"value\": null, \"fields\": {}}], \"mappings\": [], \"superseded\": {}, \"origins\": {}}",
+     "using": "year",
+     "observed:0": "{\"evidence\": [\"ref_23acb02ee056:instructions\"], \"key\": \"5dca5e9600a514a1b8f42d617d90860077ede6aa452c61c291bd8441506de23d\"}",
+     "observed:1": "{\"evidence\": [\"ref_23acb02ee056:instructions\"], \"key\": \"7ab9691445680a2b6aa672feba2fcdb0383c9e057f8ffcc998c8dd44f75975f3\"}"
+    },
+    "mapping_conflicts": {}
+   },
+   {
+    "id": "req_dcfcd95baf1fb9217b109833",
+    "source": {
+     "id": "ref_23acb02ee056:o7",
+     "kind": "image",
+     "text": "{\"kind\": \"chart\", \"label\": \"have access to electricity worldwide in 2011\", \"box\": {\"x\": 0.04, \"y\": 0.465, \"w\": 0.205, \"h\": 0.105}, \"chart_candidate\": \"scorecard\", \"metric_label\": \"have access to electricity\", \"unit\": \"%\", \"aggregation\": null, \"date_grain\": \"year\", \"confidence\": \"high\", \"id\": \"o7\"}",
+     "reference_id": "ref_23acb02ee056",
+     "image_id": "img_e72cc9ba8b3f",
+     "item_id": "o7",
+     "component_id": null,
+     "batch_id": null
+    },
+    "text": "have access to electricity worldwide in 2011 scorecard",
+    "needs": [
+     {
+      "capability": "chart.scorecard",
+      "value": null,
+      "fields": {}
+     },
+     {
+      "capability": "argument.title",
+      "value": null,
+      "fields": {}
+     }
+    ],
+    "mappings": [
+     {
+      "label": "have access to electricity",
+      "field": "access_pct",
+      "unit": "%",
+      "aggregation": "avg",
+      "date_grain": "year"
+     }
+    ],
+    "component_ids": [],
+    "resolution": "unresolved",
+    "clarifications": [
+     {
+      "id": "ref_23acb02ee056:instructions",
+      "kind": "reference",
+      "text": "Region Selector = region, chart fixed_size_list. Region = region. Country = country. Access to electricity = AVG(access_pct), unit %, date grain year using year. have access to electricity = AVG(access_pct), unit %, date grain year using year. People without access to electricity = SUM(people_without_access), date grain year using year. Philippines = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Morocco = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Fiji = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Belize = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Urban = AVG(urban_pct), unit %, date grain year using year. Rural = AVG(rural_pct), unit %, date grain year using year.",
+      "reference_id": "ref_23acb02ee056",
+      "image_id": null,
+      "item_id": null,
+      "component_id": null,
+      "batch_id": null
+     }
+    ],
+    "properties": [
+     {
+      "path": "label",
+      "value": "have access to electricity worldwide in 2011"
+     }
+    ],
+    "superseded": {},
+    "mapping_origins": {
+     "requested:0": "{\"label\":\"have access to electricity\",\"field\":\"access_pct\",\"unit\":\"%\",\"aggregation\":\"avg\",\"date_grain\":\"year\"}",
+     "surface": "{\"needs\": [{\"capability\": \"chart.scorecard\", \"value\": null, \"fields\": {}}, {\"capability\": \"argument.title\", \"value\": null, \"fields\": {}}], \"mappings\": [{\"label\": \"have access to electricity\", \"field\": \"access_pct\", \"unit\": \"%\", \"aggregation\": \"avg\", \"date_grain\": \"year\"}], \"superseded\": {}, \"origins\": {\"requested:0\": \"{\\\"label\\\":\\\"have access to electricity\\\",\\\"field\\\":\\\"access_pct\\\",\\\"unit\\\":\\\"%\\\",\\\"aggregation\\\":\\\"avg\\\",\\\"date_grain\\\":\\\"year\\\"}\"}}",
+     "using": "year",
+     "observed:0": "{\"evidence\": [\"ref_23acb02ee056:instructions\"], \"key\": \"5eb656df0432baac7c7cda9b3cd80e48d2d91d58531a7800d01e44d9f0eb3335\"}"
+    },
+    "mapping_conflicts": {}
+   },
+   {
+    "id": "req_959d6a1f8bf6dfc613b7ec9c",
+    "source": {
+     "id": "ref_23acb02ee056:o8",
+     "kind": "image",
+     "text": "{\"kind\": \"chart\", \"label\": \"Fiji\", \"box\": {\"x\": 0.73, \"y\": 0.515, \"w\": 0.24, \"h\": 0.185}, \"chart_candidate\": \"time_series\", \"metric_label\": null, \"unit\": \"%\", \"aggregation\": null, \"date_grain\": \"year\", \"confidence\": \"high\", \"id\": \"o8\"}",
+     "reference_id": "ref_23acb02ee056",
+     "image_id": "img_e72cc9ba8b3f",
+     "item_id": "o8",
+     "component_id": null,
+     "batch_id": null
+    },
+    "text": "Fiji time series chart",
+    "needs": [
+     {
+      "capability": "chart.area",
+      "value": null,
+      "fields": {
+       "date_field": "year"
+      }
+     },
+     {
+      "capability": "option.area.date_granularity",
+      "value": "year",
+      "fields": {
+       "date_field": "year"
+      }
+     },
+     {
+      "capability": "argument.title",
+      "value": null,
+      "fields": {}
+     }
+    ],
+    "mappings": [
+     {
+      "label": "Fiji",
+      "field": "urban_pct",
+      "unit": "%",
+      "aggregation": "avg",
+      "date_grain": "year"
+     },
+     {
+      "label": "Fiji",
+      "field": "rural_pct",
+      "unit": "%",
+      "aggregation": "avg",
+      "date_grain": "year"
+     }
+    ],
+    "component_ids": [],
+    "resolution": "unresolved",
+    "clarifications": [
+     {
+      "id": "ref_23acb02ee056:instructions",
+      "kind": "reference",
+      "text": "Region Selector = region, chart fixed_size_list. Region = region. Country = country. Access to electricity = AVG(access_pct), unit %, date grain year using year. have access to electricity = AVG(access_pct), unit %, date grain year using year. People without access to electricity = SUM(people_without_access), date grain year using year. Philippines = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Morocco = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Fiji = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Belize = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Urban = AVG(urban_pct), unit %, date grain year using year. Rural = AVG(rural_pct), unit %, date grain year using year.",
+      "reference_id": "ref_23acb02ee056",
+      "image_id": null,
+      "item_id": null,
+      "component_id": null,
+      "batch_id": null
+     }
+    ],
+    "properties": [
+     {
+      "path": "label",
+      "value": "Fiji"
+     }
+    ],
+    "superseded": {
+     "property:0": "ref_23acb02ee056:instructions"
+    },
+    "mapping_origins": {
+     "surface": "{\"needs\": [{\"capability\": \"chart.time_series\", \"value\": null, \"fields\": {\"date_field\": \"year\"}}, {\"capability\": \"option.time_series.date_granularity\", \"value\": \"year\", \"fields\": {}}, {\"capability\": \"argument.title\", \"value\": null, \"fields\": {}}], \"mappings\": [], \"superseded\": {}, \"origins\": {}}",
+     "using": "year",
+     "observed:0": "{\"evidence\": [\"ref_23acb02ee056:instructions\"], \"key\": \"48efafc99b249c3eef1e9391eb36bbd481d47016aa765e2c44602e189b2aff85\"}",
+     "observed:1": "{\"evidence\": [\"ref_23acb02ee056:instructions\"], \"key\": \"8e9eb21835c39a846796e05b7f1d175b4b53ceba94f425fef1506f4530151d4d\"}"
+    },
+    "mapping_conflicts": {}
+   },
+   {
+    "id": "req_5dd4a88e6dc71cbe4780fb05",
+    "source": {
+     "id": "ref_23acb02ee056:o10",
+     "kind": "image",
+     "text": "{\"kind\": \"chart\", \"label\": \"People without access to electricity\", \"box\": {\"x\": 0.045, \"y\": 0.695, \"w\": 0.642, \"h\": 0.202}, \"chart_candidate\": \"bar\", \"metric_label\": \"People without access to electricity\", \"unit\": null, \"aggregation\": null, \"date_grain\": \"year\", \"confidence\": \"high\", \"id\": \"o10\"}",
+     "reference_id": "ref_23acb02ee056",
+     "image_id": "img_e72cc9ba8b3f",
+     "item_id": "o10",
+     "component_id": null,
+     "batch_id": null
+    },
+    "text": "People without access to electricity bar chart",
+    "needs": [
+     {
+      "capability": "chart.bar",
+      "value": null,
+      "fields": {}
+     },
+     {
+      "capability": "argument.title",
+      "value": null,
+      "fields": {}
+     }
+    ],
+    "mappings": [
+     {
+      "label": "People without access to electricity",
+      "field": "people_without_access",
+      "unit": null,
+      "aggregation": "sum",
+      "date_grain": "year"
+     }
+    ],
+    "component_ids": [],
+    "resolution": "unresolved",
+    "clarifications": [
+     {
+      "id": "ref_23acb02ee056:instructions",
+      "kind": "reference",
+      "text": "Region Selector = region, chart fixed_size_list. Region = region. Country = country. Access to electricity = AVG(access_pct), unit %, date grain year using year. have access to electricity = AVG(access_pct), unit %, date grain year using year. People without access to electricity = SUM(people_without_access), date grain year using year. Philippines = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Morocco = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Fiji = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Belize = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Urban = AVG(urban_pct), unit %, date grain year using year. Rural = AVG(rural_pct), unit %, date grain year using year.",
+      "reference_id": "ref_23acb02ee056",
+      "image_id": null,
+      "item_id": null,
+      "component_id": null,
+      "batch_id": null
+     }
+    ],
+    "properties": [
+     {
+      "path": "label",
+      "value": "People without access to electricity"
+     }
+    ],
+    "superseded": {},
+    "mapping_origins": {
+     "requested:0": "{\"label\":\"People without access to electricity\",\"field\":\"people_without_access\",\"unit\":null,\"aggregation\":\"sum\",\"date_grain\":\"year\"}",
+     "surface": "{\"needs\": [{\"capability\": \"chart.bar\", \"value\": null, \"fields\": {}}, {\"capability\": \"argument.title\", \"value\": null, \"fields\": {}}], \"mappings\": [{\"label\": \"People without access to electricity\", \"field\": \"people_without_access\", \"unit\": null, \"aggregation\": \"sum\", \"date_grain\": \"year\"}], \"superseded\": {}, \"origins\": {\"requested:0\": \"{\\\"label\\\":\\\"People without access to electricity\\\",\\\"field\\\":\\\"people_without_access\\\",\\\"unit\\\":null,\\\"aggregation\\\":\\\"sum\\\",\\\"date_grain\\\":\\\"year\\\"}\"}}",
+     "using": "year",
+     "observed:0": "{\"evidence\": [\"ref_23acb02ee056:instructions\"], \"key\": \"5998945c1e03b1a0723d10d678651fec8bb3623567d5dee6345be475cd75aa46\"}"
+    },
+    "mapping_conflicts": {}
+   },
+   {
+    "id": "req_fb2551dc2f180da8196c9454",
+    "source": {
+     "id": "ref_23acb02ee056:o11",
+     "kind": "image",
+     "text": "{\"kind\": \"chart\", \"label\": \"Belize\", \"box\": {\"x\": 0.73, \"y\": 0.705, \"w\": 0.242, \"h\": 0.225}, \"chart_candidate\": \"time_series\", \"metric_label\": null, \"unit\": \"%\", \"aggregation\": null, \"date_grain\": \"year\", \"confidence\": \"high\", \"id\": \"o11\"}",
+     "reference_id": "ref_23acb02ee056",
+     "image_id": "img_e72cc9ba8b3f",
+     "item_id": "o11",
+     "component_id": null,
+     "batch_id": null
+    },
+    "text": "Belize time series chart",
+    "needs": [
+     {
+      "capability": "chart.area",
+      "value": null,
+      "fields": {
+       "date_field": "year"
+      }
+     },
+     {
+      "capability": "option.area.date_granularity",
+      "value": "year",
+      "fields": {
+       "date_field": "year"
+      }
+     },
+     {
+      "capability": "argument.title",
+      "value": null,
+      "fields": {}
+     }
+    ],
+    "mappings": [
+     {
+      "label": "Belize",
+      "field": "urban_pct",
+      "unit": "%",
+      "aggregation": "avg",
+      "date_grain": "year"
+     },
+     {
+      "label": "Belize",
+      "field": "rural_pct",
+      "unit": "%",
+      "aggregation": "avg",
+      "date_grain": "year"
+     }
+    ],
+    "component_ids": [],
+    "resolution": "unresolved",
+    "clarifications": [
+     {
+      "id": "ref_23acb02ee056:instructions",
+      "kind": "reference",
+      "text": "Region Selector = region, chart fixed_size_list. Region = region. Country = country. Access to electricity = AVG(access_pct), unit %, date grain year using year. have access to electricity = AVG(access_pct), unit %, date grain year using year. People without access to electricity = SUM(people_without_access), date grain year using year. Philippines = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Morocco = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Fiji = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Belize = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Urban = AVG(urban_pct), unit %, date grain year using year. Rural = AVG(rural_pct), unit %, date grain year using year.",
+      "reference_id": "ref_23acb02ee056",
+      "image_id": null,
+      "item_id": null,
+      "component_id": null,
+      "batch_id": null
+     }
+    ],
+    "properties": [
+     {
+      "path": "label",
+      "value": "Belize"
+     }
+    ],
+    "superseded": {
+     "property:0": "ref_23acb02ee056:instructions"
+    },
+    "mapping_origins": {
+     "surface": "{\"needs\": [{\"capability\": \"chart.time_series\", \"value\": null, \"fields\": {\"date_field\": \"year\"}}, {\"capability\": \"option.time_series.date_granularity\", \"value\": \"year\", \"fields\": {}}, {\"capability\": \"argument.title\", \"value\": null, \"fields\": {}}], \"mappings\": [], \"superseded\": {}, \"origins\": {}}",
+     "using": "year",
+     "observed:0": "{\"evidence\": [\"ref_23acb02ee056:instructions\"], \"key\": \"d577816247aacc11ef91ef9facae0838b7f4f48da061be7ed28e7c530e64684c\"}",
+     "observed:1": "{\"evidence\": [\"ref_23acb02ee056:instructions\"], \"key\": \"950427e7c0a0e9c14cfa24405a591330d42a8beeea24c3173ab45d3d49acf9fd\"}"
+    },
+    "mapping_conflicts": {}
+   }
+  ],
+  "mapped_surface_variant": {
+   "id": "req_ca86854f9ee34f746386d16d",
+   "source": {
+    "id": "ref_23acb02ee056:o5",
+    "kind": "image",
+    "text": "{\"kind\": \"control\", \"label\": null, \"box\": {\"x\": 0.045, \"y\": 0.202, \"w\": 0.114, \"h\": 0.218}, \"chart_candidate\": \"dropdown\", \"metric_label\": null, \"unit\": null, \"aggregation\": null, \"date_grain\": null, \"confidence\": \"high\", \"id\": \"o5\"}",
+    "reference_id": "ref_23acb02ee056",
+    "image_id": "img_e72cc9ba8b3f",
+    "item_id": "o5",
+    "component_id": null,
+    "batch_id": null
+   },
+   "text": "Dropdown control",
+   "needs": [
+    {
+     "capability": "control.dropdown",
+     "value": null,
+     "fields": {
+      "control_field": "region"
+     }
+    }
+   ],
+   "mappings": [
+    {
+     "label": "Region Selector",
+     "field": "region",
+     "unit": null,
+     "aggregation": null,
+     "date_grain": null
+    }
+   ],
+   "component_ids": [],
+   "resolution": "unresolved",
+   "clarifications": [],
+   "properties": [
+    {
+     "path": "label",
+     "value": "Region Selector"
+    }
+   ],
+   "superseded": {},
+   "mapping_origins": {
+    "requested:0": "{\"label\": \"Region Selector\", \"field\": \"region\", \"unit\": null, \"aggregation\": null, \"date_grain\": null}",
+    "observed:0": "{\"evidence\": [\"ref_23acb02ee056:instructions\"], \"key\": \"model-proposed\"}",
+    "surface": "{\"needs\": [{\"capability\": \"control.dropdown\", \"value\": null, \"fields\": {\"control_field\": \"region\"}}], \"mappings\": [{\"label\": \"Region Selector\", \"field\": \"region\", \"unit\": null, \"aggregation\": null, \"date_grain\": null}], \"superseded\": {}, \"origins\": {\"requested:0\": \"{\\\"label\\\": \\\"Region Selector\\\", \\\"field\\\": \\\"region\\\", \\\"unit\\\": null, \\\"aggregation\\\": null, \\\"date_grain\\\": null}\", \"observed:0\": \"{\\\"evidence\\\": [\\\"ref_23acb02ee056:instructions\\\"], \\\"key\\\": \\\"model-proposed\\\"}\"}}"
+   },
+   "mapping_conflicts": {}
+  }
  }
 }

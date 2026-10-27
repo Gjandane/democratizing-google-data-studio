@@ -1,4 +1,4 @@
-"""Task 25.9: real reference fidelity at the contract default stage Settings, with retained synthetic inputs.
+"""Task 25.10: real reference fidelity at the contract default stage Settings, with retained synthetic inputs.
 
 Run explicitly with -m live. Every run retains evidence, including failures; no
 fallback or unresolved feasibility decision is accepted as a successful check.
@@ -26,7 +26,7 @@ from dss.harness.nodes import designer, reference_brief, reference_extract, synt
 from dss.harness import tracing
 from dss.spec import requirements
 from dss.spec.capabilities import Checker, load_registry
-from dss.spec.models import CHART_TYPES, CONTROL_TYPES, SYNTHETIC_LABEL, TYPES
+from dss.spec.models import CHART_TYPES, CONTROL_TYPES, FIELD_CONTROLS, SYNTHETIC_LABEL, TYPES
 from .test_backend_flow import check_usage, evidence_dir, live_app, page_shots, trace, usage, validate_recipe
 from .test_staged_flow import Flow, keep
 from .test_synthetic_flow import wait
@@ -677,7 +677,7 @@ APPROVED_DROPS = (
 REGION_OFFER = 'Region Selector: fixed_size_list on region (from your instructions)'
 
 
-def choose_decisions(assessment, owners):
+def choose_decisions(assessment, owners, accepted_offers=()):
     """Pure selection over unresolved issues: (decisions, drops, offers, left). The Region Selector offer is
     accepted only on one unlabeled control observation's issue; anywhere else, or twice, it is left (a block)."""
     decisions, drops, offers, left = [], [], [], []
@@ -687,12 +687,13 @@ def choose_decisions(assessment, owners):
         item = owners.get(issue['requirement'])
         alternative = next((a for a in issue.get('alternatives', []) if a['label'] == REGION_OFFER), None)
         if alternative is not None:
-            if (len(offered) == 1 and item and item.get('kind') == 'control'
+            if (not accepted_offers and len(offered) == 1 and item and item.get('kind') == 'control'
                     and not (item.get('label') or '').strip()):
                 decisions.append({'issue_id': issue['id'], 'action': 'accept_alternative',
                                   'alternative_id': alternative['id']})
                 offers.append({'offer': REGION_OFFER, 'alternative_id': alternative['id'], 'issue_id': issue['id'],
                                'item': item.get('id'), 'chart_candidate': item.get('chart_candidate'),
+                               **({'source': item['_source']} if '_source' in item else {}),
                                'status': issue['status'], 'reason': issue['reason']})
             else:
                 left.append(issue)
@@ -733,14 +734,216 @@ def test_region_offer_selection(owners, issues, accepted, left):
     assert all(o['item'] == 'o5' for o in offers)
 
 
-def approved_drops(flow, folder, assessment):
+def approved_drops(flow, folder, assessment, accepted_offers=()):
     """Drop exactly the approved observation issues and accept the approved binding offer; returns the
     recorded substitutions and offers, or the issues left (nothing is submitted then)."""
-    owners = {r.text: json.loads(r.source.text) for r in requirements.load(folder).requirements if r.source.kind == 'image'}
-    decisions, drops, offers, left = choose_decisions(assessment, owners)
+    owners = {r.text: {**json.loads(r.source.text), '_source': r.source.id}
+              for r in requirements.load(folder).requirements if r.source.kind == 'image'}
+    decisions, drops, offers, left = choose_decisions(assessment, owners, accepted_offers)
     if decisions and not left:
         flow.call('decisions', 'post', '/feasibility/decisions', json={'assessment_id': assessment['id'], 'decisions': decisions})
     return (drops, offers, left) if not left else ([], [], left)
+
+
+def require_region_authorization(snapshot, ledger, checker, accepted_offers=(), *, spec=None, bindings=None):
+    """Pure campaign proof: the original observation owns the approved region binding.
+
+    A ready assessment or a model-filled field is insufficient. This guard reads the
+    applying decision (or an exact original label's current instruction reconciliation),
+    then ties that same requirement to the Blueprint/published page-1 native control.
+    """
+    expected = [{'capability': 'control.fixed_size_list', 'value': None, 'fields': {'control_field': 'region'}}]
+    authorized = []
+    reference = snapshot.get('reference') or {}
+    assert reference.get('mode') == 'recreate', 'region authorization requires a recreate reference'
+    for row in ledger.requirements:
+        if row.source.kind != 'image' or row.source.reference_id != reference['id']:
+            continue
+        item = json.loads(row.source.text)
+        if item.get('kind') != 'control' or item.get('chart_candidate') not in FIELD_CONTROLS:
+            continue
+        if requirements.observation_stale(snapshot, row):
+            continue
+        if requirements._unlabeled_control(row, snapshot):
+            for index, need in enumerate(row.needs):
+                if not need.capability.startswith('control.'):
+                    continue
+                choice = requirements._choice(row, f'need:{index}', snapshot, ledger, checker)
+                if (choice and choice['action'] == 'accept_alternative'
+                        and choice['alternative'].get('clause') == 'Region Selector'
+                        and choice['alternative']['needs'] == expected):
+                    authorized.append({'requirement': row.id, 'source': row.source.id, 'item': row.source.item_id,
+                                       'issue_id': choice['issue_id'], 'alternative_id': choice['alternative']['id']})
+        elif requirements._normal(item.get('label') or '') == requirements._normal('Region Selector'):
+            covered = requirements._covered(row, snapshot, ledger, checker)
+            instruction = reference['id'] + ':instructions'
+            if (covered and [n.model_dump() for n in covered[0] if n.capability.startswith('control.')] == expected
+                    and requirements._control_clause('Region Selector', snapshot, item['chart_candidate']) == ('fixed_size_list', 'region')
+                    and any(s.id == instruction for s in row.clarifications)
+                    and 'surface' in row.mapping_origins):
+                authorized.append({'requirement': row.id, 'source': row.source.id, 'item': row.source.item_id,
+                                   'issue_id': None, 'alternative_id': None})
+    assert len(authorized) == 1, 'Region Selector needs exactly one currently authorized observation'
+    proof = authorized[0]
+    assert len(accepted_offers) <= 1, 'Region Selector was accepted more than once in this campaign'
+    if accepted_offers:
+        [accepted] = accepted_offers
+        assert all(accepted.get(k) == proof[k] for k in ('item', 'issue_id', 'alternative_id')), 'Region Selector authorization changed across assessments'
+        assert accepted.get('source', proof['source']) == proof['source'], 'Region Selector source changed across assessments'
+    if spec is not None:
+        owned = (bindings or {}).get(proof['requirement'], [])
+        first = {c['id']: c for p in spec['pages'] if p['index'] == 1 for c in p['components']}
+        assert owned and all(cid in first and first[cid]['type'] == 'fixed_size_list'
+                             and first[cid].get('field') == 'region' for cid in owned), 'Authorized Region Selector must own a page-1 fixed_size_list on region'
+        proof = {**proof, 'components': list(owned)}
+    elif snapshot.get('blueprint'):
+        from dss.artifacts.models import Blueprint
+        from dss.spec import feasibility
+        blueprint = Blueprint.model_validate(snapshot['blueprint'])
+        coverage = feasibility.coverage(snapshot, ledger, checker, blueprint.rows, blueprint.derived_fields)
+        indices = next((indices for row, _, _, indices, _ in coverage if row.id == proof['requirement']), [])
+        assert indices and all(blueprint.rows[i].page == 1 and blueprint.rows[i].component.type == 'fixed_size_list'
+                               and blueprint.rows[i].component.dimensions == ['region'] for i in indices), 'Authorized Region Selector must own a page-1 Blueprint fixed_size_list on region'
+    return proof
+
+
+def campaign_region(app, bid, folder, facts, **published):
+    return require_region_authorization(requirements.inputs(app.state.db, bid, folder), requirements.load(folder),
+                                        Checker(load_registry()), facts['accepted_offers'], **published)
+
+
+def test_region_offer_campaign_ownership_and_duplicate_reads():
+    owners = {'a': UNLABELED_LIST, 'b': {**UNLABELED_LIST, 'id': 'o12'}}
+    issue = _issue('i1', 'a', REGION_OFFER)
+    decisions, _, history, left = choose_decisions({'issues': [issue]}, owners)
+    assert len(decisions) == len(history) == 1 and not left
+    before = deepcopy(history)
+    for _ in range(2):
+        # Reading the already applying issue is idempotent; no POST or history append.
+        assert choose_decisions({'issues': [{**issue, 'resolution': 'accepted_alternative'}]}, owners, history) == ([], [], [], [])
+    assert history == before
+    second = _issue('i2', 'b', REGION_OFFER)
+    assert choose_decisions({'issues': [second]}, owners, history) == ([], [], [], [second])
+    # An old acceptance is not permission to repost even an identical unresolved issue.
+    assert choose_decisions({'issues': [issue]}, owners, history) == ([], [], [], [issue])
+
+
+def region_guard_case(monkeypatch, *, accepted=True, named=False):
+    """Only synthetic schema and retained offline observation fixtures; no live service."""
+    from test_feasibility import UNLABELED, REGION_SELECTOR, control_issues, decide_on, unlabeled_assess, unlabeled_snapshot
+    monkeypatch.setenv('DSS_ALLOWED_TYPES', ','.join(TYPES))
+    rows, items = deepcopy(UNLABELED['case']['requirements']['requirements']), deepcopy(UNLABELED['case']['items'])
+    if named:
+        item = next(i for i in items if i['id'] == 'o5')
+        item['label'] = named if isinstance(named, str) else 'Region Selector'
+        row = next(r for r in rows if r['source']['item_id'] == 'o5')
+        row['source']['text'] = json.dumps(item)
+    snapshot = unlabeled_snapshot(items=items)
+    ledger, assessment = unlabeled_assess(snapshot, requirements=rows)
+    if accepted and not named:
+        issue = control_issues(ledger, assessment)['o5']
+        ledger, _ = decide_on(snapshot, ledger, (issue, REGION_SELECTOR))
+    return snapshot, ledger, Checker(load_registry())
+
+
+def test_region_authorization_requires_applying_decision_even_when_ready(monkeypatch):
+    snapshot, ledger, checker = region_guard_case(monkeypatch, accepted=False)
+    row = next(r for r in ledger.requirements if r.source.item_id == 'o5')
+    row.needs[0].fields['control_field'] = 'region'
+    row.mappings = [requirements.Mapping(label='Region Selector', field='region')]
+    ledger.assessment.state = 'ready'
+    with pytest.raises(AssertionError, match='currently authorized'):
+        require_region_authorization(snapshot, ledger, checker)
+    # Neither a proposed property nor metric label on the originally blank item is authorization.
+    row.properties = [requirements.Property(path='label', value='Region Selector')]
+    item = json.loads(row.source.text)
+    item['metric_label'] = 'Region Selector'
+    row.source.text = json.dumps(item)
+    with pytest.raises(AssertionError, match='currently authorized'):
+        require_region_authorization(snapshot, ledger, checker)
+
+
+def test_region_authorization_is_pure_and_tied_to_campaign_owner(monkeypatch):
+    snapshot, ledger, checker = region_guard_case(monkeypatch)
+    before = requirements.digest([snapshot, ledger.model_dump()])
+    proof = require_region_authorization(snapshot, ledger, checker)
+    history = [{**proof, 'offer': REGION_OFFER}]
+    assert require_region_authorization(snapshot, ledger, checker, history) == proof
+    assert require_region_authorization(snapshot, ledger, checker, history) == proof
+    assert requirements.digest([snapshot, ledger.model_dump()]) == before
+    with pytest.raises(AssertionError, match='changed across assessments'):
+        require_region_authorization(snapshot, ledger, checker, [{**history[0], 'item': 'another-control'}])
+    with pytest.raises(AssertionError, match='source changed across assessments'):
+        require_region_authorization(snapshot, ledger, checker, [{**history[0], 'source': 'another-reference:o5'}])
+    with pytest.raises(AssertionError, match='more than once'):
+        require_region_authorization(snapshot, ledger, checker, history + history)
+
+
+@pytest.mark.parametrize('change', ['removed', 'field', 'type', 'meaning'])
+def test_region_authorization_rejects_invalidated_decisions(monkeypatch, change):
+    snapshot, ledger, checker = region_guard_case(monkeypatch)
+    if change == 'meaning':
+        next(r for r in ledger.requirements if r.source.item_id == 'o5').text += ' changed'
+    else:
+        text = snapshot['reference']['instructions']
+        text = (text.replace('Region Selector = region, chart fixed_size_list. ', '') if change == 'removed' else
+                text.replace('Region Selector = region,', 'Region Selector = country,') if change == 'field' else
+                text.replace('chart fixed_size_list', 'chart dropdown'))
+        snapshot['reference']['instructions'] = text
+        next(s for s in snapshot['incoming'] if s['kind'] == 'reference')['text'] = text
+    with pytest.raises(AssertionError, match='currently authorized'):
+        require_region_authorization(snapshot, ledger, checker)
+
+
+@pytest.mark.parametrize('label', ['Region Selector', 'Region selector', 'REGION SELECTOR', ' Region  Selector '])
+def test_region_authorization_accepts_only_current_original_named_reconciliation(monkeypatch, label):
+    snapshot, ledger, checker = region_guard_case(monkeypatch, named=label)
+    proof = require_region_authorization(snapshot, ledger, checker)
+    assert proof['item'] == 'o5' and proof['alternative_id'] is None
+    row = next(r for r in ledger.requirements if r.source.item_id == 'o5')
+    row.clarifications = []
+    with pytest.raises(AssertionError, match='currently authorized'):
+        require_region_authorization(snapshot, ledger, checker)
+
+
+@pytest.mark.parametrize('wrong', ['page', 'owner', 'type', 'field'])
+def test_region_authorization_proves_same_requirement_page_and_native_binding(monkeypatch, wrong):
+    snapshot, ledger, checker = region_guard_case(monkeypatch)
+    proof = require_region_authorization(snapshot, ledger, checker)
+    component = {'id': 'region-list', 'type': 'fixed_size_list', 'field': 'region'}
+    spec = {'pages': [{'index': 1, 'components': [component]}]}
+    bindings = {proof['requirement']: ['region-list']}
+    assert require_region_authorization(snapshot, ledger, checker, spec=spec, bindings=bindings)['components'] == ['region-list']
+    if wrong == 'page':
+        spec['pages'][0]['index'] = 2
+    elif wrong == 'owner':
+        bindings = {'another-requirement': ['region-list']}
+    else:
+        component[wrong] = 'dropdown' if wrong == 'type' else 'country'
+    with pytest.raises(AssertionError, match='must own a page-1'):
+        require_region_authorization(snapshot, ledger, checker, spec=spec, bindings=bindings)
+
+
+def test_region_authorization_blueprint_uses_native_dimensions_and_coverage_owner(monkeypatch):
+    from dss.spec import feasibility
+    snapshot, ledger, checker = region_guard_case(monkeypatch)
+    proof = require_region_authorization(snapshot, ledger, checker)
+    component = {'type': 'fixed_size_list', 'label': 'Region Selector', 'dimensions': ['region'], 'metrics': [],
+                 'date_dimension': None, 'breakdown': None, 'sort': None, 'options': {}}
+    snapshot['blueprint'] = {'revision': 1, 'view_sources': {'base': 's', 'joins': [], 'union': []}, 'derived_fields': [],
+                             'view_table': None, 'assessment_id': None,
+                             'rows': [{'question_id': None, 'section_id': 's1', 'page': 1, 'component': component,
+                                       'note': '', 'status': 'ok', 'issue_ids': []}]}
+    row = next(r for r in ledger.requirements if r.id == proof['requirement'])
+    monkeypatch.setattr(feasibility, 'coverage', lambda *args: [(row, [], [], [0], None)])
+    assert require_region_authorization(snapshot, ledger, checker) == proof
+    snapshot['blueprint']['rows'][0]['page'] = 2
+    with pytest.raises(AssertionError, match='must own a page-1 Blueprint'):
+        require_region_authorization(snapshot, ledger, checker)
+    snapshot['blueprint']['rows'][0]['page'] = 1
+    monkeypatch.setattr(feasibility, 'coverage', lambda *args: [])
+    with pytest.raises(AssertionError, match='must own a page-1 Blueprint'):
+        require_region_authorization(snapshot, ledger, checker)
 
 
 # DSS_LIVE_STAGE=24.7 stops after the published, dry-run recreate build: the design-stage, fidelity and
@@ -869,7 +1072,7 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
     assert all(fixtures[name] == digest for name, digest in HASHES.items())
     generation = json.loads((DATA / 'generation.json').read_text(encoding='utf-8-sig'))
     app, config, project = live_app(tmp_path)
-    evidence = evidence_dir('24.9' if STAGE == '24.9' else '25.9' if FIDELITY else '24.7', mode)
+    evidence = evidence_dir('24.9' if STAGE == '24.9' else '25.10' if FIDELITY else '24.7', mode)
     (evidence / 'test-source.py').write_bytes(Path(__file__).read_bytes())
     print(f'{evidence.parents[1].name} {mode} evidence: {evidence}', flush=True)
     calls, tables = [], set()
@@ -952,10 +1155,11 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
                 early = flow.get('/feasibility')
                 dump(evidence / 'assessment-before-blueprint.json', early)
                 if early['state'] != 'ready':
-                    drops, offers, left = approved_drops(flow, folder, early)
+                    drops, offers, left = approved_drops(flow, folder, early, facts['accepted_offers'])
                     facts['accepted_substitutions'] += drops
                     facts['accepted_offers'] += offers
                     assert not left, f'Issues outside the approved drops (a block for the architect): {left}'
+                facts['region_authorization_before_blueprint'] = campaign_region(app, bid, folder, facts)
             flow.act('blueprint', 'post', '/design/confirm', seconds=1300)
             assessment = flow.get('/feasibility')
             if any(i['id'].startswith('bp_intent_') for i in assessment['issues']):
@@ -964,7 +1168,7 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
             dump(evidence / 'assessment.json', assessment)
             if assessment['state'] != 'ready' and mode == 'recreate':
                 # There is intentionally no "first alternative or drop" loop: only the approved classes.
-                drops, offers, left = approved_drops(flow, folder, assessment)
+                drops, offers, left = approved_drops(flow, folder, assessment, facts['accepted_offers'])
                 facts['accepted_substitutions'] += drops
                 facts['accepted_offers'] += offers
                 assert not left, f'Issues outside the approved drops (a block for the architect): {left}'
@@ -977,6 +1181,8 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
             blueprint = flow.get('/blueprint')
             dump(evidence / 'blueprint.json', blueprint)
             facts['code_added_rows'] = [r['note'] for r in blueprint['rows'] if r['note'].startswith('observation ')]
+            if mode == 'recreate':
+                facts['region_authorization_before_accept'] = campaign_region(app, bid, folder, facts)
             if STAGE == '24.9':
                 facts['stage_limit'] = ('Stopped after real-model/BigQuery /design/confirm readiness; '
                                         'no reference HTML, prototype, engine run or visual approval claimed.')
@@ -993,6 +1199,8 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
                 assert flow.get()['stage'] == 'blueprint', 'a brief review must leave the stage unchanged'
                 design_runs += review_pages(flow, facts)
             spec, proof = capture(flow, folder, evidence, 'prototype')
+            if mode == 'recreate':
+                facts['region_authorization_published'] = campaign_region(app, bid, folder, facts, spec=spec, bindings=proof['bindings'])
             pages = design_artifacts(flow, folder, evidence, 'prototype')
             if mode == 'recreate' and FIDELITY:
                 facts['fidelity_inventory'] = fidelity_inventory(spec, proof, evidence)

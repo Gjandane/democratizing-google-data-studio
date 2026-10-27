@@ -92,8 +92,8 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 | | live token totals on the event stream (`run.usage`, change 2026-10-19) | |
 
 ## Constraints
-- Deadline 2026-10-23 01:05 MPST (moved 2026-10-20) (whole program); flow 1 ready for integration by about 14:00 on
-  2026-10-19, cloud mode by about 18:00 (docs/program.md roadmap).
+- Deadline no longer binding (user, 2026-10-23; program guide). Earlier October milestones
+  are historical; the POC scope and final closure gates control the remaining work.
 - Python 3.12 + uv on Windows 11; Gemini API key; one GCP project with BigQuery; ADC login.
 - Contracts: ../contracts/api.md, ../contracts/recipe.md, ../contracts/conventions.md.
 
@@ -104,6 +104,19 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
   the two-source GPS-style fixture reaches a blueprint with a union and a flagged ratio KPI.
 
 ## Decided by default
+- Final closure decision 2026-10-27 (explicit user answer): use a 250 ms warm-run
+  acceptance limit for the existing deterministic feasibility speed checks, and report
+  first/cold timings separately. This supersedes the earlier 100 ms acceptance requirement;
+  it does not relax any fixture size, correctness, binding, purity or invalidation check.
+  The recorded 25.9 failure remains evidence, not a reason for another optimization campaign.
+  Task 25.9 now needs the test acceptance updated and the complete offline suite verified.
+- Change 2026-10-27 (25.9 block): preserve the existing explicit-decision rule for every
+  originally unlabeled recreate field control, including model-filled and persisted mappings;
+  restore the unchanged speed oracle with operation-local allowlist reuse. One M offline task
+  groups the fixes because they share requirements.py and the blocked acceptance prerequisite.
+  The approved footer implementation is documented and retained. No product scope, dependency,
+  interface, model default or cap changes. User answer: keep native_planning at 1,200 s and,
+  after the repairs, permit one new live acceptance campaign under the existing stop rules.
 - Change 2026-10-26 (configurable model stages, architect defaults after the user ended the
   interview; source: user "stop the questioning ... proceed", backend/docs/HANDOFF-stage-settings.md):
   interview = context and outline nodes, routine = every other non-generation model node; both
@@ -279,9 +292,31 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
   validation repairs, clearly labeled and with a Settings enable/disable switch (A).
 
 ## Open questions
-- none (program-root planning applied 2026-10-26: tasks 24.11, 25.1-25.7; the visual STOP stays in 25.7).
+- Visual fidelity approval remains the STOP in 25.10; model clock and offline repair scope
+  settled by the user's answer on 2026-10-27. No other planning question is open.
 
 ## Later
+- Date-grain parity: feasibility can read component options while the compiler derives
+  date_granularity from datasource-field proof; KPI grain inheritance is time_series-specific,
+  and two TRUNC parsers remain (P2/P3, tasks 23.1/24.1; audit 2026-10-27).
+- Legacy builds/brief projection: recreate builds published before 24.10 need re-acceptance
+  for corrected placement/titles; reference_brief.report omits confirmed KPIs from
+  observation_meaning and supplies every decision to every page (P2/P3, tasks 24.5/24.10;
+  audit 2026-10-27).
+- Observation completion uses note text to identify code-added rows, pruning can leave
+  derived fields, and a missing `using` field reports clarification rather than missing data
+  (P3, task 24.7; audit 2026-10-27).
+- Art tags have no per-page count cap; list/dropdown null display differs; procedural design
+  and extraction guidance lag the added native list/chart types (P3, tasks 24.1/24.4;
+  audit 2026-10-27).
+- Test/diagnostic precision: some older background/recipe/style tests use reconstructed or
+  empty inputs; count-refusal arithmetic can describe pre-merge totals; stale 32,768 and
+  Settings 3.0 text remains (P3, tasks 23.2/24.3/25.7; audit 2026-10-27).
+- Existing 25.8 Left open items: generic one-clause ownership after a spec-mismatch
+  revalidation cycle (P3), and timing coverage with 16 accepted bindings rather than the
+  current one accepted binding (P3). Keep the existing timing workload in 25.9; the live
+  harness explicitly blocks a second observation taking Region Selector across assessments
+  (change 2026-10-27, carried forward; no extra task).
 - Outline Other text may lose behavior: empty extraction adds no blocking record, and tagged
   records skip needs_clarification and fulfillment coverage in favor of structured questions.
   This user-approved 15.11 tradeoff conflicts with dashboard-intent.md's full preservation
@@ -304,7 +339,9 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 - Definition-recompute timing and screenshot capture can fail intermittently: one 105.47 ms
   result against 100 ms and one 20 s document-load timeout during the audit both passed an
   unchanged isolated rerun and other serial suites. Causes/reliability rates are unconfirmed;
-  retain the existing limits (P3/P2 respectively, audit 2026-10-21).
+  the final 2026-10-27 user decision supersedes the timing gate with 250 ms warm and separate
+  first/cold reporting; the screenshot limit stays (P3/P2 respectively, audit 2026-10-21,
+  updated audit 2026-10-27).
 - One view per page for unjoinable sources (spec, recipe and engine change) (change staged
   workflow 2026-10-21).
 - Document upload as context input (change staged workflow 2026-10-21).

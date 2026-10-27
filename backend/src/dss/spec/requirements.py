@@ -6,7 +6,8 @@ provenance, classification, input invalidation and the durable assessment commit
 import hashlib
 import json
 import re
-from functools import lru_cache
+from contextvars import ContextVar
+from functools import lru_cache, wraps
 from html import unescape
 from typing import Literal
 
@@ -24,6 +25,23 @@ MAX_ISSUES = 20
 # 1-5 pages x 12 rows (architecture.md#Multi-page feasibility scope); 24 is the Outline question limit.
 MAX_COMPONENTS = 60
 GRAINS = ('day', 'week', 'month', 'quarter', 'year')
+
+# An immutable effective allowlist lives only for the current synchronous operation.
+# Nested reconciliation/offer/stale checks reuse it; finally resets it even on failure.
+_operation_types = ContextVar('requirement_operation_types', default=None)
+
+
+def _type_scope(operation):
+    @wraps(operation)
+    def scoped(*args, **kwargs):
+        if _operation_types.get() is not None:
+            return operation(*args, **kwargs)
+        token = _operation_types.set(_effective_types())
+        try:
+            return operation(*args, **kwargs)
+        finally:
+            _operation_types.reset(token)
+    return scoped
 
 
 class Strict(BaseModel):
@@ -360,6 +378,7 @@ def keep_unsent(before, after, sent):
     return after.model_copy(update={"requirements": rows})
 
 
+@_type_scope
 def merge(ledger, snapshot, extraction):
     """Append code-identified requirements. A model cannot delete earlier intent or spoof a source."""
     updated = ledger.model_copy(deep=True)
@@ -483,7 +502,7 @@ def merge(ledger, snapshot, extraction):
 
 def _supersede_comments(ledger, snapshot, sources):
     """Later assignments override the same property, never an unrelated/unsupported behavior."""
-    checker = capabilities.Checker(capabilities.load_registry())
+    checker = capabilities.Checker(capabilities.load_registry(), allowed=_effective_types())
     def slots(r):
         result = {f'property:{i}': 'property:' + p.path for i, p in enumerate(r.properties)}
         for i, n in enumerate(r.needs):
@@ -890,15 +909,16 @@ def unused_definitions(snapshot, ledger):
     used = set()
     for r in ledger.requirements:
         if r.source.kind == 'image' and r.source.reference_id == reference['id']:
-            item = json.loads(r.source.text)
-            used |= {_normal(v) for v in (item.get('label'), item.get('metric_label')) if v} | {_normal(m.label) for m in r.mappings}
+            if not _unlabeled_control(r, snapshot):
+                item = json.loads(r.source.text)
+                used |= {_normal(v) for v in (item.get('label'), item.get('metric_label')) if v} | {_normal(m.label) for m in r.mappings}
     return list(dict.fromkeys(d['label'] for d in _surface_clauses(reference['instructions'])[0] if _normal(d['label']) not in used))
 
 
 @lru_cache(maxsize=1)
 def _surface_registry():
     # Capability ids and data prerequisites only: static registry facts, read once.
-    return capabilities.Checker(capabilities.load_registry())
+    return capabilities.Checker(capabilities.load_registry(), allowed=_surface_catalog().keys())
 
 
 @lru_cache(maxsize=1)
@@ -908,13 +928,20 @@ def _surface_catalog():
     return catalog()
 
 
-def _offered_types():
-    """validate.allowed_types() (its env/.env reads included) with the cached catalog as the default."""
+def _effective_types():
+    """Current validate.allowed_types() semantics, shared only within this operation."""
+    if (offered := _operation_types.get()) is not None:
+        return offered
     import os
     from dss.spec import validate
     configured = {**validate.dotenv_values(validate.BACKEND_DIR.parent / '.env'), **os.environ}.get('DSS_ALLOWED_TYPES')
     allowed = _surface_catalog().keys() if configured is None else {s.strip() for s in configured.split(',') if s.strip()}
-    return set(allowed) & _surface_catalog().keys() & {*CHART_TYPES, *CONTROL_TYPES}
+    return frozenset(allowed)
+
+
+def _offered_types():
+    """Catalog field/chart offers narrowed by the operation's effective allowlist."""
+    return _effective_types() & _surface_catalog().keys() & {*CHART_TYPES, *CONTROL_TYPES}
 
 
 def _takes_date(capability):
@@ -1100,6 +1127,7 @@ def _observed_key(mapping):
     return digest(mapping.model_dump())
 
 
+@_type_scope
 def _reconcile_observation(r, snapshot, *, candidates=_candidates):
     """Bind a recreate observation's metric to definition evidence, never to an image/model guess.
 
@@ -1119,6 +1147,24 @@ def _reconcile_observation(r, snapshot, *, candidates=_candidates):
     if item.get('kind') == 'control' and any(p.path == 'label' for p in r.properties):
         # A control has no title op: its observed title is its label property (extraction normalized).
         r.needs = [n for n in r.needs if n.capability != 'argument.title']
+    if candidate := _unlabeled_control(r, snapshot):
+        # A worker's proposed label, metric_label, mapping or saved surface is not
+        # binding evidence. Only the decision substitution path may supply a field.
+        # Keep the original slot so clean 25.8 decision meanings/proofs do not change.
+        typed = False
+        for i, need in enumerate(r.needs):
+            if (need.capability.startswith(('chart.', 'control.')) and not typed
+                    or need.capability in {f'control.{kind}' for kind in FIELD_CONTROLS}):
+                r.needs[i] = capabilities.Need(capability=f'control.{candidate}')
+                r.superseded.pop(f'need:{i}', None)
+                typed = True
+        if not typed:
+            r.needs.append(capabilities.Need(capability=f'control.{candidate}'))
+        r.mappings = []
+        r.mapping_origins = {k: v for k, v in r.mapping_origins.items() if not (
+            k.isdigit() or k in ('surface', 'using') or k.startswith(('requested:', 'observed:', 'definition:', 'kpi:')))}
+        r.mapping_conflicts = {k: v for k, v in r.mapping_conflicts.items() if not (k.isdigit() or k == 'definition')}
+        return
     if instructions and item and _observe_surface(r, item, instructions, fields, kpis):
         return
     used = False
@@ -1207,6 +1253,7 @@ def _reconcile_observation(r, snapshot, *, candidates=_candidates):
         r.clarifications.append(instructions)  # Provenance of the clarified image item.
 
 
+@_type_scope
 def observation_stale(snapshot, r, *, candidates=_candidates):
     """The stored reconciliation no longer follows from the current KPIs, instructions and schema."""
     reference = snapshot.get('reference') or {}
@@ -1326,7 +1373,7 @@ def _redundant_inputs(ledger):
 
     Unknown input names that carry no such binding still block as before.
     """
-    checker = capabilities.Checker(capabilities.load_registry())
+    checker = capabilities.Checker(capabilities.load_registry(), allowed=_effective_types())
     for r in ledger.requirements:
         bound = {m.field for m in r.mappings if m.field}
         for i, need in enumerate(r.needs):
@@ -1468,17 +1515,18 @@ def _matched_labels(snapshot, ledger):
     """Normalized labels the recreate reference's observations match by name (unused_definitions)."""
     rid, used = (snapshot.get('reference') or {}).get('id'), set()
     for r in ledger.requirements:
-        if r.source.kind == 'image' and r.source.reference_id == rid:
+        if r.source.kind == 'image' and r.source.reference_id == rid and not _unlabeled_control(r, snapshot):
             item = json.loads(r.source.text)
             used |= {_normal(v) for v in (item.get('label'), item.get('metric_label')) if v} | {_normal(m.label) for m in r.mappings}
     return used
 
 
-def _control_clause(label, snapshot, candidate):
+def _control_clause(label, snapshot, candidate, *, labels=None):
     """(type, field) of the instructions' `<Label> = <field>[, chart <type>]` clause with this label when
     it is a field control (its chart type, else the observation's `candidate`), else None."""
     reference = snapshot.get('reference') or {}
-    found = _surface_labels(reference.get('instructions') or '').get(_normal(label), [])
+    labels = _surface_labels(reference.get('instructions') or '') if labels is None else labels
+    found = labels.get(_normal(label), [])
     if len({_surface_key(d) for d in found}) != 1 or found[0]['field'] is None:
         return None  # absent, or conflicting definitions (a block of their own)
     kind = found[0]['chart'] or candidate
@@ -1496,11 +1544,15 @@ def _bound_clauses(requirement, snapshot, ledger, checker):
     return bound
 
 
+@_type_scope
 def _binding_offers(requirement, slot, candidate, snapshot, ledger, checker):
     """Need substitutions for an unlabeled field control's control_field issue: unused instruction control
     clauses, then catalog-valid fields. Offered, never applied: silence or a sole candidate stays unresolved."""
     fields, offered, types = schema(snapshot), [], _offered_types()
     registry = _surface_registry().registry
+    requested_meaning = meaning(requirement)
+    instructions = snapshot['reference'].get('instructions') or ''
+    labels = _surface_labels(instructions)
 
     def offer(label, kind, field, clause):
         needs = [capabilities.Need(capability=f'control.{kind}', fields={'control_field': field})]
@@ -1510,12 +1562,12 @@ def _binding_offers(requirement, slot, candidate, snapshot, ledger, checker):
         payload = [n.model_dump() for n in needs]
         if clause is None and any(o['needs'] == payload for o in offered):
             return  # the instruction offer already carries these needs
-        aid = 'alt_' + digest([requirement.id, meaning(requirement), slot, payload, clause])[:24]
+        aid = 'alt_' + digest([requirement.id, requested_meaning, slot, payload, clause])[:24]
         offered.append({'id': aid, 'label': label, 'needs': payload, 'clause': clause})
     used = _matched_labels(snapshot, ledger) | _bound_clauses(requirement, snapshot, ledger, checker)
-    for definition in _surface_clauses((snapshot['reference'].get('instructions') or ''))[0]:
+    for definition in _surface_clauses(instructions)[0]:
         label = definition['label']
-        clause = _control_clause(label, snapshot, candidate)
+        clause = _control_clause(label, snapshot, candidate, labels=labels)
         if clause and _normal(label) not in used and not any(o['clause'] == label for o in offered):
             offer(f'{label}: {clause[0]} on {clause[1]} (from your instructions)', *clause, label)
     for field in sorted(fields):
@@ -1599,6 +1651,7 @@ def _matches(snapshot, requirement, needs, checker):
     return True
 
 
+@_type_scope
 def revalidate_decisions(snapshot, ledger, checker):
     """Seal a fulfilled choice so the superseded prototype cannot authorize a later mapping change."""
     updated = ledger.model_copy(deep=True)
@@ -1615,6 +1668,11 @@ def revalidate_decisions(snapshot, ledger, checker):
 
 
 def _choice(requirement, slot, snapshot, ledger, checker):
+    if _unlabeled_control(requirement, snapshot) and observation_stale(snapshot, requirement):
+        # A pre-enforcement decision may match the persisted guessed mapping, but
+        # that mapping is no longer its authorized meaning. It cannot own a clause
+        # on pure reads while waiting for explicit reconciliation. Never re-sign it.
+        return None
     for d in reversed(ledger.decisions):
         if d.get("requirement_id") != requirement.id or d.get("meaning") != meaning(requirement):
             continue
@@ -1640,6 +1698,7 @@ def _choice(requirement, slot, snapshot, ledger, checker):
     return None
 
 
+@_type_scope
 def _requirement_issues(snapshot, ledger, checker, *, candidates=_candidates):
     """Internal issue targets never come from client/model claims."""
     fields, rows = schema(snapshot), []
@@ -1684,6 +1743,7 @@ def _requirement_issues(snapshot, ledger, checker, *, candidates=_candidates):
     return rows
 
 
+@_type_scope
 def evaluate(snapshot, ledger, checker, *, check_components=True):
     """Pure bounded recomputation; does not call a model, write SQL or publish artifacts."""
     # Only literal definition parsing is shared: full text, mapping and ordered schema
@@ -1779,6 +1839,7 @@ def explanation(assessment):
     return "Feasibility needs attention. " + " ".join(parts)
 
 
+@_type_scope
 def execution_preflight(db, build_id, folder):
     """Require a current proof before compilation or any engine/job side effect.
 
@@ -1786,7 +1847,7 @@ def execution_preflight(db, build_id, folder):
     recipe just because deterministic support checks would succeed today.
     Call while holding the build action lock, or without yielding before taking it.
     """
-    snapshot, ledger, checker = inputs(db, build_id, folder), load(folder), capabilities.Checker(capabilities.load_registry())
+    snapshot, ledger, checker = inputs(db, build_id, folder), load(folder), capabilities.Checker(capabilities.load_registry(), allowed=_effective_types())
     current = get(snapshot, ledger, checker)
     if current.state != 'ready' or current.prototype_stale:
         raise blocked(current)
@@ -1805,9 +1866,10 @@ def execution_preflight(db, build_id, folder):
         raise blocked(assessment)
 
 
+@_type_scope
 def copy_version(db, build_id, folder, destination):
     """Carry intent and valid choices, never the source version's authorization."""
-    snapshot, ledger, checker = inputs(db, build_id, folder), load(folder), capabilities.Checker(capabilities.load_registry())
+    snapshot, ledger, checker = inputs(db, build_id, folder), load(folder), capabilities.Checker(capabilities.load_registry(), allowed=_effective_types())
     updated = revalidate_decisions(snapshot, ledger, checker)
     updated.prototype_stale = artifact_stale(snapshot, ledger, checker)
     updated.assessment, updated.invalidated, updated.verification = None, False, {}
@@ -1929,6 +1991,7 @@ def placed_fulfills(component, page, requirement, needs, checker, snapshot, **op
         component, requirement, needs, checker, snapshot, **options)
 
 
+@_type_scope
 def observed_labels(snapshot, ledger, checker):
     """{component id: label} titling recreate observations' charts with the label the screenshot
     shows (architecture.md#Recreate definition reconciliation). A Blueprint may name the observed
@@ -1970,6 +2033,7 @@ def _covered(r, snapshot, ledger, checker):
     return needs, [p for i, p in enumerate(r.properties) if f'property:{i}' not in r.superseded]
 
 
+@_type_scope
 def coverage_errors(snapshot, ledger, checker, *, bindings=None, titles=None):
     """Verify original intent against the candidate, never against a reduced model ledger.
     `bindings` collects {requirement id: fulfilling component ids}; `titles` {requirement id:
@@ -2060,6 +2124,7 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None, titles=None):
     return errors
 
 
+@_type_scope
 def blueprint_observations(snapshot, ledger, checker, *, requirement_issues=None):
     """The recreate reference's records publish coverage proves on a component, as (requirement,
     needs, properties) after their choices (architecture.md#Blueprint observation coverage). Image
@@ -2077,6 +2142,7 @@ def blueprint_observations(snapshot, ledger, checker, *, requirement_issues=None
     for r in ledger.requirements:
         if (r.source.kind not in ('image', 'reference') or r.source.reference_id != reference['id'] or r.id in own
                 or audience_requirement(r, ledger) or removal(r) or r.mapping_origins.get('origin') == 'outline_other'
+                or (_unlabeled_control(r, snapshot) and observation_stale(snapshot, r))
                 or (r.component_ids and set(r.component_ids) <= removed)):
             continue
         covered = _covered(r, snapshot, ledger, checker)
@@ -2373,6 +2439,7 @@ def date_starts(snapshot):
         return {}
 
 
+@_type_scope
 def verification(snapshot, ledger, checker):
     """Retain the full code-owned proof, including support (the public issues omit it)."""
     fields, proof = schema(snapshot), {}
@@ -2408,12 +2475,19 @@ def verification(snapshot, ledger, checker):
     return proof
 
 
+@_type_scope
 def get(snapshot, ledger, checker):
     """GET is a read-only projection. Expired IDs cannot authorize later actions."""
     assessment = ledger.assessment.model_copy(deep=True) if ledger.assessment else Assessment()
     changed = assessment.input_digest is not None and assessment.input_digest != input_digest(snapshot, ledger, checker)
     if changed or ledger.invalidated:
         assessment.state, assessment.id = "stale", None
+    if assessment.state == 'ready' and any(_unlabeled_control(r, snapshot) and observation_stale(snapshot, r)
+                                         for r in ledger.requirements):
+        # Old ready assessments may predate binding enforcement. Project the stale
+        # observation refusal without saving or repairing any persisted evidence.
+        assessment = evaluate(snapshot, ledger, checker)
+        assessment.id = None
     assessment.prototype_stale = artifact_stale(snapshot, ledger, checker) or bool(ledger.pending_comments)
     assessment.pending_comments = ledger.pending_comments
     return assessment
@@ -2432,6 +2506,7 @@ def require_current(snapshot, ledger, checker, assessment_id):
     return current
 
 
+@_type_scope
 def decide(snapshot, ledger, checker, body):
     """Validate the entire request before changing a copy; never trust client alternative payloads."""
     current = require_current(snapshot, ledger, checker, body.assessment_id)

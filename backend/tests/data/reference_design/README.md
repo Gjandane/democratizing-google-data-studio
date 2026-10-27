@@ -1,4 +1,4 @@
-# Electricity reference acceptance fixture (tasks 24.11, 25.7, 25.8)
+# Electricity reference acceptance fixture (task 25.10; retained from 24.11/25.7/25.8)
 
 The image is the existing user-supplied electricity dashboard reference, retained by
 the earlier backend live run. It is a visual reference, not a data source.
@@ -28,7 +28,7 @@ current native type catalog explicitly, and PUTs the contract default stage Sett
 applies. The `none` case also turns `review_briefs` on before its accept: it edits
 one treatment of page 1's brief, approves each page and checks that the published
 `brief_p1.json` hashes to the edited brief. Outputs, spans, StageCalls, cost
-estimates and screenshots go to `.blueprint/qa/task-25.8/<mode>/` (`task-24.7/` with
+estimates and screenshots go to `.blueprint/qa/task-25.10/<mode>/` (`task-24.7/` with
 `DSS_LIVE_STAGE=24.7`, readiness-only `task-24.9/` with `DSS_LIVE_STAGE=24.9`);
 created BigQuery tables/views are cleaned after each case. Earlier task evidence
 (including `task-24.11/`) is preserved unchanged.
@@ -58,3 +58,12 @@ the exact workflow inputs, native slot ids/bindings, compiled recipes, coverage,
 per-stage model/image/token/time evidence and sanitized failed drafts when available.
 `runs.json` distinguishes a failed check from an actually published prototype.
 Passing technical checks does not constitute the user's visual acceptance.
+
+Task 25.9 repairs the offline binding and recomputation checks before this live
+acceptance. No live acceptance is claimed by that repair. The 25.10 harness checks
+Region Selector authorization before planning, before accept and against the same
+observation's published page-1 native control. Its one approved clause acceptance
+is scoped to the complete campaign, including later assessments; duplicate reads
+do not submit or record another acceptance. Originally blank image labels still
+require a currently applying explicit decision, even if a worker filled the field.
+All earlier evidence, including `.blueprint/qa/task-25.9/`, stays unchanged.
