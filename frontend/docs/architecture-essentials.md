@@ -13,12 +13,14 @@ src/mocks/       mock API + fake event stream; data comes from ../contracts/fixt
 src/styles/      tokens.css (all colors, type, spacing, radius as CSS variables)
 src/components/  base components (Button, Input, Panel, Stepper, Pin, Popover, Toast, Spinner, EmptyState, ErrorState, Modal, Table)
 src/features/    history/, activity/ (strip, run cards, node presets), access/, workspace/ (shell, connect/,
-                 context/, outline/, design/, blueprint/, prototype/, build/), settings/, trace/tests/           vitest specs; contract.test.ts checks ../contracts/fixtures/api/ against types.ts guards
+                 context/, outline/, design/, blueprint/, prototype/, briefs/, build/), settings/, trace/
+tests/           vitest specs; contract.test.ts checks ../contracts/fixtures/api/ against types.ts guards
 screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
 ```
 
 ## Conventions
-- Read docs/implementation-notes.md for API/auth, mocks, iframe geometry, activity and test rules.
+- Read docs/implementation-notes.md for API/auth, mocks, iframe geometry, activity, stage
+  settings, brief review lock and test rules.
 - Relative /api; Vite proxy locally, backend static hosting on Cloud Run. Gate access with the
   cookie; never retain the code. Agent mode uses the agent panel instead of local sign-in.
 - Exact runtime contract guards; mocks import shared fixtures. One EventSource per build;

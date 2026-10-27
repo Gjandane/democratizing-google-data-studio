@@ -59,4 +59,22 @@
   `ready` event drops running runs: tests fire `ready` before a pre-load `run.started`.
 - Focus after an async load: `useLayoutEffect`. Set state that disables a control in the event's
   batch, not via a child's passive effect. Truncate the focusable element, never its wrapper.
+- Settings (api.md 3.0): settings/stageSettings.ts is the one validator (STAGE_ORDER, STAGE_META,
+  validateSettings, callCost, formatUsd), shared by the mock. Only issues the saved settings
+  didn't already have block Save; Save sends only the diff; on success `rebaseDraft` keeps edits
+  made while the PUT was in flight. Prices come only from capabilities (a Vitest guard rejects
+  price constants in src/). `openSettings(target?)` opens a tab or a stage field.
+- Brief review: Workspace owns one lock (briefs/reviewLock.ts `ReviewLockContext`, from
+  design-pages + `stream.briefReview` + a pending approve run); controls read `useReviewLock()`.
+  client.ts `withReviewNotice` catches 409 brief_review_pending from any call and refetches
+  design-pages. Review PUTs are serialized with the response's revision, like artifact editors.
+- Stage-limit run errors: trace/stageErrors.tsx `parseStageError` + `RunErrorActionsContext`
+  (Adjust in Settings, View model calls), provided by WorkspaceShell.
+- `npm run dev` runs under `<StrictMode>`, tests don't: set a "refetch quietly" ref when the data
+  lands, never when the request starts (StrictMode's second run swallows the error); test that
+  path inside `<StrictMode>`.
+- Test traps (Phase 16): builds from `api.createBuild` have no spec_version, so call
+  `setMockDesignPages(id, fixtures.designPages)` before reading design-pages; in WorkspaceShell
+  tests find a stage control before reading `main` (the loading view has its own main), and give
+  the file's first findBy a longer timeout than the default 1 s.
 

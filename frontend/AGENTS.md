@@ -51,8 +51,7 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - A Python patch passed through a Bash heredoc can turn a regex's `\b` into a backspace byte (0x08): write regex edits with the Edit tool, then check the file for `\x08`.
 - Live walkthrough: the browser pane has no file upload; upload the CSV with `curl -F files=@../samples/ecommerce_sales.csv localhost:5173/api/builds/<id>/sources/upload`, then drive the UI. Pane `computer` clicks can fail "not on screen": a `javascript_tool` `button.click()` still drives the flow.
 - Live preview: `preview_start` config `frontend-live` (.claude/launch.json) runs plain `npm run dev` against the backend on 8000.
-- `npm run dev` runs under `<StrictMode>` (src/main.tsx) but tests don't: a ref an effect sets when its request starts (e.g. "same key, refetch quietly") is already set on StrictMode's second run, so its error is swallowed. Set such refs when the data lands, and test that path inside `<StrictMode>`.
-- A full `npm test` run can fail one untouched test under load (seen 4x in Phase 16 in tests/blueprint.test.tsx "groups the rows by page"): the first test that renders WorkspaceShell in a file can outlast the default 1 s findBy. Rerun that file alone, then the full suite, and report both; new tests give that first findBy a longer timeout.
+- A full `npm test` run can fail one untouched test under load (seen 4x in Phase 16 in tests/blueprint.test.tsx "groups the rows by page"): the first test that renders WorkspaceShell in a file can outlast the default 1 s findBy. Rerun that file alone, then the full suite, and report both.
 
 ## Skills
 Use each skill only at its step, on that task's files. If one isn't installed in your tool, skip it and say so under Gotchas. The essentials' UI design section wins over a skill's generic advice.
