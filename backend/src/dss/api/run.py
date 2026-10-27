@@ -1,7 +1,7 @@
 import asyncio
 import json
 from fastapi import APIRouter, Request
-from dss.api.prototype import current, read_spec
+from dss.api.prototype import current, mutation_current, read_spec
 from dss.db import new_id, now
 from dss.harness.guardrails import RunError
 from dss.harness.nodes.execute import execute
@@ -42,7 +42,7 @@ def gate(state, build_id, folder):
 @router.post("/{build_id}/recipe")
 async def recipe(build_id: str, request: Request):
     state = request.app.state
-    build, folder = current(state, build_id)
+    build, folder = mutation_current(state, build_id)
     require_prototype(build)
     if build_id in state.harness.active_builds:
         raise RunError('wrong_stage', 'Another action is running', 409, {'stage': build['stage']})
@@ -71,7 +71,7 @@ async def recipe(build_id: str, request: Request):
 @router.post("/{build_id}/run", status_code=202)
 async def run(build_id: str, request: Request):
     state = request.app.state
-    build, folder = current(state, build_id)
+    build, folder = mutation_current(state, build_id)
     if state.engine_busy:
         raise RunError("engine_busy", "Another engine run is in progress", 409)
     require_prototype(build)

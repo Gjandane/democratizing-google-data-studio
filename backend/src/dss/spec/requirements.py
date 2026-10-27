@@ -1100,7 +1100,7 @@ def _observed_key(mapping):
     return digest(mapping.model_dump())
 
 
-def _reconcile_observation(r, snapshot):
+def _reconcile_observation(r, snapshot, *, candidates=_candidates):
     """Bind a recreate observation's metric to definition evidence, never to an image/model guess.
 
     Evidence is a confirmed Context KPI that unambiguously names the label and the current
@@ -1124,7 +1124,7 @@ def _reconcile_observation(r, snapshot):
     used = False
     for i, m in enumerate(r.mappings):
         if f'definition:{i}' in r.mapping_origins or str(i) in r.mapping_conflicts or any(
-                s.kind == 'message' and _candidates(s.text, m, fields) for s in r.clarifications):
+                s.kind == 'message' and candidates(s.text, m, fields) for s in r.clarifications):
             continue  # A conversational definition, or its conflict, governs (_reconcile_definitions).
         base = Mapping.model_validate_json(r.mapping_origins.setdefault(f'requested:{i}', m.model_dump_json()))
         r.mappings[i] = base
@@ -1144,7 +1144,7 @@ def _reconcile_observation(r, snapshot):
                 used = True
             continue
         matches = _kpi_matches(label, kpis)
-        stated = _candidates(instructions.text, base, fields) if instructions else []
+        stated = candidates(instructions.text, base, fields) if instructions else []
 
         def conflict(reason):
             r.mapping_conflicts[str(i)] = reason
@@ -1207,13 +1207,13 @@ def _reconcile_observation(r, snapshot):
         r.clarifications.append(instructions)  # Provenance of the clarified image item.
 
 
-def observation_stale(snapshot, r):
+def observation_stale(snapshot, r, *, candidates=_candidates):
     """The stored reconciliation no longer follows from the current KPIs, instructions and schema."""
     reference = snapshot.get('reference') or {}
     if reference.get('mode') != 'recreate' or not r.source.reference_id or r.source.reference_id != reference.get('id'):
         return False
     fresh = r.model_copy(deep=True)
-    _reconcile_observation(fresh, snapshot)
+    _reconcile_observation(fresh, snapshot, candidates=candidates)
     return fresh != r
 
 
@@ -1381,7 +1381,7 @@ def _preserves_comment(component, requirement, snapshot):
     return baseline is not None and baseline == digest({k: v for k, v in component.items() if k != 'colors'})
 
 
-def mapping_verdict(mapping, requirement, fields):
+def mapping_verdict(mapping, requirement, fields, *, candidates=_candidates):
     field, label = mapping.field, _normal(mapping.label)
     if field is None:
         return capabilities.Verdict("needs_clarification" if fields else "needs_data", f"Define {mapping.label} and its field, aggregation, unit and date grain")
@@ -1390,10 +1390,10 @@ def mapping_verdict(mapping, requirement, fields):
     # Merely listing available fields is not a definition. Accept a direct positive
     # assignment clause, never an incidental mention (or a negated instruction).
     text = _effective_text("\n".join(s.text for s in [requirement.source, *requirement.clarifications]))
-    candidates = _candidates(text, mapping, fields)
-    if _conflicting(candidates):
+    definitions = candidates(text, mapping, fields)
+    if _conflicting(definitions):
         return capabilities.Verdict('needs_clarification', f'Conflicting definitions for {mapping.label}; provide an explicit correction')
-    defined_units = {d['unit'] for _, d in candidates if d.get('unit')}
+    defined_units = {d['unit'] for _, d in definitions if d.get('unit')}
     if mapping.unit and defined_units and mapping.unit not in defined_units:
         return capabilities.Verdict('needs_clarification', f'Clarify incompatible units for {mapping.label}')
     # A confirmed Context KPI recorded at extraction is the user's explicit field,
@@ -1551,7 +1551,7 @@ def _choice(requirement, slot, snapshot, ledger, checker):
     return None
 
 
-def _requirement_issues(snapshot, ledger, checker):
+def _requirement_issues(snapshot, ledger, checker, *, candidates=_candidates):
     """Internal issue targets never come from client/model claims."""
     fields, rows = schema(snapshot), []
     types = {c['id']: c['type'] for p in (snapshot['spec'] or {}).get('pages', []) for c in p.get('components', [])}
@@ -1568,7 +1568,7 @@ def _requirement_issues(snapshot, ledger, checker):
         elif _flattened_chart(r):
             verdicts.append(('unknown', capabilities.Verdict('needs_clarification',
                 'An observed chart needs a real bound component; decoration flattening cannot recreate it')))
-        verdicts += [(f"mapping:{i}", v) for i, m in enumerate(r.mappings) if (v := mapping_verdict(m, r, fields))]
+        verdicts += [(f"mapping:{i}", v) for i, m in enumerate(r.mappings) if (v := mapping_verdict(m, r, fields, candidates=candidates))]
         verdicts += [(f'mapping:{i}', capabilities.Verdict('needs_clarification', reason))
                      for i, reason in r.mapping_conflicts.items()]
         verdicts += [(f'mapping:{i}', capabilities.Verdict('needs_clarification',
@@ -1597,17 +1597,30 @@ def _requirement_issues(snapshot, ledger, checker):
 
 def evaluate(snapshot, ledger, checker, *, check_components=True):
     """Pure bounded recomputation; does not call a model, write SQL or publish artifacts."""
+    # Only literal definition parsing is shared: full text, mapping and ordered schema
+    # identify it. Nothing (especially decisions or reconciled observations) survives
+    # this call, and every observation still rechecks its current evidence.
+    definitions = {}
+
+    def candidates(text, mapping, fields):
+        key = (text, mapping.model_dump_json(), tuple(fields.items()))
+        if key not in definitions:
+            definitions[key] = _candidates(text, mapping, fields)
+        return definitions[key]
+
     fields = schema(snapshot)
-    found = [row[0] for row in _requirement_issues(snapshot, ledger, checker)]
+    requirement_issues = _requirement_issues(snapshot, ledger, checker, candidates=candidates)
+    found = [row[0] for row in requirement_issues]
     if snapshot.get('blueprint'):
         from dss.spec.feasibility import issue_rows
-        found.extend(issue for issue, _ in issue_rows(snapshot, ledger, checker))
+        observations = blueprint_observations(snapshot, ledger, checker, requirement_issues=requirement_issues)
+        found.extend(issue for issue, _ in issue_rows(snapshot, ledger, checker, observations=observations))
         for source in new_sources(snapshot, ledger):
             found.append(Issue(id='bp_intent_' + digest(source)[:20], requirement=source['text'], status='unknown',
                 reason='New intent has not been assessed; run Check feasibility before accepting the Blueprint'))
     for r in ledger.requirements:
         # Not a decision target: only an explicit check re-reconciles changed definitions.
-        if observation_stale(snapshot, r):
+        if observation_stale(snapshot, r, candidates=candidates):
             found.append(Issue(id='obs_stale_' + digest([r.id, meaning(r)])[:20], requirement=r.text, status='needs_clarification',
                 reason='Confirmed KPIs, reference instructions or the schema changed for this observation; run Check feasibility'))
     def add(rid, text, verdict):
@@ -1946,7 +1959,7 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None, titles=None):
     return errors
 
 
-def blueprint_observations(snapshot, ledger, checker):
+def blueprint_observations(snapshot, ledger, checker, *, requirement_issues=None):
     """The recreate reference's records publish coverage proves on a component, as (requirement,
     needs, properties) after their choices (architecture.md#Blueprint observation coverage). Image
     observations and instruction records alike, since coverage checks both. Left out: dropped,
@@ -1956,7 +1969,8 @@ def blueprint_observations(snapshot, ledger, checker):
     reference = snapshot.get('reference') or {}
     if reference.get('mode') != 'recreate':
         return []
-    own = {r.id for issue, r, _, _ in _requirement_issues(snapshot, ledger, checker) if issue.resolution == 'unresolved'}
+    issues = _requirement_issues(snapshot, ledger, checker) if requirement_issues is None else requirement_issues
+    own = {r.id for issue, r, _, _ in issues if issue.resolution == 'unresolved'}
     removed = {cid for r in ledger.requirements if (cid := removal(r))}
     result = []
     for r in ledger.requirements:

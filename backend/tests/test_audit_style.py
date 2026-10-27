@@ -250,5 +250,7 @@ async def test_audit_and_style_count_the_whole_request(setup):
     style = spans['reference_extract']
     # The image is in the counted request; offline its estimate adds IMAGE_TOKENS.
     assert [p.inline_data.data for p in seen[0].contents[0].parts if p.inline_data] == [png()]
-    assert style['input_tokens_estimate'] > IMAGE_TOKENS and style['request_tokens'] == style['input_tokens_estimate'] // 2
+    # change 2026-10-26: interpretation keeps the provider count apart from its enforced bound.
+    assert style['input_tokens_estimate'] > IMAGE_TOKENS and style['folded_request_tokens'] == style['input_tokens_estimate'] // 2
+    assert style['request_tokens'] is None and style['enforced_input_bound'] >= style['input_tokens_estimate']
     assert audit_model.calls == 1 and style_model.calls == 1

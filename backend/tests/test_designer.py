@@ -2,6 +2,7 @@
 per page, per-page and page-1 fallback, the planner model, and no model call after the prototype
 action. FakeLLM only; slots are measured in real Chromium."""
 import asyncio
+from contextlib import aclosing
 from html import escape
 import json
 
@@ -10,6 +11,7 @@ from google.genai import types
 import pytest
 
 from dss.harness.context import PAGE_HEADER, SEPARATOR
+from dss.harness import stages
 from dss.harness.guardrails import RunError
 from dss.harness.nodes import designer
 from dss.harness.nodes.designer import ALL_FALLBACK, FOOTER
@@ -63,12 +65,13 @@ class DesignerLLM(FakeLLM):
                 if self.waiting >= self.gate:
                     break
                 await asyncio.sleep(.01)
-        behaviour = self.plan.get(page['index'], ['ok', 'ok'])[attempt]
+        behaviours = self.plan.get(page['index'], ['ok'])
+        behaviour = behaviours[min(attempt, len(behaviours) - 1)]
         if behaviour == 'cut':  # thinking used the whole output budget: ADK's MAX_TOKENS error
             self.calls += 1
             yield LlmResponse(error_code='MAX_TOKENS', finish_reason=types.FinishReason.MAX_TOKENS,
                               usage_metadata=types.GenerateContentResponseUsageMetadata(
-                                  prompt_token_count=5, candidates_token_count=16000))
+                                  prompt_token_count=5, candidates_token_count=65536))
             return
         answer = {'html': CSS + page_html(page) if page['index'] == 1 else page_html(page)}
         if behaviour == 'bad':
@@ -132,7 +135,7 @@ async def test_two_invalid_answers_fall_back_for_that_page_only():
     assert [p.design is not None for p in designed.pages] == [True, True, False]
     # The fallback page is the code layout and kit, unchanged (at page 1's canvas width).
     assert designed.pages[2].model_dump() == spec.pages[2].model_dump() and designed.canvas.width == 1440
-    assert validate_spec(designed) == [] and llm.calls == 4
+    assert validate_spec(designed) == [] and llm.calls == 5  # change 2026-10-26: two repairs
     assert {'node': 'designer_fallback', 'page': 3, 'reason': 'invalid', 'errors': 1} in trace.spans
     from dss.render.prototype import render
     from dss.recipe.compiler import compile_recipe
@@ -142,17 +145,18 @@ async def test_two_invalid_answers_fall_back_for_that_page_only():
 async def test_page_one_double_failure_keeps_the_code_path_with_no_further_calls():
     spec, llm, trace = three_pages(), DesignerLLM(plan={1: ['bad', 'bad']}), Trace()
     result, notes = await designer.design(spec, lambda: llm, trace)
-    assert result is spec and notes == [ALL_FALLBACK] and llm.calls == 2 and result.canvas.width == 1200
-    assert nodes(trace) == ['designer', 'validate', 'designer', 'validate', 'designer_fallback']
+    assert result is spec and notes == [ALL_FALLBACK] and llm.calls == 3 and result.canvas.width == 1200
+    assert nodes(trace) == ['designer', 'validate'] * 3 + ['designer_fallback']
 
 
-async def test_over_budget_and_unavailable_models_fall_back_without_a_call():
+async def test_over_budget_stops_and_unavailable_models_fall_back_without_a_call():
     spec, llm, trace = three_pages(), DesignerLLM(), Trace()
-    spec.pages[0].components[0].label = 'Revenue ' * 7000  # untrusted input alone exceeds 12k tokens
-    result, notes = await designer.design(spec, lambda: llm, trace)
-    assert result is spec and notes == [ALL_FALLBACK] and llm.calls == 0
-    assert trace.spans[-1] == {'node': 'designer_fallback', 'page': 1, 'reason': 'over_budget', 'errors': 0}
-    from dss.harness.guardrails import RunError
+    spec.pages[0].components[0].label = 'Revenue ' * 70000  # change 2026-10-26: exceeds 131,072 tokens
+    with pytest.raises(RunError) as caught:
+        await designer.design(spec, lambda: llm, trace)
+    assert caught.value.code == 'stage_input_over_limit' and llm.calls == 0
+    assert caught.value.message.startswith('html_no_reference:')
+    assert 'designer_fallback' not in nodes(trace)
     def missing():
         raise RunError('llm_unavailable', 'Set the Google API key in Settings', 503)
     trace = Trace()
@@ -177,25 +181,37 @@ async def test_synthetic_page_one_keeps_the_footer_below_the_design():
     assert max(c.box.y + c.box.h for c in page.components) <= page.height - FOOTER - 24
 
 
-async def test_requests_use_the_strict_schema_low_thinking_and_the_output_budget():
-    llm = DesignerLLM()
-    await designer.design(three_pages(), lambda: llm, Trace())
-    first, later = llm.configs[0], llm.configs[1]
+async def test_requests_use_the_strict_schema_profile_thinking_and_the_output_budget():
+    llm = DesignerLLM(plan={1: ['bad', 'ok'], 2: ['bad', 'ok']})
+    spec, _ = await designer.design(three_pages(), lambda: llm, Trace())
+    revision = DesignerLLM(plan={2: ['bad', 'ok']})
+    await designer.regenerate(spec, {2: [{'component_id': 'p2_design', 'text': 'Darker header'}]},
+                              lambda: revision, Trace())
+    first, later = llm.configs[0], llm.configs[-1]
     assert first.response_json_schema['required'] == ['canvas_width', 'html']
     assert first.response_json_schema['additionalProperties'] is False
     assert later.response_json_schema['required'] == ['html'] and 'canvas_width' not in later.response_json_schema['properties']
     assert later.response_json_schema['additionalProperties'] is False
-    for config in llm.configs:
-        assert config.thinking_config.thinking_level == types.ThinkingLevel.LOW
-        assert config.max_output_tokens == 16000 and config.response_mime_type == 'application/json'
+    assert len(llm.configs) == 5 and len(revision.configs) == 2
+    for config in llm.configs + revision.configs:
+        assert config.thinking_config.thinking_level == types.ThinkingLevel.HIGH  # change 2026-10-26
+        assert config.max_output_tokens == 65536 and config.response_mime_type == 'application/json'
 
 
-async def test_cut_off_or_empty_answers_get_the_repair_turn():
-    for behaviour in ('cut', 'empty'):
-        llm, trace = DesignerLLM(plan={1: [behaviour, 'ok']}), Trace()
-        designed, notes = await designer.design(three_pages(), lambda: llm, trace)
-        assert notes == [] and all(p.design for p in designed.pages) and llm.calls == 4, behaviour
-        assert 'Your previous answer failed' in llm.seen[1][1] and 'designer_fallback' not in nodes(trace)
+async def test_empty_answer_gets_the_repair_turn():
+    llm, trace = DesignerLLM(plan={1: ['empty', 'ok']}), Trace()
+    designed, notes = await designer.design(three_pages(), lambda: llm, trace)
+    assert notes == [] and all(p.design for p in designed.pages) and llm.calls == 4
+    assert 'Your previous answer failed' in llm.seen[1][1] and 'designer_fallback' not in nodes(trace)
+
+
+async def test_cut_off_stops_without_repair_or_fallback():
+    llm, trace = DesignerLLM(plan={1: ['cut', 'ok']}), Trace()
+    with pytest.raises(RunError) as caught:
+        await designer.design(three_pages(), lambda: llm, trace)
+    assert caught.value.code == 'stage_output_cutoff' and llm.calls == 1
+    assert caught.value.message.startswith('html_no_reference:')
+    assert nodes(trace) == ['designer']
 
 
 async def test_pages_with_requirement_bound_decorations_keep_their_kit():
@@ -250,22 +266,22 @@ async def test_regenerate_redesigns_only_the_named_page_from_its_previous_html()
     assert nodes(trace) == ['designer', 'validate'] and trace.model is None  # the reviser's trace keeps its model
     llm, trace = DesignerLLM(plan={2: ['bad', 'json']}), Trace()
     result, failed = await designer.regenerate(spec, {2: [comment]}, lambda: llm, trace)
-    assert result is None and llm.calls == 2 and failed[2].reason == 'invalid' and failed[2].errors
+    assert result is None and llm.calls == 3 and failed[2].reason == 'invalid' and failed[2].errors
     assert trace.spans[-1] == {'node': 'redesign_failed', 'page': 2, 'reason': 'invalid', 'errors': len(failed[2].errors)}
 
 
-def test_designer_uses_the_planner_model(client, app):
-    from dss.harness.llm import PLANNER_TIMEOUT_MS
+def test_designer_uses_its_html_profile(client, app):
     models = app.state.models
-    assert models.model_for('designer') == models.planner_model == 'gemini-4-argon'
-    assert models.timeout_ms('designer') == PLANNER_TIMEOUT_MS == 120_000
-    assert models.llm_for('designer').model == 'gemini-4-argon'
+    assert models.model_for('designer') == 'gemini-3.8-flash'  # change 2026-10-26
+    assert models.timeout_ms('designer') == 1_200_000
+    assert models.llm_for('designer').model == 'gemini-3.8-flash'
 
 
 def designed_flow(api, monkeypatch, model, *, enabled=True, reference_models=None, drain=True):
     """Design confirm -> blueprint (ratio choice) -> accept, with `model` as the designer."""
     from test_blueprint import choose, confirm
     from test_context_node import wait
+    from test_reference_brief import BriefLLM
     client, app, bid, sid, folder, bq, llm, value = api
     bq.create_view = lambda table, sql: None
     bq.delete_view = lambda table: True
@@ -274,8 +290,9 @@ def designed_flow(api, monkeypatch, model, *, enabled=True, reference_models=Non
     if not enabled:
         monkeypatch.setattr(app.state.settings, 'defaults',
                             app.state.settings.defaults.model_copy(update={'designed_pages': False}))
+    brief = BriefLLM()
     monkeypatch.setattr(app.state.models, 'llm_for', lambda node: (reference_models or {}).get(node) or (
-        model if node == 'designer' else llm))
+        model if node == 'designer' else brief if node == 'reference_brief' else llm))
     confirm(client, app, bid)
     assessment = client.get(f'/api/builds/{bid}/feasibility').json()
     ratio = next(i for i in assessment['issues'] if i['requirement'] == 'q2')
@@ -291,7 +308,7 @@ def run_record(app, run_id):
     with app.state.db.connect() as conn:
         trace = conn.execute('SELECT * FROM traces WHERE run_id=?', (run_id,)).fetchone()
         message = conn.execute("SELECT text FROM messages WHERE node='prototype' ORDER BY rowid DESC").fetchone()
-    return trace, [s['node'] for s in json.loads(trace['spans_json'])], message['text']
+    return trace, [s['node'] for s in json.loads(trace['spans_json']) if s['node'] != 'stage_settings'], message['text']
 
 
 def test_prototype_action_saves_designed_pages_and_later_actions_call_no_model(blueprint_api, monkeypatch):
@@ -299,7 +316,8 @@ def test_prototype_action_saves_designed_pages_and_later_actions_call_no_model(b
     client, app, bid, folder, run_id = designed_flow(blueprint_api, monkeypatch, model)
     trace, spans, message = run_record(app, run_id)
     assert trace['status'] == 'ok' and message == 'Prototype is ready.' and trace['model'] == 'gemini-4-argon'
-    assert spans == ['router', 'prototype', 'view', 'layout', 'designer', 'validate', 'designer', 'validate',
+    assert spans == ['router', 'prototype', 'view', 'layout', 'reference_brief', 'designer', 'validate',
+                     'reference_brief', 'designer', 'validate',
                      'render', 'publish', 'guardrail']
     spec = DashboardSpec.model_validate_json((folder / 'spec.json').read_text(encoding='utf-8'))
     assert spec.canvas.width == 1440 and all(p.design and p.design.model == 'gemini-4-argon' for p in spec.pages)
@@ -325,7 +343,7 @@ def test_off_and_page_one_fallback_save_the_code_laid_spec(blueprint_api, monkey
         laid.append(spec.model_dump_json(indent=2))
         return await real(spec, *args, **kwargs)
     monkeypatch.setattr(designer, 'design', recording)
-    model = DesignerLLM(plan={1: ['bad', 'json']})
+    model = DesignerLLM(plan={1: ['bad']})
     client, app, bid, folder, run_id = designed_flow(blueprint_api, monkeypatch, model, enabled=enabled)
     trace, spans, message = run_record(app, run_id)
     text = (folder / 'spec.json').read_text(encoding='utf-8')
@@ -333,8 +351,8 @@ def test_off_and_page_one_fallback_save_the_code_laid_spec(blueprint_api, monkey
     assert DashboardSpec.model_validate_json(text).canvas.width == 1200
     if enabled:
         # The fallback writes the code layout's spec byte for byte, so prototype and recipe match too.
-        assert laid == [text] and model.calls == 2 and message == f'Prototype is ready. {ALL_FALLBACK}'
-        assert spans[3:-3] == ['layout', 'designer', 'validate', 'designer', 'validate', 'designer_fallback']
+        assert laid == [text] and model.calls == 3 and message == f'Prototype is ready. {ALL_FALLBACK}'
+        assert spans[3:-3] == ['layout', 'reference_brief', *(['designer', 'validate'] * 3), 'designer_fallback']
     else:
         assert laid == [] and model.calls == 0 and message == 'Prototype is ready.'
         assert spans == ['router', 'prototype', 'view', 'layout', 'render', 'publish', 'guardrail']
@@ -377,8 +395,8 @@ class ReferenceHTMLLLM(DesignerLLM):
             self.active -= 1
 
 
-@pytest.mark.parametrize('second,success', [(11000, True), (19573, True), (19574, False)])
-async def test_only_reference_repair_uses_24k_complete_bound(tmp_path, second, success):
+@pytest.mark.parametrize('second,success', [(11000, True), (108800, True), (108801, False)])
+async def test_reference_repair_uses_the_profile_complete_bound(tmp_path, second, success):
     from dss.harness.guardrails import RunError
     class Counts(ReferenceHTMLLLM):
         async def count_request_tokens(self, request):
@@ -393,10 +411,14 @@ async def test_only_reference_repair_uses_24k_complete_bound(tmp_path, second, s
     else:
         with pytest.raises(RunError) as caught:
             await designer.design(spec, lambda: None, trace, reference=ref)
-        assert caught.value.detail['reason'] == 'over_budget' and html.calls == 1
+        assert caught.value.code == 'stage_input_over_limit' and html.calls == 1
     attempts = [s for s in trace.spans if s['node'] == 'reference_html']
-    assert [s['input_budget'] for s in attempts] == [12000, 24000]
+    assert [s['input_budget'] for s in attempts] == [131072, 131072]  # change 2026-10-26
     assert attempts[-1]['enforced_input_bound'] == (second * 120 + 99) // 100 + 512
+    assert all(r.config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
+               and r.config.max_output_tokens == 65536 for r in html.counted)
+    assert all(r.config.response_json_schema['required'] == ['canvas_width', 'html']
+               and r.config.response_json_schema['additionalProperties'] is False for r in html.counted)
 
 
 @pytest.mark.parametrize('failure', ['later', 'requirements', 'spec'])
@@ -416,15 +438,30 @@ async def test_any_reference_page_failure_settles_siblings_and_rejects_whole_spe
 
 
 @pytest.mark.parametrize('bad', ['json', 'cut', 'empty', 'bad'])
-async def test_reference_revision_repair_replaces_draft_or_retains_baseline(tmp_path, bad):
+@pytest.mark.parametrize('page_index', [1, 2])
+async def test_reference_revision_repair_replaces_draft_or_retains_baseline(tmp_path, bad, page_index):
     from test_reference_brief import section
     spec, _ = await designer.design(three_pages(), lambda: DesignerLLM(), Trace())
-    spec.pages = spec.pages[:1]
-    baseline = designer.readable(spec.pages[0].design.html)
-    ref, _, html = reference_plan(tmp_path, spec, html=ReferenceHTMLLLM(plan={1: [bad, 'ok']}))
-    comments = [{'component_id': 'p1_design', 'text': 'Keep this exact request'}]
-    result, failed = await designer.regenerate(spec, {1: comments}, lambda: None, Trace(), reference=ref)
+    spec.pages = spec.pages[:page_index]
+    baseline = designer.readable(spec.pages[page_index - 1].design.html)
+    ref, brief, html = reference_plan(tmp_path, spec, html=ReferenceHTMLLLM(plan={page_index: [bad, 'ok']}))
+    comments = [{'component_id': f'p{page_index}_design', 'text': 'Keep this exact request'}]
+    if bad == 'cut':
+        before = spec.model_dump_json()
+        with pytest.raises(RunError) as caught:
+            await designer.regenerate(spec, {page_index: comments}, lambda: None, Trace(), reference=ref)
+        assert caught.value.code == 'stage_output_cutoff'  # change 2026-10-26: no repair
+        assert len(brief.requests) == len(html.requests) == 1 and spec.model_dump_json() == before
+        return
+    result, failed = await designer.regenerate(spec, {page_index: comments}, lambda: None, Trace(), reference=ref)
     assert result is not None and failed == {}
+    assert len(brief.requests) == 1 and len(html.requests) == 2
+    for request in brief.requests + html.requests:
+        assert request.config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
+        assert request.config.response_mime_type == 'application/json' and not request.config.tools
+        assert request.config.response_json_schema['additionalProperties'] is False
+        assert request.config.max_output_tokens == (32768 if request in brief.requests else 65536)
+    assert all(r.config.response_json_schema['required'] == ['html'] for r in html.requests)
     repair = str(html.requests[1].config.system_instruction)
     revision = json.loads(section(repair, 'Revise your previous design of this page for these comments '
                                         '(untrusted); return the complete page HTML and CSS:'))
@@ -483,11 +520,15 @@ async def test_reference_pairs_use_exact_slots_images_and_measured_page_one(tmp_
         assert ref.reference.instructions in memory and 'Navy land' in memory
         approved = json.loads(section(memory, COMPONENTS_HEADER))
         assert approved['assessment']['state'] == 'ready' and 'decisions' in approved
-        assert request.config.thinking_config.thinking_level == types.ThinkingLevel.LOW
+        assert request.config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
+        assert request.config.response_mime_type == 'application/json'
+        assert request.config.response_json_schema['additionalProperties'] is False
     for request in html.requests:
         memory = str(request.config.system_instruction)
         assert 'Validated visual brief' in memory and 'White card, radius 16 px' in memory
-        assert request.config.max_output_tokens == 16000 and not request.config.tools
+        assert request.config.max_output_tokens == 65536 and not request.config.tools
+        assert request.config.response_json_schema['required'] == (
+            ['canvas_width', 'html'] if request is html.requests[0] else ['html'])
         if json.loads(section(memory, PAGE_HEADER))['index'] > 1:
             assert css in memory and '"canvas_width":1440' in memory
     for page in result.pages:
@@ -495,7 +536,11 @@ async def test_reference_pairs_use_exact_slots_images_and_measured_page_one(tmp_
             assert c.model_dump(exclude={'box'}) == previous.model_dump(exclude={'box'})
     assert result.datasource == spec.datasource and spec.model_dump(mode='json') == before
     assert html.order.count('count') == html.order.count('generate') == 4
-    assert all(s.get('enforced_input_bound', 0) <= 12000 for s in trace.spans)
+    assert designer.HTML_STAGE_SECONDS == 1200 and designer.MAX_OUTPUT_TOKENS == 65536
+    for span in trace.spans:
+        if span['node'] in ('reference_brief', 'reference_html'):
+            assert span['input_budget'] == 131072  # change 2026-10-26: one profile for every attempt
+            assert span.get('enforced_input_bound', span['input_tokens_estimate']) <= span['input_budget']
     assert trace.input_tokens == 35 and trace.output_tokens == 14
     spans = json.dumps(trace.spans)
     assert all(value not in spans for value in (ref.reference.instructions, 'Navy land', 'White card, radius', 'data-slot='))
@@ -511,17 +556,29 @@ async def test_reference_failures_reject_acceptance_and_keep_old_revision(tmp_pa
     from test_reference_brief import BriefLLM
     spec = three_pages()
     spec.pages = spec.pages[:1]
-    html = ReferenceHTMLLLM(fixed=9800) if behaviour == 'budget' else ReferenceHTMLLLM(
+    html = ReferenceHTMLLLM(fixed=108801) if behaviour == 'budget' else ReferenceHTMLLLM(
         plan={1: [behaviour, behaviour]} if stage == 'html' else {})
     brief = BriefLLM(plan=[behaviour] if stage == 'brief' else [])
     ref, _, _ = reference_plan(tmp_path, spec, html=html, brief=brief)
     trace = Trace()
     with pytest.raises(RunError) as caught:
         await designer.design(spec, lambda: None, trace, reference=ref, secrets=('test-secret-key',))
+    if behaviour in ('cut', 'budget'):
+        code = 'stage_output_cutoff' if behaviour == 'cut' else 'stage_input_over_limit'
+        assert caught.value.code == code
+        assert caught.value.message.startswith('html_brief:' if stage == 'brief' else 'reference_html:')
+        assert len(html.requests) == (0 if stage == 'brief' or behaviour == 'budget' else 1)
+        old, _ = await designer.design(spec, lambda: DesignerLLM(), Trace())
+        html.requests.clear(); html.counted.clear(); html.seen.clear(); brief.requests.clear()
+        with pytest.raises(RunError) as revised_error:
+            await designer.regenerate(old, {1: [{'component_id': 'p1_design', 'text': 'Darker'}]},
+                                      lambda: None, Trace(), reference=ref, secrets=('test-secret-key',))
+        assert revised_error.value.code == code
+        return
     assert caught.value.detail == {'stage': 'reference_brief' if stage == 'brief' else 'reference_html',
                                   'page': 1, 'reason': reason}
     assert trace.spans[-1]['reason'] == reason
-    assert len(html.requests) == (0 if stage == 'brief' or behaviour == 'budget' else 2)
+    assert len(html.requests) == (0 if stage == 'brief' else 3)
     # The same failure on revise returns no replacement, so its caller can retain artifacts/comments.
     old, _ = await designer.design(spec, lambda: DesignerLLM(), Trace())
     html.requests.clear(); html.counted.clear(); html.seen.clear(); brief.requests.clear()
@@ -536,23 +593,23 @@ async def test_reference_html_repair_carries_all_context_and_refuses_instead_of_
     from dss.harness.guardrails import RunError
     from test_reference_brief import attached
     spec = three_pages(); spec.pages = spec.pages[:1]
-    ref, brief, html = reference_plan(tmp_path, spec, html=ReferenceHTMLLLM(plan={1: ['cut', 'ok']}))
+    ref, brief, html = reference_plan(tmp_path, spec, html=ReferenceHTMLLLM(plan={1: ['empty', 'ok']}))
     result, notes = await designer.design(spec, lambda: None, Trace(), reference=ref)
     assert notes == [] and len(html.counted) == 2 and len(html.requests) == 2
     assert 'Your previous answer failed' in str(html.requests[1].config.system_instruction)
     assert all(attached(r)[1] == list(ref.reference.images) for r in html.counted)
-    assert BUDGETS['reference_html'] == 12000
+    assert BUDGETS['reference_html'] == 131072
     # Each piece of a long repair/shared/previous request is mandatory, with an actual bound in the refusal.
     for field in ('shared', 'revision', 'repair'):
-        kwargs = {field: {'html': 'x' * 110000, 'comments': ['Keep all slots']}}
+        kwargs = {field: {'html': 'x' * 600000, 'comments': ['Keep all slots']}}
         memory = reference_html_context({}, {}, {}, {}, ref.approved[1], attempt=2, **kwargs)
         request = LlmRequest(model=html.model, config=html.requests[1].config.model_copy(deep=True),
                              contents=html.requests[1].contents)
         request.config.system_instruction = str(memory)
         with pytest.raises(RunError) as caught:
             await fit_request(memory, request, html, {})
-        assert caught.value.detail['reason'] == 'over_budget'
-        assert caught.value.detail['tokens'] > caught.value.detail['budget'] == 24000
+        assert caught.value.code == 'stage_input_over_limit'
+        assert caught.value.detail['tokens'] > caught.value.detail['budget'] == 131072
 
 
 def quick_measure(html, slots, width, **kwargs):
@@ -563,43 +620,69 @@ def quick_measure(html, slots, width, **kwargs):
         height=100 + len(slots) * 400)
 
 
+def fake_html_clock(monkeypatch, seconds=10):
+    """change 2026-10-26: advance the complete stage without wall-clock sleeps."""
+    real_clock, elapsed, waits = stages.StageClock, [0.0], []
+    def advance(value):
+        elapsed[0] += value
+    async def sleep(value):
+        waits.append(value)
+        advance(value)
+    def clock(node, requested, **kwargs):
+        return real_clock(node, seconds if node == 'reference_html' else requested,
+                          now=lambda: elapsed[0], sleep=sleep)
+    monkeypatch.setattr(stages, 'StageClock', clock)
+    return advance, waits, elapsed
+
+
 async def test_reference_html_one_deadline_covers_counting_generation_and_repair(tmp_path, monkeypatch):
     monkeypatch.setattr(designer.design_page, 'measure', quick_measure)
     spec = three_pages(); spec.pages = spec.pages[:1]
-    # The ordinary worker bound is scaled to 30 ms; a 60 ms answer succeeds within 200 ms.
-    monkeypatch.setattr(designer, 'HTML_STAGE_SECONDS', .2)
-    html = ReferenceHTMLLLM(pause_generate=.06)
+    advance, _, _ = fake_html_clock(monkeypatch)
+    class Timed(ReferenceHTMLLLM):
+        count_cost: int = 0
+        generation_cost: int = 0
+        async def count_request_tokens(self, request):
+            result = await super().count_request_tokens(request)
+            advance(self.count_cost)
+            return result
+        async def generate_content_async(self, request, stream=False):
+            advance(self.generation_cost)
+            async with aclosing(super().generate_content_async(request, stream)) as responses:
+                async for response in responses:
+                    yield response
+    html = Timed(generation_cost=6)
     ref, _, _ = reference_plan(tmp_path, spec, html=html)
     result, notes = await designer.design(spec, lambda: None, Trace(), reference=ref)
     assert notes == [] and result.pages[0].design and html.closed == 1
-    for html in (ReferenceHTMLLLM(pause_count=5), ReferenceHTMLLLM(pause_generate=5),
-                 ReferenceHTMLLLM(pause_generate=.13, plan={1: ['bad', 'ok']})):
+    for html in (Timed(count_cost=11), Timed(generation_cost=11),
+                 Timed(generation_cost=6, plan={1: ['bad', 'ok']})):
         trace = Trace()
         ref, _, _ = reference_plan(tmp_path, spec, html=html)
         with pytest.raises(RunError) as caught:
             await designer.design(spec, lambda: None, trace, reference=ref)
-        assert caught.value.detail['reason'] == 'timeout' and trace.spans[-1]['reason'] == 'timeout'
+        assert caught.value.code == 'stage_timeout' and caught.value.detail['reason'] == 'timeout'
         stage = next(s for s in trace.spans if s['node'] == 'reference_html')
-        assert stage['stage_duration_ms'] < 1000
+        assert stage['stage_duration_ms'] >= 0
         assert html.closed == len(html.requests)  # cancel closes even a blocked generation
-        if html.pause_count:
+        if html.count_cost:
             assert html.order == ['count'] and html.calls == 0
         if html.plan:
             assert html.order == ['count', 'generate', 'count', 'generate']  # repair shares remaining time
 
 
 async def test_reference_html_retry_and_repair_cannot_multiply_deadline(tmp_path, monkeypatch):
+    from google import genai
     from google.adk.models.google_llm import Gemini
     from google.genai.errors import APIError
     from dss.harness import llm as routing
     monkeypatch.setattr(designer.design_page, 'measure', quick_measure)
-    monkeypatch.setattr(designer, 'HTML_STAGE_SECONDS', .25)
-    monkeypatch.setattr(routing, 'RETRY_DELAY_S', .01)
+    advance, waits, elapsed = fake_html_clock(monkeypatch)
     calls, closed = [], []
     async def provider(self, request, stream=False):
         calls.append(request)
         try:
-            await asyncio.sleep(.09)
+            advance(3)
             if len(calls) == 1:
                 raise APIError(503, {'error': {'code': 503, 'message': 'private provider content'}})
             # An invalid response after retry must leave only the remaining time for repair.
@@ -611,13 +694,15 @@ async def test_reference_html_retry_and_repair_cannot_multiply_deadline(tmp_path
             return 1000
     monkeypatch.setattr(Gemini, 'generate_content_async', provider)
     spec = three_pages(); spec.pages = spec.pages[:1]
-    ref, _, _ = reference_plan(tmp_path, spec, html=Retrying(model='worker'))
+    ref, _, _ = reference_plan(tmp_path, spec, html=Retrying(model='worker', client=genai.Client(api_key='test-key')))
     trace = Trace()
     with pytest.raises(RunError) as caught:
         await designer.design(spec, lambda: None, trace, reference=ref)
     assert caught.value.detail['reason'] == 'timeout'
-    assert len(calls) == len(closed) == 3 and trace.spans[-1]['reason'] == 'timeout'
-    assert next(s for s in trace.spans if s['node'] == 'reference_html')['stage_duration_ms'] < 1000
+    assert caught.value.code == 'stage_timeout' and len(calls) == len(closed) == 3
+    assert waits == [1]
+    assert elapsed[0] == 10
+    assert next(s for s in trace.spans if s['node'] == 'reference_html')['stage_duration_ms'] >= 0
 
 
 async def test_reference_html_cancellation_propagates_and_closes_stream(tmp_path):
@@ -632,7 +717,7 @@ async def test_reference_html_cancellation_propagates_and_closes_stream(tmp_path
     assert html.closed == 1 and all(p.design is None for p in spec.pages)
 
 
-async def test_repeated_output_cap_hits_are_traced_even_without_usage_metadata(tmp_path):
+async def test_output_cap_stops_once_even_without_usage_metadata(tmp_path):
     class CutWithoutUsage(ReferenceHTMLLLM):
         async def generate_content_async(self, request, stream=False):
             yield LlmResponse(error_code='MAX_TOKENS', finish_reason=types.FinishReason.MAX_TOKENS)
@@ -641,11 +726,10 @@ async def test_repeated_output_cap_hits_are_traced_even_without_usage_metadata(t
     trace = Trace()
     with pytest.raises(RunError) as caught:
         await designer.design(spec, lambda: None, trace, reference=ref)
-    assert caught.value.detail['reason'] == 'invalid'
+    assert caught.value.code == 'stage_output_cutoff'
     attempts = [s for s in trace.spans if s['node'] == 'reference_html']
-    assert len(attempts) == 2 and all(s['truncated'] is True for s in attempts)
-    assert all(s.get('output_tokens', 0) == 0 and s['output_budget'] == 16000 for s in attempts)
-    assert attempts[-1]['reason'] == 'invalid'
+    assert len(attempts) == 1  # change 2026-10-26: no retry or content repair after cutoff
+    assert all(s.get('output_tokens', 0) == 0 and s['output_budget'] == 65536 for s in attempts)
 
 
 def test_staged_style_accept_uses_pairs_in_one_run_and_stale_gate_calls_neither_stage(blueprint_api, monkeypatch):
@@ -711,11 +795,18 @@ def test_staged_reference_failure_cleans_candidate_and_releases_ownership(bluepr
     (folder / references.SET_FILE).write_text(json.dumps(record), encoding='utf-8')
     if failure == 'missing':
         (folder / record['images'][0]['file']).unlink()  # damaged retained file, no intent edit
-    html = ReferenceHTMLLLM(started=asyncio.Event(), release=asyncio.Event() if failure in ('cancel', 'timeout') else None,
-        plan={1: [{'cut': 'cut', 'schema': 'json'}.get(failure, 'bad')] * 2},
-        fixed=9800 if failure == 'budget' else 1000)
+    html_type = ReferenceHTMLLLM
     if failure == 'timeout':
-        monkeypatch.setattr(designer, 'HTML_STAGE_SECONDS', .1)
+        advance, _, _ = fake_html_clock(monkeypatch)
+        class ExpiringHTML(ReferenceHTMLLLM):
+            async def generate_content_async(self, request, stream=False):
+                async for response in super().generate_content_async(request, stream):
+                    advance(11)
+                    yield response
+        html_type = ExpiringHTML
+    html = html_type(started=asyncio.Event(), release=asyncio.Event() if failure == 'cancel' else None,
+        plan={1: [{'cut': 'cut', 'schema': 'json'}.get(failure, 'bad')] * 2},
+        fixed=108801 if failure == 'budget' else 1000)
     deleted = []
     _, _, _, _, run_id = designed_flow(blueprint_api, monkeypatch, DesignerLLM(), reference_models={
         'reference_brief': BriefLLM(), 'reference_html': html}, drain=False)
@@ -741,12 +832,16 @@ def test_staged_reference_failure_cleans_candidate_and_releases_ownership(bluepr
         assert client.get(f'/api/builds/{bid}').json()['stage'] == 'blueprint'
     else:
         assert trace['status'] == 'error'
-        reason = {'missing': 'reference', 'budget': 'over_budget', 'timeout': 'timeout'}.get(failure, 'invalid')
-        assert any(s.get('reason') == reason for s in recorded)
+        if failure in ('cut', 'budget', 'timeout'):
+            assert trace['error'] == {'cut': 'stage_output_cutoff', 'budget': 'stage_input_over_limit',
+                                      'timeout': 'stage_timeout'}[failure]
+        else:
+            reason = 'reference' if failure == 'missing' else 'invalid'
+            assert any(s.get('reason') == reason for s in recorded)
         assert not (folder / 'spec.json').exists() and not (folder / 'prototype.html').exists()
         assert client.get(f'/api/builds/{bid}').json()['stage'] == 'blueprint'
         assert deleted
-        assert html.closed == (0 if failure in ('missing', 'budget') else 1 if failure == 'timeout' else 2)
+        assert html.closed == (0 if failure in ('missing', 'budget') else 1 if failure in ('timeout', 'cut') else 3)
     with app.state.db.connect() as conn:
         kinds = [r[0] for r in conn.execute('SELECT kind FROM events WHERE run_id=?', (run_id,))]
     assert 'prototype.updated' not in kinds and 'stage.changed' not in kinds
@@ -786,7 +881,7 @@ def test_reference_reaccept_failure_preserves_published_bytes_and_view(blueprint
     class Overflow(ReferenceHTMLLLM):
         async def count_request_tokens(self, request):
             await super().count_request_tokens(request)
-            return 1000 if len(self.counted) == 1 else 20000
+            return 1000 if len(self.counted) == 1 else 108801
     html = Overflow(plan={1: ['bad', 'ok']}) if failure == 'repair_budget' else ReferenceHTMLLLM(
         plan={2: ['bad', 'bad']} if failure == 'later' else {})
     models['reference_html'] = html

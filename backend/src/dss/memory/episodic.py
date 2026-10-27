@@ -1,5 +1,6 @@
 """Episodic memory: chat persistence and retrieval by recency (this build) and relevance (FTS5)."""
 import re
+import json
 
 from dss.db import new_id, now
 
@@ -76,3 +77,87 @@ def recall(db, build_id, user_input, *, query=None, recent=RECENT, top=TOP):
         history.pop()
     hits = relevant(db, build_id, user_input if query is None else query, top)
     return merge(hits, history[-recent:])
+
+
+def run_calls(db, run_id):
+    from dss.harness.guardrails import RunError
+    with db.connect() as conn:
+        row = conn.execute('SELECT * FROM traces WHERE run_id=?', (run_id,)).fetchone()
+    if row is None:
+        raise RunError('run_not_found', 'Run not found', 404)
+    return calls_from_trace(row)
+
+
+def initialize_reviews(db):
+    with db.connect() as conn:
+        conn.execute('''CREATE TABLE IF NOT EXISTS brief_reviews (
+            review_id TEXT PRIMARY KEY, build_id TEXT NOT NULL, state TEXT NOT NULL,
+            record_json TEXT NOT NULL, run_id TEXT)''')
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS pending_brief_review ON brief_reviews(build_id) WHERE state='pending'")
+
+
+def brief_review(db, build_id, review_id=None):
+    initialize_reviews(db)
+    with db.connect() as conn:
+        row = conn.execute('SELECT * FROM brief_reviews WHERE build_id=? AND ' +
+                           ('review_id=?' if review_id else "state='pending'"),
+                           (build_id, review_id) if review_id else (build_id,)).fetchone()
+    return {**dict(row), 'record': json.loads(row['record_json'])} if row else None
+
+
+def require_no_brief_review(db, build_id):
+    from dss.harness.guardrails import RunError
+    if brief_review(db, build_id):
+        raise RunError('brief_review_pending', 'Approve or cancel the pending brief review first', 409)
+
+
+def save_brief_review(db, build_id, record):
+    initialize_reviews(db)
+    with db.connect() as conn:
+        conn.execute("INSERT INTO brief_reviews VALUES(?,?,'pending',?,NULL)",
+                     (record['review']['review_id'], build_id, json.dumps(record, ensure_ascii=False)))
+
+
+def update_brief_review(db, row, record, *, state='pending', run_id=None):
+    """Compare-and-swap also protects against a second client on another event loop."""
+    with db.connect() as conn:
+        changed = conn.execute('UPDATE brief_reviews SET record_json=?,state=?,run_id=? '
+                               'WHERE review_id=? AND state=? AND record_json=?',
+                               (json.dumps(record, ensure_ascii=False), state, run_id,
+                                row['review_id'], row['state'], row['record_json'])).rowcount
+    if not changed:
+        from dss.harness.guardrails import RunError
+        current = brief_review(db, row['build_id'], row['review_id'])
+        raise RunError('brief_review_conflict', 'The brief review changed; reload it', 409,
+                       {'revision': current['record']['review']['revision']})
+
+
+def calls_from_trace(row):
+    from dss.harness.tracing import cost_total
+    spans = json.loads(row['spans_json'])
+    settings = next((s['settings'] for s in spans if 'settings' in s), None)
+    calls = next((s['calls'] for s in spans if 'calls' in s), [])
+    estimate, complete = cost_total(c['cost_usd_estimate'] for c in calls)
+    return {'run_id': row['run_id'], 'settings': settings, 'calls': calls,
+            'cost_usd_estimate': estimate, 'cost_complete': complete}
+
+
+def build_cost(db, build_id):
+    from dss.harness.stages import MODELS
+    from dss.harness.tracing import cost, cost_total
+    with db.connect() as conn:
+        rows = conn.execute('SELECT * FROM traces WHERE build_id=? ORDER BY started_at DESC,rowid DESC',
+                            (build_id,)).fetchall()
+    runs = []
+    for row in rows:
+        record = calls_from_trace(row)
+        legacy = record['settings'] is None
+        estimate = cost(row['model'], row['input_tokens'], row['output_tokens'], 0) if legacy else record['cost_usd_estimate']
+        runs.append({'run_id': row['run_id'], 'node': row['node'], 'started_at': row['started_at'],
+                     'cost_usd_estimate': estimate, 'complete': False if legacy else record['cost_complete'],
+                     'basis': 'trace' if legacy else 'calls'})
+    estimate, complete = cost_total(r['cost_usd_estimate'] for r in runs)
+    dates = [m['price']['checked_on'] for m in MODELS.values() if m.get('price')]
+    return {'build_id': build_id, 'cost_usd_estimate': estimate,
+            'complete': complete and all(r['complete'] for r in runs), 'runs': runs,
+            'prices_checked_on': max(dates) if dates else None}

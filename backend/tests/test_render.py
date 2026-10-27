@@ -414,8 +414,9 @@ def replan(client, app, bid, llm, value, monkeypatch):
     """Explicit replan through the staged API: regenerate the Blueprint, then accept it."""
     from test_context_node import wait
     from test_reference_brief import BriefLLM
-    from test_designer import ReferenceHTMLLLM
-    pair = {'reference_brief': BriefLLM(), 'reference_html': ReferenceHTMLLLM()}
+    from test_designer import DesignerLLM, ReferenceHTMLLLM
+    pair = {'reference_brief': BriefLLM(), 'reference_html': ReferenceHTMLLLM(),
+            'designer': DesignerLLM(plan={1: ['bad']})}
     monkeypatch.setattr(app.state.models, 'llm_for', lambda node: pair.get(node) or llm)
     llm.replies.append(json.dumps(value))
     regenerated = client.post(f'/api/builds/{bid}/blueprint/regenerate')

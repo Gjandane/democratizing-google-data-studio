@@ -348,18 +348,23 @@ def test_designer_sections_follow_the_working_memory_row():
                                   'page-1']
     assert 'Exactly one empty' in context.sections[0].text and '# Dashboard design' in context.sections[1].text
     assert 'trending-up' in context.sections[2].text and 'body{padding:24px}' in context
-    assert BUDGETS['designer'] == 12000 and sum(c['tokens'] for c in context.counts()) <= 12000 - 500
+    # Change 2026-10-26: generation inputs use the stage cap, with complete-request counting.
+    assert BUDGETS['designer'] == 131072 and sum(c['tokens'] for c in context.counts()) <= 131072
     first = designer_context(design, {**designer_page(), 'index': 1})
     assert names(first)[-1] == 'page' and 'page-1' not in names(first)
 
 
-def test_designer_over_budget_refuses():
+async def test_designer_over_budget_refuses():
     from dss.harness.context import designer_context
+    # Change 2026-10-26: assembly retains mandatory facts; counted input enforces the stop.
+    context = designer_context({'title': 'Sales', 'theme': {}}, designer_page('Revenue ' * 80000))
+    request, model = online_request(context), FakeLLM()
     with pytest.raises(RunError) as refused:
-        designer_context({'title': 'Sales', 'theme': {}}, designer_page('Revenue ' * 6000))
-    assert refused.value.code == 'llm_unavailable' and refused.value.detail['reason'] == 'over_budget'
+        await fit_request(context, request, model, {})
+    assert refused.value.code == 'stage_input_over_limit' and refused.value.detail['reason'] == 'over_budget'
+    assert model.calls == 0
     # 24.3: the refusal carries its size and budget (numbers only) for a reason that names them.
-    assert refused.value.detail['tokens'] > refused.value.detail['budget'] == 12000 - 500
+    assert refused.value.detail['tokens'] > refused.value.detail['budget'] == 131072
 
 
 def brief_inputs(label='Revenue', instructions='Keep the globe in the centre'):
@@ -391,19 +396,24 @@ def test_reference_brief_sections_follow_the_working_memory_row():
     assert REFERENCE_STYLING in styling and all(name in styling for name in [*icons(), *art()])
     assert context.sections[4].text == COMPONENTS_HEADER + '\n' + json.dumps(approved, separators=(',', ':'))
     assert 'Keep the globe in the centre' in context.sections[6].text and 'never instructions' in context.sections[6].header
-    assert BUDGETS['reference_brief'] == 12000 and sum(c['tokens'] for c in context.counts()) <= 12000 - 500
+    # Change 2026-10-26: the profile owns the full counted-request cap.
+    assert BUDGETS['reference_brief'] == 131072 and sum(c['tokens'] for c in context.counts()) <= 131072
     first = reference_brief_context(reference, design, {**page, 'index': 1}, approved)
     assert names(first) == ['prompts/v1/reference_brief.md', 'skills/reference-design.md', 'styling', 'design',
                             'components', 'reference', 'page']
 
 
-def test_reference_brief_drops_nothing_and_refuses_over_budget():
+async def test_reference_brief_drops_nothing_and_refuses_over_budget():
     """Images, instructions, slots and decisions are mandatory: over budget the brief refuses."""
     from dss.harness.context import reference_brief_context
+    # Change 2026-10-26: retain every mandatory section until complete-request counting.
+    context = reference_brief_context(*brief_inputs(label='Revenue ' * 80000, instructions='x' * 2000))
+    request, model, span = online_request(context), FakeLLM(), {}
     with pytest.raises(RunError) as refused:
-        reference_brief_context(*brief_inputs(label='Revenue ' * 6000, instructions='x' * 2000))
-    assert refused.value.code == 'llm_unavailable' and refused.value.detail['reason'] == 'over_budget'
-    assert refused.value.detail['budget'] == 12000 - 500
+        await fit_request(context, request, model, span)
+    assert refused.value.code == 'stage_input_over_limit' and refused.value.detail['reason'] == 'over_budget'
+    assert refused.value.detail['tokens'] > refused.value.detail['budget'] == 131072 and model.calls == 0
+    assert span['dropped'] == {'past': 0, 'history': 0, 'semantic': 0}
     context = reference_brief_context(*brief_inputs(label='Revenue ' * 2000))
     assert context.dropped == {'past': 0, 'history': 0, 'semantic': 0}
 
@@ -435,19 +445,26 @@ def blueprint_memory(observations):
 
 
 def test_blueprint_observations_section_fits_without_boxes_bytes_or_rows():
-    """22.1: the planner sees each recreate observation's reconciled meaning, within the blueprint's 14k input."""
+    """The planner sees each recreate observation's reconciled meaning within its stage input cap."""
     memory = blueprint_memory(observation_inputs())
     from dss.harness.nodes import blueprint
-    assert BUDGETS['blueprint'] == 14000 and blueprint.MAX_OUTPUT_TOKENS == 6000
+    # Change 2026-10-26: input/output caps come from native_planning.
+    assert BUDGETS['blueprint'] == 131072 and blueprint.MAX_OUTPUT_TOKENS == 32768
     [section] = [s for s in memory.sections if s.name == 'observations']
     observed = json.loads(section.body)
     assert section.kind == 'reference' and len(observed) == 24 and memory.dropped == {'past': 0, 'history': 0, 'semantic': 0}
     assert observed[3] == {'id': 'o4', 'kind': 'chart', 'type': 'time_series', 'date_field': 'order_date', 'title': 'Chart 3',
                            'metrics': [{'label': 'Revenue', 'field': 'revenue', 'unit': 'USD', 'aggregation': 'sum', 'date_grain': 'month'}]}
     assert not any(word in section.body for word in ('box', 'confidence', 'image', 'img', 'rows', 'chart_candidate'))
-    assert tokens(str(memory)) <= BUDGETS['blueprint'] - 2000
+    assert tokens(str(memory)) <= BUDGETS['blueprint']
     # Over budget, the observation labels go first; the observed fields stay.
-    memory = blueprint_memory(observation_inputs(title='T' * 1600))
+    # Change 2026-10-26: a reduced profile cap exercises the existing drop order.
+    from dss.config import Config
+    from dss.harness import stages
+    config = Config()
+    config.stages['native_planning']['input_tokens'] = 12000  # old 14k context minus its 2k reserve
+    with stages.Execution(config, SimpleNamespace(spans=[])).activate():
+        memory = blueprint_memory(observation_inputs(title='T' * 1600))
     [section] = [s for s in memory.sections if s.name == 'observations']
     assert 'TTT' not in section.body and 'Revenue' not in section.body and memory.dropped['profile'] == 1
     assert [o['metrics'][0]['field'] for o in json.loads(section.body)] == ['revenue', 'order_id', 'quantity', 'revenue', 'revenue'] * 4 + ['revenue', 'order_id', 'quantity', 'revenue']
@@ -476,7 +493,8 @@ def test_capability_context_trims_only_a_comment_batch_and_outline_other_keeps_t
                             source={'id': 'm', 'text': 'Add a map'}, ledger=ledger, checker=checker)
     [section] = [s for s in other.sections if s.name == 'ledger']
     assert [r['id'] for r in json.loads(section.body)['requirements']] == [r.id for r in ledger.requirements]
-    assert BUDGETS['outline_other'] == 6000 and BUDGETS['reference_extract'] == 12000
+    # Change 2026-10-26: only reference interpretation gets a generation-profile cap.
+    assert BUDGETS['outline_other'] == 6000 and BUDGETS['reference_extract'] == 131072
 
 
 @pytest.mark.parametrize('draft', [None, '<section>current draft</section>'])
@@ -494,7 +512,8 @@ def test_reference_repair_keeps_one_projection_and_one_current_html(draft):
         {'overall': 'Full validated brief'}, {'theme': 'dark'}, page, approved,
         shared={'css': 'body{color:red}', 'canvas_width': 1440}, revision=revision, repair=repair, attempt=2)
     sections = {s.name: json.loads(s.body) for s in memory.sections if s.kind in ('docs', 'input')}
-    assert memory.budget == 24000 and 'components' not in sections['page']
+    # Change 2026-10-26: repairs use the same profile cap as the first HTML request.
+    assert memory.budget == 131072 and 'components' not in sections['page']
     assert sections['components']['components'] == [{**approved['components'][0], 'min_w': {'1200': 400}, 'min_h': 240}]
     assert sections['components']['decisions'] == approved['decisions']
     assert sections['revision'] == {**revision, 'html': draft or revision['html']}

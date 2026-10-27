@@ -159,10 +159,11 @@ def test_recreate_upload_retains_bytes_and_structured_observations(ref):
     assert model.calls == 1 and decoded == [["Sales_Board.png"]]
     request = model.requests[0]
     assert [p.inline_data.data for p in request.contents[0].parts if p.inline_data] == [data]
-    assert not request.config.tools and request.config.max_output_tokens == 4096
+    assert not request.config.tools and request.config.max_output_tokens == 32768  # change 2026-10-26
     assert "Use net sales for Revenue." in request.config.system_instruction
     [row] = traces(app)
     spans = json.loads(row["spans_json"])
+    assert 'stages' in spans[0]['settings']  # change 2026-10-26: persisted run snapshot
     assert row["node"] == "reference_extract" and row["status"] == "ok"
     assert [s["node"] for s in spans] == ["router", "reference_extract", "write_reference", "guardrail"]
     assert spans[1]["images"] == 1 and spans[1]["input_tokens_estimate"] > 0 and spans[2]["items"] == 4
@@ -325,7 +326,7 @@ async def test_counted_request_over_budget_refuses_before_generation(ref, monkey
     model = Huge(response=output(), requests=[])
     with pytest.raises(RunError) as error:
         await app.state.harness.run("reference_extract", bid, payload(app, [image()]), llm=model)
-    assert error.value.code == "llm_unavailable" and model.calls == 0
+    assert error.value.code == "stage_input_over_limit" and model.calls == 0  # change 2026-10-26
     assert not (folder / "references.json").exists()
 
 

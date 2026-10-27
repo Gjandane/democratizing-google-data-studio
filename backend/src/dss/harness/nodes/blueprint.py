@@ -14,6 +14,7 @@ from dss.artifacts.models import Blueprint, BlueprintRow, DerivedField, Model, V
 from dss.artifacts.okf import atomic_write, read_artifact, write_artifact
 from dss.harness.context import blueprint_context, fit_request, tokens
 from dss.harness.guardrails import RunError, check_reply
+from dss.harness import stages as execution_stages
 from dss.harness.nodes import context as context_node, outline as outline_node, view
 from dss.harness.nodes.style_extract import provider_schema
 from dss.spec import requirements as req
@@ -22,7 +23,7 @@ from dss.spec.capabilities import Checker, load_registry
 from dss.spec.models import FIELD_CONTROLS
 from dss.spec.validate import allowed_types, catalog, label_text
 
-MAX_OUTPUT_TOKENS = 6000
+MAX_OUTPUT_TOKENS = 32768  # change 2026-10-26; execution reads the snapshot profile
 
 
 class ViewDraft(Model):
@@ -213,6 +214,7 @@ def preflight(db, build_id, folder):
 
 def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
     config, folder, build = payload['config'], payload['folder'], payload['build']
+    profile = execution_stages.profile('blueprint')
     context, outline, design = context_node.load(folder), outline_node.load(folder), design_node.load(folder)
     connected = context_node.sources(harness.db, build_id)
     old = load(folder)
@@ -286,7 +288,7 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         raw = ''.join(p.text for p in (llm_response.content.parts or []) if p.text and not p.thought) if llm_response.content else ''
         usage = llm_response.usage_metadata
         if (llm_response.error_code or llm_response.finish_reason == types.FinishReason.MAX_TOKENS or
-                tokens(raw) > MAX_OUTPUT_TOKENS or (usage and (usage.candidates_token_count or 0) > MAX_OUTPUT_TOKENS)):
+                tokens(raw) > profile['output_tokens'] or (usage and (usage.candidates_token_count or 0) > profile['output_tokens'])):
             state['failure'] = RunError('llm_unavailable', 'Blueprint generation failed or exceeded its output budget', 503)
         else:
             try:
@@ -341,7 +343,9 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                         repairable=True, offers=[], evidence=[]))
             except (ValueError, ValidationError):
                 state['failure'] = RunError('llm_unavailable', 'The model returned an invalid Blueprint structure; draft again', 503)
-        if any(e['repairable'] for e in state['errors']) and not state['row_repaired'] and not state['failure']:
+        if state['failure'] or any(e['repairable'] for e in state['errors']):
+            execution_stages.invalid_output('blueprint')
+        if profile['validation_repairs'] and any(e['repairable'] for e in state['errors']) and not state['row_repaired'] and not state['failure']:
             state['row_repaired'], state['phase'] = True, 'row_repair'
             return Event(actions=EventActions(route='repair'))
         return Event(actions=EventActions(route='view'))
@@ -423,6 +427,7 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
             state['view_table'] = view.view_table(config, build_id, build['current_version'], run_id)
         except Exception as exc:
             # Dry-run errors are metadata; bound and redact before the one SQL repair.
+            execution_stages.invalid_output('blueprint')
             error = str(exc)
             for secret in secrets:
                 if secret:

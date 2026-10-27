@@ -15,6 +15,12 @@ router = APIRouter(prefix="/api/engine")
 trace_router = APIRouter()
 
 
+@trace_router.get('/api/traces/{run_id}/calls')
+def calls(run_id: str, request: Request):
+    from dss.memory.episodic import run_calls
+    return run_calls(request.app.state.db, run_id)
+
+
 @trace_router.get("/api/traces")
 def traces(request: Request, build_id: str | None = None):
     with request.app.state.db.connect() as conn:

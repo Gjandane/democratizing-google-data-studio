@@ -219,6 +219,11 @@ async def consolidate(state, llm=None):
                                       config.access_code.get_secret_value(), config.agent_token.get_secret_value())))
         run_id = new_id("r")
         trace = Trace(state.db, run_id, None, "consolidate")
+        from dss.harness import stages
+        from dss.harness.llm import bind_model
+        stage_execution = stages.Execution(config, trace, available=state.models.available)
+        activation = stage_execution.activate()
+        activation.__enter__()
         status, error, runner, result = "error", "llm_unavailable", None, {"facts": None, "failure": None}
         try:
             await state.harness.emit(None, run_id, "run.started", {"run_id": run_id, "node": "consolidate"})
@@ -233,7 +238,7 @@ async def consolidate(state, llm=None):
                 consume(state.db, count)
                 status, error = "ok", None
                 return status
-            model = llm if llm is not None else state.models.llm_for("consolidate")
+            model = bind_model('consolidate', llm if llm is not None else state.models.llm_for("consolidate"))
             trace.model = model.model
 
             async def instruction_provider(context_object):
@@ -315,10 +320,12 @@ async def consolidate(state, llm=None):
             logger.warning("Consolidation failed; the next done build retries it")
         finally:
             try:
+                stage_execution.record()
                 trace.save(status, error)
                 await state.harness.emit(None, run_id, "run.finished", {
                     "run_id": run_id, "node": "consolidate", "status": status, "error": error})
             finally:
+                activation.__exit__(None, None, None)
                 if runner is not None:
                     await runner.close()
         return status

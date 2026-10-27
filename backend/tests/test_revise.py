@@ -956,6 +956,11 @@ class DesignFlow(CommentFlow):
 
     async def generate_content_async(self, request, stream=False):
         instruction = str(request.config.system_instruction)
+        if 'slots' in request.config.response_json_schema.get('properties', {}):
+            from test_reference_brief import BriefLLM
+            async for result in BriefLLM().generate_content_async(request, stream):
+                yield result
+            return
         if PAGE_HEADER not in instruction:
             async for result in super().generate_content_async(request, stream):
                 yield result
@@ -977,7 +982,8 @@ class DesignFlow(CommentFlow):
         html = ('<style>body{padding:%dpx 24px 24px;font-family:Arial}.card{margin-bottom:16px}%s</style>' % (top, accent)
                 + f'<header class="head"><h1>{escape(title[1] if title else page["name"])}</h1>'
                 + ('<p>Revised</p>' if revision else '') + f'</header>{cards}')
-        if self.plan.get(page['index'], ['ok', 'ok'])[attempt] == 'bad':
+        choices = self.plan.get(page['index'], ['ok'])
+        if choices[min(attempt, len(choices) - 1)] == 'bad':  # change 2026-10-26: up to two repairs
             html = '<p>No slots here</p>'
         answer = {'html': html}
         if 'canvas_width' in request.config.response_json_schema['required']:
@@ -1081,12 +1087,14 @@ def test_design_decoration_requirement_is_proven_by_design_html(setup, designed,
 def test_failed_regeneration_keeps_the_spec_and_the_comments_pending_with_the_errors(setup, designed, client, monkeypatch):
     from dss.spec import requirements as req
     app, bid, folder, *_ = setup
+    response_settings = client.put('/api/settings', json={'stages': {'html_no_reference': {'layout_fallback': False}}})
+    assert response_settings.status_code == 200
     target, text, needs, properties, patch = REDESIGNS['move']
     fake = DesignFlow(needs_by_text={text: needs}, response=response(patch), plan={1: ['bad', 'bad']})
     monkeypatch.setattr(app.state.models, 'llm_for', lambda node: fake)
     before = {p.name: p.read_bytes() for p in folder.iterdir() if p.is_file() and p.name != 'requirements.json'}
     assessment, run_id = post_designed(client, app, bid, [{'component_id': target, 'text': text}])
-    assert [index for index, _ in fake.designs] == [1, 1] and fake.revisions == 1
+    assert [index for index, _ in fake.designs] == [1, 1, 1] and fake.revisions == 1  # change 2026-10-26
     after = {p.name: p.read_bytes() for p in folder.iterdir() if p.is_file() and p.name != 'requirements.json'}
     assert after == before
     assert assessment['pending_comments']['comments'] == [{'component_id': target, 'text': text}]
@@ -1099,6 +1107,32 @@ def test_failed_regeneration_keeps_the_spec_and_the_comments_pending_with_the_er
         assert conn.execute('SELECT spec_version FROM versions WHERE build_id=?', (bid,)).fetchone()[0] == 1
     assert trace['error'] == 'invalid_request'
     assert {'node': 'redesign_failed', 'page': 1, 'reason': 'invalid', 'errors': 8} in json.loads(trace['spans_json'])
+
+
+def test_revision_fallback_publishes_standard_layout_with_saved_design(setup, designed, client, monkeypatch):
+    from dss.artifacts import design as design_artifact
+    from dss.artifacts.okf import write_artifact
+    app, bid, folder, *_ = setup
+    design = design_artifact.prefill({'archetype': 'executive', 'title': 'Sales'}, None, None)
+    async def emit(*args):
+        pass
+    asyncio.run(write_artifact(folder / 'docs/design.md', design, emit=emit))
+    text = 'Make it a table'
+    patch = [op('/pages/0/components/0/type', 'table'), op('/pages/0/components/0/dimensions', ['region'])]
+    fake = DesignFlow(needs_by_text={text: [{'capability': 'chart.table'}]}, response=response(patch),
+                      plan={1: ['bad']})
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda node: fake)
+    assessment, run_id = post_designed(client, app, bid, [{'component_id': 'p1_scorecard_0', 'text': text}])
+    assert assessment['pending_comments'] is None, finished(app, bid, run_id)
+    result = DashboardSpec.model_validate_json((folder / 'spec.json').read_text(encoding='utf-8'))
+    assert all(page.design is None for page in result.pages)
+    assert result.pages[0].components[0].type == 'table'
+    assert [len(page.components) for page in result.pages] == [len(page.components) for page in designed.pages]
+    assert validate_spec(result) == []
+    rows = client.get(f'/api/builds/{bid}/design-pages').json()['pages']
+    assert all(row['layout'] == 'standard' and row['standard_reason'] == 'layout_fallback' for row in rows)
+    assert rows[0]['html_model'] == fake.model and all(row['html_model'] is None for row in rows[1:])
+    assert len(fake.designs) == 3
 
 
 DATA = {
@@ -1146,7 +1180,7 @@ def test_type_change_that_no_longer_fits_its_slot_regenerates_the_page(setup, de
 def test_reference_revision_uses_fresh_candidate_and_preserves_publication_on_failure(
         setup, designed, client, monkeypatch, failure):
     from test_reference_brief import BriefLLM, reference_set, section, attached
-    from test_designer import ReferenceHTMLLLM
+    from test_designer import ReferenceHTMLLLM, fake_html_clock
     from dss.harness.context import COMPONENTS_HEADER
     from dss.harness.nodes import designer as node
     from dss.spec import references, requirements as req
@@ -1163,15 +1197,21 @@ def test_reference_revision_uses_fresh_candidate_and_preserves_publication_on_fa
     patch = [op('/pages/0/components/0/type', 'table'), op('/pages/0/components/0/dimensions', ['region'])]
     fake = DesignFlow(needs_by_text={text: [{'capability': 'chart.table'}]}, response=response(patch))
     brief = BriefLLM()
-    html = (fake if failure is None else ReferenceHTMLLLM(plan={1: ['cut' if failure == 'cut' else 'bad'] * 2},
-            fixed=9800 if failure == 'budget' else 1000,
-            pause_generate=5 if failure == 'timeout' else 0,
+    html_type = ReferenceHTMLLLM
+    if failure == 'timeout':
+        advance, _, _ = fake_html_clock(monkeypatch)
+        class Timed(ReferenceHTMLLLM):
+            async def generate_content_async(self, request, stream=False):
+                advance(11)
+                async for response in super().generate_content_async(request, stream):
+                    yield response
+        html_type = Timed
+    html = (fake if failure is None else html_type(plan={1: ['cut' if failure == 'cut' else 'bad'] * 3},
+            fixed=108801 if failure == 'budget' else 1000,  # change 2026-10-26
             started=asyncio.Event(), release=asyncio.Event() if failure == 'cancel' else None))
     monkeypatch.setattr(app.state.models, 'llm_for', lambda node: {'reference_brief': brief, 'reference_html': html}.get(node) or fake)
     if failure == 'missing':
         (folder / record['images'][1]['file']).unlink()
-    if failure == 'timeout':
-        monkeypatch.setattr(node, 'HTML_STAGE_SECONDS', .1)
     old = {p: p.read_bytes() for p in folder.iterdir() if p.name == 'spec.json' or p.name == 'prototype.html' or p.name.startswith('background_')}
     comments = [{'component_id': 'p1_scorecard_0', 'text': text}]
     if failure == 'cancel':

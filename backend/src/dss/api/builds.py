@@ -118,12 +118,19 @@ def get_build(build_id: str, request: Request):
     return build_response(state.db, state.settings.get(), build_id)
 
 
+@router.get('/{build_id}/cost')
+def cost(build_id: str, request: Request):
+    from dss.memory.episodic import build_cost
+    require_build(request.app.state.db, build_id)
+    return build_cost(request.app.state.db, build_id)
+
+
 @router.post("/{build_id}/versions", status_code=201)
 async def new_version(build_id: str, request: Request):
     import shutil
-    from dss.api.prototype import current, read_spec
+    from dss.api.prototype import mutation_current, read_spec
     state = request.app.state
-    build, folder = current(state, build_id)
+    build, folder = mutation_current(state, build_id)
     if build["stage"] not in ("done", "prototype") or build_id in state.harness.active_builds:
         raise RunError("wrong_stage", "A new version needs an idle prototype or completed build", 409,
                        {"stage": build["stage"]})
@@ -174,6 +181,8 @@ async def new_version(build_id: str, request: Request):
 async def intake_sources(request, build_id, sources):
     state = request.app.state
     require_build(state.db, build_id)
+    from dss.memory.episodic import require_no_brief_review
+    require_no_brief_review(state.db, build_id)
     config = state.settings.get()
     if not config.gcp_project_id.strip():
         raise RunError("gcp_not_configured", "Set the GCP project in Settings before connecting data", 503)
@@ -232,10 +241,10 @@ class ResearchRequest(BaseModel):
 @router.post('/{build_id}/research', status_code=202)
 async def research(build_id: str, body: ResearchRequest, request: Request):
     import asyncio
-    from dss.api.prototype import current
+    from dss.api.prototype import mutation_current
     from dss.harness.guardrails import check_reply
     state = request.app.state
-    build, _ = current(state, build_id)
+    build, _ = mutation_current(state, build_id)
     if (build['mode'] != 'research' or build['stage'] not in ('connect', 'context') or
             build_id in state.harness.active_builds):
         raise RunError('wrong_stage', 'Research requires an idle research build in connect or context', 409,
@@ -272,8 +281,8 @@ REFERENCE_STAGES = ("connect", "context", "outline", "design", "blueprint", "pro
 
 
 def reference_stage(state, build_id):
-    from dss.api.prototype import current
-    build, folder = current(state, build_id)
+    from dss.api.prototype import mutation_current
+    build, folder = mutation_current(state, build_id)
     if build["stage"] not in REFERENCE_STAGES or build_id in state.harness.active_builds:
         raise RunError("wrong_stage", "References change only in connect through prototype with no running action",
                        409, {"stage": build["stage"]})

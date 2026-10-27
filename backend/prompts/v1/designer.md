@@ -6,7 +6,8 @@ Return only the structured JSON response: `html` (one leading `<style>` block, t
 markup) and, on page 1 only, `canvas_width` (an integer from 1200 to 1920;
 use 1200: the report editor zooms wider canvases out, which breaks component placement).
 
-Apply the supplied dashboard-design skill. Hard rules:
+Apply the supplied dashboard-design skill and implement the validated visual brief for this page.
+The native slots and the safety rules below take precedence over the brief. Hard rules:
 - Exactly one empty `<div data-slot="<id>"></div>` for every component id listed for this page,
   and no slot for any other id. Never add, remove, rename or retype components, and never draw
   chart content, numbers, sample values, fake data or a component's label yourself (each

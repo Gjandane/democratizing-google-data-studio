@@ -35,6 +35,10 @@ async def evaluate(db, config, build_id, *, llm=None):
         raise RunError('build_not_found', 'Build not found', 404)
     version = build[0]
     trace = Trace(db, new_id('r'), build_id, 'judge')
+    from dss.harness import stages
+    from dss.harness.llm import bind_model
+    activation = stages.Execution(SettingsStore(config, db).get(), trace).activate()
+    activation.__enter__()
     trace.span('judge')
     trace.spans[-1]['version'] = version
     status, error, runner = 'error', 'llm_unavailable', None
@@ -45,7 +49,7 @@ async def evaluate(db, config, build_id, *, llm=None):
         secrets = tuple(getattr(config, name).get_secret_value() for name in ('google_api_key', 'access_code', 'agent_token'))
         context = check_reply(judge_context(config, folder, document), secrets)
         context.record(trace.spans[-1])
-        model = llm if llm is not None else ModelRouter(SettingsStore(config, db)).llm_for('judge')
+        model = bind_model('judge', llm if llm is not None else ModelRouter(SettingsStore(config, db)).llm_for('judge'))
         trace.model = model.model
 
         async def instructions(context_object):
@@ -91,6 +95,7 @@ async def evaluate(db, config, build_id, *, llm=None):
     except Exception:
         raise RunError('llm_unavailable', 'Evaluation failed; check the build documents and model settings', 503) from None
     finally:
+        activation.__exit__(None, None, None)
         trace.save(status, error)
         if runner is not None:
             await runner.close()

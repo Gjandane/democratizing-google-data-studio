@@ -312,10 +312,10 @@ def test_login_settings_lock_and_deployment_overrides(remote):
     response = client.post("/api/engine/login")
     assert response.status_code == 409 and response.json()["error"]["code"] == "login_on_agent"
     for field in ("google_api_key", "gcp_project_id", "bq_dataset", "bq_location", "gcs_bucket"):
-        response = client.put("/api/settings", json={field: "changed", "worker_model": "new"})
+        response = client.put("/api/settings", json={field: "changed", "stages": {"routine": {"model": "gemini-3.8-flash"}}})
         assert response.status_code == 403 and response.json()["error"]["code"] == "settings_locked"
-    response = client.put("/api/settings", json={"planner_model": "planner", "worker_model": "worker"})
-    assert response.status_code == 200 and response.json()["worker_model"] == "worker"
+    response = client.put("/api/settings", json={"stages": {"native_planning": {"model": "gemini-4-argon"}, "routine": {"model": "gemini-3.8-flash"}}})
+    assert response.status_code == 200 and response.json()["stages"]["routine"]["model"] == "gemini-3.8-flash"
     app.state.settings.update({"gcp_project_id": "old-local-project", "google_api_key": "old-key"})
     config = app.state.settings.get()
     assert config.gcp_project_id == "deployment" and config.google_api_key.get_secret_value() == "fake-google-key"

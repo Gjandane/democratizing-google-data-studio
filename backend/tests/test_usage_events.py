@@ -1,5 +1,6 @@
 """run.usage: running token totals per run on the build's stream (contracts/api.md 1.2)."""
 import json
+import pytest
 from pathlib import Path
 
 from google.genai import types
@@ -96,3 +97,53 @@ def test_recipe_run_without_model_call_emits_no_usage(thin):
     stream = events(app, build_id)
     assert ("recipe" in [p.get("node") for k, p in stream if k == "run.started"])
     assert "run.usage" not in [k for k, _ in stream]
+
+
+@pytest.mark.parametrize('billed,measured,enforced,input_count', [(10, 20, 30, 10), (None, 20, 30, 20),
+                                                               (None, None, 30, 30), (0, 20, 30, 0)])
+def test_call_cost_input_precedence_and_long_context(monkeypatch, billed, measured, enforced, input_count):
+    from types import SimpleNamespace
+    from dss.harness import stages
+    from dss.harness.tracing import StageCall
+    from google.adk.models.llm_request import LlmRequest
+    monkeypatch.setitem(stages.MODELS, 'priced', {'price': {
+        'input_usd_per_mtok': 2, 'output_usd_per_mtok': 5, 'long_context_over': 20,
+        'long_input_usd_per_mtok': 4, 'long_output_usd_per_mtok': 10, 'checked_on': '2026-10-26'}})
+    session = stages.StageSession('blueprint')
+    session.attempt = 1
+    session.request_counts = {'input_measured': measured, 'input_enforced': enforced, 'input_limit': 100}
+    call = StageCall(session, LlmRequest(), 'priced', 1)
+    call.observe(SimpleNamespace(usage_metadata=types.GenerateContentResponseUsageMetadata(
+        prompt_token_count=billed, candidates_token_count=4, thoughts_token_count=6),
+        finish_reason=types.FinishReason.STOP, error_code=None, partial=False,
+        content=types.Content(parts=[types.Part(text='{}')])), LlmRequest())
+    call.finish()
+    rate = 2 if input_count <= 20 else 4
+    assert call.value['cost_usd_estimate'] == (input_count * rate + 10 * rate * 2.5) / 1_000_000
+
+
+@pytest.mark.parametrize('model,answer,thinking,expected', [
+    ('unpriced', 4, 6, None), ('gemini-3.8-flash', None, 6, None),
+    ('gemini-3.8-flash', 4, None, None), ('gemini-3.8-flash', 0, 0, 0.000075)])
+def test_unknown_usage_and_prices_are_not_zero(model, answer, thinking, expected):
+    from dss.harness.tracing import cost, cost_total
+    assert cost(model, 100, answer, thinking) == expected
+    assert cost_total([None, 0.25, 0]) == (0.25, False)
+    assert cost_total([None]) == (None, False)
+    assert cost_total([]) == (0, True)
+
+
+async def test_call_records_do_not_change_usage_totals(client, app, build_id):
+    from dss.harness import stages
+    class Thinking(FakeLLM):
+        model: str = stages.FLASH
+        async def generate_content_async(self, req, stream=False):
+            async for item in super().generate_content_async(req, stream):
+                item.usage_metadata.thoughts_token_count = 17
+                yield item
+    result = await app.state.harness.run('hello', build_id, {}, llm=Thinking())
+    usage = check_stream(app, build_id, result['run_id'], 'hello')
+    assert (usage[-1]['input_tokens'], usage[-1]['output_tokens']) == (5, 2)
+    call = client.get(f"/api/traces/{result['run_id']}/calls").json()['calls'][0]
+    assert call['thinking_tokens'] == 17 and call['output_tokens'] == 2 and call['input_billed'] == 5
+    assert call['cost_usd_estimate'] == (5 * 0.75 + 19 * 3.75) / 1_000_000

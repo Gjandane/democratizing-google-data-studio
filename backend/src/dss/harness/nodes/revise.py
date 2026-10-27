@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from dss.db import now
 from dss.harness.context import fit_request, revise_context
 from dss.harness.guardrails import RunError, check_reply
+from dss.harness import stages
 from dss.harness.nodes import designer
 from dss.harness.nodes.render import artifacts
 from dss.render import background, design_page
@@ -188,7 +189,8 @@ def context_document(document):
     return document
 
 
-def persist(harness, build_id, version, folder, candidate, records, changed, service, questions, snapshot, ledger, checker):
+def persist(harness, build_id, version, folder, candidate, records, changed, service, questions, snapshot, ledger, checker,
+            briefs=None):
     """Render into a sibling staging folder; retain the published version on failure."""
     from dss.harness.nodes.intake import write_doc
     spec = DashboardSpec.model_validate(candidate)
@@ -216,6 +218,8 @@ def persist(harness, build_id, version, folder, candidate, records, changed, ser
             artifacts(spec, service(), staging)
             updates.update({folder / name: (staging / name).read_bytes() for name in ('prototype.html', *background.names(spec), 'aggregate-cache.json')})
             updates[folder / 'spec.json'] = spec.model_dump_json(indent=2).encode('utf-8')
+            from dss.spec.publication import design_artifacts
+            updates.update({folder / name: content for name, content in design_artifacts(spec, folder, briefs).items()})
         decisions = folder / 'docs/decisions.md'
         text = decisions.read_text(encoding='utf-8') if decisions.exists() else '---\ntype: Design Decisions\ntitle: Design decisions\n---\n\n# Design decisions\n'
         for record in records:
@@ -259,6 +263,11 @@ def persist(harness, build_id, version, folder, candidate, records, changed, ser
             with harness.db.connect() as conn:
                 for i, (path, content) in enumerate(updates.items()):
                     path.parent.mkdir(parents=True, exist_ok=True)
+                    if content is None:
+                        if path.exists():
+                            path.replace(staging / f'retired-{i}')
+                        written.append(path)
+                        continue
                     staged = staging / f'publish-{i}'
                     staged.write_bytes(content)
                     staged.replace(path)
@@ -292,7 +301,16 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
     questions = high_questions(questions_file.read_text(encoding='utf-8')) if questions_file.exists() else []
     # Comments on a page design go to the designer only; the reviser patches the others.
     seen = [i for i, c in enumerate(comments) if c['component_id'] not in design_ids(original)]
-    state = {'raw':'', 'errors':'', 'repairs':0, 'failure':None, 'reply':'Revision did not finish.', 'skip':not seen}
+    state = {'raw':'', 'errors':'', 'repairs':0, 'failure':None, 'reply':'Revision did not finish.', 'skip':not seen,
+             'briefs': {}}
+    from dss.spec.publication import BriefGate, ReviewPause
+    gate = None
+    saved = payload.get('_brief_resume')
+    if saved:
+        gate = BriefGate(harness, config, build_id, run_id, 'revise', Path(saved['folder']),
+                         saved['state'], owner=saved['owner'])
+        state.update(snapshot=req.inputs(harness.db, build_id, folder), ledger=req.load(folder),
+                     checker=Checker(load_registry()), briefs=gate.briefs)
 
     def repair():
         if not state['errors']:
@@ -331,6 +349,7 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         try:
             state['raw'] = check_reply(raw, (secret,))
         except RunError:
+            stages.invalid_output('revise')
             return LlmResponse(error_code='llm_unavailable', error_message='Revision model returned unsafe output')
         return LlmResponse(content=types.Content(role='model', parts=[types.Part(text='Revision received for validation.')]),
             usage_metadata=llm_response.usage_metadata)
@@ -339,6 +358,9 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         """The patch phase: the reviser's batch applied and validated. Requirements that only a
         redesigned page's design.html can prove wait for it; box errors there wait for the new
         measurement (revised)."""
+        if saved:
+            return (deepcopy(gate.state['spec']), gate.state['records'],
+                    {int(k): v for k, v in gate.state['redesign'].items()})
         if seen:
             batch = expand(Revision.model_validate_json(state['raw']), seen, len(comments))
         else:
@@ -364,15 +386,25 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
     async def redesigned(candidate, redesign):
         """Each page in `redesign` designed again (one designer run per page), then the whole spec
         and every requirement checked; a RunError leaves the published version unchanged."""
+        nonlocal gate
+        if gate is None and config.review_briefs:
+            staging = config.data_dir / '.brief-reviews' / run_id
+            shutil.copytree(folder, staging, ignore=shutil.ignore_patterns('screens', 'events.jsonl', 'recipe.jsonl'))
+            gate = BriefGate(harness, config, build_id, run_id, 'revise', staging,
+                             {'spec': candidate, 'records': state['records'], 'redesign': redesign,
+                              'comments': comments})
+            state['_brief_gate'] = gate
+            state['briefs'] = gate.briefs
         secrets = (secret, *(s.get_secret_value() for s in (config.access_code, config.agent_token)))
         reference = designer.reference_design(
             folder, {**state['snapshot'], 'spec': candidate}, state['ledger'], state['checker'], harness.models)
         spec, failed = await designer.regenerate(
             DashboardSpec.model_validate(candidate), redesign,
-            payload.get('_designer') or (lambda: harness.models.llm_for('designer')), trace, secrets=secrets, reference=reference,
+            payload.get('_designer') or (lambda: harness.models.llm_for('designer')), trace, secrets=secrets,
+            reference=reference, briefs=state['briefs'], review=gate,
             report=lambda totals: harness.emit(build_id, run_id, 'run.usage', {'run_id': run_id, 'node': 'revise', **totals}))
         if failed:
-            if reference is not None:
+            if reference is not None and reference.reference is not None:
                 index = min(failed)
                 designer.reference_failed(index, failed[index], trace)
             reasons = []
@@ -399,6 +431,7 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
             candidate, records, redesign = patched()
         except (ValueError, TypeError, KeyError, AttributeError):
             # Keep repair diagnostics free of pydantic inputs and provider text.
+            stages.invalid_output('revise')
             state['errors'] = 'Patch rejected: fulfill every active requirement and confirmed decision; preserve scope/ids, move only collision neighbours, use valid field bindings, sizes and a non-overlapping layout.'
             if not state['repairs']:
                 state['repairs'] = 1
@@ -408,17 +441,24 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         if redesign:
             # After the patch is final, so a reviser repair never designs a page twice.
             try:
+                state['records'] = records
                 candidate = await redesigned(candidate, redesign)
+            except ReviewPause:
+                state['reply'] = 'The page brief is ready for review.'
+                return Event(actions=EventActions(route='complete'))
             except RunError as exc:
+                if gate is not None:
+                    gate.cleanup_revision()
                 state['failure'] = exc
                 return Event(actions=EventActions(route='complete'))
-        changed = candidate != original or migrating
+        # A fresh brief is part of the publication even when its HTML and boxes are identical.
+        changed = candidate != original or migrating or bool(state['briefs'])
         candidate['spec_version'] = original['spec_version'] + int(changed)
         trace.span('render')
         try:
             from dss.spec.publication import build_lock
             async with build_lock(harness.db, build_id):
-                worker = asyncio.create_task(asyncio.to_thread(persist, harness, build_id, version, folder, candidate, records, changed, lambda:payload['factory'](config), questions, state['snapshot'], state['ledger'], state['checker']))
+                worker = asyncio.create_task(asyncio.to_thread(persist, harness, build_id, version, folder, candidate, records, changed, lambda:payload['factory'](config), questions, state['snapshot'], state['ledger'], state['checker'], state['briefs']))
                 try:
                     await asyncio.shield(worker)
                 except asyncio.CancelledError:
@@ -428,12 +468,21 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                         pass
                     raise
         except RunError as exc:
+            if gate is not None:
+                gate.cleanup_revision()
             state['failure'] = exc
             return Event(actions=EventActions(route='complete'))
         except Exception:
+            if gate is not None:
+                gate.cleanup_revision()
             state['failure'] = RunError('invalid_source', 'Revision could not be rendered and saved; previous prototype retained', 422)
             return Event(actions=EventActions(route='complete'))
         notes = ['Prototype updated.' if changed else 'No change needed.']
+        fallback_pages = [s['page'] for s in trace.spans if s.get('node') == 'designer_fallback']
+        if fallback_pages:
+            notes.append(designer.ALL_FALLBACK if 1 in fallback_pages else
+                         ' '.join(f'Page {n} uses the standard layout: its design did not pass its checks.'
+                                  for n in fallback_pages))
         if any(n > 1 for n in Counter(c['component_id'] for c in comments).values()):
             notes.append('Comments on the same item were applied in order; the last change to the same property wins.')
         state['reply'] = ' '.join(notes)
@@ -441,6 +490,8 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
             await harness.emit(build_id, run_id, 'prototype.updated', {'spec_version':candidate['spec_version']})
         from dss.api.builds import build_response
         await harness.emit(build_id, run_id, 'docs.updated', {'docs':build_response(harness.db,config,build_id)['docs']})
+        if gate is not None:
+            gate.cleanup_revision()
         return Event(actions=EventActions(route='complete'))
 
     async def complete(node_input):
@@ -449,4 +500,19 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
     def agent(name):
         return LlmAgent(name=name, model=model, mode='single_turn', instruction=instruction_provider,
             before_model_callback=before_model, after_model_callback=after_model, on_model_error_callback=model_error)
-    return agent('revise'), agent('revise_repair'), validate, complete, state
+    return (None, None, validate, complete, state) if saved else (agent('revise'), agent('revise_repair'), validate, complete, state)
+
+
+async def resume(harness, build_id, run_id, payload, trace):
+    payload['comments'] = payload['_brief_resume']['state']['comments']
+    _, _, validate, complete, state = make_branch(harness, build_id, run_id, payload, None, trace, None)
+    try:
+        await validate(None)
+        if state['failure']:
+            raise state['failure']
+        return await complete(None)
+    finally:
+        from dss.spec.publication import BriefGate
+        saved = payload['_brief_resume']
+        BriefGate(harness, payload['config'], build_id, run_id, 'revise', Path(saved['folder']),
+                  saved['state'], owner=saved['owner']).cleanup_revision()

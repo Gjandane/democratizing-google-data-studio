@@ -74,6 +74,9 @@ def baseline(app, build_id):
     (folder / 'prototype.html').write_text('old prototype', encoding='utf-8')
     (folder / 'background_p1.png').write_bytes(b'old PNG')
     (folder / 'aggregate-cache.json').write_text('{}')
+    (folder / 'brief_p1.json').write_bytes(b'{"page":1,"overall":"Old brief","slots":[]}')
+    (folder / 'brief_p1.md').write_bytes(b'# Old brief\n')
+    (folder / 'design-pages.json').write_text(json.dumps({'spec_version': 4, 'pages': []}), encoding='utf-8')
     write_doc(folder / 'docs/derived-fields.md', {'type': 'Derived Fields', 'view': spec['datasource']['table']}, 'Old fields')
     write_doc(folder / 'docs/questions.md', {'type': 'Business Questions'}, '- q1: Old question (priority: high)')
     with app.state.db.connect() as conn:
@@ -118,6 +121,17 @@ async def run_publication(app, build_id, service):
             write_doc(candidate.folder / 'docs/derived-fields.md',
                       {'type': 'Derived Fields', 'view': spec.datasource.table}, 'New fields')
             (candidate.folder / 'spec.json').write_text(spec.model_dump_json(), encoding='utf-8')
+            from dss.harness.nodes import reference_brief as rb
+            from dss.spec.publication import design_artifacts
+            page = spec.pages[0]
+            brief = rb.PageBrief(page=1, overall='New brief', slots=[rb.SlotBrief(id=c.id, treatment='White card')
+                                                                   for c in page.components])
+            records = {1: {'brief': rb.record(brief, page, 'gemini-4-argon'), 'html_model': 'gemini-3.8-flash'}}
+            for name, content in design_artifacts(spec, candidate.folder, records, reset=True).items():
+                if content is None:
+                    (candidate.folder / name).unlink(missing_ok=True)
+                else:
+                    (candidate.folder / name).write_bytes(content)
             return await perform(harness, build_id, run_id, payload, Trace(harness.db, run_id, build_id, 'load_spec'))
         except RunError:
             raise
@@ -177,6 +191,9 @@ def assert_published(app, build_id, folder, service):
     assert spec.datasource.table != 'project.data.legacy_view'
     assert spec.spec_version == 5
     assert (folder / 'background_p1.png').read_bytes() == b'new PNG'
+    assert json.loads((folder / 'brief_p1.json').read_bytes())['overall'] == 'New brief'
+    assert (folder / 'brief_p1.md').read_text(encoding='utf-8').startswith('# Page 1 brief\n')
+    assert json.loads((folder / 'design-pages.json').read_bytes())['pages'][0]['brief']['brief']['overall'] == 'New brief'
     assert '321' in (folder / 'prototype.html').read_text(encoding='utf-8')
     from dss.render.prototype import aggregate_sql
     from hashlib import sha256

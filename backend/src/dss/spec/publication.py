@@ -19,9 +19,56 @@ from dss.harness.nodes.view import view_table
 
 logger = logging.getLogger(__name__)
 _locks_guard = threading.Lock()
+DESIGN_PAGES = 'design-pages.json'
+BRIEF_FILE = re.compile(r'brief_p[1-5]\.(json|md)')
+
+
+def design_pages(spec, folder):
+    """Published page metadata, including a deterministic legacy projection without briefs."""
+    path = folder / DESIGN_PAGES
+    saved = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
+    records = {p['page']: p for p in saved.get('pages', [])} if saved.get('spec_version') == spec.spec_version else {}
+    return [records.get(p.index, {'page': p.index, 'layout': 'designed' if p.design else 'standard',
+            'standard_reason': None if p.design else 'not_designed', 'brief': None,
+            'html_model': p.design.model if p.design else None}) for p in spec.pages]
+
+
+def design_artifacts(spec, folder, briefs=None, *, reset=False):
+    """An unpublished file update set. None values retire obsolete brief files atomically.
+
+    `briefs` holds generated records and actual HTML models, outside DashboardSpec. An accept
+    resets the version's previous records; a revise preserves records for untouched pages.
+    """
+    from dss.harness.nodes.reference_brief import canonical
+    previous = {} if reset else {p['page']: p for p in design_pages(spec, folder)}
+    # A revise increments spec_version; its previous metadata still belongs to unchanged pages.
+    path = folder / DESIGN_PAGES
+    if not reset and path.is_file():
+        previous = {p['page']: p for p in json.loads(path.read_text(encoding='utf-8'))['pages']}
+    updates, pages = {}, []
+    for page in spec.pages:
+        record = (briefs or {}).get(page.index, previous.get(page.index, {}))
+        brief = record.get('brief')
+        row = {'page': page.index, 'layout': 'designed' if page.design else 'standard',
+               'standard_reason': None if page.design else 'layout_fallback' if (
+                   record.get('layout_fallback') or record.get('standard_reason') == 'layout_fallback'
+                   or record.get('html_model')) else 'not_designed',
+               'brief': brief, 'html_model': page.design.model if page.design else record.get('html_model')}
+        pages.append(row)
+        if brief is not None:
+            updates[f'brief_p{page.index}.json'] = canonical(brief['brief'])
+            updates[f'brief_p{page.index}.md'] = brief['markdown'].encode('utf-8')
+    updates[DESIGN_PAGES] = json.dumps({'spec_version': spec.spec_version, 'pages': pages},
+                                     ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')
+    for path in folder.glob('brief_p*.*'):
+        if BRIEF_FILE.fullmatch(path.name) and path.name not in updates:
+            updates[path.name] = None
+    return updates
 
 
 def initialize(db):
+    from dss.memory.episodic import initialize_reviews
+    initialize_reviews(db)
     with db.connect() as conn:
         conn.execute("""CREATE TABLE IF NOT EXISTS plan_publications (
             run_id TEXT PRIMARY KEY, build_id TEXT NOT NULL, version INTEGER NOT NULL,
@@ -145,15 +192,25 @@ class Candidate:
         files += ['spec.json', 'aggregate-cache.json', *names(spec), 'prototype.html']
         if (self.folder / 'requirements.json').is_file():
             files.append('requirements.json')
+        if (self.folder / DESIGN_PAGES).is_file():
+            files += [DESIGN_PAGES, *sorted(p.name for p in self.folder.glob('brief_p*.*')
+                                           if BRIEF_FILE.fullmatch(p.name))]
         for name in files:
             if not (self.folder / name).is_file():
                 raise ValueError('Incomplete candidate publication')
+        # Retire previous briefs too; recovery journals replacements and deletions together.
+        obsolete = sorted(p.name for p in self.backup.glob('brief_p*.*')
+                          if BRIEF_FILE.fullmatch(p.name) and not (self.folder / p.name).exists())
+        files += obsolete
         # This write-ahead list makes every partial replacement recoverable.
         self.persist(files_json=json.dumps(files))
         try:
             destination = self.destination
             for name in files:
                 target = destination / name
+                if name in obsolete:
+                    target.unlink(missing_ok=True)
+                    continue
                 target.parent.mkdir(parents=True, exist_ok=True)
                 temporary = target.with_name(target.name + '.publish-tmp')
                 shutil.copyfile(self.folder / name, temporary)
@@ -255,6 +312,15 @@ class Candidate:
         if row is None:
             return
         async with build_lock(self.db, row['build_id']):
+            from dss.memory.episodic import brief_review, update_brief_review
+            review = brief_review(self.db, row['build_id'])
+            if review and review['record']['owner'] == self.run_id:
+                if not row['committed'] and not row['restored']:
+                    self.safe = True  # intentionally retained; no clock or run owns the wait
+                    return
+                # The volume journal outlives an older SQLite backup. A terminal publication
+                # must reconcile normally and must never resurrect a gate to its removed files.
+                update_brief_review(self.db, review, review['record'], state='retired')
             row = self.record()
             self.sync_record(row)
             if not row['committed']:
@@ -297,15 +363,39 @@ async def recover(db, config, factory):
     for run_id in runs:
         if not await finish(Candidate(db, config, run_id), factory):
             raise RuntimeError('Interrupted plan publication could not be restored')
+    # Revisions own no new view, but their copied candidate also needs crash cleanup.
+    with db.connect() as conn:
+        retained = {json.loads(r[0])['owner'] for r in conn.execute(
+            "SELECT record_json FROM brief_reviews WHERE state='pending'")}
+    root = config.data_dir / '.brief-reviews'
+    for folder in root.glob('r_*'):
+        if (folder.name not in retained and folder.is_dir()
+                and folder.resolve().parent == root.resolve()):
+            shutil.rmtree(folder)
 
 
 class PublicationReads:
-    """Hold a build's read lock through FileResponse streaming as well as JSON reads."""
+    """Shared pending-review mutation guard and publication locks for all build reads."""
     def __init__(self, app):
         self.app = app
 
     async def __call__(self, scope, receive, send):
         parts = scope.get('path', '').strip('/').split('/')
+        if (scope['type'] == 'http' and scope['method'] in ('POST', 'PUT', 'PATCH', 'DELETE')
+                and len(parts) >= 3 and parts[:2] == ['api', 'builds']
+                and (scope['method'], tuple(parts[3:])) not in {
+                    ('PUT', ('briefs', 'review')),
+                    ('POST', ('briefs', 'review', 'approve')),
+                    ('POST', ('briefs', 'review', 'cancel'))}):
+            from dss.memory.episodic import require_no_brief_review
+            from dss.harness.guardrails import RunError
+            try:
+                require_no_brief_review(scope['app'].state.db, parts[2])
+            except RunError as error:
+                from starlette.responses import JSONResponse
+                await JSONResponse({'error': {'code': error.code, 'message': error.message, 'detail': error.detail}},
+                                   status_code=error.status_code)(scope, receive, send)
+                return
         if (scope['type'] == 'http' and scope['method'] == 'GET' and len(parts) >= 3
                 and parts[:2] == ['api', 'builds'] and parts[3:] != ['events']):
             async with build_lock(scope['app'].state.db, parts[2]):
@@ -321,3 +411,94 @@ class PublicationReads:
                 await self.app(scope, receive, send)
         else:
             await self.app(scope, receive, send)
+
+
+class ReviewPause(Exception):
+    """Caught inside the action node, before ADK; the run completes successfully."""
+
+
+def review_fingerprint(db, config, build_id, folder):
+    from dss.spec import requirements as req, references
+    from dss.spec.capabilities import Checker, load_registry
+    with db.connect() as conn:
+        build = dict(conn.execute('SELECT * FROM builds WHERE id=?', (build_id,)).fetchone())
+    live = config.data_dir / 'builds' / build_id / f"v{build['current_version']}"
+    ledger = req.load(live)
+    return req.digest({'inputs': req.inputs(db, build_id, live), 'artifacts': build['artifacts_json'],
+                       'version': build['current_version'], 'stage': build['stage'],
+                       'ledger': ledger.model_dump(mode='json'), 'reference': references.load(live),
+                       'catalog': Checker(load_registry()).digest(), 'candidate': folder_digest(folder)})
+
+
+def folder_digest(folder):
+    from hashlib import sha256
+    # Names and contents both matter; a removed/replaced image is stale too.
+    return sha256(b''.join(str(p.relative_to(folder).as_posix()).encode() + b'\0' +
+                          sha256(p.read_bytes()).digest() for p in sorted(folder.rglob('*')) if p.is_file())).hexdigest()
+
+
+class BriefGate:
+    """Serializable page continuation. It never keeps a provider stream or a clock open."""
+    def __init__(self, harness, config, build_id, run_id, action, folder, state, *, owner=None):
+        self.harness, self.config = harness, config
+        self.build_id, self.run_id, self.action = build_id, run_id, action
+        self.folder, self.state, self.owner = folder, state, owner or run_id
+        self.results = state.setdefault('results', {})
+        self.briefs = {int(k): v for k, v in state.setdefault('briefs', {}).items()}
+        self.approved = state.pop('approved', None)
+
+    @property
+    def enabled(self):
+        from dss.harness.stages import execution
+        current = execution.get()
+        return (current.config if current else self.config).review_briefs
+
+    def result(self, page):
+        from dss.harness.nodes.designer import Designed, Fallback
+        saved = self.results.get(str(page))
+        if saved:
+            return Designed(**saved['designed']) if 'designed' in saved else Fallback(**saved['fallback'])
+
+    def completed(self, page, result):
+        from dss.harness.nodes.designer import Designed
+        self.results[str(page)] = {'designed' if isinstance(result, Designed) else 'fallback': result._asdict()}
+
+    def reviewed(self, page):
+        if self.approved and self.approved['page'] == page:
+            return self.approved
+
+    async def pause(self, page, reference, first, revision):
+        from dss.db import new_id
+        from dss.memory.episodic import save_brief_review
+        # The current run snapshots the setting; switching it off affects the next brief.
+        if not self.enabled:
+            return
+        record = self.briefs[page.index]['brief']
+        review = {'review_id': new_id('br'), 'revision': 1, 'action': self.action,
+                  'page': page.index, 'pages': len(self.state['spec']['pages']),
+                  'components': [{'id': c.id, 'type': c.type, 'label': c.label} for c in page.components],
+                  'brief': record, 'issues': [], 'stale': False, 'created_at': now()}
+        self.state['briefs'] = self.briefs
+        self.state['html_inputs'] = {'first': first._asdict() if first else None,
+                                     'revision': revision, 'approved': reference.approved[page.index]}
+        saved = {'review': review, 'owner': self.owner, 'folder': str(self.folder), 'state': self.state,
+                 'fingerprint': review_fingerprint(self.harness.db, self.config, self.build_id, self.folder)}
+        from dss.spec.requirements import digest
+        saved['state_digest'] = digest(self.state)
+        save_brief_review(self.harness.db, self.build_id, saved)
+        await self.harness.db.immediate_backup()
+        await self.harness.emit(self.build_id, self.run_id, 'brief.review',
+                                {k: review[k] for k in ('review_id', 'page', 'pages')})
+        raise ReviewPause()
+
+    def cleanup_revision(self):
+        from dss.memory.episodic import brief_review
+        if self.action == 'revise' and not brief_review(self.harness.db, self.build_id):
+            expected = self.config.data_dir / '.brief-reviews' / self.owner
+            if self.folder.resolve() != expected.resolve():
+                raise ValueError('Review candidate ownership mismatch')
+            if self.folder.exists():
+                try:
+                    shutil.rmtree(self.folder)
+                except OSError:
+                    logger.warning('Revision candidate cleanup deferred until restart')

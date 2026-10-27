@@ -1,6 +1,7 @@
 """One ADK Workflow invocation and one trace for every accepted agent run."""
 import asyncio
 import json
+from contextlib import nullcontext
 
 from google.adk import Event, Workflow
 from google.adk.agents import LlmAgent
@@ -13,7 +14,8 @@ from google.genai import types
 
 from dss.db import new_id, now
 from dss.harness.guardrails import RunError, check_reply
-from dss.harness.llm import retry_listener
+from dss.harness.llm import retry_listener, bind_model
+from dss.harness import stages
 from dss.harness.tracing import Trace
 
 
@@ -36,8 +38,12 @@ class AgentHarness:
                 stage = connection.execute("SELECT stage FROM builds WHERE id=?", (build_id,)).fetchone()[0]
             raise RunError("wrong_stage", "An action is already running for this build", 409, {"stage": stage})
         self.active_builds.add(build_id)
+        resuming = isinstance(payload, dict) and '_brief_resume' in payload
         run_id = run_id or new_id("r")
         trace = Trace(self.db, run_id, build_id, action)
+        execution = stages.Execution(self.models.settings.get(), trace, available=self.models.available)
+        activation = execution.activate()
+        activation.__enter__()
         # A retried model call stays in this run's trace: the retry is a span, and both
         # attempts' reported usage adds to the trace's tokens.
         retry_hook = retry_listener.set(lambda code: trace.spans.append({"node": "model_retry", "status": code}))
@@ -54,7 +60,7 @@ class AgentHarness:
                 from dss.spec import references, requirements
                 with self.db.connect() as conn:
                     version = conn.execute("SELECT current_version FROM builds WHERE id=?", (build_id,)).fetchone()[0]
-                reference_folder = self.models.settings.get().data_dir / "builds" / build_id / f"v{version}"
+                reference_folder = execution.config.data_dir / "builds" / build_id / f"v{version}"
                 reference_before = requirements.digest(references.load(reference_folder))
             await self.emit(build_id, run_id, "run.started", {"run_id": run_id, "node": action})
 
@@ -68,6 +74,14 @@ class AgentHarness:
                 nonlocal code_error
                 trace.span(action)
                 try:
+                    if resuming:
+                        from dss.api.prototype import require_fresh_review
+                        require_fresh_review(self.db, execution.config, build_id, payload['_brief_resume'])
+                        if action == 'prototype':
+                            from dss.harness.nodes.render import resume_accept
+                            return await resume_accept(self, build_id, run_id, payload, trace)
+                        from dss.harness.nodes.revise import resume
+                        return await resume(self, build_id, run_id, payload, trace)
                     if action in ("outline_propose", "load_spec", "recipe", "execute", "versions", "reference_delete", "engine_login", "synthetic_generate"):
                         return await payload(run_id)
                     if action == "create_build":
@@ -95,15 +109,23 @@ class AgentHarness:
 
             async def before_llm(callback_context, llm_request):
                 trace.span("hello_llm")
+                stages.configure('hello', llm_request)
 
             async def model_error(callback_context, llm_request, error):
                 # ADK logs unhandled node exceptions before the harness sees them.
                 # Replace provider failures here, before they cross that boundary.
-                return LlmResponse(error_code="llm_unavailable", error_message="The model call failed; check Settings")
+                stopped = stages.remember_failure(error)
+                if (usage := getattr(error, 'usage', None)) is not None:
+                    trace.input_tokens += usage.prompt_token_count or 0
+                    trace.output_tokens += usage.candidates_token_count or 0
+                    await self.emit(build_id, run_id, 'run.usage', {'run_id': run_id, 'node': action,
+                        'input_tokens': trace.input_tokens, 'output_tokens': trace.output_tokens})
+                return LlmResponse(error_code=stopped.code if stopped else "llm_unavailable",
+                                   error_message=stopped.message if stopped else "The model call failed; check Settings")
 
             async def guardrail(node_input):
                 trace.span("guardrail")
-                key = self.models.settings.get().google_api_key.get_secret_value()
+                key = execution.config.google_api_key.get_secret_value()
                 return check_reply(node_input, (key,))
 
             async def reject(node_input):
@@ -112,11 +134,11 @@ class AgentHarness:
                 code_error = RunError("wrong_stage", "Unknown action", 409)
                 return 'Action unavailable'
 
-            if action == 'revise':
+            if action == 'revise' and not resuming:
                 from dss.harness.nodes.capability_check import make_branch as intent_branch
                 from dss.spec import requirements as req
                 from dss.spec.capabilities import Checker, load_registry
-                intent_model = llm if llm is not None else self.models.llm_for('capability_check')
+                intent_model = bind_model('capability_check', llm if llm is not None else self.models.llm_for('capability_check'))
                 payload['_intent_only'] = True
                 payload['_defer_assessment'] = False
                 payload['_comment_preflight'] = action == 'revise'
@@ -143,8 +165,11 @@ class AgentHarness:
                     return extra_state['failure'].message
 
             # Unknown actions never construct a real model or call the LLM.
-            if action == "hello":
-                model = llm if llm is not None else self.models.llm_for("hello")
+            if resuming:
+                workflow = Workflow(name='dss_run', edges=[
+                    ('START', router), (router, {action: code_node}), (code_node, guardrail)])
+            elif action == "hello":
+                model = bind_model('hello', llm if llm is not None else self.models.llm_for("hello"))
                 trace.model = model.model
                 agent = LlmAgent(name="hello_llm", model=model, mode="single_turn",
                                  instruction="Give a brief greeting.", before_model_callback=before_llm,
@@ -157,7 +182,7 @@ class AgentHarness:
                     ('START', router), (router, {action: code_node}), (code_node, guardrail)])
             elif action in ('outline_propose', 'outline_suggest', 'outline_other'):
                 from dss.harness.nodes.outline import make_branch
-                model = llm if llm is not None else self.models.llm_for(action)
+                model = bind_model(action, llm if llm is not None else self.models.llm_for(action))
                 trace.model = model.model
                 drafter, complete, extra_state = make_branch(
                     self, build_id, run_id, payload, model, trace, model_error)
@@ -165,7 +190,7 @@ class AgentHarness:
                     ('START', router), (router, {action: drafter}), (drafter, complete), (complete, guardrail)])
             elif action == 'blueprint':
                 from dss.harness.nodes.blueprint import make_branch
-                model = llm if llm is not None else self.models.llm_for(action)
+                model = bind_model(action, llm if llm is not None else self.models.llm_for(action))
                 trace.model = model.model
                 entry, edges, complete, extra_state = make_branch(
                     self, build_id, run_id, payload, model, trace, model_error)
@@ -173,7 +198,7 @@ class AgentHarness:
                     ('START', router), (router, {action: entry}), *edges, (complete, guardrail)])
             elif action == 'context':
                 from dss.harness.nodes.context import make_branch
-                model = llm if llm is not None else self.models.llm_for(action)
+                model = bind_model(action, llm if llm is not None else self.models.llm_for(action))
                 trace.model = model.model
                 drafter, repair, validate_context, complete, extra_state = make_branch(
                     self, build_id, run_id, payload, model, trace, model_error)
@@ -183,7 +208,7 @@ class AgentHarness:
                     (complete, guardrail)])
             elif action == "revise":
                 from dss.harness.nodes.revise import make_branch as revise_branch
-                model = llm if llm is not None else self.models.llm_for('revise')
+                model = bind_model('revise', llm if llm is not None else self.models.llm_for('revise'))
                 trace.model = model.model
                 reviser, repair, validate_revision, complete, revise_state = revise_branch(self, build_id, run_id, payload, model, trace, model_error)
                 workflow = Workflow(name='dss_run', edges=[
@@ -194,7 +219,7 @@ class AgentHarness:
                     (complete, guardrail)])
             elif action == 'research':
                 from dss.harness.nodes.research import make_branch as research_branch
-                model = llm if llm is not None else self.models.llm_for(action)
+                model = bind_model(action, llm if llm is not None else self.models.llm_for(action))
                 trace.model = model.model
                 discover, fetch, select, finish, extra_state = research_branch(self, build_id, run_id, payload, model, trace, model_error)
                 workflow = Workflow(name='dss_run', edges=[
@@ -209,7 +234,7 @@ class AgentHarness:
                     from dss.harness.nodes.capability_check import make_branch as extra_branch
                 else:
                     from dss.harness.nodes.reference_extract import make_branch as extra_branch
-                model = llm if llm is not None else self.models.llm_for(action)
+                model = bind_model(action, llm if llm is not None else self.models.llm_for(action))
                 trace.model = model.model
                 extra_agent, extra_finish, extra_state = extra_branch(self, build_id, run_id, payload, model, trace, model_error)
                 workflow = Workflow(name="dss_run", edges=[
@@ -222,21 +247,26 @@ class AgentHarness:
             sessions = InMemorySessionService()
             await sessions.create_session(app_name="dss", user_id="local", session_id=run_id)
             runner = Runner(app_name="dss", node=workflow, session_service=sessions)
-            async for event in runner.run_async(user_id="local", session_id=run_id,
-                    new_message=types.Content(role="user", parts=[types.Part(text=action)]),
-                    run_config=RunConfig(max_llm_calls=3 if action in ('blueprint', "revise") else 2 if action in ('context', "research") else 1 if action in ("outline_propose", "outline_suggest", "outline_other", "reference_extract", "capability_check", "synthetic_schema") else 4)):
-                if event.error_code:
-                    raise RunError("llm_unavailable", "The model call failed; check Settings", 503)
-                # Streamed chunks repeat usage; only the final response of a model call counts.
-                if event.usage_metadata and not event.partial:
-                    trace.input_tokens += event.usage_metadata.prompt_token_count or 0
-                    trace.output_tokens += event.usage_metadata.candidates_token_count or 0
-                    if build_id is not None:
-                        await self.emit(build_id, run_id, "run.usage", {
-                            "run_id": run_id, "node": action,
-                            "input_tokens": trace.input_tokens, "output_tokens": trace.output_tokens})
-                if event.node_info.path.split("/")[-1].split("@")[0] == "guardrail" and isinstance(event.output, str):
-                    reply = event.output
+            # The analysis deadline encloses code validation and repairs, not just provider calls.
+            scope = execution.session(action).scope() if stages.stage_for(action) in stages.GENERATIONS else nullcontext()
+            async with scope:
+                async for event in runner.run_async(user_id="local", session_id=run_id,
+                        new_message=types.Content(role="user", parts=[types.Part(text=action)]),
+                        run_config=RunConfig(max_llm_calls=3 if action in ('blueprint', "revise") else 2 if action in ('context', "research") else 1 if action in ("outline_propose", "outline_suggest", "outline_other", "reference_extract", "capability_check", "synthetic_schema") else 4)):
+                    if event.error_code:
+                        raise execution.failure or RunError("llm_unavailable", "The model call failed; check Settings", 503)
+                    # Streamed chunks repeat usage; only the final response of a model call counts.
+                    if event.usage_metadata and not event.partial:
+                        trace.input_tokens += event.usage_metadata.prompt_token_count or 0
+                        trace.output_tokens += event.usage_metadata.candidates_token_count or 0
+                        if build_id is not None:
+                            await self.emit(build_id, run_id, "run.usage", {
+                                "run_id": run_id, "node": action,
+                                "input_tokens": trace.input_tokens, "output_tokens": trace.output_tokens})
+                    if event.node_info.path.split("/")[-1].split("@")[0] == "guardrail" and isinstance(event.output, str):
+                        reply = event.output
+            if execution.failure:
+                raise execution.failure
             if reply is None:
                 raise RunError("llm_unavailable", "The workflow produced no guarded reply", 503)
             if code_error is not None:
@@ -269,21 +299,29 @@ class AgentHarness:
                 message = episodic.save(self.db, build_id, 'assistant', exc.message, action)
                 await self.emit(build_id, run_id, 'message.done', {'message': message})
             if action in ('blueprint', 'prototype', 'context', 'outline_propose', 'outline_suggest', 'outline_other', "revise", "ux_audit", "reference_extract", "capability_check", "research", "synthetic_schema"):
-                error_message = exc.message
+                error_message = f'{exc.code}: {exc.message}' if exc.code.startswith('stage_') else exc.message
             raise
         except asyncio.CancelledError:
             error = "cancelled"
             raise
         except Exception:
             # Provider exceptions may contain URLs with credentials or request text.
+            if execution.failure:
+                error = execution.failure.code
+                error_message = f'{error}: {execution.failure.message}'
+                raise execution.failure from None
             raise RunError("llm_unavailable", "The model call failed; check Settings", 503) from None
         finally:
             try:
+                if revise_state and (gate := revise_state.get('_brief_gate')) is not None:
+                    gate.cleanup_revision()
                 trace.tool_calls = extra_state.get('calls', 0) if extra_state else 0
+                execution.record()
                 trace.save(status, error)
                 await self.emit(build_id, run_id, "run.finished", {
                     "run_id": run_id, "node": action, "status": status, "error": error_message or error})
             finally:
+                activation.__exit__(None, None, None)
                 retry_listener.reset(retry_hook)
                 self.active_builds.discard(build_id)
                 if runner is not None:

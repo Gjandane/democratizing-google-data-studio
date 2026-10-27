@@ -1,10 +1,14 @@
 """Environment defaults resolved from the package, with a SQLite settings overlay."""
 import os
+import json
+import logging
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from dotenv import dotenv_values
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from dss.harness import stages as stage_settings
+from dss.harness.guardrails import RunError
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 
@@ -14,6 +18,10 @@ class Config(BaseModel):
     google_api_key: SecretStr = SecretStr("")
     planner_model: str = "gemini-4-argon"
     worker_model: str = "gemini-3.8-flash"
+    stages: Any = Field(default_factory=lambda: stage_settings.defaults()['stages'])
+    fallback_model: Any = stage_settings.FLASH
+    review_briefs: Any = False
+    notices: list[str] = Field(default_factory=list)
     gcp_project_id: str = ""
     bq_dataset: str = "dss_demo"
     bq_location: str = "US"
@@ -49,9 +57,10 @@ class Config(BaseModel):
         return cls(**values)
 
     def public(self):
-        return {**self.model_dump(include={"planner_model", "worker_model", "gcp_project_id",
+        return {**self.model_dump(include={"stages", "fallback_model", "review_briefs", "notices", "gcp_project_id",
                                           "bq_dataset", "bq_location", "gcs_bucket"}),
-                "google_api_key_set": bool(self.google_api_key.get_secret_value())}
+                "google_api_key_set": bool(self.google_api_key.get_secret_value()),
+                "issues": stage_settings.issues(self.model_dump(include={'stages', 'fallback_model', 'review_briefs'}))}
 
     def validate_cloud(self):
         if self.cloud_service:
@@ -67,13 +76,60 @@ class SettingsStore:
 
     def get(self):
         with self.db.connect() as connection:
-            values = dict(connection.execute("SELECT key,value FROM settings").fetchall())
+            connection.execute('BEGIN IMMEDIATE')
+            values = self._read(connection)
+        return self._config(values)
+
+    def _read(self, connection):
+        values = dict(connection.execute('SELECT key,value FROM settings').fetchall())
+        if 'stages' not in values:
+            seed = stage_settings.defaults()
+            notices = []
+            for role, names in stage_settings.LEGACY_ROLES.items():
+                explicit = values.get(role)
+                if explicit is None and getattr(self.defaults, role) != stage_settings.LEGACY_DEFAULTS[role]:
+                    explicit = getattr(self.defaults, role)
+                if explicit is not None:
+                    for name in names:
+                        seed['stages'][name]['model'] = explicit
+                        notices.append(f'Migrated {role} to stages.{name}.')
+                        logging.getLogger(__name__).info('Seeded stage %s from legacy settings', name)
+            seed['stage_migration_notices'] = notices
+            encoded = {key: json.dumps(value) for key, value in seed.items()}
+            connection.executemany('INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)', encoded.items())
+            values = dict(connection.execute('SELECT key,value FROM settings').fetchall())
+        return values
+
+    def _config(self, values):
+        values = {key: value for key, value in values.items() if key not in stage_settings.LEGACY_ROLES}
         if self.defaults.engine_mode == "agent":
-            values = {key: value for key, value in values.items() if key in ("planner_model", "worker_model")}
+            values = {key: value for key, value in values.items()
+                      if key in ('stages', 'fallback_model', 'review_briefs', 'stage_migration_notices')}
+        values = dict(values)
+        for key in ('stages', 'fallback_model', 'review_briefs', 'stage_migration_notices'):
+            if key in values:
+                values[key] = json.loads(values[key])
+        values['notices'] = values.pop('stage_migration_notices', [])
         return Config.model_validate({**self.defaults.model_dump(), **values})
 
     def update(self, values):
         with self.db.connect() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            current = self._config(self._read(connection)).model_dump()
+            merged = stage_settings.merge(current, values)
+            problems = stage_settings.update_issues(current, merged, values)
+            allowed = {'stages', 'fallback_model', 'review_briefs', 'google_api_key', 'gcp_project_id',
+                       'bq_dataset', 'bq_location', 'gcs_bucket'}
+            for key, value in values.items():
+                if key not in allowed:
+                    problems.append({'path': '/' + stage_settings.pointer(key), 'message': 'Unknown setting.'})
+                elif key in allowed - {'stages', 'fallback_model', 'review_briefs'} and not isinstance(value, str):
+                    problems.append({'path': '/' + key, 'message': 'Use a string.'})
+            if problems:
+                raise RunError('invalid_settings', 'Fix the highlighted settings and save again.', 422,
+                               {'issues': problems})
+            encoded = {key: json.dumps(merged[key]) if key in ('stages', 'fallback_model', 'review_briefs')
+                       else merged[key] for key in values}
             connection.executemany("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                                   values.items())
+                                   encoded.items())
         return self.get()

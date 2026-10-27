@@ -9,12 +9,13 @@ from google.genai import types
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from dss.db import now
+from dss.harness import stages
 from dss.harness.context import fit_request, reference_context
 from dss.harness.guardrails import RunError, check_reply
 from dss.harness.nodes.style_extract import StyleProfile, provider_schema, style_doc
 from dss.spec import references
 
-MAX_OUTPUT_TOKENS = 4096
+MAX_OUTPUT_TOKENS = 32768  # change 2026-10-26; fit_request applies the snapshot profile
 
 
 class ReferenceOutput(BaseModel):
@@ -72,6 +73,7 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         try:
             state['raw'] = check_reply(raw, (secret,))
         except RunError:
+            stages.invalid_output('reference_extract')
             return LlmResponse(error_code='llm_unavailable', error_message='Reference model returned unsafe output')
         return LlmResponse(content=types.Content(role='model', parts=[types.Part(text='Observations received for validation.')]),
             usage_metadata=llm_response.usage_metadata)
@@ -79,6 +81,7 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
     async def save(node_input):
         trace.span('write_reference')
         if too_many(state['raw']):
+            stages.invalid_output('reference_extract')
             state['failure'] = RunError('invalid_source', f'The reference shows more than {references.MAX_ITEMS} elements; '
                                         'crop or simplify the screenshot and upload it again', 422)
             return 'Reference extraction did not finish.'

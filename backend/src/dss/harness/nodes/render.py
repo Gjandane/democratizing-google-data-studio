@@ -168,8 +168,31 @@ async def accept(harness, build_id, run_id, payload, trace):
             if not validate_spec(titled, allowed=allowed_types() & catalog().keys()):
                 spec = titled
                 trace.spans[-1]['observed_titles'] = len(labels)
-        notes = []
-        if config.designed_pages:
+        reply = await complete_accept(harness, build_id, run_id, payload, trace, spec)
+    except RunError:
+        raise
+    except Exception:
+        raise RunError('invalid_source', 'Prototype could not be prepared; previous prototype retained', 422) from None
+    finally:
+        if candidate := payload.get('_publication'):
+            await finish(candidate, payload['factory'])
+    return reply
+
+
+async def complete_accept(harness, build_id, run_id, payload, trace, spec, review=None):
+    from dss.spec import requirements as req
+    from dss.spec.capabilities import Checker, load_registry
+    from dss.spec.publication import BriefGate, ReviewPause
+    config, candidate = payload['config'], payload['_publication']
+    folder = candidate.folder
+    if review is None and config.designed_pages and config.review_briefs:
+        # Saved before any brief: resumption skips view creation, layout and earlier page calls.
+        (folder / 'spec.json').write_text(spec.model_dump_json(indent=2), encoding='utf-8')
+        review = BriefGate(harness, config, build_id, run_id, 'prototype', folder,
+                           {'spec': spec.model_dump(mode='json'), 'transition': payload.get('transition')})
+    notes, briefs = [], review.briefs if review is not None else {}
+    try:
+        if config.designed_pages or review is not None:
             from dss.harness.nodes import designer
             secrets = _secrets(config)
             # Until design.html verifies decoration requirements, pages with bound decorations keep their kit.
@@ -180,17 +203,37 @@ async def accept(harness, build_id, run_id, payload, trace):
                 req.load(folder), Checker(load_registry()), harness.models)
             spec, notes = await designer.design(
                 spec, payload.get('_designer') or (lambda: harness.models.llm_for('designer')), trace,
-                secrets=secrets, keep=keep, reference=reference, report=lambda totals: harness.emit(build_id, run_id, 'run.usage', {
+                secrets=secrets, keep=keep, reference=reference, briefs=briefs, review=review, report=lambda totals: harness.emit(build_id, run_id, 'run.usage', {
                     'run_id': run_id, 'node': 'prototype', **totals}))
-        existing.write_text(spec.model_dump_json(indent=2), encoding='utf-8')
+        from dss.spec.publication import design_artifacts
+        for name, content in design_artifacts(spec, folder, briefs, reset=True).items():
+            if content is None:
+                (folder / name).unlink(missing_ok=True)
+            else:
+                (folder / name).write_bytes(content)
+        (folder / 'spec.json').write_text(spec.model_dump_json(indent=2), encoding='utf-8')
         reply = ' '.join([await perform(harness, build_id, run_id, payload, trace), *notes])
+    except ReviewPause:
+        return 'The page brief is ready for review.'
     except RunError:
         raise
     except Exception:
         raise RunError('invalid_source', 'Prototype could not be prepared; previous prototype retained', 422) from None
-    finally:
-        if candidate := payload.get('_publication'):
-            await finish(candidate, payload['factory'])
     from dss.api.builds import build_response
     await harness.emit(build_id, run_id, 'build.updated', {'build': build_response(harness.db, config, build_id)})
     return reply
+
+
+async def resume_accept(harness, build_id, run_id, payload, trace):
+    from dss.spec.publication import BriefGate, Candidate, finish
+    saved = payload['_brief_resume']
+    gate = BriefGate(harness, payload['config'], build_id, run_id, 'prototype',
+                     Candidate(harness.db, payload['config'], saved['owner']).folder,
+                     saved['state'], owner=saved['owner'])
+    payload['_publication'] = Candidate(harness.db, payload['config'], saved['owner'])
+    payload['transition'] = gate.state.get('transition')
+    try:
+        return await complete_accept(harness, build_id, run_id, payload, trace,
+                                     DashboardSpec.model_validate(gate.state['spec']), gate)
+    finally:
+        await finish(payload['_publication'], payload['factory'])

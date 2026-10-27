@@ -1907,3 +1907,113 @@ context. Task status lives in docs/plan.md, not here.
 - What changed: architecture.md sections Stage settings, Stage execution, Design briefs, Feasibility recomputation performance preservation; change notes atop Blueprint, Blueprint observation coverage, Working memory assembly, Reference interpretation, Designed pages, Reference design brief, Reference HTML composition, Reference thinking comparison (historical); Graph model check; 9 decision rows; essentials, PRD (Decided by default, Open questions), AGENTS.md gotcha note. Plan: blocked 24.11 rewritten to the recomputation-budget recovery and reopened; Phase 25: 25.1 settings (M), 25.2 stage execution (L), 25.3 fallback, calls and costs (M), 25.4 briefs and artifacts (M), 25.5 no-reference brief -> HTML and labeled standard layout (M), 25.6 brief review (L), 25.7 live fidelity with the visual STOP (M).
 - Settled requests: the 24.11 block question ("What approved follow-up resolves the brief cap and timing failures before fidelity acceptance?") -> planned as 24.11 (timing) and 25.1-25.7 (configurable caps, live check). docs/change-24.11-high-followup.md's 8k cap is superseded; docs/change-24.11-fidelity.md stays unselected. docs/stage-settings-reconciliation.md (parallel session) resolved and marked historical.
 - Next: 24.11 in backend/.
+
+## 2026-10-26: Task 24.11 Restore the deterministic recomputation budget
+- Status: done
+- Plan check: off
+- What changed: requirements/feasibility share classification and literal definition parsing within evaluate; 13 purity/invalidation regressions. Baseline, profiles, assessments and mutation comparisons: .blueprint/qa/task-24.11/recompute-performance/.
+- Checks: feasibility module PASS (265; 122.76s); corrected module plus compatibility cases PASS (268; 133.50s); full `uv run pytest` PASS (1910; 17 deselected; 1220.87s). Exact ready/blocked best: 90.501/101.761 -> 73.325/88.690ms. 24 checkpoint comparisons equal (assessment id only excluded); six original speed functions source-identical. Review: no findings.
+- Decisions: parsing key = full text, complete Mapping JSON, ordered schema; no cross-call state or skipped candidate validation. Catalog/env/registry unchanged. AGENTS.md records positional test-hook compatibility. Folder mode; prior HIGH requests and older evidence untouched.
+- Digest: requirements.evaluate reuses classification and definition parsing only within its call; blueprint_observations accepts requirement_issues; feasibility diagnostics/issue_rows accept observations. Assessment, coverage, provenance and contracts unchanged.
+- Tried and failed: first full suite had three positional-hook failures; forwarding fixed. Initial sandbox/interference diagnostics documented in QA README.
+- Gotchas: recorded in AGENTS.md.
+- Left open: none.
+- Next: 25.1 Stage profiles in Settings and the 3.0 settings routes.
+
+## 2026-10-27: Task 25.1 Stage profiles in Settings and the 3.0 settings routes
+- Status: done
+- Plan check: off
+- What changed: Stage profiles, atomic validation/merge/migration, capabilities; recipe validation dispatch.
+- Checks: `uv run pytest tests/test_stage_settings.py tests/test_api_contract.py tests/test_cloud_mode.py` PASS (240); expanded compiler acceptance PASS (323); full `uv run pytest -x` PASS (2082; 17 live deselected; 1193.65s). Reviews: no findings.
+- Decisions: planner=native_planning, worker=routine until 25.2. Compiler/test_compiler outside Files fixed required timing failures, preserving validation. Folder checkpoint preserves pre-existing Git work; AGENTS.md gotchas added.
+- Digest: Config.stages holds 7 profiles; SettingsStore migrates once and merges per field. public(): notices/issues. GET /api/settings/capabilities; ModelRouter.available=None|set, planner=native_planning, worker=routine. Compiler validates unique op branches.
+- Verified 2026-10-26: [Flash](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash) and [Argon](https://ai.google.dev/gemini-api/docs/models/gemini-4-argon): max inputs 1,048,576 (Argon unified context), synchronous outputs 65,536, images, low/medium/high. [Prices](https://ai.google.dev/gemini-api/docs/pricing), USD/M input/output, both checked_on=2026-10-26: Flash 0.75/3.75; Argon 2/10.
+- Tried and failed: full timing best 101.98/120.29ms; profiled compiler bottleneck, isolated best 86.08 -> 21.80ms; evidence .blueprint/qa/task-25.1/. Agent transport retries passed unchanged.
+- Gotchas: recorded in AGENTS.md.
+- Left open: none.
+- Next: 25.2 Every model node runs from its stage profile; frontier work.
+
+## 2026-10-27: Task 25.2 Every model node runs from its stage profile
+- Status: partial
+- Plan check: off
+- What changed: Started task; folder checkpoint .blueprint/snapshots/task-25.2-1.zip. No implementation edits. Read-only execution map completed.
+- Checks: Not run; stopped before implementation on a plan/Spec conflict.
+- Decisions: Await user authorization before changing behavioral test expectations: task permits numeric updates only and says any other changed expectation is a block.
+- Tried and failed: None.
+- Gotchas: None.
+- Left open: tests/test_designer.py:197-202 requires repair after cutoff; :149-154 requires fallback on overflow; :261-266 requires Argon for designer. Stage execution instead requires hard stops and html_no_reference Flash. tests/test_reference_brief.py:449-463 also pins one-call invalid/cut Fallback behavior.
+- Next: Resolve the assertion-update exception with the user, then implement 25.2. Proposed exception: update only assertions directly superseded by change 2026-10-26 (routing, profile settings, clock/retry/repair behavior, overflow/cutoff codes); preserve unrelated assertions. Core execution stays with the primary agent; reviewer required after checks.
+
+## 2026-10-27: Task 25.2 Every model node runs from its stage profile
+- Status: done
+- Plan check: off
+- What changed: Snapshot-based routing, explicit thinking/caps, action/page deadlines, bounded transport retries and atomic overflow/cutoff stops.
+- Checks: `uv run pytest tests/test_stage_execution.py tests/test_llm_retry.py tests/test_llm_timeouts.py tests/test_reference_brief.py tests/test_designer.py -q --tb=short` PASS (190, 212.45s); `uv run pytest -q --tb=short` PASS (2132, 17 live deselected, 971.02s). Final review: no findings.
+- Decisions: User approved superseded behavioral assertions. Delegated decided regression updates only. Judge snapshot wiring and context/revision/graph/audit regressions outside Files were necessary. Snapshot lives on the first existing span; availability is private. No-reference HTML uses html_no_reference until 25.5; brief repair remains 25.4; runtime fallback/call records remain 25.3. AGENTS.md gotchas added; no dependency changes.
+- Digest: stages.Execution(config,trace,available=...) snapshots; record() stores first-span settings. StageSession/StageClock and llm.bind_model/provider_model share action/page deadlines; fit_request records folded_request_tokens/enforced_input_bound.
+- Tried and failed: Fixed ADK callback wrapping, routine retry timeout scope, deadline error masking, partial-MAX handling and a delegated-stream test fake. Updated stale budget/repair oracles.
+- Gotchas: Recorded in AGENTS.md.
+- Left open: none.
+- Next: 25.3 Visible model fallback and stage call records; deep work.
+
+
+
+## 2026-10-27: Task 25.3 Visible model fallback and stage call records
+- Status: done
+- Plan check: off
+- What changed: Bounded, sticky model fallback; private persisted StageCalls; calls/cost routes; per-page actual HTML models; semantic rejection outcomes.
+- Checks: `uv run pytest tests/test_stage_execution.py tests/test_api_contract.py tests/test_usage_events.py` PASS (129); Test (all) `uv run pytest` PASS (2163, 17 live deselected); reviewer: no findings after P1/P2 fixes.
+- Decisions: Calls share the snapshot span; routine/interview sessions use node identity. Extra Files: request counting, page assembly, and Brief/Blueprint/reference/Context/revision validation hooks for accurate records. No dependencies. AGENTS.md adds the execution-alias gotcha. Earlier work backed up; final zip checkpoint avoids committing overlapping prior changes.
+- Digest: `StageSession.actual_model`, `invalid_output(node)`; snapshot span holds calls. `episodic.run_calls(db, run_id)` / `build_cost(db, build_id)` back 3.0 routes; `Designed.model` preserves per-page HTML attribution.
+- Tried and failed: Review hooks initially hit local name/alias collisions and an incomplete response fake; corrected and reverified.
+- Gotchas: Recorded in AGENTS.md.
+- Left open: Git commit deferred because prerequisite changes are uncommitted in shared files.
+- Next: 25.4 Uncapped briefs, brief repair and saved brief artifacts.
+
+## 2026-10-27: Task 25.4 Uncapped briefs, brief repair and saved brief artifacts
+- Status: done
+- Plan check: off
+- What changed: Removed prose/report cuts; added profile repairs, canonical JSON/Markdown, page provenance, legacy-aware design-pages and atomic accept/revise publication.
+- Checks: `uv run pytest tests/test_reference_brief.py tests/test_design_briefs.py tests/test_publication.py tests/test_api_contract.py` PASS (158); Test (all) `uv run pytest` PASS (2183, 17 live deselected, 4 warnings). Review: P1 fixed; re-review no findings.
+- Decisions: design-pages.json keeps metadata outside DashboardSpec. Extra Files render.py/revise.py wire both publication paths; brief-only redraws increment spec_version. Preserved overlapping prior work using folder checkpoints. AGENTS.md records the redraw gotcha.
+- Digest: PageBrief prose uncapped; reference_brief.record/canonical/markdown; designer.design/regenerate(..., briefs=dict); publication.design_artifacts -> {filename:bytes|None}; design-pages.json holds {spec_version,pages}; GET design-pages includes legacy projection.
+- Tried and failed: Review regression proved an identical redraw dropped its new brief; corrected.
+- Gotchas: Recorded in AGENTS.md.
+- Left open: none.
+- Next: 25.5 Pages without a reference: Argon brief, Flash HTML and the labeled standard layout; extend the brief collector and sidecar publication.
+
+## 2026-10-27: Task 25.5 Pages without a reference: Argon brief, Flash HTML and the labeled standard layout
+- Status: partial
+- Plan check: off
+- What changed: Attempt set aside; checkpoint restored. The attempt explored two-stage no-reference generation and deterministic revision fallback.
+- Checks: `uv run pytest tests/test_design_briefs.py -q --maxfail=3` PASS (26 passed); task checks with `--maxfail=5` FAIL (5 failed, 156 passed); targeted prototype/revision fixtures PASS (8 passed). Test (all) not run.
+- Decisions: The attempt is recoverable in `.blueprint/attempts/task-25.5-20261027-084338/`; it is not a completed implementation.
+- Tried and failed: Revision failure test twice reported `Standard layout is unavailable; previous prototype retained`, instead of retaining its detailed pending-comment diagnostic. Setting the defaults' `layout_fallback` to false did not affect the active run in the second attempt.
+- Gotchas: Task 25.5 is larger than its M sizing: it changes prototype and revision routing, fallback reconstruction, fixtures and publication metadata together.
+- Left open: No review was run; acceptance checks and full suite remain.
+- Next: Resume 25.5. Inspect how persisted Settings and stage snapshots override test defaults, then recover only useful pieces of the set-aside attempt; verify hard-stop behavior and revision fallback with a real design artifact before rerunning the checks.
+
+## 2026-10-27: Task 25.5 Pages without a reference: Argon brief, Flash HTML and the labeled standard layout
+- Status: done
+- Plan check: off
+- What changed: No-reference prototypes/revisions now generate an image-free brief before HTML. Completed invalid HTML alone permits labeled standard layout; hard stops preserve publication. Revisions run page 1 first, then later pages in parallel.
+- Checks: `uv run pytest tests/test_designer.py tests/test_design_briefs.py tests/test_revise.py` PASS (196 passed); Test (all) `uv run pytest` PASS (2202 passed, 17 deselected, 4 warnings); independent review: no remaining findings.
+- Decisions: Rebuild revision fallback from the saved Design and current native components. Protected decorations refuse generation rather than bypass fallback rules. Extra Files: publication.py preserves explicit fallback provenance; five shared test modules update routing, traces and the intentional prompt golden. AGENTS.md records persisted Settings/fake-routing pitfalls.
+- Digest: reference_design prepares both brief/HTML routes; ReferenceDesign.design supplies revision kit fallback. Page-1 redraw precedes parallel siblings. design_artifacts preserves layout_fallback across revisions; unattempted pages have null html_model.
+- Tried and failed: Old single-reply fakes and trace/golden expectations failed under the new stage; updated them. Review caught bypasses, ordering, prompt intent and provenance; all fixed and verified.
+- Gotchas: Recorded in AGENTS.md.
+- Left open: none.
+- Next: 25.6 Optional per-page brief review.
+
+## 2026-10-27: Task 25.6 Optional per-page brief review
+- Status: done
+- Plan check: off
+- What changed: Persisted reviews pause accept/revise outside clocks; edit, approve and cancel resume exact briefs. Shared guards protect writes after awaits; restart preserves candidates and honors terminal publication journals.
+- Checks: `uv run pytest tests/test_brief_review.py tests/test_api_contract.py -q` PASS (84); `uv run pytest -x` PASS (2237, 17 deselected). Pause and stale-backup regressions failed before fixes; independent re-review: no findings.
+- Decisions: Extra files render.py and artifacts/state.py own accept finalization and shared reservation. Retain task-start folder checkpoint; existing SQLite backup boundary applies to receipts. AGENTS.md adds route/guard/recovery gotchas.
+- Digest: `BriefGate` persists per-page accept/revise continuations; GET design-pages exposes review; PUT/approve/cancel `/briefs/review`; `episodic.require_no_brief_review` guards writes after awaits; terminal journals retire stale ownership.
+- Tried and failed: Fixed request-repair variable, nested-router inventory and four review findings; two agent timing flakes passed unchanged in isolation and final full run.
+- Gotchas: Recorded in AGENTS.md.
+- Left open: none.
+- Next: Task 25.7 live defaults and reference fidelity approval.
+

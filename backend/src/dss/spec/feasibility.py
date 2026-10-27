@@ -91,7 +91,7 @@ def component_errors(component, fields, checker, rules=None):
     return errors
 
 
-def diagnostics(snapshot, ledger, checker):
+def diagnostics(snapshot, ledger, checker, *, observations=None):
     """Return full, internal row diagnostics, including repair eligibility and effects."""
     if not snapshot.get('blueprint'):
         return []
@@ -255,7 +255,7 @@ def diagnostics(snapshot, ledger, checker):
         if error.get('question_id') is None:
             add('sql', list(range(len(bp.rows))), [], error['message'], 'needs_data', False)
     if not source_invalid:
-        result.extend(observation_errors(snapshot, ledger, checker, bp, fields, connected, context, rules))
+        result.extend(observation_errors(snapshot, ledger, checker, bp, fields, connected, context, rules, observations))
     return result
 
 
@@ -431,13 +431,13 @@ def page_questions(snapshot, ledger, checker, page):
             for q in s['questions'] if q['selected'] and q['id'] not in dropped]
 
 
-def observation_errors(snapshot, ledger, checker, bp, fields, connected, context, rules):
+def observation_errors(snapshot, ledger, checker, bp, fields, connected, context, rules, observations=None):
     """architecture.md#Blueprint observation coverage: an observation no row fulfils is an issue on
     its nearest row (repairable once, with code-built alternatives) or, with no such row, on none.
     A recreate observation counts only on its reference page (#Recreate page placement and truthful
     observed titles): its nearest row is a row there, and with none the one row repair targets the
     selected questions of that page (`repair_qids`)."""
-    observed = req.blueprint_observations(snapshot, ledger, checker)
+    observed = req.blueprint_observations(snapshot, ledger, checker) if observations is None else observations
     if not observed:
         return []
     verdicts = coverage(snapshot, ledger, checker, bp.rows, bp.derived_fields, observed)
@@ -695,9 +695,9 @@ def complete(snapshot, ledger, checker, bp, connected, context):
     return rows, derived, new
 
 
-def issue_rows(snapshot, ledger, checker):
+def issue_rows(snapshot, ledger, checker, *, observations=None):
     rows = []
-    for error in diagnostics(snapshot, ledger, checker):
+    for error in diagnostics(snapshot, ledger, checker, observations=observations):
         iid = 'bp_' + req.digest(error)[:24]
         issue = req.Issue(id=iid, requirement=error.get('requirement') or ', '.join(error['qids']) or 'Blueprint view',
             status=error['status'], reason=error['message'], evidence=error['evidence'],

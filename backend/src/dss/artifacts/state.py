@@ -41,6 +41,8 @@ def wrong_stage(build):
 @contextmanager
 def action(state, build_id, allowed=STAGES):
     """Reserve before any await or artifact write; release on every exit path."""
+    from dss.memory.episodic import require_no_brief_review
+    require_no_brief_review(state.db, build_id)
     with state.db.connect() as conn:
         row = conn.execute('SELECT * FROM builds WHERE id=?', (build_id,)).fetchone()
     if row is None:

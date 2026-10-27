@@ -1,4 +1,4 @@
-"""Task 24.10: real two-stage reference fidelity with retained synthetic inputs.
+"""Task 24.11: real two-stage reference fidelity with retained synthetic inputs.
 
 Run explicitly with -m live. Every run retains evidence, including failures; no
 fallback or unresolved feasibility decision is accepted as a successful check.
@@ -11,6 +11,8 @@ import itertools
 import os
 import re
 import time
+from contextlib import aclosing
+from contextvars import ContextVar
 from pathlib import Path
 
 import pytest
@@ -18,7 +20,7 @@ from fastapi.testclient import TestClient
 
 from dss.data.bigquery import BigQuery
 from dss.harness.guardrails import RunError, check_reply
-from dss.harness.nodes import designer, reference_brief
+from dss.harness.nodes import designer, reference_brief, synthetic_generate
 from dss.spec import requirements
 from dss.spec.capabilities import Checker, load_registry
 from dss.spec.models import CHART_TYPES, CONTROL_TYPES, SYNTHETIC_LABEL, TYPES
@@ -75,6 +77,134 @@ INSTRUCTIONS = (
 
 def dump(path, value):
     path.write_text(json.dumps(value, indent=2, ensure_ascii=False, default=str) + '\n', encoding='utf-8')
+
+
+INTAKE_REASONS = {
+    'accessDenied', 'backendError', 'billingNotEnabled', 'blocked', 'duplicate',
+    'internalError', 'invalid', 'invalidQuery', 'jobBackendError', 'jobInternalError',
+    'jobRateLimitExceeded', 'notFound', 'quotaExceeded', 'rateLimitExceeded',
+    'resourcesExceeded', 'responseTooLarge', 'stopped', 'tableUnavailable', 'timeout',
+}
+
+
+def intake_exception(exc):
+    """An explicit projection: never serialize exception text, args or provider messages."""
+    result = {'exception_class': type(exc).__name__}
+    code = getattr(exc, 'code', None)
+    if isinstance(code, int) and not isinstance(code, bool) and 100 <= code <= 599:
+        result['http_status'] = int(code)
+    entries = getattr(exc, 'errors', None)
+    if isinstance(entries, (list, tuple)):
+        result['provider_reasons'] = sorted({entry['reason'] for entry in entries
+            if isinstance(entry, dict) and isinstance(entry.get('reason'), str)
+            and entry['reason'] in INTAKE_REASONS})
+    return result
+
+
+def observe_intake(monkeypatch, app, bid, evidence, secrets):
+    """Scope observation to this synthetic action; keep calls, exceptions and cleanup unchanged.
+
+    The returned finalizer reads the reserved job after runtime cleanup has settled. A missing
+    remote record is only unavailable metadata, never evidence that submission did not occur.
+    """
+    path = evidence / 'intake.json'
+    record = {'phases': [], 'job_metadata': {'availability': 'unavailable'},
+              'raw_provider_text_retained': False}
+    services = []
+    factory = app.state.bigquery_factory
+    register = synthetic_generate.register_source
+    load = synthetic_generate.load
+    phase_started = 0.0
+
+    def save():
+        try:
+            check_reply(json.dumps(record), secrets)
+            dump(path, record)
+        except Exception:
+            # Diagnostic I/O/guard errors must not replace the original operation's exception.
+            pass
+
+    def timed(phase, operation, *args, **kwargs):
+        nonlocal phase_started
+        entry = {'phase': phase, 'status': 'running'}
+        record['phases'].append(entry)
+        started = phase_started = time.monotonic()
+        try:
+            result = operation(*args, **kwargs)
+            entry['status'] = 'ok'
+            return result
+        except BaseException as exc:
+            entry.update(status='failed', **intake_exception(exc))
+            raise  # Observed here, before synthetic_generate sanitizes the exception.
+        finally:
+            entry['seconds'] = round(time.monotonic() - started, 3)
+            save()
+
+    def observed_factory(config):
+        service = timed('client_creation', factory, config)
+        services.append(service)
+        for name, phase in (('load_typed_csv', 'typed_load'), ('profile', 'profile')):
+            original = getattr(service, name)
+
+            def observed(*args, _phase=phase, _original=original, **kwargs):
+                return timed(_phase, _original, *args, **kwargs)
+            monkeypatch.setattr(service, name, observed)
+        return service
+
+    def observed_register(db, config, build_id, *args):
+        if build_id == bid:
+            return timed('registration', register, db, config, build_id, *args)
+        return register(db, config, build_id, *args)
+
+    def observed_load(*args):
+        try:
+            return load(*args)
+        except synthetic_generate.Failure as exc:
+            # Row-count guards run after the service call returns. Attribute their failure
+            # to that same phase; service exceptions already have their original record.
+            entry = record['phases'][-1] if record['phases'] else None
+            if entry and entry['status'] == 'ok' and entry['phase'] in ('typed_load', 'profile'):
+                entry.update(status='failed', failure_boundary='row_count_guard',
+                             seconds=round(time.monotonic() - phase_started, 3), **intake_exception(exc))
+                save()
+            raise
+
+    monkeypatch.setattr(app.state, 'bigquery_factory', observed_factory)
+    monkeypatch.setattr(synthetic_generate, 'register_source', observed_register)
+    monkeypatch.setattr(synthetic_generate, 'load', observed_load)
+    save()
+
+    def finish():
+        try:
+            with app.state.db.connect() as connection:
+                row = connection.execute(
+                    'SELECT bq_table,bq_location,state,retry_ready FROM synthetic_generations '
+                    'WHERE build_id=? AND generation_key=?', (bid, 'electricity_fixture')).fetchone()
+            if row is not None:
+                record.update(load_job_id=BigQuery.load_job_id(row['bq_table']), location=row['bq_location'],
+                              generation_state=row['state'], cleanup_ready=bool(row['retry_ready']))
+                if services:
+                    try:
+                        # A bounded read only, after the action; no submission, cancellation or retry.
+                        job = services[0].client.get_job(record['load_job_id'],
+                            location=row['bq_location'], timeout=10, retry=None)
+                        metadata = {'availability': 'available',
+                                    'state': job.state if job.state in ('PENDING', 'RUNNING', 'DONE') else 'unknown',
+                                    'failed': bool(job.error_result)}
+                        metadata['timestamps'] = {name: value.isoformat() for name in ('created', 'started', 'ended')
+                                                  if (value := getattr(job, name, None)) is not None}
+                        metadata['provider_reasons'] = sorted({entry['reason']
+                            for entry in [job.error_result or {}, *(job.errors or [])]
+                            if isinstance(entry, dict) and isinstance(entry.get('reason'), str)
+                            and entry['reason'] in INTAKE_REASONS})
+                        record['job_metadata'] = metadata
+                    except Exception as exc:
+                        record['job_metadata'].update(intake_exception(exc))
+        except Exception as exc:
+            record['diagnostic_error'] = intake_exception(exc)
+        finally:
+            save()
+    return finish
 
 
 class RecordedFlow(Flow):
@@ -140,6 +270,47 @@ def save_failed_draft(evidence, name, html, width, fonts, measured, secrets):
 
 def observe_generation(monkeypatch, calls, *, evidence=None, secrets=()):
     """Observe real generation, including thinking/transport retries; never change requests or answers."""
+    from google.adk.models.google_llm import Gemini
+    from google.genai import types
+
+    active = ContextVar('reference_comparison_call', default=None)
+    registered = {}
+    provider_generate = Gemini.generate_content_async
+
+    async def provider(self, request, stream=False):
+        call = active.get()
+        attempt = None
+        if call is not None:
+            attempt = {'attempt': len(call['transport_attempts']) + 1, 'responses': []}
+            call['transport_attempts'].append(attempt)
+        started = time.monotonic()
+        try:
+            async with aclosing(provider_generate(self, request, stream=stream)) as responses:
+                async for response in responses:
+                    if attempt is not None:
+                        version = response.model_version
+                        attempt['responses'].append({
+                            'finish_reason': response.finish_reason.value
+                                if isinstance(response.finish_reason, types.FinishReason) else None,
+                            'truncated': response.finish_reason == types.FinishReason.MAX_TOKENS
+                                or response.error_code == 'MAX_TOKENS',
+                            'error': bool(response.error_code),
+                            'model_version': version if isinstance(version, str)
+                                and re.fullmatch(r'[A-Za-z0-9._/-]{1,120}', version) else None,
+                        })
+                    yield response
+        except BaseException as exc:
+            if attempt is not None:
+                attempt['exception_class'] = type(exc).__name__
+                code = getattr(exc, 'code', None)
+                if isinstance(code, int) and not isinstance(code, bool) and 100 <= code <= 599:
+                    attempt['http_status'] = code
+            raise
+        finally:
+            if attempt is not None:
+                attempt['seconds'] = round(time.monotonic() - started, 3)
+
+    monkeypatch.setattr(Gemini, 'generate_content_async', provider)
     if evidence is not None:
         original_measure = designer.design_page.measure
         sequence = itertools.count(1)
@@ -152,28 +323,61 @@ def observe_generation(monkeypatch, calls, *, evidence=None, secrets=()):
             return result
 
         monkeypatch.setattr(designer.design_page, 'measure', measured)
-    for module, stage in ((reference_brief, 'reference_brief'), (designer, 'html')):
+    for module in (reference_brief, designer):
         original = module._generate
+        original_fit = module.fit_request
 
-        def wrapper(original, stage):
+        def count_wrapper(original_fit):
+            async def counted(memory, request, model, span):
+                call = {'stage': span['node'], 'page': span['page'], 'attempt': span['attempt'],
+                        'model': model.model, 'output_limit': request.config.max_output_tokens,
+                        'requested_thinking': request.config.thinking_config.thinking_level.value,
+                        'images': sum(p.inline_data is not None for c in request.contents for p in c.parts),
+                        'request_sha256': hashlib.sha256(request.model_dump_json(exclude_none=True).encode()).hexdigest(),
+                        'usage': [], 'transport_attempts': [], 'generation_started': False,
+                        'truncated': None, 'status': 'counting'}
+                calls.append(call)
+                registered[id(request)] = call
+                started = time.monotonic()
+                try:
+                    return await original_fit(memory, request, model, span)
+                except BaseException as exc:
+                    call.update(status='count_failed', exception_class=type(exc).__name__)
+                    raise
+                finally:
+                    call['count_seconds'] = round(time.monotonic() - started, 3)
+                    call['input_budget'] = memory.budget
+                    call['enforced_input_bound'] = span.get('enforced_input_bound')
+            return counted
+
+        monkeypatch.setattr(module, 'fit_request', count_wrapper(original_fit))
+
+        def wrapper(original):
             async def timed(model, request, usage, limit=16000):
                 started = time.monotonic()
-                call = {'stage': stage, 'model': model.model, 'output_limit': limit,
-                        'images': sum(part.inline_data is not None for c in request.contents for part in c.parts),
-                        'usage': []}
-                calls.append(call)
+                call = registered.pop(id(request))
+                call.update(generation_started=True, status='generating')
+                token = active.set(call)
 
                 async def record(metadata):
                     call['usage'].append({'input': metadata.prompt_token_count or 0,
                                           'output': metadata.candidates_token_count or 0,
-                                          'thinking': metadata.thoughts_token_count or 0})
+                                          'thinking': metadata.thoughts_token_count,
+                                          'output_including_thinking': None if metadata.thoughts_token_count is None
+                                              else (metadata.candidates_token_count or 0) + metadata.thoughts_token_count})
                     await usage(metadata)
                 try:
-                    return await original(model, request, record, limit)
+                    result = await original(model, request, record, limit)
+                    call.update(status='returned', truncated=result[1])
+                    return result
+                except BaseException as exc:
+                    call.update(status='generation_failed', exception_class=type(exc).__name__)
+                    raise
                 finally:
+                    active.reset(token)
                     call['seconds'] = round(time.monotonic() - started, 3)
             return timed
-        monkeypatch.setattr(module, '_generate', wrapper(original, stage))
+        monkeypatch.setattr(module, '_generate', wrapper(original))
 
 
 def stage_evidence(app, flow):
@@ -297,7 +501,9 @@ def comparison(evidence, prototype, mode):
 # and status, never "first alternative": the geo map (the data has no GEO field), the misread
 # Rural/Urban legend control, and a year slider if one is extracted. Any other issue is a block.
 APPROVED_DROPS = (
-    ('geo map without a GEO field', lambda item, status: item.get('chart_candidate') == 'geo_map' and status == 'needs_data'),
+    # Approval drops this observation as a whole, including a separate aggregation clarification
+    # on its country binding; one observation can produce more than one issue.
+    ('geo map without a GEO field', lambda item, status: item.get('chart_candidate') == 'geo_map'),
     # The legend reads "Location: Rural, Urban"; the extractor labels it with either part. Its status
     # follows the extractor's shape: no or a guessed field (needs_clarification) or no candidate (unknown).
     ('Rural/Urban legend control', lambda item, status: item.get('kind') == 'control'
@@ -322,13 +528,28 @@ def approved_drops(flow, folder, assessment):
                          'status': issue['status'], 'reason': issue['reason']})
     if decisions and not left:
         flow.call('decisions', 'post', '/feasibility/decisions', json={'assessment_id': assessment['id'], 'decisions': decisions})
-    return recorded, left
+    return recorded if not left else [], left
 
 
 # DSS_LIVE_STAGE=24.7 stops after the published, dry-run recreate build: the design-stage, fidelity and
-# revision assertions below belong to task 24.10 (two-stage reference fidelity and its visual STOP).
+# revision assertions below belong to task 24.11 (two-stage reference fidelity and its visual STOP).
 STAGE = os.environ.get('DSS_LIVE_STAGE')
 FIDELITY = STAGE not in ('24.7', '24.9')
+
+
+def require_reference_regressions(spec, proof):
+    """A page-placement/title regression must stop before spending on a revision."""
+    first = {c['id']: c for c in spec['pages'][0]['components']}
+    for requirement, bound in proof['bindings'].items():
+        if requirement in proof['image_requirements']:
+            assert set(bound) & first.keys(), f'24.10 regression: {requirement} fulfilled only on later pages: {bound}'
+    access = [c for cid, c in first.items() if c['type'] == 'scorecard'
+              and any(m['field'] == 'access_pct' for m in c.get('metrics', []))
+              and any(cid in bound for bound in proof['bindings'].values())]
+    assert access, '24.10 regression: no bound access scorecard on page 1'
+    for component in access:
+        title = component['label']
+        assert '2011' not in title and title.endswith('worldwide (%)'), f'24.10 regression: access title {title!r}'
 
 
 def require_fidelity(spec):
@@ -340,7 +561,62 @@ def require_fidelity(spec):
     yearly = [c for c in page['components'] if c['type'] in ('bar', 'area', 'time_series')
               and any(m['field'] == 'people_without_access' for m in c.get('metrics', []))]
     assert yearly and any(c['box']['y'] > page['height'] * .5 for c in yearly), 'yearly chart must be at bottom'
-    assert any(c['box']['x'] > spec['canvas']['width'] * .6 for c in page['components']), 'native right panels missing'
+    combined = [c for c in page['components'] if c['type'] == 'area'
+                and {(m['field'], m['agg']) for m in c.get('metrics', [])}
+                == {('urban_pct', 'avg'), ('rural_pct', 'avg')}]
+    assert len(combined) == 1, 'page 1 requires one native combined urban/rural area chart'
+    assert combined[0]['box']['x'] > spec['canvas']['width'] * .6, 'combined area must be in right panel'
+
+
+def fidelity_inventory(spec, proof, evidence):
+    """Read-only diagnostics before a known assertion can stop revision/engine checks."""
+    from playwright.sync_api import sync_playwright
+    first = spec['pages'][0]
+    result = {'structural_errors': [], 'titles': [], 'area_slots': [],
+              'later_only_observations': [], 'visual_approval': 'pending'}
+    for oracle in (lambda: require_reference_regressions(spec, proof), lambda: require_fidelity(spec)):
+        try:
+            oracle()
+        except AssertionError as exc:
+            result['structural_errors'].append(str(exc))
+    ids = {c['id'] for c in first['components']}
+    result['later_only_observations'] = [rid for rid, bound in proof['bindings'].items()
+        if rid in proof['image_requirements'] and not (set(bound) & ids)]
+    result['titles'] = [{'id': c['id'], 'label': c['label']} for c in first['components'] if c['type'] == 'scorecard']
+    result['area_slots'] = [{'id': c['id'], 'metrics': c.get('metrics'), 'box': c['box']}
+        for c in first['components'] if c['type'] == 'area']
+    # DOM reads only: widths of rendered values and date labels, no source rows or provider replies.
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            try:
+                page = browser.new_page(viewport={'width': spec['canvas']['width'], 'height': 900})
+                page.set_content((evidence / 'prototype.html').read_text(encoding='utf-8'), wait_until='networkidle')
+                page.wait_for_timeout(1500)
+                result['rendered'] = page.evaluate('''() => ({
+                  scorecards: [...document.querySelectorAll('section[data-page="1"] .scorecard')].map(el => {
+                    const value = el.querySelector('.value');
+                    if (!value) return {id: el.dataset.cid, available: false};
+                    const range = document.createRange(); range.selectNodeContents(value);
+                    const text = range.getBoundingClientRect(), box = el.getBoundingClientRect();
+                    return {id: el.dataset.cid, available: true, text_width: text.width, slot_width: box.width,
+                      clipped: text.right > box.right + 1 || text.bottom > box.bottom + 1};
+                  }),
+                  charts: [...document.querySelectorAll('section[data-page="1"] .chart')].map(el => {
+                    const texts = [...el.querySelectorAll('svg text')];
+                    const dates = texts.filter(t => /^\\d{4}-\\d{2}-\\d{2}$/.test(t.textContent));
+                    const overlap = (a,b) => {const x=a.getBoundingClientRect(), y=b.getBoundingClientRect();
+                      return x.left < y.right && y.left < x.right && x.top < y.bottom && y.top < x.bottom;};
+                    return {id: el.id, svg_present: !!el.querySelector('svg'), full_date_labels: dates.length,
+                      overlapping_text_pairs: texts.reduce((n,t,i) => n + texts.slice(i+1).filter(u=>overlap(t,u)).length,0)};
+                  })
+                })''')
+            finally:
+                browser.close()
+    except Exception as exc:
+        result['render_diagnostic_unavailable'] = type(exc).__name__
+    dump(evidence / 'fidelity-inventory.json', result)
+    return result
 
 
 @pytest.mark.live
@@ -353,11 +629,21 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
     assert all(fixtures[name] == digest for name, digest in HASHES.items())
     generation = json.loads((DATA / 'generation.json').read_text(encoding='utf-8-sig'))
     app, config, project = live_app(tmp_path)
-    evidence = evidence_dir('24.9' if STAGE == '24.9' else '24.10' if FIDELITY else '24.7', mode)
+    evidence = evidence_dir('24.9' if STAGE == '24.9' else '24.11' if FIDELITY else '24.7',
+                            f'high-comparison/{mode}' if FIDELITY else mode)
     (evidence / 'test-source.py').write_bytes(Path(__file__).read_bytes())
     print(f'{evidence.parents[1].name} {mode} evidence: {evidence}', flush=True)
     calls, tables = [], set()
-    facts = {'mode': mode, 'fixture_sha256': fixtures, 'generation_calls': calls,
+    inputs = {'instructions': INSTRUCTIONS if mode == 'recreate' else '',
+              'notes': NOTES + (RECREATE_NOTES if mode == 'recreate' else ''),
+              'recreate_notes': RECREATE_NOTES if mode == 'recreate' else ''}
+    dump(evidence / 'workflow-inputs.json', inputs)
+    facts = {'mode': mode, 'fixture_sha256': fixtures,
+             'input_sha256': {name: hashlib.sha256(value.encode('utf-8')).hexdigest() for name, value in inputs.items()},
+             'generation_calls': calls,
+             'comparison': 'HIGH reference stages; historical LOW evidence in RESUMED.md',
+             'runtime_sha256': {name: hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()
+                                for name, module in [('reference_brief', reference_brief), ('designer', designer)]},
              'visual_approval': 'pending', 'accepted_substitutions': [], 'dry_engine': True,
              'check_status': 'running', 'fixture_provenance': str(DATA / 'README.md'),
              'approved_fixture_substitutions': [
@@ -379,8 +665,14 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
         flow = RecordedFlow(app, client, bid)
         facts.update(build_id=bid, models={'planner': config.planner_model, 'worker': config.worker_model})
         try:
-            flow.act('synthetic', 'post', '/synthetic-data', json={
-                'generation_key': 'electricity_fixture', 'proposal_id': None, 'spec': generation})
+            with monkeypatch.context() as intake_patch:
+                finish_intake = observe_intake(intake_patch, app, bid, evidence, secrets)
+                try:
+                    flow.act('synthetic', 'post', '/synthetic-data', json={
+                        'generation_key': 'electricity_fixture', 'proposal_id': None, 'spec': generation})
+                finally:
+                    finish_intake()
+            assert (evidence / 'intake.json').is_file(), 'intake diagnostics unavailable'
             [source] = flow.get()['sources']
             tables.add(source['bq_table'])
             assert source['kind'] == 'synthetic' and source['row_count'] == 2000
@@ -388,10 +680,10 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
             assert downloaded.status_code == 200 and downloaded.content == (DATA / 'sample.csv').read_bytes()
             if mode != 'none':
                 flow.act('reference', 'post', '/reference-images', seconds=180,
-                         data={'mode': mode, 'instructions': INSTRUCTIONS if mode == 'recreate' else ''},
+                         data={'mode': mode, 'instructions': inputs['instructions']},
                          files=[('files', ('electricity-access.jpg', (DATA / 'electricity-access.jpg').read_bytes(), 'image/jpeg'))])
             flow.act('context', 'post', '/context', seconds=150,
-                     json={'notes': NOTES + (RECREATE_NOTES if mode == 'recreate' else '')})
+                     json={'notes': inputs['notes']})
             flow.act('outline', 'post', '/context/confirm', seconds=150)
             outline = flow.get('/outline')
             flow.call('outline', 'put', '/outline/selection', json={'questions': [
@@ -438,6 +730,8 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
                 return
             run = flow.act('prototype', 'post', '/blueprint/accept', seconds=1600)
             spec, proof = capture(flow, folder, evidence, 'prototype')
+            if mode == 'recreate' and FIDELITY:
+                facts['fidelity_inventory'] = fidelity_inventory(spec, proof, evidence)
             if FIDELITY:
                 assert_design_stages(app, run, spec, mode, app.state.settings.get(), facts=facts)
                 assert len(spec['pages']) >= 2, 'later-page route not exercised'
@@ -447,6 +741,10 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
                 assert set(proof['bindings']) >= {r.id for r in requirements.load(folder).requirements
                                                   if r.source.kind == 'image' and r.source.item_id not in dropped
                                                   and json.loads(r.source.text).get('kind') in ('chart', 'control')}, proof
+                if FIDELITY:
+                    facts['active_check'] = '24.10_regressions'
+                    require_reference_regressions(spec, proof)
+                    facts.pop('active_check')
             if mode == 'recreate' and FIDELITY:
                 target = next(c for c in spec['pages'][0]['components'] if c['type'] == 'fixed_size_list')
                 old_html = spec['pages'][0]['design']['html']
@@ -466,8 +764,12 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
             elif mode == 'style':
                 assert proof['image_requirements'] == [], 'style mode imported chart/control observations'
             for call in calls:
+                if not call['generation_started']:
+                    continue  # Count-before-generation refusals have no provider usage.
                 assert call['usage'], call
-                assert all(u['output'] + u['thinking'] <= call['output_limit'] for u in call['usage']), call
+                assert all(u['output'] <= call['output_limit'] and (u['output_including_thinking'] is None
+                           or u['output_including_thinking'] <= call['output_limit']) for u in call['usage']), call
+                assert call['requested_thinking'] == ('LOW' if mode == 'none' else 'HIGH'), call
             flow.act('dry_engine', 'post', '/run', seconds=300)
             events = [json.loads(line) for line in (folder / 'events.jsonl').read_text(encoding='utf-8').splitlines() if line]
             finished = [event for event in events if event['event'] == 'run_finished']

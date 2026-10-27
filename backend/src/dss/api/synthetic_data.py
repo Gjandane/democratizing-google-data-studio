@@ -38,6 +38,8 @@ class ProposalRequest(BaseModel):
 
 def write_stage(state, build_id):
     """Check and reserve without yielding after the bounded request body was read."""
+    from dss.memory.episodic import require_no_brief_review
+    require_no_brief_review(state.db, build_id)
     with state.db.connect() as connection:
         build = connection.execute('SELECT stage FROM builds WHERE id=?', (build_id,)).fetchone()
         has_sources = connection.execute('SELECT 1 FROM sources WHERE build_id=?', (build_id,)).fetchone()
@@ -149,6 +151,8 @@ async def generate(build_id: str, request: Request):
         body = GenerateRequest.model_validate(await read_json(request))
     except ValidationError:
         raise invalid_request() from None
+    from dss.memory.episodic import require_no_brief_review
+    require_no_brief_review(state.db, build_id)
     try:
         spec = synthetic.parse_spec(body.spec)
     except synthetic.SyntheticError as exc:

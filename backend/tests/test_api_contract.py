@@ -30,13 +30,205 @@ def check(response, fixture, status=200):
     shape(response.json(), json.loads((FIXTURES / fixture).read_text()))
 
 
+def test_design_pages_contract_and_legacy_versions(client, app, build_id):
+    from dss.spec.models import Design
+    from dss.spec.publication import design_artifacts
+    from dss.harness.nodes import reference_brief as rb
+    from test_render import three_pages
+    base = f'/api/builds/{build_id}'
+    assert client.get(base + '/design-pages').json() == {'version': 1, 'spec_version': None, 'pages': [], 'review': None}
+    assert client.get('/api/builds/missing/design-pages').status_code == 404
+    folder = app.state.settings.get().data_dir / 'builds' / build_id / 'v2'
+    folder.mkdir(parents=True)
+    spec = three_pages()
+    spec.spec_version = 5
+    spec.pages = spec.pages[:2]
+    spec.pages[0].design = Design(html='<p>Design</p>', source='designer', model='gemini-3.8-flash')
+    (folder / 'spec.json').write_text(spec.model_dump_json(), encoding='utf-8')
+    with app.state.db.connect() as conn:
+        conn.execute('UPDATE builds SET current_version=2 WHERE id=?', (build_id,))
+    legacy = client.get(base + '/design-pages').json()
+    assert legacy == {'version': 2, 'spec_version': 5, 'review': None, 'pages': [
+        {'page': 1, 'layout': 'designed', 'standard_reason': None, 'brief': None, 'html_model': 'gemini-3.8-flash'},
+        {'page': 2, 'layout': 'standard', 'standard_reason': 'not_designed', 'brief': None, 'html_model': None}]}
+    records = {}
+    for page in spec.pages:
+        value = rb.PageBrief(page=page.index, overall='Dark navy page',
+            slots=[rb.SlotBrief(id=c.id, treatment='White card') for c in page.components])
+        records[page.index] = {'brief': rb.record(value, page, 'gemini-4-argon'), 'html_model': 'gemini-3.8-flash'}
+    for name, content in design_artifacts(spec, folder, records, reset=True).items():
+        (folder / name).write_bytes(content)
+    response = client.get(base + '/design-pages')
+    fixture = json.loads((FIXTURES.parent / 'stage-settings/design_pages.json').read_text(encoding='utf-8'))
+    actual = response.json()
+    assert actual.keys() == fixture.keys()
+    for row, expected in zip(actual['pages'], fixture['pages']):
+        assert row.keys() == expected.keys() and row['brief'].keys() == expected['brief'].keys()
+        shape(row['brief'], expected['brief'])
+        assert row['layout'] == expected['layout'] and row['standard_reason'] == expected['standard_reason']
+        assert row['html_model'] == expected['html_model']
+
+
+def pending_review_fixture(app, build_id, name='design_pages.review.json'):
+    """Seed only the durable review envelope; these contract tests must not generate a page."""
+    from dss.memory import episodic
+    fixture = json.loads((FIXTURES.parent / 'stage-settings' / name).read_text(encoding='utf-8'))
+    record = {'review': fixture['review'], 'owner': 'r_contractreview',
+              'folder': str(app.state.settings.get().data_dir / 'unused-candidate'),
+              'state': {}, 'fingerprint': 'unneeded-before-conflict'}
+    episodic.save_brief_review(app.state.db, build_id, record)
+    return fixture
+
+
+@pytest.mark.parametrize('name', ['design_pages.review.json', 'design_pages.review.issue.json'])
+def test_pending_design_pages_review_contract(client, app, build_id, name):
+    fixture = pending_review_fixture(app, build_id, name)
+    response = client.get(f'/api/builds/{build_id}/design-pages')
+    assert response.status_code == 200, response.text
+    shape(response.json(), fixture)
+    assert response.json()['review'] == fixture['review']
+    assert response.json()['pages'] == []
+
+
+def test_pending_brief_review_guards_every_mutating_build_route(client, app, build_id, monkeypatch):
+    import re
+    pending_review_fixture(app, build_id)
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: pytest.fail('pending review started a model'))
+    exceptions = {('PUT', '/api/builds/{build_id}/briefs/review'),
+                  ('POST', '/api/builds/{build_id}/briefs/review/approve'),
+                  ('POST', '/api/builds/{build_id}/briefs/review/cancel')}
+    def effective_routes(routes):
+        # FastAPI 0.159 keeps include_router branches rather than flattening app.routes.
+        # Their effective candidates carry the combined prefix and include hidden routes too.
+        for route in routes:
+            candidates = getattr(route, 'effective_candidates', None)
+            if callable(candidates):
+                yield from effective_routes(candidates())
+            else:
+                yield route
+    checked = set()
+    for route in effective_routes(app.routes):
+        path = getattr(route, 'path', '')
+        if not path.startswith('/api/builds/{build_id}/'):
+            continue
+        for method in getattr(route, 'methods', set()) & {'POST', 'PUT', 'PATCH', 'DELETE'}:
+            if (method, path) in exceptions:
+                continue
+            url = re.sub(r'\{[^}]+\}', 'example', path.replace('{build_id}', build_id))
+            response = client.request(method, url, json={})
+            assert response.status_code == 409, (method, path, response.text)
+            assert response.json()['error']['code'] == 'brief_review_pending', (method, path, response.text)
+            checked.add((method, path))
+    assert {('POST', '/api/builds/{build_id}/blueprint/accept'),
+            ('POST', '/api/builds/{build_id}/comments'),
+            ('POST', '/api/builds/{build_id}/versions'),
+            ('POST', '/api/builds/{build_id}/sources')} <= checked
+    assert client.get(f'/api/builds/{build_id}').status_code == 200
+    assert client.put('/api/settings', json={'review_briefs': False}).status_code == 200
+    assert client.get(f'/api/builds/{build_id}/design-pages').json()['review'] is not None
+
+
+@pytest.mark.parametrize('endpoint,body_key', [('', 'brief'), ('/approve', 'sha256')])
+def test_brief_review_old_revision_is_contract_conflict(client, app, build_id, monkeypatch, endpoint, body_key):
+    review = pending_review_fixture(app, build_id, 'design_pages.review.issue.json')['review']
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: pytest.fail('old revision reached a model'))
+    body = {'review_id': review['review_id'], 'revision': review['revision'] - 1,
+            body_key: review['brief']['brief'] if body_key == 'brief' else review['brief']['sha256']}
+    response = client.request('POST' if endpoint else 'PUT',
+                              f'/api/builds/{build_id}/briefs/review{endpoint}', json=body)
+    assert response.status_code == 409, response.text
+    assert response.json()['error']['code'] == 'brief_review_conflict'
+    assert response.json()['error']['detail']['revision'] == review['revision']
+
+
+def test_brief_review_another_sha_is_contract_conflict(client, app, build_id, monkeypatch):
+    review = pending_review_fixture(app, build_id)['review']
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: pytest.fail('wrong sha reached a model'))
+    response = client.post(f'/api/builds/{build_id}/briefs/review/approve', json={
+        'review_id': review['review_id'], 'revision': review['revision'], 'sha256': '0' * 64})
+    assert response.status_code == 409, response.text
+    assert response.json()['error']['code'] == 'brief_review_conflict'
+    assert response.json()['error']['detail']['revision'] == review['revision']
+
+
+def test_cancelling_approved_brief_review_returns_current_build_idempotently(client, app, build_id):
+    from dss.memory import episodic
+    review = pending_review_fixture(app, build_id)['review']
+    row = episodic.brief_review(app.state.db, build_id, review['review_id'])
+    episodic.update_brief_review(app.state.db, row, row['record'], state='approved', run_id='r_contractapproved')
+    expected = client.get(f'/api/builds/{build_id}').json()
+    for _ in range(2):
+        response = client.post(f'/api/builds/{build_id}/briefs/review/cancel', json={'review_id': review['review_id']})
+        assert response.status_code == 200, response.text
+        assert response.json() == expected
+    row = episodic.brief_review(app.state.db, build_id, review['review_id'])
+    assert row['state'] == 'approved' and row['run_id'] == 'r_contractapproved'
+
+
+async def test_stage_calls_and_build_cost_contracts(client, app, build_id):
+    from copy import deepcopy
+    from dss.harness import stages
+    from dss.harness.tracing import Trace
+    from fakes import FakeLLM
+    from google.genai import types
+    fixture = json.loads((FIXTURES.parent / 'stage-settings/run_calls.json').read_text())
+    cost_fixture = json.loads((FIXTURES.parent / 'stage-settings/build_cost.json').read_text())
+    saved = deepcopy(stages.snapshot(app.state.settings.get()))
+    class Priced(FakeLLM):
+        model: str = stages.FLASH
+        known: bool = False
+        async def generate_content_async(self, req, stream=False):
+            async for response in super().generate_content_async(req, stream):
+                if self.known:
+                    response.usage_metadata.thoughts_token_count = 8
+                yield response
+    partial = await app.state.harness.run('hello', build_id, {}, llm=Priced())
+    priced = await app.state.harness.run('hello', build_id, {}, llm=Priced(known=True))
+    empty = await app.state.harness.run('create_build', build_id)
+    # A completed run's snapshot and calls survive later Settings changes.
+    app.state.settings.update({'stages': {'routine': {'thinking': 'high'}}})
+    for result, expected in [(partial, None), (priced, (5 * .75 + 10 * 3.75) / 1_000_000), (empty, 0)]:
+        response = client.get(f"/api/traces/{result['run_id']}/calls")
+        assert response.status_code == 200
+        record = response.json()
+        assert record.keys() == fixture.keys() and record['settings'] == saved
+        assert record['cost_usd_estimate'] == expected and record['cost_complete'] is (expected is not None)
+        assert len(record['calls']) == (0 if result is empty else 1)
+        for call in record['calls']:
+            assert call.keys() == fixture['calls'][0].keys()
+            assert call['run_id'] == result['run_id'] and call['stage'] == 'routine' and call['node'] == 'hello'
+            assert call['thinking_tokens'] == (8 if result is priced else None)
+            assert call['input_measured'] is None and call['input_billed'] == 5 and call['input_enforced'] > 0
+            assert call['input_limit'] is None and call['outcome'] == 'ok'
+            assert type(call['duration_ms']) is int and call['duration_ms'] >= 0
+            assert type(call['started_at']) is str and call['attempt'] == call['transport_attempt'] == 1
+            assert not any(word in json.dumps(call) for word in ('test-key', 'Hello!', 'system_instruction', 'provider message'))
+    legacy = Trace(app.state.db, 'r_legacy', build_id, 'plan')
+    legacy.model, legacy.input_tokens, legacy.output_tokens = stages.FLASH, 100, 20
+    legacy.save('ok', None)
+    assert client.get('/api/traces/r_legacy/calls').json()['settings'] is None
+    response = client.get(f'/api/builds/{build_id}/cost')
+    assert response.status_code == 200
+    costs = response.json()
+    assert costs.keys() == cost_fixture.keys() and costs['complete'] is False
+    assert costs['prices_checked_on'] == '2026-10-26'
+    assert all(r.keys() == cost_fixture['runs'][0].keys() for r in costs['runs'])
+    assert costs['runs'][0]['run_id'] == 'r_legacy' and costs['runs'][0]['basis'] == 'trace'
+    assert costs['runs'][0]['complete'] is False and costs['runs'][0]['cost_usd_estimate'] == .00015
+    assert costs['cost_usd_estimate'] == pytest.approx(.00015 + (5 * .75 + 10 * 3.75) / 1_000_000)
+    assert client.get('/api/traces/unknown/calls').status_code == 404
+    assert client.get('/api/traces/unknown/calls').json()['error']['code'] == 'run_not_found'
+    assert client.get('/api/builds/unknown/cost').status_code == 404
+
+
 def test_phase4_contract(thin):
     client, app, bid, folder = thin
     assert client.get("/api/health").json() == {"status":"ok"}
     check(client.get(f"/api/builds/{bid}"), "build.json")
     check(client.get("/api/builds"), "builds.json")
-    check(client.get("/api/settings"), "settings.json")
-    check(client.put("/api/settings", json={"bq_location":"US"}), "settings.json")
+    stage_settings = json.loads((FIXTURES.parent / 'stage-settings/settings.json').read_text())
+    shape(client.get('/api/settings').json(), stage_settings)
+    shape(client.put('/api/settings', json={'bq_location': 'US'}).json(), stage_settings)
     check(client.get(f"/api/builds/{bid}/messages"), "messages.json")
     check(client.post(f"/api/builds/{bid}/run"), "error.json", 409)
     from test_thin_slice import load_checked

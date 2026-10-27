@@ -11,7 +11,32 @@ from dss.spec.models import CONTROL_TYPES, DATE_AXIS_TYPES, Component, Dashboard
 @lru_cache(maxsize=1)
 def _recipe_validators():
     schema = json.loads((BACKEND_DIR.parent / 'contracts/recipe.schema.json').read_text(encoding='utf-8'))
-    return tuple(Draft202012Validator({**schema, '$ref': '#/$defs/' + kind}) for kind in ('header', 'op'))
+    header, operation = (Draft202012Validator({**schema, '$ref': '#/$defs/' + kind}) for kind in ('header', 'op'))
+    return header, operation, _op_validators(schema)
+
+
+def _op_validators(schema):
+    """Index disjoint op branches without dropping any wrapper/branch constraints.
+
+    With a present string `op`, every other const branch necessarily fails. Narrow
+    oneOf only when every alternative has a unique string const; otherwise retain
+    the full union validator. The code-owned schema and validators are immutable.
+    """
+    operation = schema['$defs']['op']
+    branches = operation.get('oneOf', [])
+    if any(not isinstance(branch, dict) or not isinstance(branch.get('properties'), dict)
+           or not isinstance(branch['properties'].get('op'), dict) for branch in branches):
+        return {}
+    names = [branch.get('properties', {}).get('op', {}).get('const') for branch in branches]
+    if any(not isinstance(name, str) for name in names) or len(set(names)) != len(names):
+        return {}
+    selected = '__dss_op_case'
+    while selected in schema['$defs']:
+        selected += '_'
+    return {name: Draft202012Validator({
+        **schema, '$ref': '#/$defs/' + selected,
+        '$defs': {**schema['$defs'], selected: {**operation, 'oneOf': [branch]}},
+    }) for name, branch in zip(names, branches)}
 
 
 def compile_recipe(spec: DashboardSpec, version: int) -> str:
@@ -73,11 +98,11 @@ def compile_recipe(spec: DashboardSpec, version: int) -> str:
     op("get_link")
     if len(lines) > 1000:
         raise ValueError("Recipe exceeds three-digit op id capacity")
-    header_validator, op_validator = _recipe_validators()
+    header_validator, op_validator, op_validators = _recipe_validators()
     try:
         header_validator.validate(lines[0])
         for line in lines[1:]:
-            op_validator.validate(line)
+            op_validators.get(line['op'], op_validator).validate(line)
     except ValidationError:
         # Never expose raw spec values through a provider/JSON Schema diagnostic.
         raise ValueError('Compiled recipe does not match recipe contract 1.0') from None

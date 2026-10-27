@@ -18,6 +18,7 @@ from dss.data.bigquery import quoted, table_uri
 from dss.data.profile import NUMBERS, DATES
 from dss.harness.context import context_draft_context, context_repair_context, fit_request
 from dss.harness.guardrails import RunError, check_reply
+from dss.harness import stages as execution_stages
 from dss.harness.nodes.style_extract import provider_schema
 from dss.harness.nodes.view import expression
 from dss.spec import references
@@ -163,6 +164,7 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         try:
             state['raw'] = check_reply(raw, (secret, config.access_code.get_secret_value(), config.agent_token.get_secret_value()))
         except RunError:
+            execution_stages.invalid_output('context')
             return LlmResponse(error_code='llm_unavailable', error_message='Context returned unsafe output')
         return LlmResponse(content=types.Content(role='model', parts=[types.Part(text='Context received for validation.')]),
                            usage_metadata=llm_response.usage_metadata)
@@ -177,6 +179,8 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
             state['draft'] = None
             state['issues'] = [{'path': '/' + '/'.join(map(str, e['loc'])), 'message': 'Invalid Context structure: ' + e['type']}
                                for e in exc.errors(include_input=False, include_context=False)]
+        if state['issues']:
+            execution_stages.invalid_output('context')
         if state['issues'] and not state['repair']:
             state['repair'] = True
             return Event(actions=EventActions(route='repair'))

@@ -13,14 +13,19 @@ from pydantic import SecretStr
 from dss.harness import llm as llm_module
 from dss.harness.guardrails import RunError
 from dss.harness.llm import ModelRouter, RetryingGemini
+from dss.harness.stages import defaults
 
 SECRET = 'provider text echoing the prompt'
 
 
 class Settings:
     def get(self):
-        return SimpleNamespace(planner_model='planner-model', worker_model='worker-model',
-                               google_api_key=SecretStr('test-key'))
+        config = defaults()
+        for stage, profile in config['stages'].items():
+            profile['model'] = ('planner-model' if stage in
+                ('native_planning', 'reference_interpretation', 'html_brief') else 'worker-model')
+        config['fallback_model'] = 'worker-model'
+        return SimpleNamespace(**config, google_api_key=SecretStr('test-key'))
 
 
 def failure(code):
@@ -170,9 +175,10 @@ async def test_success_makes_one_call_without_retry_span(client, app, build_id):
     assert provider.calls == 1 and 'model_retry' not in trace(app)['spans_json']
 
 
-@pytest.mark.parametrize('node,timeout', [('blueprint', 120_000), ('hello', 30_000),
+@pytest.mark.parametrize('node,timeout', [('blueprint', 600_000), ('hello', 30_000),
                                           ('context', 30_000), ('revise', 30_000)])
-def test_timeouts_unchanged(node, timeout):
+def test_profile_timeouts_keep_routine_deadlines(node, timeout):
+    # Change 2026-10-26: only the generation profile replaces the old 120 s constant.
     model = ModelRouter(Settings()).llm_for(node)
     assert isinstance(model, RetryingGemini)
     assert model.api_client._api_client._http_options.timeout == timeout

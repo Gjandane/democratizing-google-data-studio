@@ -59,5 +59,4 @@ shows one (outside every slot), colored with CSS on `.land`, a continent, `.c-<I
 - `slots`: one entry per approved component id, in reading order: its region, position and size
   (px or a share of its region, at least its minimum), its card or panel, and how it lines up
   with its neighbours.
-- Plain prose, about 6,000 characters in all and never more than 12,000 (a longer answer is cut
-  off and refused). No HTML or CSS code blocks, no URLs, no data.
+- Plain prose with the full design intent. No HTML or CSS code blocks, no URLs, no data.

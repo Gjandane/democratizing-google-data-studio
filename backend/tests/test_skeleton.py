@@ -19,7 +19,7 @@ def test_health_and_settings(client, app):
     assert response.json()["google_api_key_set"] is True
     assert "new-secret" not in client.get("/api/settings").text
     assert "google_api_key" not in response.json()
-    fixture = json.loads((Path(__file__).parents[2] / "contracts/fixtures/api/settings.json").read_text())
+    fixture = json.loads((Path(__file__).parents[2] / "contracts/fixtures/stage-settings/settings.json").read_text())
     assert {k: type(v) for k, v in response.json().items()} == {k: type(v) for k, v in fixture.items()}
     with TestClient(create_app(Config(data_dir=app.state.db.path.parent), model_lister=app.state.models.model_lister)) as second:
         assert second.get("/api/settings").json()["google_api_key_set"] is True
@@ -108,7 +108,7 @@ async def test_planner_fallback_and_refresh(client, app, caplog):
         calls.append(True)
         return ["models/gemini-3.8-flash"]
     app.state.models.model_lister = available
-    response = client.put("/api/settings", json={"planner_model": "missing-planner"})
+    response = client.put("/api/settings", json={"stages": {"native_planning": {"model": "gemini-4-argon"}}})
     assert response.status_code == 200
     assert app.state.models.model_for("blueprint") == "gemini-3.8-flash"
     assert "Planner model unavailable" in caplog.text

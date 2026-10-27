@@ -62,7 +62,13 @@ def blueprint_api(context_api, monkeypatch):
         draft['rows'].append(row)
     value = {k: draft[k] for k in ('view_sources', 'derived_fields', 'rows')}
     llm = ContextLLM(replies=[json.dumps(value)])
-    monkeypatch.setattr(app.state.models, 'llm_for', lambda _: llm)
+    # These blueprint/layout tests exercise the standard layout. Supply a valid brief
+    # and an HTML answer that fails its checks, so that path is reached legitimately.
+    from test_reference_brief import BriefLLM
+    from test_designer import DesignerLLM
+    brief, html = BriefLLM(), DesignerLLM(plan={1: ['bad']})
+    monkeypatch.setattr(app.state.models, 'llm_for',
+                        lambda node: brief if node == 'reference_brief' else html if node == 'designer' else llm)
     return client, app, bid, sid, folder, bq, llm, value
 
 
@@ -91,7 +97,7 @@ def test_ecommerce_rows_pages_contract_trace_and_metadata_only(blueprint_api):
     assert 'Allowed catalog types, slots and options' in instruction and 'max_metrics' in instruction
     assert 'row_count' not in instruction and 'sample' not in instruction and 'O-1001' not in instruction
     assert 'history' not in instruction and 'messages' not in instruction
-    assert request.config.max_output_tokens == 6000
+    assert request.config.max_output_tokens == 32768  # change 2026-10-26
     assert request.contents[0].parts[0].text == 'Return the requested Blueprint draft JSON only.'
     with app.state.db.connect() as conn:
         traces = conn.execute('SELECT * FROM traces WHERE run_id=?', (run_id,)).fetchall()
@@ -645,13 +651,13 @@ async def test_counted_blueprint_request_enforces_conservative_14k_bound():
     from dss.harness.context import assemble, Section
     class Counted(ContextLLM):
         async def count_request_tokens(self, request):
-            return 12000  # folded allowance becomes 14912, above the 14k ceiling
+            return 108801  # change 2026-10-26: allowance 131074 exceeds profile's 131072
     request = LlmRequest(model='fake', config=types.GenerateContentConfig())
     memory = assemble('blueprint', [Section('input', 'i', body='small')])
     span = {}
     with pytest.raises(RunError):
         await fit_request(memory, request, Counted(), span)
-    assert span['folded_request_tokens'] == 12000 and span['enforced_input_bound'] == 14912
+    assert span['folded_request_tokens'] == 108801 and span['enforced_input_bound'] == 131074
     assert span['request_tokens'] is None
 
 
@@ -676,7 +682,7 @@ def test_compact_inputs_exclude_profile_payloads_and_join_facts():
     assert 'SECRET' not in json.dumps(metadata)
     assert node.join_facts(metadata) == [{'left_source': 'a', 'right_source': 'b', 'field': 'order', 'type': 'INT64'}]
     memory = blueprint_context(Context.model_validate(fixture('context')), metadata, [], {}, node.catalog_summary(), [])
-    assert memory.node == 'blueprint' and BUDGETS['blueprint'] == 14000
+    assert memory.node == 'blueprint' and BUDGETS['blueprint'] == 131072  # change 2026-10-26
     assert all(s.kind != 'history' for s in memory.sections)
 
 

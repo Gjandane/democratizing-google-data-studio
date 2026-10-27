@@ -1708,6 +1708,104 @@ def test_recreate_blueprint_recompute_speed_with_24_observations():
         assert min(timings) < .1, (state, timings)
 
 
+# 24.11: evaluation-local reuse must not become authorization across calls.
+RECOMPUTE_CHANGES = ('instructions', 'kpi_meaning', 'kpi_unit', 'source_identity', 'reference_identity',
+                     'image_identity', 'page', 'title', 'mappings', 'decisions', 'allowed_types')
+
+
+def recompute_mutation(snapshot, ledger, checker, change):
+    """Mutate the same objects a previous evaluate read, as an edit/recheck does."""
+    if change == 'instructions':
+        text = snapshot['reference']['instructions'].replace('SUM(revenue)', 'AVG(revenue)')
+        snapshot['reference']['instructions'] = text
+        snapshot['incoming'][0]['text'] = text
+    elif change == 'kpi_meaning':
+        snapshot['confirmed_kpis'][0]['measure']['agg'] = 'avg'
+    elif change == 'kpi_unit':
+        snapshot['confirmed_kpis'][0]['unit'] = 'EUR'
+    elif change == 'source_identity':
+        snapshot['sources'][0].update(table='p.d.replacement', bq_table='p.d.replacement')
+    elif change == 'reference_identity':
+        snapshot['reference']['id'] = 'ref_replaced'
+    elif change == 'image_identity':
+        snapshot['reference']['images'][0]['id'] = 'img_replaced'
+        snapshot['incoming'][1]['image_id'] = 'img_replaced'
+    elif change == 'page':
+        for row in snapshot['blueprint']['rows']:
+            row['page'] = 2
+    elif change == 'title':
+        ledger.requirements[0].properties = [req.Property(path='label', value='Revenue in 2011')]
+    elif change == 'mappings':
+        ledger.requirements[0].mappings[0].aggregation = 'avg'
+    elif change == 'decisions':
+        ledger.decisions.append(req.observation_drop(snapshot, ledger, ledger.requirements[0].id, 'bp_test_drop'))
+    elif change == 'allowed_types':
+        checker = capabilities.Checker(checker.registry, allowed=checker.allowed - {'scorecard'})
+    else:
+        raise AssertionError(change)
+    return checker
+
+
+def assessment_value(assessment):
+    return assessment.model_dump(mode='json', exclude={'id'})
+
+
+@pytest.mark.parametrize('blocked', [False, True])
+def test_recompute_repeated_call_purity(blocked):
+    rows = copy.deepcopy(RECREATE['rows'])
+    if blocked:
+        rows[3]['component']['date_dimension'] = 'order_date'
+        rows[4]['component']['type'] = 'table'
+    snapshot = recreate_blueprint(recreate_snapshot((NET,), RECREATE['instructions']), rows)
+    ledger, baseline = recreate_assess(snapshot)
+    checker = capabilities.Checker(capabilities.load_registry())
+    original = copy.deepcopy((snapshot, ledger.model_dump(mode='json')))
+    values = [req.evaluate(snapshot, ledger, checker, check_components=False) for _ in range(3)]
+    assert baseline.state == ('blocked' if blocked else 'ready')
+    assert all(assessment_value(a) == assessment_value(baseline) for a in values)
+    assert len({a.id for a in [baseline, *values]}) == 4
+    assert (snapshot, ledger.model_dump(mode='json')) == original
+
+
+@pytest.mark.parametrize('change', RECOMPUTE_CHANGES)
+def test_recompute_cross_call_invalidation(change):
+    snapshot = recreate_blueprint(recreate_snapshot((copy.deepcopy(NET),), RECREATE['instructions']))
+    ledger, _ = recreate_assess(snapshot)
+    checker = capabilities.Checker(capabilities.load_registry())
+    original_snapshot, original_ledger = copy.deepcopy(snapshot), ledger.model_copy(deep=True)
+    before = req.evaluate(snapshot, ledger, checker, check_components=False)
+    assert before.state == 'ready'
+    ledger.assessment = before
+    changed_checker = recompute_mutation(snapshot, ledger, checker, change)
+    edited = copy.deepcopy((snapshot, ledger.model_dump(mode='json')))
+    stale = req.get(snapshot, ledger, changed_checker)
+    assert stale.state == 'stale' and stale.id is None
+    after = req.evaluate(snapshot, ledger, changed_checker, check_components=False)
+    assert after.input_digest != before.input_digest
+    if change in ('instructions', 'kpi_meaning', 'kpi_unit', 'image_identity',
+                  'page', 'mappings', 'allowed_types'):
+        assert after.state == 'blocked', (change, after)
+    if change in ('instructions', 'kpi_meaning', 'kpi_unit', 'mappings'):
+        assert any(i.id.startswith('obs_stale_') for i in after.issues)
+    if change == 'page':
+        assert not any(observation_verdicts(snapshot, ledger).values())
+    if change == 'reference_identity':
+        assert req.blueprint_observations(snapshot, ledger, changed_checker) == []
+    if change == 'title':
+        r = ledger.requirements[0]
+        assert req.observation_meaning(r, r.needs, r.properties, kpis=snapshot['confirmed_kpis'])['title'] == 'Revenue (USD)'
+    if change == 'decisions':
+        assert ledger.requirements[0].id not in {r.id for r, *_ in req.blueprint_observations(snapshot, ledger, changed_checker)}
+    again = req.evaluate(snapshot, ledger, changed_checker, check_components=False)
+    assert assessment_value(again) == assessment_value(after)
+    assert (snapshot, ledger.model_dump(mode='json')) == edited
+    # Restoring the earlier evidence restores its whole assessment, not only readiness.
+    snapshot.clear()
+    snapshot.update(original_snapshot)
+    ledger = original_ledger
+    assert assessment_value(req.evaluate(snapshot, ledger, checker, check_components=False)) == assessment_value(before)
+
+
 # 24.10: the screenshot title as code assigns it (architecture.md#Recreate page placement and truthful observed titles).
 REVENUE, ORDERS = RECREATE['items'][1], RECREATE['items'][2]
 UNITS_SOLD = {'id': 'units_sold', 'name': 'Units sold', 'unit': 'units', 'measure': {'field': 'quantity', 'agg': 'sum'}, 'ratio': None}

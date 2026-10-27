@@ -13,6 +13,54 @@ from test_blueprint import blueprint_api  # noqa: F401  (fixture)
 from test_context_node import context_api  # noqa: F401  (fixture)
 
 SCHEMA = json.loads(Path('../contracts/recipe.schema.json').read_text(encoding='utf-8'))
+
+
+def test_discriminated_validation_matches_full_contract_on_ops_and_corruptions():
+    """The original complete contract is the oracle, including nested/wrapper rules."""
+    from copy import deepcopy
+    from dss.recipe.compiler import _op_validators
+    from jsonschema import Draft202012Validator
+    full = Draft202012Validator({**SCHEMA, '$ref': '#/$defs/op'})
+    indexed = _op_validators(SCHEMA)
+    samples = [json.loads(line) for line in Path('../contracts/fixtures/recipe.sample.jsonl').read_text(encoding='utf-8').splitlines()[1:]]
+    samples.extend([
+        {'id': 's001', 'op': 'rename_page', 'name': 'Overview'},
+        {'id': 's001', 'op': 'go_to_page', 'index': 1},
+        {'id': 's001', 'op': 'add_page', 'name': 'Next'},
+        {'id': 's001', 'op': 'add_text', 'component_id': 'heading', 'text': 'Title', 'x': 0, 'y': 0, 'w': 20, 'h': 20},
+        {'id': 's001', 'op': 'add_image', 'component_id': 'logo', 'path': 'logo.png', 'x': 0, 'y': 0, 'w': 20, 'h': 20},
+        {'id': 's001', 'op': 'set_style', 'component_id': 'chart', 'style': {'colors': ['#123456']}},
+        {'id': 's001', 'op': 'add_control', 'component_id': 'filter', 'control_type': 'fixed_size_list', 'field': 'country', 'x': 0, 'y': 0, 'w': 20, 'h': 20},
+    ])
+    assert set(indexed) <= {sample['op'] for sample in samples}
+    corpus = []
+    for sample in samples:
+        assert full.is_valid(sample), sample
+        corpus.append(sample)
+        for field in sample:
+            for value in (None, False, 0, -1, '', 'invalid', [], {}):
+                corpus.append({**sample, field: value})
+            corpus.append({key: value for key, value in sample.items() if key != field})
+        corpus.append({**sample, 'unexpected': 'preserve contract behavior'})
+        if 'metrics' in sample:
+            corpus.append({**sample, 'metrics': [{'field': 'sales', 'agg': 'invalid'}]})
+        if sample['op'] == 'set_style':
+            corpus.append({**sample, 'style': {'colors': ['invalid']}})
+    for value in corpus:
+        name = value.get('op')
+        selected = indexed.get(name, full) if isinstance(name, str) else full
+        assert selected.is_valid(value) == full.is_valid(value), value
+    # Future ambiguous/undiscriminated alternatives must use the complete union.
+    for extra in ({'properties': {'op': {'const': 'open_report'}}}, {'type': 'object'}, True, False):
+        changed = deepcopy(SCHEMA)
+        changed['$defs']['op']['oneOf'].append(extra)
+        assert _op_validators(changed) == {}
+    # References to the original op union keep their original meaning.
+    recursive = deepcopy(SCHEMA)
+    recursive['$defs']['op']['oneOf'][0]['properties']['child'] = {'$ref': '#/$defs/op'}
+    value = {'id': 's001', 'op': 'open_report', 'child': {'id': 's002', 'op': 'set_canvas', 'width': 2, 'height': 2}}
+    assert Draft202012Validator({**recursive, '$ref': '#/$defs/op'}).is_valid(value)
+    assert _op_validators(recursive)['open_report'].is_valid(value)
 EVIDENCE = Path('.blueprint/qa/task-15.9')
 
 

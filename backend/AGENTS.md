@@ -35,6 +35,7 @@ Run from this folder (`backend/`) in bash.
 
 ## Known gotchas
 Traps that cost an earlier session time and that the other docs don't cover, one line each. Builders add lines; the architect sorts them into the docs at the final audit.
+- Persisted stage Settings override `SettingsStore.defaults`: API tests must PUT stage changes before starting a run; no-reference fakes need separate valid `reference_brief` and `designer` replies.
 - Codex's Windows sandbox can deny uv's default cache and pytest temp directories or stall TestClient: a workspace `UV_CACHE_DIR=.blueprint/uv-cache` fixes uv; run local TestClient/network checks with normal process access.
 - BigQuery rejects source_column_match=POSITION with autodetect; normalize upload headers, and use an explicit positional schema for GCS loads.
 - Gemini's generic `400 INVALID_ARGUMENT` does not identify the invalid field; isolate worker/model/schema compatibility with a minimal live request before attributing it to `Any` or unions.
@@ -76,3 +77,14 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Observed titles come from the extraction's `label` property (the 18.2 RECREATE extraction has none); pass `kpis=snapshot['confirmed_kpis']` to observation_meaning/observed_title, or a KPI-only unit stays unproven and the title differs from publish.
 - One reference observation can emit several feasibility issues (geo data missing plus country aggregation clarification): an approved observation drop covers every issue for that observation, not just one status.
 - Fake models without a token counter expose `input_tokens_estimate`, not `enforced_input_bound`; request regressions must check the bound the fake actually supplies.
+- `test_render` replaces `feasibility.observation_errors` with `lambda *args: []` to exercise publish coverage: forward new optional inputs positionally so those hooks still run.
+- Windows sandbox can hide Git from blueprint.py and reject plan.md writes: run its state-changing commands with normal process access; preserve pre-existing work before using start --force.
+- Profile compile_recipe when a recomputation speed oracle fails: recipe JSON Schema oneOf scanning dominated the design-HTML fixture; keep full wrapper/branch validation when optimizing dispatch.
+- `uv run pytest -x` retains the full test set and reports a timing failure immediately; agent heartbeat/transport cases can pass unchanged in isolation, so capture the traceback and preserve their limits before diagnosing.
+- ADK Workflow wraps exceptions from `before_model`; retain sanitized stage failures in the action context so overflow and deadline codes survive that boundary.
+- Fake-clock retry tests must assert fake elapsed time: constructing fresh genai clients can take seconds even with a fully mocked provider.
+- Several nodes alias `dss.artifacts.state` as `stages`: import `dss.harness.stages` as `execution_stages` there when adding execution hooks.
+- A redraw can use a new brief yet return identical HTML and boxes: include collected briefs in the revision change check so their files and provenance still publish.
+- FastAPI 0.159 keeps included-router wrappers in `app.routes`: recurse `effective_candidates()` when inventorying write routes; OpenAPI omits hidden routes.
+- Brief review guards must run both before body intake and at mutation/reservation after body or decode awaits (`episodic.require_no_brief_review`, `prototype.mutation_current`); an early middleware check alone races a newly paused run.
+- Publication recovery retains a pending brief candidate only while its journal is neither committed nor restored; terminal journals retire stale review ownership restored from older SQLite backups.
