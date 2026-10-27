@@ -23,7 +23,8 @@ class Settings:
 
 @pytest.mark.parametrize('node,model,timeout', [
     # Change 2026-10-26: generation deadlines and models come from their stage profiles.
-    *[(node, 'planner-model', 600_000) for node in ('blueprint', 'reference_extract', 'reference_brief')],
+    *[(node, 'planner-model', 1_200_000 if node == 'blueprint' else 600_000)
+       for node in ('blueprint', 'reference_extract', 'reference_brief')],
     *[(node, 'worker-model', 1_200_000) for node in ('designer', 'reference_html')],
     *[(node, 'worker-model', 30_000) for node in (
         'hello', 'context', 'outline_propose', 'outline_other', 'outline_suggest', 'revise', 'capability_check', 'ux_audit',

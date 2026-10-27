@@ -2038,3 +2038,15 @@ context. Task status lives in docs/plan.md, not here.
 - Decided by default: stored Settings (seeded from 3.0) keep 600/32,768; no migration. A local app picks up the new defaults only after native planning is edited in Settings.
 - Affected: backend 25.7, 25.8; release 2.6 now `Needs: backend 25.8`. Frontend: version reference only.
 - Change requests: the 25.7 question (defaults and the legend drop) is settled: planned in 25.7 and 25.8.
+
+## 2026-10-27: Task 25.7 Native planning defaults follow api.md 3.1
+- Status: done
+- Plan check: off
+- What changed: stages.defaults() native_planning output_tokens 32,768 -> 65,536 and timeout_s 600 -> 1,200 (api.md 3.1); nothing else moves. New test_stored_native_planning_values_override_new_defaults: stored 32,768/600 read back unchanged across a restart, rows untouched.
+- Checks: `uv run pytest tests/test_stage_settings.py tests/test_api_contract.py` PASS (228; contract-defaults test failed 65536 != 32768 before the change); Test (all) `uv run pytest` PASS (2241 passed, 17 deselected, 1571.95 s). No live models.
+- Decisions: Outside Files, edited tests that hard-coded the old defaults: test_blueprint.py:100, test_llm_retry.py:178, test_llm_timeouts.py:26, test_stage_execution.py (scale 2 for blueprint clock, 65536 cap). Also rewrote test_reference_brief's live-assertion unit test to the current `assert_design_stages(spans, spec, mode, settings, design_pages)` signature (4 failures left by the blocked earlier 25.7 attempt, not this change); its reject cases now cover profile bound/output/model/truncation/design_failed. Stored Settings keep their values (no migration).
+- Digest: stages.defaults()['stages']['native_planning'] = output_tokens 65536, timeout_s 1200 (api.md 3.1); other stages unchanged; stored Settings override defaults, no migration. Tests for blueprint clock/caps expect 1200 s/65536.
+- Tried and failed: none
+- Gotchas: none
+- Left open: P3 stale `MAX_OUTPUT_TOKENS = 32768` in src/dss/harness/nodes/blueprint.py:26,280 (profile overrides it); P3 "Settings 3.0" docstrings in stages.py:1 and test_stage_settings.py:1.
+- Next: Task 25.8. Start by reviewing the committed live test edits (tests/live/test_reference_design.py 3.0) and .blueprint/qa/task-25.7/ evidence.

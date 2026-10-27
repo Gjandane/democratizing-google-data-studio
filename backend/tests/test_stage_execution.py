@@ -104,12 +104,13 @@ async def test_every_node_routes_and_explicitly_requests_its_profile(stage, node
 @pytest.mark.parametrize('node', ['blueprint', 'reference_extract'])
 async def test_analysis_defaults_share_one_action_clock_through_count_and_repair(node, fake_clock):
     time, clocks = fake_clock
+    scale = 2 if node == 'blueprint' else 1  # native_planning's clock is 1,200 s (api.md 3.1)
     class Counted(FakeLLM):
         async def count_request_tokens(self, req):
-            time.advance(150)
+            time.advance(150 * scale)
             return 1000
         async def generate_content_async(self, req, stream=False):
-            time.advance(200)
+            time.advance(200 * scale)
             async for item in super().generate_content_async(req, stream):
                 yield item
     fake, trace = Counted(), Trace()
@@ -120,13 +121,13 @@ async def test_analysis_defaults_share_one_action_clock_through_count_and_repair
                 first = request()
                 await fit_request(memory(node), first, fake, {})
                 await generate(bind_model(node, fake), first)
-                assert first.config.max_output_tokens == 32768
+                assert first.config.max_output_tokens == 32768 * scale
                 assert first.config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
-                time.advance(100)  # code validation/measurement also spends the action clock
+                time.advance(100 * scale)  # code validation/measurement also spends the action clock
                 await fit_request(memory(node), request(), fake, {})
         assert caught.value.code == 'stage_timeout'
         assert caught.value.message.startswith(stages.stage_for(node) + ':')
-        assert session.clock.end == 600 and fake.calls == 1 and len(clocks) == 1
+        assert session.clock.end == 600 * scale and fake.calls == 1 and len(clocks) == 1
         assert session.profile['input_tokens'] == 131072
 
 
@@ -135,7 +136,7 @@ async def test_expired_count_failure_is_a_stage_timeout(failure, fake_clock):
     time, _ = fake_clock
     class Counter(FakeLLM):
         async def count_request_tokens(self, req):
-            time.advance(601)
+            time.advance(1201)
             raise failure('private counter error')
     with stages.Execution(Config(), Trace()).activate():
         with pytest.raises(RunError) as caught:
@@ -176,7 +177,7 @@ async def test_retry_never_starts_with_less_than_one_second_left(monkeypatch, fa
     calls = []
     async def provider(self, req, stream=False):
         calls.append(True)
-        time.advance(598.5)
+        time.advance(1198.5)
         raise APIError(503, {'error': {'code': 503, 'message': 'private'}})
         yield  # async generator
     monkeypatch.setattr(Gemini, 'generate_content_async', provider)
@@ -274,7 +275,7 @@ async def test_fallback_has_its_own_retries_same_request_caps_and_one_clock(stag
     assert [c[0] for c in calls] == [stages.ARGON, stages.ARGON, stages.FLASH, stages.FLASH, stages.FLASH]
     assert all(c[0] == c[1] for c in calls)
     assert all(c[2].thinking_config.thinking_level == types.ThinkingLevel.HIGH and
-               c[2].max_output_tokens == 32768 for c in calls)
+               c[2].max_output_tokens == 65536 for c in calls)
     assert len(clocks) == 1 and clocks[0].end == 30 and time.waits == [1, 1] and time.value == 9
     recorded = trace.spans[0]['calls']
     assert [c['transport_attempt'] for c in recorded] == [1, 2, 1, 2, 1]

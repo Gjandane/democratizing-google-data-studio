@@ -58,29 +58,34 @@ def test_live_failed_draft_evidence_is_sanitized_guarded_and_local(tmp_path, mon
     assert len(shots) == 1
 
 
-@pytest.mark.parametrize('node,attempt,bound,accepted', [
-    ('reference_html', 2, 18000, True), ('reference_html', 1, 18000, False),
-    ('reference_html', 2, 24001, False), ('reference_brief', 2, 18000, False)])
-def test_live_assertion_allows_large_input_only_for_html_repair(monkeypatch, node, attempt, bound, accepted):
-    from types import SimpleNamespace
+@pytest.mark.parametrize('node,field,value,accepted', [
+    ('reference_html', 'enforced_input_bound', 24000, True), ('reference_html', 'enforced_input_bound', 24001, False),
+    ('reference_brief', 'enforced_input_bound', 12001, False), ('reference_brief', 'output_tokens', 1001, False),
+    ('reference_html', 'model', 'fallback', True), ('reference_html', 'model', 'other', False),
+    ('reference_html', 'truncated', True, False)])
+def test_live_assertion_checks_each_span_against_its_stage_profile(node, field, value, accepted):
     from live import test_reference_design as live
-    models = SimpleNamespace(planner_model='planner', worker_model='worker')
-    spans = [{'node': name, 'model': model, 'page': 1, 'images': 1, 'attempt': 1,
-              'enforced_input_bound': 1000, 'input_budget': 12000, 'output_tokens': 100, 'duration_ms': 1}
-             for name, model in [('reference_brief', 'planner'), ('reference_html', 'worker')]]
-    selected = next(s for s in spans if s['node'] == node)
-    selected.update(attempt=attempt, enforced_input_bound=bound,
-                    input_budget=24000 if node == 'reference_html' and attempt == 2 else 12000)
+    settings = {'fallback_model': 'fallback', 'stages': {
+        'html_brief': {'model': 'planner', 'input_tokens': 12000, 'output_tokens': 1000, 'timeout_s': 600},
+        'reference_html': {'model': 'worker', 'input_tokens': 24000, 'output_tokens': 1000, 'timeout_s': 1200}}}
+    spans = [{'node': name, 'model': model, 'page': 1, 'images': 1, 'enforced_input_bound': 1000,
+              'input_budget': settings['stages'][stage]['input_tokens'], 'output_tokens': 100, 'duration_ms': 1}
+             for name, model, stage in [('reference_brief', 'planner', 'html_brief'),
+                                        ('reference_html', 'worker', 'reference_html')]]
+    next(s for s in spans if s['node'] == node)[field] = value
     spans.append({'node': 'publish'})
-    monkeypatch.setattr(live, 'trace', lambda *_: {'spans_json': json.dumps(spans)})
     spec = {'pages': [{'index': 1, 'design': {'model': 'worker'}}]}
+    pages = {'pages': [{'page': 1, 'layout': 'designed', 'brief': {'sha256': 'x'}, 'html_model': 'worker'}]}
+    spec['pages'][0]['design']['model'] = next(s for s in spans if s['node'] == 'reference_html')['model']
+    pages['pages'][0]['html_model'] = spec['pages'][0]['design']['model']
     if accepted:
-        live.assert_design_stages(None, {'run_id': 'r', 'status': 'ok'}, spec, 'style', models)
+        live.assert_design_stages(spans, spec, 'style', settings, pages)
     else:
         with pytest.raises(AssertionError):
-            live.assert_design_stages(None, {'run_id': 'r', 'status': 'ok'}, spec, 'style', models)
+            live.assert_design_stages(spans, spec, 'style', settings, pages)
+    failed = [*spans, {'node': 'design_failed', 'page': 1}]
     with pytest.raises(AssertionError):
-        live.assert_design_stages(None, {'run_id': 'r', 'status': 'error'}, spec, 'style', models)
+        live.assert_design_stages(failed, spec, 'style', settings, pages)
 
 
 @pytest.mark.parametrize('outcome', ['missing_thinking', 'known_thinking', 'count_failure', 'generation_failure'])

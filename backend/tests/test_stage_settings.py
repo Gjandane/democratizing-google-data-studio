@@ -28,6 +28,20 @@ def test_stage_defaults_and_capabilities(client):
     assert capabilities.json()['limits'] == fixture('capabilities.json')['limits']
 
 
+def test_stored_native_planning_values_override_new_defaults(tmp_path):
+    settings = store(tmp_path)
+    old = {'output_tokens': 32768, 'timeout_s': 600}
+    assert settings.get().stages['native_planning']['output_tokens'] == 65536
+    assert settings.get().stages['native_planning']['timeout_s'] == 1200
+    settings.update({'stages': {'native_planning': old}})
+    before = rows(settings.db)
+    restarted = SettingsStore(Config(data_dir=tmp_path), settings.db)
+    stored = restarted.get().public()['stages']['native_planning']
+    assert {key: stored[key] for key in old} == old
+    assert stages.defaults()['stages']['native_planning']['output_tokens'] == 65536
+    assert rows(settings.db) == before
+
+
 def same_shape(actual, expected):
     if isinstance(expected, dict):
         assert actual.keys() == expected.keys()

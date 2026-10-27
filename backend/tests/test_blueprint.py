@@ -97,7 +97,7 @@ def test_ecommerce_rows_pages_contract_trace_and_metadata_only(blueprint_api):
     assert 'Allowed catalog types, slots and options' in instruction and 'max_metrics' in instruction
     assert 'row_count' not in instruction and 'sample' not in instruction and 'O-1001' not in instruction
     assert 'history' not in instruction and 'messages' not in instruction
-    assert request.config.max_output_tokens == 32768  # change 2026-10-26
+    assert request.config.max_output_tokens == 65536  # api.md 3.1
     assert request.contents[0].parts[0].text == 'Return the requested Blueprint draft JSON only.'
     with app.state.db.connect() as conn:
         traces = conn.execute('SELECT * FROM traces WHERE run_id=?', (run_id,)).fetchall()

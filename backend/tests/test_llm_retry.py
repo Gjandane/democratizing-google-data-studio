@@ -175,7 +175,7 @@ async def test_success_makes_one_call_without_retry_span(client, app, build_id):
     assert provider.calls == 1 and 'model_retry' not in trace(app)['spans_json']
 
 
-@pytest.mark.parametrize('node,timeout', [('blueprint', 600_000), ('hello', 30_000),
+@pytest.mark.parametrize('node,timeout', [('blueprint', 1_200_000), ('hello', 30_000),
                                           ('context', 30_000), ('revise', 30_000)])
 def test_profile_timeouts_keep_routine_deadlines(node, timeout):
     # Change 2026-10-26: only the generation profile replaces the old 120 s constant.
