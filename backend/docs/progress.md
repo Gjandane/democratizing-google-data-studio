@@ -2222,3 +2222,15 @@ assert min(timings) < .1
 - Checks: `blueprint.py stamp`; `lint` 0 errors / 17 existing warnings; `reopen 25.10`. No pytest, provider, BigQuery or engine call this session. No delta audit (POC).
 - Change requests: the 25.10 block question is settled by the ruling above, planned in 25.10 plus 25.11. The widened year-slider drop and the o3 `Location` legend note carry into 25.11's If line. No other open change request.
 - Next: task 25.10 (offline), then 25.11 (live + visual STOP).
+
+## 2026-10-28: Task 25.10 Recreate extraction style repair
+- Status: done
+- Plan check: off
+- What changed: style_extract adds repair_style/preset_profile/repair_projection; reference_extract.save repairs style before local validation (normalize both modes; recreate falls back per field to the prefill preset), records `style_repairs` on the accepted span and flips the StageCall invalid->ok. 16 oracle test groups in tests/test_references.py.
+- Checks: `uv run pytest tests/test_references.py tests/test_stage_execution.py` PASS 165 passed, 51.95 s; Test (all) `uv run pytest` PASS 2390 passed, 17 deselected, 1022.53 s. Review: no P0-P2.
+- Decisions: Normalization (incl. trim) applies only to a value failing StyleProfile as returned, so every answer accepted today keeps today's path untouched (' Roboto ' stays; deliberate, reviewer P3). Action `preset` also covers recreate drops (invalid/surplus palette entry, unknown key as path ['style','?'], invalid notes -> ''). Flip only on acceptance with >=1 repair. A rejection with repairs re-validates the raw answer, so diagnostic/error/outcome are today's. Preset = DEFAULTS[builds.archetype] as design.prefill.
+- Digest: style_extract.repair_style(reply, preset|None)->(reply,[(path,action)]); preset_profile(archetype)->StyleProfile dict; reference_extract span diagnostic `accepted` + style_repairs {repairs[<=10]{path,action normalized|preset},count,truncated}.
+- Tried and failed: none
+- Gotchas: none new; AGENTS unchanged.
+- Left open: P3 flip doesn't re-check the repaired reply against the provider schema (lax non-style coercion + style repair reports ok) - reference_extract.py; P3 preset tests use preset_profile itself, executive only - tests/test_references.py; P3 valid padded values not trimmed - style_extract.py.
+- Next: Task 25.11 (live campaign + visual STOP).

@@ -15,7 +15,11 @@ from dss.config import Config
 from dss.db import now
 from dss.harness.context import BUDGETS
 from dss.harness.guardrails import RunError
+from dss.harness.nodes.reference_extract import ReferenceOutput
+from dss.harness.nodes.style_extract import StyleProfile, preset_profile, provider_schema, repair_style
+from dss.harness.tracing import validation_diagnostic
 from dss.main import create_app
+from pydantic import ValidationError
 from dss.memory.episodic import messages
 from dss.spec import references
 from dss.spec.models import DashboardSpec
@@ -605,3 +609,192 @@ def test_extraction_schema_issues_are_bounded_and_value_free(ref):
     assert all(issue['category'] == 'extra' and issue['path'] == ['items', i]
                for i, issue in enumerate(diagnostic['issues']))
     assert 'private-' not in json.dumps(diagnostic)
+
+
+# Task 25.10: recreate extraction style repair (architecture.md#Recreate extraction style repair).
+MISSING = object()
+PRESET = preset_profile('executive')  # the build fixture's archetype -> design prefill's studio_light
+# Run 20261027-235732-232ce244: 8 pattern issues, all under style.
+RUN2 = {**STYLE, 'palette': ['steel blue', 'orange', 'teal'], 'background': 'whitesmoke', 'surface': 'white',
+        'text': 'near black', 'accent': 'navy', 'font_family': 'Roboto; serif'}
+SENTINELS = ('steel blue', 'whitesmoke', 'near black', 'navy', 'Roboto; serif', 'sky blue', 'shadow', 'large')
+
+
+def answer(style=STYLE, items=ITEMS):
+    reply = json.loads(output(items))
+    if style is MISSING:
+        del reply['style']
+    else:
+        reply['style'] = style
+    return json.dumps(reply)
+
+
+def extract(client, app, bid, model, response, mode='recreate'):
+    """One upload; returns the run result, the extraction span diagnostic, its StageCalls and generations."""
+    model.response, before = response, model.calls
+    run_id = upload(client, app, bid, [('files', ('a.png', png(), 'image/png'))], mode=mode)
+    spans = json.loads(traces(app)[-1]['spans_json'])
+    diagnostic = next(s for s in spans if s['node'] == 'reference_extract')['diagnostic']
+    return finished(app, run_id), diagnostic, spans, model.calls - before
+
+
+def expected_diagnostic(text):
+    """Today's rejection diagnostic for the answer as returned: provider schema first, then local."""
+    from jsonschema import Draft202012Validator
+    schema = provider_schema(ReferenceOutput)
+    provider = validation_diagnostic(Draft202012Validator(schema).iter_errors(json.loads(text)), schema)
+    if provider['issue_count']:
+        return provider
+    with pytest.raises(ValidationError) as caught:
+        ReferenceOutput.model_validate_json(text)
+    return validation_diagnostic(caught.value.errors(include_url=False, include_context=False, include_input=False),
+                                 ReferenceOutput.model_json_schema(), local=True)
+
+
+def accepted(repairs):
+    return {'boundary': 'local_validation', 'category': 'accepted', 'style_repairs': {
+        'repairs': [{'path': path, 'action': action} for path, action in repairs],
+        'count': len(repairs), 'truncated': False}}
+
+
+@pytest.mark.parametrize('mode', ['recreate', 'style'])
+@pytest.mark.parametrize('field,raw,expected,paths', [
+    ('background', '#abc', '#AABBCC', [['style', 'background']]),
+    ('surface', 'aabbcc', '#AABBCC', [['style', 'surface']]),
+    ('text', '#aabbcc80', '#AABBCC', [['style', 'text']]),
+    ('accent', ' rgb(170, 187, 204) ', '#AABBCC', [['style', 'accent']]),
+    ('accent', 'RGBA(170,187,204,.5)', '#AABBCC', [['style', 'accent']]),
+    ('background', '  #f1f5f9\n', '#F1F5F9', [['style', 'background']]),
+    ('palette', ['#abc', 'rgba(1, 2, 3, 50%)', '#0d9488'], ['#AABBCC', '#010203', '#0D9488'],
+     [['style', 'palette', 0], ['style', 'palette', 1]]),
+    ('font_family', '"Open Sans", Arial, sans-serif', 'Open Sans', [['style', 'font_family']]),
+    ('font_family', " 'Roboto' ", 'Roboto', [['style', 'font_family']]),
+])
+def test_common_style_forms_normalize_in_both_modes(ref, mode, field, raw, expected, paths):
+    client, app, bid, folder, model, _ = ref
+    result, diagnostic, spans, generations = extract(client, app, bid, model, answer({**STYLE, field: raw}), mode)
+    assert result['status'] == 'ok' and generations == 1
+    assert references.load(folder)['style'][field] == expected
+    meta = yaml.safe_load((folder / 'docs/style.md').read_text(encoding='utf-8').split('---', 2)[1])
+    assert meta[field] == expected
+    assert diagnostic == accepted([(path, 'normalized') for path in paths])
+    calls = spans[0]['calls']
+    assert len(calls) == 1 and calls[0]['outcome'] == 'ok'  # provider-schema `invalid` flips on acceptance
+    assert spans[0]['settings']['stages']['reference_interpretation']['validation_repairs'] == 0
+
+
+def test_valid_style_takes_no_repair(ref):
+    client, app, bid, folder, model, _ = ref
+    result, diagnostic, spans, generations = extract(client, app, bid, model, answer({**STYLE, 'font_family': ' Roboto '}))
+    assert result['status'] == 'ok' and generations == 1
+    assert diagnostic == {'boundary': 'local_validation', 'category': 'accepted'}
+    assert references.load(folder)['style']['font_family'] == ' Roboto '  # valid as returned: untouched
+
+
+@pytest.mark.parametrize('style,changes,repairs', [
+    ({**STYLE, 'background': 'white', 'accent': 'navy'}, {'background': PRESET['background'], 'accent': PRESET['accent']},
+     [(['style', 'background'], 'preset'), (['style', 'accent'], 'preset')]),
+    ({**STYLE, 'font_family': 'Roboto; serif'}, {'font_family': PRESET['font_family']}, [(['style', 'font_family'], 'preset')]),
+    ({**STYLE, 'surface': 255, 'radius': 'large', 'palette': '#123456', 'notes': 7},
+     {'surface': PRESET['surface'], 'radius': PRESET['radius'], 'palette': PRESET['palette'], 'notes': ''},
+     [(['style', 'surface'], 'preset'), (['style', 'radius'], 'preset'), (['style', 'palette'], 'preset'),
+      (['style', 'notes'], 'preset')]),
+    (MISSING, None, [(['style'], 'preset')]),
+    ('a blue theme', None, [(['style'], 'preset')]),
+    ({**STYLE, 'palette': ['#1e40af', 'sky blue']}, {'palette': PRESET['palette']}, [(['style', 'palette'], 'preset')]),
+    ({**STYLE, 'shadow': 'soft', 'gradient': True}, {}, [(['style', '?'], 'preset')] * 2),
+    ({**STYLE, 'palette': [f'#{i}{i}{i}{i}{i}{i}' for i in range(10)]},
+     {'palette': [f'#{i}{i}{i}{i}{i}{i}' for i in range(8)]},
+     [(['style', 'palette', 8], 'preset'), (['style', 'palette', 9], 'preset')]),
+    ({**STYLE, 'palette': ['#abc', 'red', '#0d9488'], 'text': 'rgb(300, 0, 0)'},
+     {'palette': ['#AABBCC', '#0D9488'], 'text': PRESET['text']},
+     [(['style', 'palette', 0], 'normalized'), (['style', 'text'], 'preset'), (['style', 'palette', 1], 'preset')]),
+    (RUN2, {k: PRESET[k] for k in ('palette', 'background', 'surface', 'text', 'accent', 'font_family')},
+     [(['style', k], 'preset') for k in ('background', 'surface', 'text', 'accent', 'font_family', 'palette')]),
+], ids=['named-colors', 'bad-font', 'wrong-types', 'missing-style', 'non-object-style', 'short-palette',
+        'unknown-keys', 'long-palette', 'normalized-and-preset', 'run-2'])
+def test_recreate_style_falls_back_to_the_prefill_preset(ref, style, changes, repairs):
+    client, app, bid, folder, model, _ = ref
+    upload(client, app, bid, [('files', ('first.png', png(), 'image/png'))])
+    baseline = references.load(folder)['interpretation']
+    result, diagnostic, spans, generations = extract(client, app, bid, model, answer(style))
+    assert result['status'] == 'ok' and generations == 1
+    record = references.load(folder)
+    expected = StyleProfile.model_validate(PRESET if changes is None else {**STYLE, **changes}).model_dump()
+    assert record['style'] == expected and record['interpretation'] == baseline  # identical observations
+    meta = yaml.safe_load((folder / 'docs/style.md').read_text(encoding='utf-8').split('---', 2)[1])
+    assert {k: meta[k] for k in expected if k != 'notes'} == {k: v for k, v in expected.items() if k != 'notes'}
+    assert diagnostic == accepted(repairs)
+    calls = spans[0]['calls']
+    assert len(calls) == 1 and calls[0]['outcome'] == 'ok'
+    assert not any(value in json.dumps(spans) for value in SENTINELS)
+
+
+def test_style_repairs_are_bounded_and_value_free(ref):
+    client, app, bid, folder, model, _ = ref
+    palette = [f'#a{i:x}c' for i in range(14)]
+    result, diagnostic, spans, _ = extract(client, app, bid, model, answer({**STYLE, 'palette': palette}))
+    assert result['status'] == 'ok'
+    assert references.load(folder)['style']['palette'] == [f'#AA{i:X}{i:X}CC' for i in range(8)]
+    projection = diagnostic['style_repairs']
+    assert projection['count'] == 14 and projection['truncated'] is True and len(projection['repairs']) == 10
+    assert projection['repairs'] == ([{'path': ['style', 'palette', i], 'action': 'normalized'} for i in range(8)]
+                                     + [{'path': ['style', 'palette', i], 'action': 'preset'} for i in (8, 9)])
+    assert not any(value in json.dumps(spans).lower() for value in (*palette, '#aa00cc'))
+
+
+def test_style_repair_is_deterministic_and_leaves_the_answer_untouched():
+    reply = json.loads(answer({**RUN2, 'palette': ['#abc', 'teal', '#0d9488'], 'extra': {'nested': 1}}))
+    original = json.dumps(reply)
+    first, second = repair_style(reply, PRESET), repair_style(reply, PRESET)
+    assert first == second and json.dumps(reply) == original
+    assert first[0]['items'] == reply['items'] and repair_style(reply)[0]['items'] == reply['items']
+    for archetype in ('executive', 'storytelling', 'operational', 'analytical'):
+        StyleProfile.model_validate(preset_profile(archetype))  # every prefill preset is a valid fallback
+
+
+def rejection_baseline(client, app, bid, model):
+    """A valid set to retain plus the error a plain observation rejection reports today."""
+    upload(client, app, bid, [('files', ('first.png', png(), 'image/png'))])
+    result, *_ = extract(client, app, bid, model, answer(items=[item(confidence='certain')]))
+    assert result['status'] == 'error'
+    return result['error'], references.load(folder_of(app, bid)), snapshot(folder_of(app, bid))
+
+
+def folder_of(app, bid):
+    return app.state.settings.get().data_dir / 'builds' / bid / 'v1'
+
+
+def snapshot(folder):
+    return {p.relative_to(folder): p.read_bytes() for p in folder.rglob('*') if p.is_file()}
+
+
+def assert_rejected(client, app, bid, model, folder, text, mode, error, record, files):
+    result, diagnostic, spans, generations = extract(client, app, bid, model, text, mode)
+    assert result['status'] == 'error' and result['error'] == error and generations == 1
+    assert diagnostic == expected_diagnostic(text) and 'style_repairs' not in diagnostic
+    assert [c['outcome'] for c in spans[0]['calls']] == ['invalid']
+    assert references.load(folder) == record and snapshot(folder) == files  # old reference retained
+    assert not any(value in json.dumps(spans) for value in SENTINELS)
+    assert bid not in app.state.harness.active_builds
+    # The mutation reservation was released: a valid replacement still lands.
+    assert extract(client, app, bid, model, answer(), mode)[0]['status'] == 'ok'
+
+
+@pytest.mark.parametrize('style', [
+    RUN2, MISSING, {**STYLE, 'background': '#abc', 'surface': 'white'}, {**STYLE, 'shadow': 'soft'},
+    {**STYLE, 'palette': [f'#{i}{i}{i}{i}{i}{i}' for i in range(9)]},
+], ids=['run-2', 'missing-style', 'normalizable-plus-named', 'unknown-key', 'long-palette'])
+def test_style_mode_keeps_rejecting_unrecoverable_style(ref, style):
+    client, app, bid, folder, model, _ = ref
+    error, record, files = rejection_baseline(client, app, bid, model)
+    assert_rejected(client, app, bid, model, folder, answer(style), 'style', error, record, files)
+
+
+@pytest.mark.parametrize('mode', ['recreate', 'style'])
+@pytest.mark.parametrize('bad', [item(confidence='certain'), item(box=(900, 0, 200, 100))], ids=['enum', 'box'])
+def test_observation_issue_with_style_issues_rejects_in_both_modes(ref, mode, bad):
+    """Repair never hides an observation defect, even one only local validation sees (box)."""
+    client, app, bid, folder, model, _ = ref
+    error, record, files = rejection_baseline(client, app, bid, model)
+    assert_rejected(client, app, bid, model, folder, answer({**RUN2, 'text': '#abc'}, items=[bad]), mode, error, record, files)

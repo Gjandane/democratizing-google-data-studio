@@ -12,7 +12,8 @@ from dss.db import now
 from dss.harness import stages
 from dss.harness.context import fit_request, reference_context
 from dss.harness.guardrails import RunError, check_reply
-from dss.harness.nodes.style_extract import StyleProfile, provider_schema, style_doc
+from dss.harness.nodes.style_extract import (StyleProfile, preset_profile, provider_schema, repair_projection,
+                                             repair_style, style_doc)
 from dss.harness.tracing import record_reference_diagnostic, response_diagnostic, validation_diagnostic
 from dss.spec import references
 
@@ -47,7 +48,7 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
     mode, instructions, reference_id = payload['mode'], payload['instructions'], payload['reference_id']
     secret = config.google_api_key.get_secret_value()
     with harness.db.connect() as conn:
-        version = conn.execute('SELECT current_version FROM builds WHERE id=?', (build_id,)).fetchone()[0]
+        version, archetype = conn.execute('SELECT current_version, archetype FROM builds WHERE id=?', (build_id,)).fetchone()
     folder = config.data_dir / 'builds' / build_id / f'v{version}'
     context = check_reply(reference_context(config, mode, instructions, images), (secret,))
     state = {'raw': '', 'failure': None}
@@ -89,8 +90,22 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
             state['failure'] = RunError('invalid_source', f'The reference shows more than {references.MAX_ITEMS} elements; '
                                         'crop or simplify the screenshot and upload it again', 422)
             return 'Reference extraction did not finish.'
+        repaired, repairs = state['raw'], []
         try:
-            output = ReferenceOutput.model_validate_json(state['raw'])
+            reply = json.loads(state['raw'])
+        except (ValueError, RecursionError):
+            pass
+        else:
+            # Style values never reject a recreate extraction; observations stay strict (#Recreate extraction style repair).
+            reply, repairs = repair_style(reply, preset_profile(archetype) if mode == 'recreate' else None)
+            repaired = json.dumps(reply) if repairs else repaired
+        try:
+            try:
+                output = ReferenceOutput.model_validate_json(repaired)
+            except (ValidationError, ValueError):
+                if repairs:  # a rejection keeps today's diagnostic: the answer as returned
+                    ReferenceOutput.model_validate_json(state['raw'])
+                raise
         except (ValidationError, ValueError) as exc:
             stages.invalid_output('reference_extract')
             span = next((s for s in reversed(trace.spans) if s['node'] == 'reference_extract'), {})
@@ -102,7 +117,10 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                 record_reference_diagnostic(trace, diagnostic)
             state['failure'] = RunError('llm_unavailable', 'Reference extraction returned invalid observations', 503)
             return 'Reference extraction did not finish.'
-        record_reference_diagnostic(trace, response_diagnostic('accepted'))
+        record_reference_diagnostic(trace, response_diagnostic('accepted') | (
+            {'style_repairs': repair_projection(repairs)} if repairs else {}))
+        if repairs and (call := stages.session_for('reference_extract').last_call) and call.value['outcome'] == 'invalid':
+            call.value['outcome'] = 'ok'  # the provider-schema verdict covered style values repaired above
         first = images[0]
         interpretation = references.interpret(mode, first['width'], first['height'],
             output.model_dump(include={'palette_notes', 'type_notes', 'spacing_notes'}), output.items)
