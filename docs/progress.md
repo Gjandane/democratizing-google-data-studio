@@ -505,3 +505,8 @@ context. Task status lives in docs/plan.md, not here.
 
 ## 2026-10-27: Change api.md 3.1 (native planning defaults, backend 25.7 block)
 - What changed: contracts/api.md 3.1 and stage-settings fixtures (native_planning output 65,536, 1,200 s per action); program decision log and roadmap; release 2.6 `Needs: backend 25.8` (the live fidelity check moved there). Release 2.8 reads the clocks from Settings: unchanged.
+## 2026-10-28: Change reference analysis gate (program root)
+- Class: Contract across parts: api.md 3.2, dashboard-intent.md 1.3, synthetic-data.md 1.3 and their fixtures; program.md roadmap and decision log.
+- What changed: backend Phase 26 (26.1-26.6; 26.6 replaces the blocked 25.11), frontend Phase 17 (17.1-17.3); release 2.6 `Needs:` now backend 26.6 and frontend 17.3 (backend 25.8 dropped: superseded) and its Done when approves the reference analysis in the UI and builds the capability matrix from the approved split.
+- Why: backend 25.11 block; user request and cards 2026-10-28 (Flash analysis, human approval of native vs static, Argon gets the image plus the approved items).
+- Next: release 2.6 waits on backend 26.6 and frontend 17.3; 2.7 and 2.8 unchanged.

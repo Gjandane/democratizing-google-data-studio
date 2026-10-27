@@ -11,18 +11,18 @@
       "timeout_s": 30
     },
     "reference_interpretation": {
-      "model": "gemini-4-argon",
+      "model": "gemini-3.8-flash",
       "thinking": "high",
       "input_tokens": 131072,
       "output_tokens": 32768,
       "timeout_s": 600,
       "transport_retries": 1,
-      "validation_repairs": 0,
+      "validation_repairs": 1,
       "input_margin_pct": 20
     },
     "native_planning": {
       "model": "gemini-4-argon",
-      "thinking": "high",
+      "thinking": "medium",
       "input_tokens": 131072,
       "output_tokens": 65536,
       "timeout_s": 1200,

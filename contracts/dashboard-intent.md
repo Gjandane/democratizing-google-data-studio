@@ -1,4 +1,13 @@
 # Contract: dashboard references and feasibility
+Version 1.3 (2026-10-28, change reference analysis gate, user request; backend 25.11 block): a
+recreate upload no longer extracts observations. A Flash analysis returns a `ReferenceAnalysis`
+(each visible item proposed as a native Data Studio component or static art) that the user
+approves or edits before any blueprint work (Reference analysis and approval). Approved native
+items replace image observations as requirement records; static items are consented art, never
+issues. Style mode has no analysis (`null`). New: `ReferenceSet.analysis`, `PUT
+reference-images/analysis`, `POST reference-images/analysis/approve`, errors
+`409 reference_unapproved` and `409 reference_analysis_conflict`; Assessment, Issue and decision
+shapes unchanged. Fixtures: `reference_set.json` (approved), new `reference_set.pending.json`.
 Version 1.2 (2026-10-21, change staged workflow): requirements come from structured artifacts
 instead of free-text chat (Feasibility assessment); the stages and actions of api.md 2.0 replace
 `interview` and `plan`. Where older text below says interview it means the context, outline and
@@ -10,7 +19,7 @@ original reference/feasibility rules retained. Version 1.0 was the initial plann
 2026-10-20 (no version change, shapes unchanged): example fixtures added for alternatives,
 pending comments and a stale assessment; implementation task IDs follow frontend's split.
 Status: backend 11.1-11.8 (task split 2026-10-20) and frontend 10.1-10.3 (split 2026-10-20).
-API transport: contracts/api.md 2.0. Recipe transport stays at 1.0.
+API transport: contracts/api.md 2.0 (3.2 for the 1.3 additions). Recipe transport stays at 1.0.
 Shared fixtures: contracts/fixtures/dashboard-intent/{reference_set,feasibility}.json, plus the
 Assessment variants feasibility.alternatives.json (blocked, alternatives offered),
 feasibility.pending.json (a blocked comment batch in pending_comments) and feasibility.stale.json.
@@ -48,17 +57,70 @@ and an OKF `reference.md` summary; keep `style.md` for existing style consumers.
 `GET reference-images` returns `ReferenceSet|null`:
 ```text
 ReferenceSet = { id: string, mode: "style"|"recreate", instructions: string,
-  images: [{id: string, name: string, file: string}], summary: string }
+  images: [{id: string, name: string, file: string}], summary: string,
+  analysis: ReferenceAnalysis|null /* 1.3: recreate only; null in style mode and for a recreate
+  set saved before 1.3 */ }
+ReferenceAnalysis = { revision: int /* 1 = as analyzed; +1 on every saved edit */,
+  state: "pending"|"approved",
+  summary: string /* code-written from the items, e.g. "2 charts and 1 control can be native
+  Data Studio components; 4 items stay static art." */,
+  items: ReferenceItem[] /* 1-24, in reading order */,
+  note: string /* the user's note to the planner, 0-1000 chars */,
+  allowed_types: string[] /* catalog types a native item may use: the registry narrowed by
+  DSS_ALLOWED_TYPES (recipe.md 1.3 type names) */,
+  issues: ValidationIssue[] /* code checks, paths into the analysis (`/items/<i>/type`);
+  approve needs [] */ }
+ReferenceItem = { id: string /* r1, r2 ... stable for this analysis */,
+  label: string /* 1-120 chars, what the image shows, e.g. "Yearly access bar chart" */,
+  kind: "chart"|"control"|"kpi"|"text"|"image"|"legend"|"other",
+  box: {x: number, y: number, w: number, h: number} /* 0..1 of the image */,
+  disposition: "native"|"static", type: string|null /* an allowed_types entry when native,
+  null when static */,
+  shows: string /* 0-300 chars: measures, dimensions and grain as read from the image, e.g.
+  "access % by year, 2000-2019"; display text, never a field binding */,
+  reason: string /* 0-300 chars: why native or static */,
+  proposed: {disposition: "native"|"static", type: string|null} /* the analysis' own choice,
+  read-only, so a client can show what the user changed */ }
 ```
 Names are display strings, never paths. URLs for previews use the existing files endpoint.
 No raw model output is exposed. `DELETE reference-images` clears the current set, reference.md,
 and reference-owned style.md and bytes. This changes future intent, not the already saved spec.
 Replacing/deleting invalidates feasibility and marks any existing prototype stale (see assessment).
 Replanning is explicit. During build/done, mutations return `409 wrong_stage`; use New version
-from done. New version copies reference bytes, extracted observations and confirmed mappings,
+from done. New version copies reference bytes and the analysis with its state and revision,
 but clears assessment IDs and recomputes feasibility before compiling or executing. Durable
 requirement-scoped choices carry over only if still valid under the copied inputs/evidence.
 Past versions keep their own set. No retention cleanup beyond version deletion is added in this POC.
+
+### Reference analysis and approval (1.3)
+- A recreate upload's run (node `reference_extract`, stage `reference_interpretation`) sends the
+  image, the instructions and the allowed catalog types to the model and commits the set with a
+  `pending` analysis, revision 1. Code validates every item (box inside the image, a native
+  item's type in `allowed_types`, a control type only for a control, lengths); one validation
+  repair; an answer that still fails fails the upload (old set kept). A screenshot with more than
+  24 items fails with a request to crop. A style upload commits `analysis: null`.
+- `PUT reference-images/analysis` `{revision, items: [{id, disposition, type}], note}` saves the
+  user's split: every item id exactly once, `type` null for static; code fills `issues` (a native
+  item needs a type from `allowed_types`) and returns the ReferenceSet with `revision` + 1 and
+  `state` `pending`. Labels, boxes, `shows` and `proposed` are read-only. A `revision` other than
+  the current one -> `409 reference_analysis_conflict` (`detail.revision`: the current one).
+- `POST reference-images/analysis/approve` `{revision}` -> `200 ReferenceSet`, `state`
+  `approved`; needs `issues` [] (else `409 artifact_invalid`) and the current revision (else
+  `409 reference_analysis_conflict`). Zero native items is a valid approval (all static art).
+  Approving the same revision again returns the same set.
+- Both are code-only (no run), allowed in connect to prototype under the per-build action lock,
+  and `409 wrong_stage` in build/done. Saving an edit to an approved analysis is a reference
+  change: the analysis returns to `pending`, the assessment goes `stale`, a saved Blueprint goes
+  `stale` and an existing prototype is marked stale, as replacing the set does.
+- Gate: while the current set is recreate and its analysis is not `approved` (pending, or `null`
+  for a pre-1.3 set: re-upload to analyze), `design/confirm`, `blueprint/regenerate`,
+  `blueprint/accept`, recipe and run answer `409 reference_unapproved` (`detail.reference_set_id`).
+  Style sets, builds without a set, and a pre-2.0 build's recipe/run are not gated.
+- The approved analysis is the reference's only structural input downstream: the blueprint
+  planner and the design brief get the image plus the approved items and note (backend
+  architecture.md). A native item is fulfilled by a Blueprint row that names it
+  (`BlueprintRow.reference_item`, api.md 3.2) with the item's type; a static item is drawn as
+  background art and never becomes a component or an issue.
 
 Legacy `POST style-images` remains a style-mode replacement alias with the same validation and
 lifecycle once backend 11.2 lands. Its request and 202 response stay compatible.
@@ -80,8 +142,9 @@ unknown native support. An app exclusion can independently block the request.
 ## Feasibility assessment
 Requirement records come from (1.2): each selected outline question and the blueprint row that
 answers it (structured, no text extraction), the confirmed context's KPI definitions, the Design's
-choices, normalized outline `other` text, image observations and pending comments. Only `other`
-text, image observations and comments go through model extraction. Normalize them into
+choices, normalized outline `other` text, the approved analysis' native items (1.3: replaces
+image observations; static items are not requirements) and pending comments. Only `other`
+text and comments go through model extraction. Normalize them into
 stable requirement records; preserve requested behavior (not just the eventual chart type).
 Match against capabilities, connected schema, metric definitions and compiler/engine coverage.
 Code owns the final classification and checks. A model may extract requirements or suggest a
@@ -142,6 +205,10 @@ Serialize with the existing per-build action lock; no check/use gap when committ
   with code-built alternatives where any exist (for a ratio Kpi: its numerator and denominator as
   separate metrics). Outline `other` text that asks for unsupported behavior is explained in an
   assistant message at once and kept as a requirement. `blueprint/accept` needs `ready`.
+- Reference items (1.3): an approved native item with no ok row that names it with its type
+  after the one row repair becomes an Issue (`needs_clarification`) whose alternatives are only
+  ones code can build and recheck; `drop` on it records the user's choice to keep that item as
+  static art. Code never moves an item between native and static by itself.
 - `blueprint/accept` also assesses before creating any BigQuery view. The Generate shortcut
   cannot bypass this rule. Preflight blocks perform no view writes. After preflight succeeds, use
   a new run-specific candidate view for spec/render validation; later failure deletes only that
@@ -181,6 +248,11 @@ Serialize with the existing per-build action lock; no check/use gap when committ
     replan; blocked comments -> choose -> reload -> reapply; abandon discards only that batch.
 11. Spec/renderer failure after candidate-view creation leaves the previous view/spec/preview
     usable; cleanup never drops an earlier report's view. No new view on a preflight refusal.
+12. (1.3) Recreate upload -> pending analysis; design/confirm, blueprint and recipe/run refuse
+    with `reference_unapproved` until approve; an edit after approval re-gates and marks the
+    Blueprint/prototype stale; a stale revision gets `reference_analysis_conflict`; a native item
+    with a type outside `allowed_types` is an issue that blocks approve; static items never
+    appear as issues or components; style mode is never gated.
 
 ## Sources checked 2026-10-19
 - https://docs.cloud.google.com/data-studio/google-maps-reference : documented native map types

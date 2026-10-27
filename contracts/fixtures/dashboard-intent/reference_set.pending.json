@@ -1,0 +1,152 @@
+{
+  "id": "ref_example",
+  "mode": "recreate",
+  "instructions": "Use net sales for Revenue.",
+  "images": [
+    {
+      "id": "img_example",
+      "name": "dashboard.png",
+      "file": "reference_img_example.png"
+    }
+  ],
+  "summary": "Three KPI cards above a time series and regional sales table.",
+  "analysis": {
+    "revision": 1,
+    "state": "pending",
+    "summary": "4 charts and 1 control can be native Data Studio components; 1 item stays static art.",
+    "items": [
+      {
+        "id": "r1",
+        "label": "Sales overview headline",
+        "kind": "text",
+        "box": {
+          "x": 0.02,
+          "y": 0.02,
+          "w": 0.5,
+          "h": 0.08
+        },
+        "disposition": "static",
+        "type": null,
+        "shows": "",
+        "reason": "Title text is drawn in the background.",
+        "proposed": {
+          "disposition": "static",
+          "type": null
+        }
+      },
+      {
+        "id": "r2",
+        "label": "Revenue KPI cards",
+        "kind": "kpi",
+        "box": {
+          "x": 0.02,
+          "y": 0.12,
+          "w": 0.96,
+          "h": 0.16
+        },
+        "disposition": "native",
+        "type": "scorecard",
+        "shows": "revenue, orders and average order value",
+        "reason": "Scorecards show one measure each.",
+        "proposed": {
+          "disposition": "native",
+          "type": "scorecard"
+        }
+      },
+      {
+        "id": "r3",
+        "label": "Monthly revenue line",
+        "kind": "chart",
+        "box": {
+          "x": 0.02,
+          "y": 0.3,
+          "w": 0.6,
+          "h": 0.4
+        },
+        "disposition": "native",
+        "type": "time_series",
+        "shows": "revenue by month",
+        "reason": "A line over time is a native time series.",
+        "proposed": {
+          "disposition": "native",
+          "type": "time_series"
+        }
+      },
+      {
+        "id": "r4",
+        "label": "Regional sales table",
+        "kind": "chart",
+        "box": {
+          "x": 0.64,
+          "y": 0.3,
+          "w": 0.34,
+          "h": 0.4
+        },
+        "disposition": "native",
+        "type": "table",
+        "shows": "revenue and orders by region",
+        "reason": "Rows and columns map to a native table.",
+        "proposed": {
+          "disposition": "native",
+          "type": "table"
+        }
+      },
+      {
+        "id": "r5",
+        "label": "Region filter",
+        "kind": "control",
+        "box": {
+          "x": 0.02,
+          "y": 0.74,
+          "w": 0.3,
+          "h": 0.08
+        },
+        "disposition": "native",
+        "type": "dropdown",
+        "shows": "region",
+        "reason": "A list of regions is a native control.",
+        "proposed": {
+          "disposition": "native",
+          "type": "dropdown"
+        }
+      },
+      {
+        "id": "r6",
+        "label": "Decorative map illustration",
+        "kind": "image",
+        "box": {
+          "x": 0.4,
+          "y": 0.74,
+          "w": 0.58,
+          "h": 0.24
+        },
+        "disposition": "native",
+        "type": "geo_map",
+        "shows": "regions on a world map",
+        "reason": "A regional map can be a native geo map.",
+        "proposed": {
+          "disposition": "native",
+          "type": "geo_map"
+        }
+      }
+    ],
+    "note": "",
+    "allowed_types": [
+      "scorecard",
+      "time_series",
+      "area",
+      "bar",
+      "pie",
+      "table",
+      "pivot_table",
+      "geo_map",
+      "scatter",
+      "text",
+      "image",
+      "date_range",
+      "dropdown",
+      "fixed_size_list"
+    ],
+    "issues": []
+  }
+}

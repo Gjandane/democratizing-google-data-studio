@@ -599,3 +599,8 @@ context. Task status lives in docs/plan.md, not here.
 
 ## 2026-10-27: Change api.md 3.1 (native planning defaults)
 - What changed: the essentials cite api.md 3.1. Only native_planning default values in stage-settings fixtures changed (output 65,536, 1,200 s); no shape change, no frontend task.
+## 2026-10-28: Change reference analysis gate
+- Class: Contract (program root: api.md 3.2, dashboard-intent.md 1.3, synthetic-data.md 1.3, fixtures), ruled from the backend 25.11 block.
+- What changed: plan.md Phase 17: 17.1 types/guards/mocks (S), 17.2 Reference analysis review (M, Spec docs/reference-ui.md#Reference analysis review), 17.3 live walkthrough (S, `Needs: backend 26.4`). reference-ui.md gains the review section; essentials Contracts table at 3.2/1.3/1.3.
+- Why: the user replaced the backend's observation extraction with a Flash analysis that proposes native vs static per item and a user approval before any blueprint work (user request and cards 2026-10-28).
+- Next: 17.1, then 17.2 against the fixtures; 17.3 once backend 26.4 is done.

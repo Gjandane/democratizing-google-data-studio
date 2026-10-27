@@ -1,6 +1,9 @@
 # Contract: synthetic CSV generation
-Version 1.2 (2026-10-21). Provider: backend. Consumers: frontend, release.
-Change log: 1.2 (2026-10-21, change staged workflow) stage names follow api.md 2.0: writes are
+Version 1.3 (2026-10-28). Provider: backend. Consumers: frontend, release.
+Change log: 1.3 (2026-10-28, change reference analysis gate; shapes unchanged) the schema
+proposal reads the recreate set's ReferenceAnalysis items (dashboard-intent.md 1.3, pending or
+approved) instead of extracted observations; a recreate set with `analysis: null` (pre-1.3)
+answers `422 synthetic_schema_unavailable`. 1.2 (2026-10-21, change staged workflow) stage names follow api.md 2.0: writes are
 allowed at `connect` only, and the flow continues to context/outline instead of the interview;
 shapes unchanged. 1.1 (2026-10-20) durability uses the generation table plus immediate DB backups
 instead of immutable manifests and startup reconciliation; HTTP shapes unchanged. 1.0 (2026-10-19)
@@ -12,7 +15,7 @@ Shared fixtures: contracts/fixtures/synthetic-data/ (request, proposal, dataset,
 job.succeeded, job.failed).
 
 ## Purpose and flow
-Reference screenshot, no CSV -> extract visual observations -> propose a sample-data schema ->
+Reference screenshot, no CSV -> reference analysis (1.3) -> propose a sample-data schema ->
 show schema/assumptions and editable row count/seed -> user chooses Generate sample data ->
 Python generates CSV -> ordinary BigQuery intake/profiling -> context -> outline -> design ->
 blueprint/feasibility -> prototype
@@ -95,8 +98,8 @@ SyntheticDataset = {source_id:string, generation_key:string, synthetic:true, spe
 Automatic proposal requires a recreate-mode reference; style-only observations do not describe
 a dataset. Otherwise return `422 synthetic_schema_unavailable` and offer Recreate mode or manual
 schema entry. Proposal is locally validated, max 20 assumptions of <=240 chars; not a factual reconstruction.
-One worker schema-proposal call, <=12k counted input/6k output, no repair; use existing extracted
-reference observations, not another image upload. No actual generated rows in model context.
+One worker schema-proposal call, <=12k counted input/6k output, no repair; use the reference
+analysis items (label, kind, shows, disposition; 1.3), not another image upload. No actual generated rows in model context.
 The generator API works without a proposal (`proposal_id:null`); for a supplied proposal require
 the current proposal and reference ID, else `409 synthetic_proposal_stale`. User may edit the
 schema; keep original assumptions plus an "edited by user" note. Store the accepted exact spec.

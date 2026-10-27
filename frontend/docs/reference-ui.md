@@ -55,3 +55,39 @@
   Announce status once; visible labels, keyboard path, fixed progress area.
   Visual checks at both existing viewports: no-data, proposal, editing, busy, invalid, success,
   failed with Retry (retry_ready), reload.
+## Reference analysis review
+(change 2026-10-28; ../contracts/dashboard-intent.md 1.3)
+- Where: inside the References panel, under the thumbnail, whenever the current set is recreate
+  and its `analysis` is pending (Connect, Context, Outline, Design, Blueprint, Prototype). It
+  replaces nothing else on the panel; Replace/Remove stay.
+- Question: the analysis `summary` as a 16 px heading followed by "Proceed?" in text-muted, e.g.
+  "2 charts and 1 control can be native Data Studio components; 4 items stay static art. Proceed?".
+- Items: one row per item in `items` order: label (14 px, semibold), kind chip, `shows` and
+  `reason` (13 px, text-muted, clamp 2 lines, full text on focus), a two-option segmented
+  control Native / Static, and a type select (only when Native; options `allowed_types` with
+  readable names, the same names the Blueprint table uses). A row whose choice differs from
+  `proposed` shows an amber "Changed" chip and a "Reset" text button. A row issue (`issues`
+  path `/items/<i>/...`) shows in danger under that row.
+- Image link: hovering or focusing a row draws its `box` as a 2 px primary outline over the
+  thumbnail (fixed thumbnail size; no layout shift); the thumbnail can expand to 480 px wide.
+- Note: labeled textarea "Note for the planner" (0-1000 chars, counter).
+- Actions: primary "Approve and continue" (PUT first when anything changed, then approve with
+  the current revision; disabled while saving, when an issue is open, or while any action
+  runs); no separate save button: unsaved edits survive a refetch and are kept on reload only
+  once saved by Approve (say so under the button: "Your changes are sent when you approve").
+  A 409 reference_analysis_conflict refetches and shows "This analysis changed in another window;
+  review it and approve again."
+- Approved: one line "Approved: N native, K static" with "Edit split" (secondary). Editing an
+  approved analysis first warns inline "Changing the split marks the Blueprint and prototype as
+  out of date" with Continue/Cancel; Continue reopens the rows (state stays approved until the
+  user approves the edited split, which the server returns as pending after the PUT).
+- Gate: while pending, Confirm design, Regenerate/Accept blueprint, Generate recipe and Build are
+  disabled with the reason "Approve the reference analysis first" and a link that scrolls to and
+  focuses the review heading; a 409 reference_unapproved from any action does the same. Style
+  references, builds without a reference and pre-1.3 sets show no review (a pre-1.3 recreate
+  set with `analysis: null` shows "Upload the reference again to analyze it" and the gate).
+- Blueprint: a row with `reference_item` shows "Recreates: <item label>" under its component
+  label (text-muted, 12 px).
+- Busy and states: the analysis run shows the existing reference_extract progress; loading,
+  error (Retry) and empty follow the panel rules above. Visual checks at both viewports:
+  pending, edited (one Changed row, one issue), approved, blocked action.

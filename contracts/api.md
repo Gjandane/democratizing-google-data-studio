@@ -1,5 +1,5 @@
 # Contract: backend HTTP API (REST + SSE)
-Version 3.1 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
+Version 3.2 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
 (recipe ops with ids, stage rules, engine_busy, shared fixtures). 1.1 (2026-10-19) Cloud Run:
 Access (session endpoints, `access_required`), engine status `mode`/agent fields, Agent endpoints,
 errors `access_denied`, `login_on_agent`, `agent_offline`, `agent_timeout`; fixtures
@@ -51,7 +51,15 @@ prices in capabilities, per-call/run costs and `GET /api/builds/{id}/cost`.
 3.1 (2026-10-27, change backend 25.7 block, user card; no shape or route change): native_planning
 defaults `output_tokens` 32,768 -> 65,536 and `timeout_s` 600 -> 1,200 (fixtures stage-settings/
 capabilities, settings and run_calls). Stored Settings keep their values.
-Requirements and feasibility follow contracts/dashboard-intent.md 1.2.
+3.2 (2026-10-28, change reference analysis gate, user request): reference analysis and its
+approval gate per dashboard-intent.md 1.3 (`ReferenceSet.analysis`, `PUT
+reference-images/analysis`, `POST reference-images/analysis/approve`, errors
+`409 reference_unapproved` and `409 reference_analysis_conflict`); `BlueprintRow` adds
+`reference_item`; defaults: reference_interpretation `gemini-3.8-flash` (thinking high, validation
+repairs 1, bound [0,1]), native_planning thinking `medium`. Stored Settings keep their values.
+Fixtures: dashboard-intent/reference_set.json, new reference_set.pending.json, api/blueprint.json,
+api/blueprint.blocked.json, stage-settings/capabilities, settings and run_calls.
+Requirements and feasibility follow contracts/dashboard-intent.md 1.3.
 Provider: backend. Consumers: frontend, release. Base: `http://localhost:8000/api` (the frontend
 uses relative `/api`, proxied by Vite; contracts/conventions.md). JSON bodies, UTF-8. Errors use
 the shape in contracts/conventions.md. Long-running actions return `202 {"run_id": "r_..."}` at
@@ -189,7 +197,9 @@ BlueprintComponent = { type: string /* a catalog type allowed by DSS_ALLOWED_TYP
                sort: {field: string, order: "asc"|"desc"}|null, options: object }
 BlueprintRow = { question_id: string|null /* null for a supporting control */, section_id: string,
                page: int /* 1-based */, component: BlueprintComponent, note: string,
-               status: "ok"|"blocked", issue_ids: string[] }
+               status: "ok"|"blocked", issue_ids: string[],
+               reference_item: string|null /* 3.2: the approved native ReferenceItem id this row
+               recreates (dashboard-intent.md 1.3); null otherwise */ }
 ViewSources = { base: string /* source id */,
                joins: [{source_id: string, on: [{left: string, right: string}]}],
                union: string[] /* source ids stacked under base: missing columns are NULL, plus a
@@ -255,9 +265,13 @@ Run nodes: `reference_extract`, `reference_delete` and `capability_check` (Event
 | `POST /api/builds/{id}/feasibility/reapply` | assessment_id, batch_id | `202 {run_id}`; recover persisted blocked comments |
 | `DELETE /api/builds/{id}/feasibility/pending-comments` | query assessment_id | `200 Assessment`; abandon only this pending batch |
 | `POST /api/builds/{id}/feasibility/decisions` | assessment_id, decisions per dashboard-intent.md | `200 Assessment`; no auto-plan/build |
+| `PUT /api/builds/{id}/reference-images/analysis` | `{revision, items: [{id, disposition, type}], note}` (3.2) | `200 ReferenceSet`; code only; `revision` + 1, `state` pending |
+| `POST /api/builds/{id}/reference-images/analysis/approve` | `{revision}` (3.2) | `200 ReferenceSet`, `state` approved; needs `issues` [] |
 
 New errors: `409 feasibility_blocked` (detail assessment_id, issue_ids), `409 feasibility_stale`
-(reload before choosing again). Reference upload errors use existing 413/422/409 codes. New
+(reload before choosing again); 3.2: `409 reference_unapproved` (detail reference_set_id: a
+recreate analysis must be approved before design/confirm, blueprint, recipe or run),
+`409 reference_analysis_conflict` (detail revision: the current one). Reference upload errors use existing 413/422/409 codes. New
 routes are required; legacy style-images is no longer optional once 11.2 lands. Stage transitions
 additionally obey feasibility, including `blueprint/accept`, recipe and run calls (2.0).
 
@@ -317,7 +331,8 @@ checks file size first and maps any 413 to "Files over 32 MB can't be uploaded t
 into the update, such as `/stages/html_brief/output_tokens`); `409 brief_review_pending`
 (`detail.review_id`; a review waits, so every other mutating build route is refused);
 `409 brief_review_stale`; `409 brief_review_conflict` (`detail.revision`); the stage-limit error
-codes under Stage settings and design briefs.
+codes under Stage settings and design briefs. 3.2: `409 reference_unapproved` (the UI sends the
+user to the reference analysis to approve it); `409 reference_analysis_conflict` (reload the set).
 
 ## Stage settings and design briefs (added in 3.0)
 Every model call belongs to one stage, and each stage has an editable profile in Settings. Stage
@@ -353,7 +368,7 @@ SettingsCapabilities = { models: ModelCapability[],
                defaults: { stages: StageProfiles, fallback_model: string, review_briefs: boolean },
                limits: { model_timeout_s: [int, int], generation_timeout_s: [int, int],
                          transport_retries: [int, int],
-                         validation_repairs: { [generation StageId]: [int, int] } /* interpretation [0,0],
+                         validation_repairs: { [generation StageId]: [int, int] } /* interpretation [0,1] (3.2; was [0,0]),
                            native planning [0,1] (its row repair), brief and HTML [0,5] */,
                          input_margin_pct: [int, int], min_input_tokens: int, min_output_tokens: int } }
 ```
@@ -365,8 +380,8 @@ profile; `fallback_model` `gemini-3.8-flash`; `review_briefs` false):
 |---|---|---|---|---|---|---|
 | interview | context, outline_propose, outline_suggest, outline_other | gemini-3.8-flash | low | each node's existing caps (not a setting) | 30 | existing (not a setting) |
 | routine | every other model node (capability_check, revise, synthetic_schema, consolidate, ux_audit, style_extract, research) | gemini-3.8-flash | low | each node's existing caps | 30 | existing |
-| reference_interpretation | reference_extract | gemini-4-argon | high | 131,072 / 32,768 | 600 per action | 1 / 0 |
-| native_planning | blueprint | gemini-4-argon | high | 131,072 / 65,536 | 1,200 per action | 1 / 1 (row repair; the one view SQL repair stays fixed) |
+| reference_interpretation | reference_extract (the reference analysis, 3.2) | gemini-3.8-flash (3.2; was gemini-4-argon) | high | 131,072 / 32,768 | 600 per action | 1 / 1 (3.2; was 0) |
+| native_planning | blueprint | gemini-4-argon | medium (3.2; was high) | 131,072 / 65,536 | 1,200 per action | 1 / 1 (row repair; the one view SQL repair stays fixed) |
 | html_brief | reference_brief, for pages with and without a reference | gemini-4-argon | high | 131,072 / 32,768 | 600 per page | 2 / 1 |
 | reference_html | reference_html | gemini-3.8-flash | high | 131,072 / 65,536 | 1,200 per page | 2 / 2 |
 | html_no_reference | designer (pages without a reference), plus `layout_fallback: true` | gemini-3.8-flash | high | 131,072 / 65,536 | 1,200 per page | 2 / 2 |

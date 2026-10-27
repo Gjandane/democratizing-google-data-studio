@@ -1,11 +1,11 @@
-<!-- essentials-of: docs/architecture.md sha256:4cf1670af09f (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:cfd0631a632b (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 docs/architecture.md wins.
 
 ## Stack
 - Python 3.12/uv; FastAPI/uvicorn (no reload), SSE; ADK 2.x Workflow/LlmAgent; Gemini models
-  per stage from Settings (api.md 3.1; defaults Argon for analysis and briefs, Flash 3.8 for
-  interview, routine and HTML; architecture.md#Stage settings).
+  per stage from Settings (api.md 3.2; defaults Argon for planning (medium) and briefs, Flash 3.8
+  for reference analysis, interview, routine and HTML; architecture.md#Stage settings).
   SQLite/FTS5; BigQuery/ADC; Playwright Chromium; httpx. Cloud: one instance, local dss-agent.
 
 ## Folder map
@@ -46,37 +46,34 @@ tests/          offline fakes; tests/live/ marked live
   No structural fidelity proposal (docs/change-24.11-fidelity.md) without a new user decision.
   `data-art` art; no new web access, fake charts or slot changes.
   Text fit: architecture.md#Implementation conventions.
-- Feasibility: structured Blueprint rows; extraction only for Other, comments, references;
+- Feasibility: structured Blueprint rows; extraction only for Other and comments;
   images are not data. Other fail-open gap: PRD Later; unsupported still blocks.
-- Replans publish freshness with proof; comments need explicit recovery. Recreate reuses confirmed
-  KPIs/instructions with provenance; conflicts block; Blueprint ready => observations pass accept
-  coverage (architecture.md#Blueprint observation coverage). Definition-only instructions are
-  evidence; code adds determined missing rows (#Recreate observation completion). Recreate
+- Recreate (change 2026-10-28, #Reference analysis and approval gate): Flash analysis -> items
+  native (catalog type) or static art -> user approves/edits (split, type, note) -> only then
+  design/confirm, blueprint, recipe, run (`reference_unapproved`). Approved native items are the
+  only reference requirements; each needs a page-1 row with `reference_item` and its type, else
+  an issue (drop = keep static); publish coverage checks item -> row -> component. Argon blueprint
+  and brief get the image + approved items; static items are background art. Style: no gate.
+  Observation extraction, reconciliation, completion and unlabeled-control offers are retired.
+- Replans publish freshness with proof; comments need explicit recovery. Recreate
   yearly dates reuse a projected base DATE with active full-column proof plus explicit intent
   or a selected native date-axis use of a recognized truncation; missing aliases need explicit
   intent. No guessed SQL simplification. Exact missing-KPI feedback uses the
   existing one repair; unresolved KPIs block (#Recreate date binding normalization).
-  Recreate observations count only on their reference page; code-assigned observed titles drop
-  unenforced period phrases and show the mapped unit (#Recreate page placement and truthful
-  observed titles). An unlabeled field control's control_field issue offers unused instruction
-  control clauses, then catalog-valid fields; never auto-bound (#Unlabeled reference control
-  binding). Model-filled fields/mappings on an originally unlabeled field control cannot
-  bypass those decisions, including after reload (#Unlabeled control binding enforcement).
+  Item rows sit on page 1; code-assigned titles drop unenforced period phrases and show the
+  mapped unit (#Recreate page placement and truthful observed titles).
   Reuse effective allowed types only within an operation; the next operation sees current
   env/.env (#Feasibility recomputation performance preservation).
   Final POC speed acceptance: 250 ms warm (user, 2026-10-27), with first/cold timings
   reported separately. This supersedes earlier 100 ms gates; workloads and correctness stay.
 - Synthetic: opt-in schema/count/seed -> stdlib CSV -> typed BQ intake; protected page-1 footer.
   Footer checks visible paint/text; a transparent stretched container does not fail on its own.
-- Reference extraction diagnostics: code-owned boundary/category + bounded schema paths on the
+- Reference analysis diagnostics: code-owned boundary/category + bounded schema paths on the
   existing span; no raw answers/validator messages/values (#Reference extraction diagnostics).
-  Local rejection marks its call invalid. 25.8 added diagnostics; in live acceptance a rejected
-  recreate extraction answer blocks without rerun (provider-transient: one). Defaults stay 3.1.
-  Style values never reject a recreate extraction: common color/font forms are normalized,
-  then still-invalid fields take the build's prefill preset; style mode still rejects them
-  (#Recreate extraction style repair). After offline repair 25.10, one new live campaign is
-  authorized in 25.11 at 1,200 s planning; deterministic failures stop. Region Selector
-  authorization is checked across assessments.
+  Style values never reject a recreate analysis: common color/font forms are normalized, then
+  still-invalid fields take the build's prefill preset; style mode still rejects them
+  (#Recreate extraction style repair). Live acceptance 26.6 replaces 25.11 (#Reference live
+  acceptance): the harness plays the gate on the agreed split; deterministic failures stop.
 - Tests offline unless marked live. Research <=20 fetches, no retries.
   Durable stage-import, brief-publication/recovery and test-oracle rules live in
   architecture.md#Implementation conventions and #Testing.
@@ -93,11 +90,11 @@ tests/          offline fakes; tests/live/ marked live
 ## Contracts
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
-| ../contracts/api.md | 3.1 | provides | `uv run pytest tests/test_api_contract.py` |
+| ../contracts/api.md | 3.2 | provides | `uv run pytest tests/test_api_contract.py` |
 | ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.3 | provides recipes; consumes events | `uv run pytest tests/test_recipe_contract.py` |
 | ../contracts/conventions.md | 1.4 | consumes | manual: env names, ports, paths and IDs match |
-| ../contracts/dashboard-intent.md | 1.2 | provides | `uv run pytest tests/test_api_contract.py tests/test_feasibility.py` |
-| ../contracts/synthetic-data.md | 1.2 | provides | `uv run pytest tests -k synthetic` |
+| ../contracts/dashboard-intent.md | 1.3 | provides | `uv run pytest tests/test_api_contract.py tests/test_feasibility.py` |
+| ../contracts/synthetic-data.md | 1.3 | provides | `uv run pytest tests -k synthetic` |
 
 ## Dependencies
 | Package | Registry | Version | Why | Verified |

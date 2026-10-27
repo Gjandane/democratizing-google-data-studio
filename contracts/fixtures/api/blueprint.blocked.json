@@ -30,7 +30,8 @@
       },
       "note": "Supporting control for the page.",
       "status": "ok",
-      "issue_ids": []
+      "issue_ids": [],
+      "reference_item": null
     },
     {
       "question_id": "q1",
@@ -53,7 +54,8 @@
       },
       "note": "One of three scorecards for q1.",
       "status": "ok",
-      "issue_ids": []
+      "issue_ids": [],
+      "reference_item": null
     },
     {
       "question_id": "q2",
@@ -78,7 +80,8 @@
       "status": "blocked",
       "issue_ids": [
         "i_aov_ratio"
-      ]
+      ],
+      "reference_item": null
     },
     {
       "question_id": "q3",
@@ -101,7 +104,8 @@
       },
       "note": "Monthly grain set in Data Studio.",
       "status": "ok",
-      "issue_ids": []
+      "issue_ids": [],
+      "reference_item": null
     },
     {
       "question_id": "q4",
@@ -129,7 +133,8 @@
       },
       "note": "",
       "status": "ok",
-      "issue_ids": []
+      "issue_ids": [],
+      "reference_item": null
     },
     {
       "question_id": "q5",
@@ -159,7 +164,8 @@
       },
       "note": "",
       "status": "ok",
-      "issue_ids": []
+      "issue_ids": [],
+      "reference_item": null
     },
     {
       "question_id": "q7",
@@ -189,7 +195,8 @@
       },
       "note": "Uses derived field order_size_band.",
       "status": "ok",
-      "issue_ids": []
+      "issue_ids": [],
+      "reference_item": null
     }
   ],
   "view_table": "my-gcp-project.dss_demo.dash_b_3f9a0c12d4e5_v1_r_00000000000c",

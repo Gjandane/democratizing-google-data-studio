@@ -447,6 +447,8 @@ Final-audit corrections (2026-10-19):
   gates in tasks 24.9/24.11; offline success cannot approve fidelity.
 
 ### Blueprint observation coverage
+- Retired 2026-10-28 (task 26.5): replaced by the item fulfilment in #Reference analysis and
+  approval gate. History only.
 - Change 2026-10-26: model, thinking, token caps and the time bound now come from the stage
   profile (#Stage settings, #Stage execution); numbers below are historical where they differ.
   Droppable-section fits described here still run first, against the profile's input_tokens,
@@ -636,7 +638,99 @@ Final-audit corrections (2026-10-19):
 - Oracle: test with FakeLLM and `DSS_CONSOLIDATE_EVERY=5`: 4 builds -> no write; 5th -> files written, counter reset, every
   file has parseable frontmatter with non-empty `type`.
 
+### Reference analysis and approval gate
+- Change 2026-10-28 (25.11 block, user request and cards; ../contracts/dashboard-intent.md 1.3,
+  api.md 3.2, synthetic-data.md 1.3; the contracts win on shapes, routes and errors). Supersedes
+  the observation half of #Reference interpretation and retires #Blueprint observation coverage,
+  #Recreate definition reconciliation, #Recreate observation completion, #Unlabeled reference
+  control binding and #Unlabeled control binding enforcement (task 26.5 deletes their code).
+- Problem: recreate went image -> Argon observation list -> code reconciliation -> feasibility
+  issues (geo_map drops, legend/slider drops, Region Selector offers) -> Argon planning from
+  the list. Tasks 24.7-25.11 blocked on that list's edge cases (a legend read as a chart, an
+  unlabeled control, a year slider, style patterns), each settled by a harness-only approval
+  the product had no screen for. The planner never saw the image.
+- Objective: one Flash analysis proposes, per visible item, a native catalog component or
+  static art; the user approves or edits the split once; Argon then plans from the image plus
+  the approved items. The approval is the explicit user decision for every static item.
+- Analysis (node `reference_extract`, stage reference_interpretation; default Flash high, one
+  validation repair; #Stage execution): input the ordered image(s) with MIME, mode,
+  instructions (untrusted task data), `allowed_types` (registry narrowed by
+  DSS_ALLOWED_TYPES) with a one-line description of what each type draws or filters and its
+  engine limits (from the capability registry, not the full catalog). Output: the existing
+  StyleProfile (canvas, palette, type, spacing notes; #Recreate extraction style repair still
+  applies to its style fields) plus 1-24 items {label, kind, box, disposition, type, shows,
+  reason}. Code assigns ids r1.. in reading order (top-to-bottom, then left-to-right by box
+  centre), copies the answer into `proposed`, writes `summary` ("N charts and M controls can be
+  native Data Studio components; K items stay static art."; chart = kind chart/kpi, control =
+  kind control; singular forms), and validates: box inside 0..1 with positive size; a native
+  item's type in allowed_types; a control type (date_range, dropdown, fixed_size_list) only on
+  kind control and a control kind only with a control type when native; static -> type null;
+  lengths per contract. A failing answer gets the one repair with the error paths; still
+  failing -> the upload fails with the existing sanitized `llm_unavailable` shape and the old
+  set stays. More than 24 items -> fail asking for a crop. The model never sees data rows,
+  fields or schema; `shows` is display text, never a binding.
+- Style mode: the same stage call returns only the StyleProfile (no items); the set commits
+  `analysis: null`; no gate. Style mode never imports structure (unchanged).
+- Gate (code only, per-build action lock; routes per dashboard-intent.md 1.3): PUT validates
+  the full id set, sets `revision` + 1 and `pending`, fills `issues` (native needs a type in the
+  current allowed_types; the same control rules as the analysis), never changes labels, boxes,
+  `shows` or `proposed`. Approve needs the current revision and no issues; idempotent for the
+  same revision. `allowed_types` and issues are recomputed on every read, so a narrowed
+  DSS_ALLOWED_TYPES turns an approved item's type into an issue: the set reads `pending` with
+  that issue (the gate closes) until the user picks another type or static. An edit to an
+  approved analysis is a reference change (#Replan freshness recovery): assessment stale,
+  Blueprint stale, prototype marked stale. Persist the analysis in references.json with the
+  set; OKF reference.md lists the approved split.
+- Enforcement: `reference_unapproved` on design/confirm, blueprint/regenerate, blueprint/accept,
+  recipe and run while the current set is recreate and its analysis is not approved (incl.
+  `null` on a pre-1.3 set; its old observations are ignored, never migrated). Checked before
+  any model call or view write, before feasibility gates.
+- Requirements: each approved native item is one requirement record {source: reference_item,
+  item id, kind, type, label, shows}, built by code (no model extraction); static items create
+  none. Instructions and the gate note reach planning as untrusted text, not as definition
+  clauses; KPI definitions come from the confirmed Context as for any build.
+- Planning (#Blueprint, native_planning; default Argon medium): recreate context adds the
+  ordered image(s) and a compact `reference` section: approved items (id, kind, label, box,
+  disposition, type, shows), the note and instructions. Static items are listed so the planner
+  knows what is art, never to create rows for them. Each native item needs at least one ok row
+  on page 1 with `reference_item` = its id and component.type = its type; such a row may have
+  `question_id` null (section = the first selected section) and may also answer a question.
+  A row may name at most one item. Code-built rows/fields stay subject to every existing row,
+  field-role, catalog and view check.
+- Fulfilment: after the one existing row repair (which gets the unfulfilled item ids and the
+  expected type), an item without such a row becomes an Issue `needs_clarification` with
+  code-built alternatives only where code can build and recheck one (the item's type on an
+  existing row's fields when the catalog accepts them); `drop` = keep the item static, recorded
+  with provenance. Publish coverage checks the same item -> row -> component chain on the
+  candidate (component type equals the item type, on page 1). Invariant: Blueprint ready =>
+  accept's coverage raises nothing for approved items.
+- Design brief and HTML (#Reference design brief, #Design briefs): the approved-component report
+  replaces observation bindings with the approved items: native items name their slot ids
+  (via rows), static items carry label, kind, box and `shows` as art to draw in the background
+  (globe/map items use the vendored art; no data-bearing marks, fake charts or controls). The
+  brief model still gets the images. Later pages and no-reference pages are unchanged.
+- Synthetic proposal (synthetic-data.md 1.3): reads the items (pending or approved: label,
+  kind, shows, disposition) instead of observations; `analysis: null` recreate -> 422.
+- New version copies the analysis with state/revision; assessment ids reset as today.
+- Edge cases: zero native items (valid; recreate then behaves like a designed page with art
+  only plus the outline's rows); two items of one type (two rows); an item whose type the
+  data can't feed (issue after repair, never a silent drop); re-upload replaces the analysis
+  (revision 1, pending); reload during pending keeps every edit; DELETE references removes it.
+- Budget: analysis one Flash call per upload (stage clock 600 s, 32,768 output), no extra
+  call for the gate; native_planning adds the image (counted with the request; existing
+  overflow stop, no truncation of the items); deterministic recomputation stays within the
+  250 ms warm acceptance.
+- Oracle: fake-model tests for analysis validation/repair/ids/summary, style null, gate routes
+  (dashboard-intent.md oracle 12), narrowed allowed types closing the gate, requirements from
+  native items only, planner request containing image + items and no observation section,
+  fulfilment issue -> drop -> ready, publish coverage on the chain, brief report with static
+  art boxes, legacy pre-1.3 set gated; the electricity offline fixture (approved split: bar
+  bottom, area right, region fixed_size_list native; headline, text, globe, legends static)
+  plans and publishes with the dry engine on fakes. Live: #Reference live acceptance (26.6).
+
 ### Reference interpretation
+- Superseded 2026-10-28 for recreate items by #Reference analysis and approval gate; the image
+  checks, persistence and StyleProfile rules below still apply.
 - Change 2026-10-26: model, thinking, token caps and the time bound now come from the stage
   profile (#Stage settings, #Stage execution); numbers below are historical where they differ.
   It runs on Argon HIGH with no repair (profile bound [0,0]). Droppable-section fits described here still run first, against the profile's input_tokens,
@@ -899,6 +993,8 @@ Final-audit corrections (2026-10-19):
   test_render.py and test_publication.py. Release 2.5 owns the real-model/engine replay.
 
 ### Recreate definition reconciliation
+- Retired 2026-10-28 (task 26.5): instructions now reach planning as untrusted text with the
+  approved items (#Reference analysis and approval gate). History only.
 - Problem: release 2.5 b_b4319fb6113d retained needs_clarification for screenshot metrics even
   with explicit definitions; dropping the observations made the test cease to prove recreation.
 - Inputs: active image observations with reference/image/item provenance, user reference
@@ -942,6 +1038,7 @@ Final-audit corrections (2026-10-19):
   KPIs/schema; reload and version copy preserve valid evidence but not invalid authorization.
 
 ### Recreate observation completion
+- Retired 2026-10-28 (task 26.5): replaced by #Reference analysis and approval gate. History only.
 - Problem (task 24.7 block, change 2026-10-25): the electricity recreate fixture stays blocked
   at 21 issues. Its definition-only instructions become `unknown` requirement rows; `Region
   Selector = region` isn't accepted as an explicit control field; `date grain year using year`
@@ -1001,6 +1098,8 @@ Final-audit corrections (2026-10-19):
   fixtures publish unchanged.
 
 ### Recreate page placement and truthful observed titles
+- Retargeted 2026-10-28: "observations" below now means approved native items (page 1); the
+  truthful-title and unit rules apply to their rows' titles. Observation inputs are gone.
 - Problem (task 24.10 block, change 2026-10-26): run 20261026-045323-8f75b9ce published with
   every observation bound, but the approved urban/rural area chart sat on page 3 while page 1's
   right panel was a country table: coverage proves a binding on any page. Its access scorecard
@@ -1074,6 +1173,8 @@ Final-audit corrections (2026-10-19):
   no-reference fingerprints are unchanged.
 
 ### Unlabeled reference control binding
+- Retired 2026-10-28 (task 26.5): the user types controls at the gate and the planner binds
+  fields (#Reference analysis and approval gate). History only.
 - Problem (25.8 block, change 2026-10-27 binding): run 20261027-173624-405b4862 extracted the
   electricity region checkbox list as control o5 with `label: null` (the image shows no
   title), so `Region Selector = region, chart fixed_size_list` matched nothing and feasibility
@@ -1145,6 +1246,7 @@ Final-audit corrections (2026-10-19):
   fixtures publish unchanged.
 
 ### Unlabeled control binding enforcement
+- Retired 2026-10-28 (task 26.5), with #Unlabeled reference control binding. History only.
 - Problem (25.9 block, change 2026-10-27): capability_check supplied
   `control.dropdown {control_field: region}` for the electricity image's unlabeled control.
   That made its need valid before the 25.8 explicit offer path ran. A proposed mapping can
@@ -1567,6 +1669,18 @@ Final-audit corrections (2026-10-19):
   reconciliation, with its type/field and provenance checked; never identify a control by box,
   item order or assuming that its id is o5. Offline helper tests cover sequential assessments,
   duplicate decision reads, readiness with no authorized binding, and labeled reconciliation.
+- Superseded after the 25.11 block (change 2026-10-28, user request and cards): 25.11 closes as
+  superseded; task 26.6 is the acceptance, on the #Reference analysis and approval gate path at
+  the api.md 3.2 defaults (Flash analysis, native_planning medium). The Region Selector,
+  approved-drop and observation rules above no longer apply. The harness plays the user at the
+  gate: it accepts Flash's proposal except that the yearly bar (bottom) is native `bar`, the
+  urban/rural panel (right) native `area` and the region list (left) native `fixed_size_list`,
+  and the globe and every legend stay static; it identifies those three by kind, type
+  candidates and box region (the user agreed the split by position), PUTs only those changes
+  and approves. Every other native or static choice Flash makes is kept and named at the STOP.
+  The rest of the rules above (fixtures, hashes, evidence, per-case transient retry once,
+  deterministic stops block without rerun, visual STOP) carry over unchanged; earlier task
+  evidence (24.x-25.11) is immutable.
 
 ### Reference thinking comparison
 - Historical (superseded 2026-10-26 by #Stage settings and #Stage execution): the HIGH-first
@@ -1622,7 +1736,8 @@ Final-audit corrections (2026-10-19):
   docs/change-runtime-assumptions-interview.md): every model call is adjustable from app Settings
   per stage, with independent stored profiles, instead of code constants and two global models.
 - Shapes, stage list, defaults, bounds, validation and the legacy migration:
-  ../contracts/api.md 3.0 #Stage settings and design briefs (the contract wins). Settings stay
+  ../contracts/api.md 3.0 #Stage settings and design briefs (the contract wins; 3.2 defaults:
+  reference_interpretation Flash high with 1 validation repair, native_planning thinking medium). Settings stay
   global; no per-build override.
 - Storage: one `stages` JSON value (plus `fallback_model`, `review_briefs`) in the existing SQLite
   settings table; read through SettingsStore like today. The env names keep only their migration
@@ -2089,3 +2204,4 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-27 | Keep native_planning's contract default at 1,200 s; after offline repairs allow one new 25.10 acceptance campaign under the existing stop rules; harness checks binding provenance across assessments | raise the default at the program root; defer live acceptance; rerun a deterministic timeout | user chose keep 1,200 seconds, repair, then one new live attempt; prior 25.9 runs stay immutable and unpublished | change 25.9 repair (user answer) |
 | 2026-10-27 | Final POC deterministic feasibility acceptance is 250 ms warm; retain existing workloads/samples/semantics and report first/cold time separately | another optimization campaign to retain 100 ms; favorable reruns | explicit user concession after full-workload 104-105 ms warm and 1.08 s first-sample evidence; no backend contract fixes 100 ms | final audit 2026-10-27 (user answer) |
 | 2026-10-28 | Recreate reference_extract normalizes common style color/font forms and falls back per field to the build's design-prefill preset, so style values never reject a recreate extraction; style mode still rejects an unrecoverable style value; observations stay strict; offline 25.10 precedes live 25.11 | treat style-pattern rejections as one-rerun transients; repair plus a rerun allowance; preset fallback in style mode too | 25.10 run 2 rejected a whole recreate answer on 8 style-only `pattern` issues; the same inputs extracted cleanly before | change 2026-10-28 (user card) |
+| 2026-10-28 | Recreate references go through a Flash analysis (native catalog component or static art per item) and one user approval gate before design/confirm, blueprint, recipe and run; approved native items are the requirements, static items consented art; Argon blueprint and brief get the image plus the approved items; the observation path (reconciliation, completion, unlabeled-control offers, approved drops) is deleted; native_planning default medium; 25.11 superseded by 26.6 | keep observations with medium planning; gate at design/confirm with field bindings; old path behind a flag | 24.7-25.11 blocked on observation edge cases settled by harness-only approvals; one explicit user decision replaces them; high planning timed out twice at 1,200 s, medium answered in 79 s | change 2026-10-28 (user request and cards; api.md 3.2, dashboard-intent.md 1.3) |

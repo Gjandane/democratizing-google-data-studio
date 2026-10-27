@@ -58,16 +58,17 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
   3.0). Full rules and visual oracle: docs/stage-settings-ui.md.
 
 ## References and feasibility UI
-- Style/recreate and synthetic-data controls, explicit decisions, stale/blocked gates; Studio
-  Light. Full rules and visual oracle: docs/reference-ui.md (both sections).
+- Style/recreate and synthetic-data controls, explicit decisions, stale/blocked gates, the
+  recreate analysis review gate (1.3); Studio Light. Full rules and visual oracle:
+  docs/reference-ui.md (all sections).
 
 ## Contracts
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
-| ../contracts/api.md | 3.1 | consumes | `npm test -- contract` (fixtures/api/ and, from 16.1, fixtures/stage-settings/) |
+| ../contracts/api.md | 3.2 | consumes | `npm test -- contract` (fixtures/api/ and, from 16.1, fixtures/stage-settings/) |
 | ../contracts/conventions.md | 1.4 | consumes | manual: port 5173, `/api` proxy to 8000 |
-| ../contracts/dashboard-intent.md | 1.2 | consumes | `npm test -- contract` |
-| ../contracts/synthetic-data.md | 1.2 | consumes | `npm test -- synthetic` |
+| ../contracts/dashboard-intent.md | 1.3 | consumes | `npm test -- contract` |
+| ../contracts/synthetic-data.md | 1.3 | consumes | `npm test -- synthetic` |
 
 ## Dependencies
 | Package | Registry | Version | Why | Verified |
