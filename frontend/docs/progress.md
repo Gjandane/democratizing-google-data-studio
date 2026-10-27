@@ -574,3 +574,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none beyond the StrictMode line added to AGENTS.md.
 - Left open: P3 Trace Status shows the raw `stage_output_cutoff:` text - src/features/trace/TraceModal.tsx; P3 prices date printed as ISO - src/features/trace/TraceModal.tsx; P3 opened at an unlisted run still fetches its calls - src/features/trace/TraceModal.tsx; P3 mock Trace model is always routine's - src/mocks/api.ts
 - Next: Task 16.6. Start by reading its block (`recall 16.6`) and the live walkthrough gotchas in AGENTS.md.
+
+## 2026-10-27: Task 16.6 Live stage settings and brief review walkthrough
+- Status: done
+- Plan check: off
+- What changed: no source change; live walkthrough of 16.1-16.5 (backend 8000, DSS_ENGINE_DRY_RUN=1, `npm run dev`, headless Chrome over CDP, 1280x800); screenshots/16.6-{settings,review,brief,trace}-1280.png.
+- Checks: `npm run typecheck` PASS; `npm test` PASS (24 files/520 tests, run twice). Live JSON through the app's exact guards: isSettings, isSettingsCapabilities, isDesignPages (review pending and after), isBuildCost, isTrace, isRunCalls (3 prototype runs) all ok; no route or field differs from 3.0. Settings UI: html_brief output 32768->30000 (PUT sent only that field, "Up to $0.59"->"$0.56"), kept after reload with Edited, Reset + Save back to 32768: yes. Brief review on via checkbox + Save; build b_18fb98fbb9a8 (sample CSV, outline cut to 2 sections, per_section) -> review Page 1 of 2, Total Revenue treatment edited (PUT 200, revision 2, origin edited), approve (revision+sha256, 202) -> Page 2 of 2 -> approve -> 2-page prototype: yes. Both briefs open (p1 "Edited · ae682654", p2 "Generated · 30c44cc6"); brief_p1.md downloaded (4905 B, has the edit): yes. Trace "at least $0.15", "Prices checked 2026-10-26", run costs, 3 prototype runs expanded: yes. Review off via checkbox; settings JSON identical to before the walkthrough: yes.
+- Decisions: 2 pages by unticking outline sections 3-4 before Design (per_section = one page per section). AGENTS.md: 1 gotcha (headless focus emulation).
+- Digest: Live API 3.0 matches the frontend guards (settings, capabilities, design-pages, briefs/review save+approve, traces calls, cost); no code change. Evidence: screenshots/16.6-{settings,review,brief,trace}-1280.png.
+- Tried and failed: first treatment edit never saved: headless page had no focus, so blur never fired (driver issue, not the app).
+- Gotchas: browser pane opened at 338x236, too small to drive; headless Chrome used instead.
+- Left open: P3 brief panel drops inline HTML in brief Markdown (`<i data-icon=...>` reads "containing on the left"); showing it as text also meets spec - src/features/workspace/briefs/BriefMarkdown.tsx; P3 review screenshot shows the panel top, not the edited treatment or footer - screenshots/16.6-review-1280.png; backend: brief text carries raw HTML.
+- Next: none in frontend's plan (36/36); final audit by the architect.
