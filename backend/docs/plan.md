@@ -865,7 +865,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: a style issue arrives together with any non-style issue -> reject the whole answer exactly as today (both modes); repair never hides an observation defect.
   - Done when: `uv run pytest tests/test_references.py tests/test_stage_execution.py` covers every oracle case in the Spec (each normalization form in both modes; recreate preset fallback for named colors, bad font, wrong types, missing style, short palette, unknown style keys and the 8-path run-2 shape, with identical observations; style-mode unrecoverable rejection unchanged; mixed issues rejected; one generation, StageCall ok after repair, sanitized `style_repairs` with no values, old reference retained on rejection, lock release), then `uv run pytest` passes; report real results and runtimes.
   - Review focus: style-only scope; no relaxed observation validation, schema or prompt change; preset choice matches design prefill; diagnostics carry paths/actions only; StageCall outcome flips to ok only on acceptance.
-- [ ] 25.11 Live stage defaults and reference fidelity approval
+- [!] 25.11 Live stage defaults and reference fidelity approval
   - Goal: (moved from 24.11, 25.7, 25.8, the blocked 25.9 and the blocked 25.10 live campaign, changes 2026-10-27/28) with default stage Settings (api.md 3.1), demonstrate the electricity reference with supported native charts plus the style, no-reference, later-page, revision and review paths on real models, then the user's visual acceptance.
   - Spec: docs/architecture.md#Reference live acceptance
   - Files: tests/live/test_reference_design.py, tests/data/reference_design/README.md, docs/audit-final-2026-10-27.md, docs/progress.md, .blueprint/qa/task-25.11/

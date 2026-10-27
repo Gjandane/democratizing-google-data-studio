@@ -2234,3 +2234,18 @@ assert min(timings) < .1
 - Gotchas: none new; AGENTS unchanged.
 - Left open: P3 flip doesn't re-check the repaired reply against the provider schema (lax non-style coercion + style repair reports ok) - reference_extract.py; P3 preset tests use preset_profile itself, executive only - tests/test_references.py; P3 valid padded values not trimmed - style_extract.py.
 - Next: Task 25.11 (live campaign + visual STOP).
+
+## 2026-10-28: Task 25.11 Live stage defaults and reference fidelity approval
+- Status: blocked
+- Plan check: off
+- What changed: no runtime code. Live harness edits (evidence to task-25.11, `style_repairs` in runs.json, native_planning override) set aside by `restore 25.11` (git stash). Evidence: .blueprint/qa/task-25.11/README.md.
+- Checks: offline Done-when 368 passed (443.89 s). Live run 1 (contract defaults): FAIL, blueprint native_planning `stage_timeout` 1,199.5 s, Argon high, no answer on a 6,356-token request; extraction ok with no style repairs; region offer accepted on o5. Live run 2 (user card: native_planning thinking medium): blueprint 78.9 s, feasibility ready; stopped by the user during prototype. Earlier evidence 10,909 files unchanged.
+- Decisions: run 2's leftover BigQuery source/views of build b_dfa1e4db5e0e deleted by exact name.
+- Tried and failed: Argon high thinking for native_planning at 1,200 s (also 25.9 run 2).
+- Gotchas: native_planning at medium thinking answered in 79 s where high timed out at 1,200 s on the same ~5k-token input.
+- Left open: none
+- Change request: (user, 2026-10-28) send the reference image itself to Argon, not extracted observations. New Flash 3.8 node analyzes the image and reports which charts/filters/controls Data Studio can recreate natively (e.g. bar bottom, area right, region filter) and what stays static image (text, headline, globe); a human approval step ("2 charts and 1 filter can be native; text stays static. Proceed?") lets the user agree or change the split; then Argon gets the image plus the approved feasibility report to generate the design prompt.
+- Blocked because: (b) needs a change to architecture and plan (new node, user gate, Argon input).
+- Question: How should the reference path be redesigned around image analysis + human approval + image-to-Argon, and what becomes of 25.11's acceptance?
+- Options: A replan via architect (new tasks replacing observation-driven recreate) / B keep current path with native_planning medium as a default change / Recommend: A, the user's explicit direction.
+- Next: architect plans the change, then a new live acceptance task.
