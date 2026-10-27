@@ -2098,3 +2098,15 @@ context. Task status lives in docs/plan.md, not here.
 - Checks: `blueprint.py stamp`, `lint` 0 errors (16 existing warnings); `reopen 25.8`. Independent blueprint-reviewer: 5 P2 (label-match semantics vs decisions, clause revalidation, one clause/one observation, id collision, issue_scope hiding the issue) + 5 P3 (retry wording, stale 25.8 live ruling, positional o5 naming, needs_data wording, undefined default type/label), all applied. No pytest or provider call this session.
 - Left open: prior P2 scorecard decimal clipping and style page-2 axis overlap stay 25.9 acceptance concerns. The diagnostics and 3.0 harness edits remain uncommitted in the working tree for 25.8 to commit unchanged.
 - Next: 25.8 in a new session (opus high).
+
+## 2026-10-27: Task 25.8 Extraction diagnostics and unlabeled control binding offers
+- Status: done
+- Plan check: off
+- What changed: Committed the reviewed diagnostics unchanged (ZIP byte-match). requirements.py: unlabeled recreate field control's control_field issue offers unused instruction control clauses, then catalog fields; clause revalidation; decide guards; feasibility.md `## Decisions`. Fixture tests/data/recreate_unlabeled_control.json (generator .blueprint/qa/task-25.8/make_unlabeled_fixture.py).
+- Checks: Done-when set 1: 469 passed/188.81s (then test_feasibility 274 passed after one edge test); set 2: 242 passed/295.95s; `uv run pytest` 2285 passed/1008.71s.
+- Decisions: Field offers admitted greedily in issue order while all fit MAX_ISSUES; instruction offers excluded from the issue_scope count; binding offers never truncated. decide also requires the alternative visible in the stored assessment. observation_meaning gives an unlabeled bound control its control_field as dimension (completion/planner). Fixture context/outline/design/draft reuse the 24.10 fixture (run kept none); repair reply = page-1 rows. Started with `start --force` per task If. AGENTS.md Known gotchas gains the `choose` shadowing line.
+- Digest: req._offers(r,slot,snap,checker,ledger) -> internal {id,label,needs,clause}; decision record adds `observation` (item id); _clause_current(r,clause,needs,snap,ledger); feasibility.md `## Decisions` lines `<oN> bound by clause <Label>` / `bound to field <f>`.
+- Tried and failed: none.
+- Gotchas: test_feasibility already defines `choose(client,bid,...)`; the new pure helper is `decide_on`.
+- Left open: P3 one clause can bind two observations after a spec-mismatch revalidation cycle - requirements.py:_clause_current; P3 timing covers one clause decision, not 16 - tests/test_feasibility.py.
+- Next: Task 25.9 Live stage defaults and reference fidelity approval.

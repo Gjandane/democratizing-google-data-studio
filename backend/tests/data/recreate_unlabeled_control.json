@@ -1,0 +1,1690 @@
+{
+ "provenance": {
+  "purpose": "Task 25.8 offline oracle: an unlabeled region control (o5, label null) gets code-built binding offers.",
+  "run": ".blueprint/qa/task-25.8/recreate/20261027-173624-405b4862",
+  "sha256": {
+   "build/references.json": "dd15c022c44cfe18a8341a475f5a2a623242e80ce3a1a04a63241a673e0e414f",
+   "build/requirements.json": "4ad9d3ee96a8d324b92ad1751fef7cf8a94c83f3f1152ba1990ff1474097471c",
+   "assessment-before-blueprint.json": "df81d40f15e504253faa79b9baa283919765a42b9bd7713632ddaedd04ed0fd4"
+  },
+  "generator": ".blueprint/qa/task-25.8/make_unlabeled_fixture.py",
+  "adjustments": [
+   "references.json items, requirements.json rows and the o5 issue of assessment-before-blueprint.json are copied unchanged; processed-source hashes, decisions and the assessment are recomputed by the test through the real gate.",
+   "The run blocked before the Blueprint and kept no Context/Outline/Design artifacts or planner replies: context, outline, design, sources (aggregate profile, no values) and the planner draft come from the 24.10 fixture of the same electricity sample (its draft with its compliant page-1 rows); reconstructed, not captured.",
+   "instructions are the current live INSTRUCTIONS, identical to the run's."
+  ]
+ },
+ "case": {
+  "context": {
+   "revision": 1,
+   "title": "Global Electricity Access Executive Monitor",
+   "goal": "Track and evaluate global and regional access to electricity between 2000 and 2019, contrasting urban and rural electrification and monitoring unserved populations.",
+   "audience": "Global development analysts, policy makers, and executive leadership",
+   "datasets": [
+    {
+     "source_id": "s_fixture_1",
+     "summary": "Country-level annual electricity access metrics across 20 countries from 2000 to 2019, including total access percentage, urban access percentage, rural access percentage, and population without electricity access."
+    }
+   ],
+   "derived_fields": [],
+   "kpis": [
+    {
+     "id": "avg_access_pct",
+     "name": "Average Electricity Access Rate",
+     "description": "Mean percentage of population with access to electricity across reported countries and years.",
+     "unit": "%",
+     "measure": {
+      "field": "access_pct",
+      "agg": "avg"
+     },
+     "ratio": null
+    },
+    {
+     "id": "avg_urban_pct",
+     "name": "Average Urban Electricity Access",
+     "description": "Mean percentage of urban population with electricity access across selected regions.",
+     "unit": "%",
+     "measure": {
+      "field": "urban_pct",
+      "agg": "avg"
+     },
+     "ratio": null
+    },
+    {
+     "id": "avg_rural_pct",
+     "name": "Average Rural Electricity Access",
+     "description": "Mean percentage of rural population with electricity access across selected regions.",
+     "unit": "%",
+     "measure": {
+      "field": "rural_pct",
+      "agg": "avg"
+     },
+     "ratio": null
+    },
+    {
+     "id": "total_people_without_access",
+     "name": "Total Population Without Access",
+     "description": "Total count of people lacking access to electricity across the selected countries and period.",
+     "unit": "people",
+     "measure": {
+      "field": "people_without_access",
+      "agg": "sum"
+     },
+     "ratio": null
+    }
+   ],
+   "thresholds": [
+    {
+     "id": "universal_access_target",
+     "name": "Universal Access Benchmark",
+     "field": "access_pct",
+     "operator": ">=",
+     "value": 90.0,
+     "unit": "%",
+     "description": "Indicates near-universal access to electricity at or above 90%."
+    },
+    {
+     "id": "critical_access_shortfall",
+     "name": "Critical Access Deficit",
+     "field": "access_pct",
+     "operator": "<",
+     "value": 50.0,
+     "unit": "%",
+     "description": "Highlights regions or countries where less than half the population has electricity access."
+    }
+   ],
+   "glossary": [
+    {
+     "term": "access_pct",
+     "definition": "The proportion of the total national population with electricity connectivity."
+    },
+    {
+     "term": "urban_pct",
+     "definition": "The proportion of the urban population having access to electricity."
+    },
+    {
+     "term": "rural_pct",
+     "definition": "The proportion of the rural population having access to electricity."
+    },
+    {
+     "term": "people_without_access",
+     "definition": "The absolute count of individuals residing in areas without grid or reliable electricity access."
+    }
+   ],
+   "issues": []
+  },
+  "outline": {
+   "revision": 2,
+   "sections": [
+    {
+     "id": "s1",
+     "title": "Executive Electrification Summary",
+     "purpose": "Provide leadership with high-level outcome metrics, headline electrification rates, and the global deficit scale across tracked regions.",
+     "questions": [
+      {
+       "id": "q1",
+       "text": "What is the global average electricity access rate across monitored years and how does it benchmark against targets?",
+       "rationale": "Establishes baseline performance against the universal access benchmark for senior stakeholders.",
+       "recommended": true,
+       "selected": true,
+       "kpi_refs": [
+        "avg_access_pct"
+       ],
+       "origin": "proposed"
+      },
+      {
+       "id": "q2",
+       "text": "How many total individuals currently lack access to electricity across all monitored countries?",
+       "rationale": "Quantifies the aggregate unserved population to gauge total humanitarian and infrastructure scale.",
+       "recommended": true,
+       "selected": true,
+       "kpi_refs": [
+        "total_people_without_access"
+       ],
+       "origin": "proposed"
+      },
+      {
+       "id": "q3",
+       "text": "How do overall electricity access rates vary by geographic region and country?",
+       "rationale": "Identifies high-performing territories versus regions facing severe deficits.",
+       "recommended": true,
+       "selected": true,
+       "kpi_refs": [
+        "avg_access_pct"
+       ],
+       "origin": "proposed"
+      }
+     ]
+    },
+    {
+     "id": "s2",
+     "title": "Electrification Trajectory & National Benchmarks",
+     "purpose": "Analyze multi-year historical trends from 2000 to 2019 to evaluate progress and speed of expansion by country.",
+     "questions": [
+      {
+       "id": "q4",
+       "text": "How has average electricity access evolved year over year from 2000 to 2019?",
+       "rationale": "Highlights macro progress trajectories and inflection periods in worldwide grid expansion.",
+       "recommended": true,
+       "selected": true,
+       "kpi_refs": [
+        "avg_access_pct"
+       ],
+       "origin": "proposed"
+      },
+      {
+       "id": "q5",
+       "text": "Which countries have demonstrated the steepest multi-year improvements in electricity connectivity?",
+       "rationale": "Showcases leading national transformation success stories such as Morocco or the Philippines.",
+       "recommended": true,
+       "selected": true,
+       "kpi_refs": [
+        "avg_access_pct"
+       ],
+       "origin": "proposed"
+      },
+      {
+       "id": "q6",
+       "text": "How has the total population without access shifted over time as national access rates climbed?",
+       "rationale": "Evaluates whether population growth has offset gains in electrification rates.",
+       "recommended": false,
+       "selected": false,
+       "kpi_refs": [
+        "total_people_without_access",
+        "avg_access_pct"
+       ],
+       "origin": "proposed"
+      }
+     ]
+    },
+    {
+     "id": "s3",
+     "title": "Urban vs Rural Disparity & Critical Gaps",
+     "purpose": "Investigate structural divides between urban and rural populations to direct targeted infrastructure investments.",
+     "questions": [
+      {
+       "id": "q7",
+       "text": "What is the gap between urban electricity access and rural electricity access across regions?",
+       "rationale": "Pinpoints systemic electrification disparities between urbanized centers and rural communities.",
+       "recommended": true,
+       "selected": true,
+       "kpi_refs": [
+        "avg_urban_pct",
+        "avg_rural_pct"
+       ],
+       "origin": "proposed"
+      },
+      {
+       "id": "q8",
+       "text": "Which regions suffer from critical access shortfalls where rural access remains beneath 50%?",
+       "rationale": "Identifies urgent priority zones needing decentralized or off-grid energy interventions.",
+       "recommended": true,
+       "selected": true,
+       "kpi_refs": [
+        "avg_rural_pct"
+       ],
+       "origin": "proposed"
+      },
+      {
+       "id": "q9",
+       "text": "Where is the largest concentration of people without electricity access located geographically?",
+       "rationale": "Focuses policy resources and capital deployment where deficit volume is most severe.",
+       "recommended": true,
+       "selected": true,
+       "kpi_refs": [
+        "total_people_without_access"
+       ],
+       "origin": "proposed"
+      }
+     ]
+    }
+   ]
+  },
+  "design": {
+   "revision": 2,
+   "preset_id": "studio_light",
+   "background": "#EEF3F8",
+   "surface": "#FFFFFF",
+   "text": "#152B42",
+   "accent": "#2E5BFF",
+   "palette": [
+    "#0E2356",
+    "#2E5BFF",
+    "#5A8DEE",
+    "#97B6F3",
+    "#C2D6FC",
+    "#E2EDFD"
+   ],
+   "font_family": "Arial",
+   "page_structure": "per_section",
+   "density": "comfortable",
+   "title": "Global Electricity Access Executive Monitor",
+   "subtitle": null,
+   "source": "reference",
+   "issues": []
+  },
+  "sources": [
+   {
+    "id": "s_fixture_1",
+    "kind": "synthetic",
+    "name": "Synthetic sample data",
+    "bq_table": "example-project.fixture.source_1",
+    "row_count": 2000,
+    "columns": [
+     {
+      "name": "country",
+      "type": "string",
+      "bq_type": "STRING",
+      "mode": "NULLABLE",
+      "null_pct": 0.0,
+      "distinct_count": 20,
+      "date_like": false,
+      "min": null,
+      "max": null,
+      "values_complete": true
+     },
+     {
+      "name": "region",
+      "type": "string",
+      "bq_type": "STRING",
+      "mode": "NULLABLE",
+      "null_pct": 0.0,
+      "distinct_count": 6,
+      "date_like": false,
+      "min": null,
+      "max": null,
+      "values_complete": true
+     },
+     {
+      "name": "year",
+      "type": "date",
+      "bq_type": "DATE",
+      "mode": "NULLABLE",
+      "null_pct": 0.0,
+      "distinct_count": 20,
+      "date_like": false,
+      "min": "2000-01-01",
+      "max": "2019-01-01",
+      "values_complete": true,
+      "bucket_start": "year"
+     },
+     {
+      "name": "access_pct",
+      "type": "number",
+      "bq_type": "NUMERIC",
+      "mode": "NULLABLE",
+      "null_pct": 0.0,
+      "distinct_count": 805,
+      "date_like": false,
+      "min": "10",
+      "max": "100",
+      "values_complete": false
+     },
+     {
+      "name": "urban_pct",
+      "type": "number",
+      "bq_type": "NUMERIC",
+      "mode": "NULLABLE",
+      "null_pct": 0.0,
+      "distinct_count": 582,
+      "date_like": false,
+      "min": "40",
+      "max": "100",
+      "values_complete": false
+     },
+     {
+      "name": "rural_pct",
+      "type": "number",
+      "bq_type": "NUMERIC",
+      "mode": "NULLABLE",
+      "null_pct": 0.0,
+      "distinct_count": 795,
+      "date_like": false,
+      "min": "5",
+      "max": "95",
+      "values_complete": false
+     },
+     {
+      "name": "people_without_access",
+      "type": "number",
+      "bq_type": "INTEGER",
+      "mode": "NULLABLE",
+      "null_pct": 0.0,
+      "distinct_count": 1998,
+      "date_like": false,
+      "min": "114022",
+      "max": "19974544",
+      "values_complete": false
+     }
+    ]
+   }
+  ],
+  "instructions": "Region Selector = region, chart fixed_size_list. Region = region. Country = country. Access to electricity = AVG(access_pct), unit %, date grain year using year. have access to electricity = AVG(access_pct), unit %, date grain year using year. People without access to electricity = SUM(people_without_access), date grain year using year. Philippines = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Morocco = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Fiji = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Belize = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Urban = AVG(urban_pct), unit %, date grain year using year. Rural = AVG(rural_pct), unit %, date grain year using year.",
+  "reference": {
+   "id": "ref_23acb02ee056",
+   "image_id": "img_e72cc9ba8b3f"
+  },
+  "items": [
+   {
+    "kind": "decoration",
+    "label": "Access to electricity has improved around the world in the last 20 years",
+    "box": {
+     "x": 0.04,
+     "y": 0.024,
+     "w": 0.255,
+     "h": 0.135
+    },
+    "chart_candidate": "text",
+    "metric_label": null,
+    "unit": null,
+    "aggregation": null,
+    "date_grain": null,
+    "confidence": "high",
+    "id": "o1"
+   },
+   {
+    "kind": "chart",
+    "label": "Location",
+    "box": {
+     "x": 0.755,
+     "y": 0.032,
+     "w": 0.215,
+     "h": 0.08
+    },
+    "chart_candidate": "bar",
+    "metric_label": null,
+    "unit": "%",
+    "aggregation": null,
+    "date_grain": null,
+    "confidence": "high",
+    "id": "o2"
+   },
+   {
+    "kind": "chart",
+    "label": "Population with access to electricity",
+    "box": {
+     "x": 0.285,
+     "y": 0.1,
+     "w": 0.405,
+     "h": 0.6
+    },
+    "chart_candidate": "geo_map",
+    "metric_label": "Population with access to electricity",
+    "unit": "%",
+    "aggregation": null,
+    "date_grain": "year",
+    "confidence": "high",
+    "id": "o3"
+   },
+   {
+    "kind": "chart",
+    "label": "Philippines",
+    "box": {
+     "x": 0.73,
+     "y": 0.132,
+     "w": 0.24,
+     "h": 0.188
+    },
+    "chart_candidate": "time_series",
+    "metric_label": null,
+    "unit": "%",
+    "aggregation": null,
+    "date_grain": "year",
+    "confidence": "high",
+    "id": "o4"
+   },
+   {
+    "kind": "control",
+    "label": null,
+    "box": {
+     "x": 0.046,
+     "y": 0.202,
+     "w": 0.113,
+     "h": 0.216
+    },
+    "chart_candidate": "dropdown",
+    "metric_label": null,
+    "unit": null,
+    "aggregation": null,
+    "date_grain": null,
+    "confidence": "high",
+    "id": "o5"
+   },
+   {
+    "kind": "chart",
+    "label": "Morocco",
+    "box": {
+     "x": 0.73,
+     "y": 0.324,
+     "w": 0.24,
+     "h": 0.188
+    },
+    "chart_candidate": "time_series",
+    "metric_label": null,
+    "unit": "%",
+    "aggregation": null,
+    "date_grain": "year",
+    "confidence": "high",
+    "id": "o6"
+   },
+   {
+    "kind": "chart",
+    "label": "have access to electricity worldwide in 2011",
+    "box": {
+     "x": 0.042,
+     "y": 0.464,
+     "w": 0.205,
+     "h": 0.105
+    },
+    "chart_candidate": "scorecard",
+    "metric_label": "have access to electricity",
+    "unit": "%",
+    "aggregation": null,
+    "date_grain": "year",
+    "confidence": "high",
+    "id": "o7"
+   },
+   {
+    "kind": "chart",
+    "label": "Fiji",
+    "box": {
+     "x": 0.73,
+     "y": 0.516,
+     "w": 0.24,
+     "h": 0.188
+    },
+    "chart_candidate": "time_series",
+    "metric_label": null,
+    "unit": "%",
+    "aggregation": null,
+    "date_grain": "year",
+    "confidence": "high",
+    "id": "o8"
+   },
+   {
+    "kind": "chart",
+    "label": "People without access to electricity",
+    "box": {
+     "x": 0.045,
+     "y": 0.696,
+     "w": 0.642,
+     "h": 0.16
+    },
+    "chart_candidate": "bar",
+    "metric_label": "People without access to electricity",
+    "unit": null,
+    "aggregation": null,
+    "date_grain": "year",
+    "confidence": "high",
+    "id": "o9"
+   },
+   {
+    "kind": "chart",
+    "label": "Belize",
+    "box": {
+     "x": 0.73,
+     "y": 0.706,
+     "w": 0.245,
+     "h": 0.225
+    },
+    "chart_candidate": "time_series",
+    "metric_label": null,
+    "unit": "%",
+    "aggregation": null,
+    "date_grain": "year",
+    "confidence": "high",
+    "id": "o10"
+   },
+   {
+    "kind": "control",
+    "label": null,
+    "box": {
+     "x": 0.215,
+     "y": 0.848,
+     "w": 0.46,
+     "h": 0.042
+    },
+    "chart_candidate": "date_range",
+    "metric_label": null,
+    "unit": null,
+    "aggregation": null,
+    "date_grain": "year",
+    "confidence": "high",
+    "id": "o11"
+   }
+  ],
+  "requirements": {
+   "requirements": [
+    {
+     "id": "req_2d3e17825d45b4ab1b46ec8c",
+     "source": {
+      "id": "ref_23acb02ee056:o2",
+      "kind": "image",
+      "text": "{\"kind\": \"chart\", \"label\": \"Location\", \"box\": {\"x\": 0.755, \"y\": 0.032, \"w\": 0.215, \"h\": 0.08}, \"chart_candidate\": \"bar\", \"metric_label\": null, \"unit\": \"%\", \"aggregation\": null, \"date_grain\": null, \"confidence\": \"high\", \"id\": \"o2\"}",
+      "reference_id": "ref_23acb02ee056",
+      "image_id": "img_e72cc9ba8b3f",
+      "item_id": "o2",
+      "component_id": null,
+      "batch_id": null
+     },
+     "text": "{\"kind\": \"chart\", \"label\": \"Location\", \"box\": {\"x\": 0.755, \"y\": 0.032, \"w\": 0.215, \"h\": 0.08}, \"chart_candidate\": \"bar\", \"metric_label\": null, \"unit\": \"%\", \"aggregation\": null, \"date_grain\": null, \"confidence\": \"high\", \"id\": \"o2\"}",
+     "needs": [
+      {
+       "capability": "chart.bar",
+       "value": null,
+       "fields": {}
+      },
+      {
+       "capability": "argument.title",
+       "value": null,
+       "fields": {}
+      }
+     ],
+     "mappings": [],
+     "component_ids": [],
+     "resolution": "unresolved",
+     "clarifications": [],
+     "properties": [
+      {
+       "path": "label",
+       "value": "Location"
+      }
+     ],
+     "superseded": {},
+     "mapping_origins": {},
+     "mapping_conflicts": {}
+    },
+    {
+     "id": "req_8fc26c83e56a89e5d665c4f2",
+     "source": {
+      "id": "ref_23acb02ee056:o3",
+      "kind": "image",
+      "text": "{\"kind\": \"chart\", \"label\": \"Population with access to electricity\", \"box\": {\"x\": 0.285, \"y\": 0.1, \"w\": 0.405, \"h\": 0.6}, \"chart_candidate\": \"geo_map\", \"metric_label\": \"Population with access to electricity\", \"unit\": \"%\", \"aggregation\": null, \"date_grain\": \"year\", \"confidence\": \"high\", \"id\": \"o3\"}",
+      "reference_id": "ref_23acb02ee056",
+      "image_id": "img_e72cc9ba8b3f",
+      "item_id": "o3",
+      "component_id": null,
+      "batch_id": null
+     },
+     "text": "{\"kind\": \"chart\", \"label\": \"Population with access to electricity\", \"box\": {\"x\": 0.285, \"y\": 0.1, \"w\": 0.405, \"h\": 0.6}, \"chart_candidate\": \"geo_map\", \"metric_label\": \"Population with access to electricity\", \"unit\": \"%\", \"aggregation\": null, \"date_grain\": \"year\", \"confidence\": \"high\", \"id\": \"o3\"}",
+     "needs": [
+      {
+       "capability": "chart.geo_map",
+       "value": null,
+       "fields": {}
+      },
+      {
+       "capability": "argument.title",
+       "value": null,
+       "fields": {}
+      }
+     ],
+     "mappings": [
+      {
+       "label": "Population with access to electricity",
+       "field": null,
+       "unit": "%",
+       "aggregation": null,
+       "date_grain": "year"
+      }
+     ],
+     "component_ids": [],
+     "resolution": "unresolved",
+     "clarifications": [],
+     "properties": [
+      {
+       "path": "label",
+       "value": "Population with access to electricity"
+      }
+     ],
+     "superseded": {},
+     "mapping_origins": {
+      "requested:0": "{\"label\":\"Population with access to electricity\",\"field\":null,\"unit\":\"%\",\"aggregation\":null,\"date_grain\":\"year\"}"
+     },
+     "mapping_conflicts": {
+      "0": "Define Population with access to electricity: confirm a matching Context KPI or add a reference instruction such as Population with access to electricity = SUM(<field>)"
+     }
+    },
+    {
+     "id": "req_447ccb733a0a9139c5ea960e",
+     "source": {
+      "id": "ref_23acb02ee056:o4",
+      "kind": "image",
+      "text": "{\"kind\": \"chart\", \"label\": \"Philippines\", \"box\": {\"x\": 0.73, \"y\": 0.132, \"w\": 0.24, \"h\": 0.188}, \"chart_candidate\": \"time_series\", \"metric_label\": null, \"unit\": \"%\", \"aggregation\": null, \"date_grain\": \"year\", \"confidence\": \"high\", \"id\": \"o4\"}",
+      "reference_id": "ref_23acb02ee056",
+      "image_id": "img_e72cc9ba8b3f",
+      "item_id": "o4",
+      "component_id": null,
+      "batch_id": null
+     },
+     "text": "{\"kind\": \"chart\", \"label\": \"Philippines\", \"box\": {\"x\": 0.73, \"y\": 0.132, \"w\": 0.24, \"h\": 0.188}, \"chart_candidate\": \"time_series\", \"metric_label\": null, \"unit\": \"%\", \"aggregation\": null, \"date_grain\": \"year\", \"confidence\": \"high\", \"id\": \"o4\"}",
+     "needs": [
+      {
+       "capability": "chart.area",
+       "value": null,
+       "fields": {
+        "date_field": "year"
+       }
+      },
+      {
+       "capability": "argument.title",
+       "value": null,
+       "fields": {}
+      }
+     ],
+     "mappings": [
+      {
+       "label": "Philippines",
+       "field": "urban_pct",
+       "unit": "%",
+       "aggregation": "avg",
+       "date_grain": "year"
+      },
+      {
+       "label": "Philippines",
+       "field": "rural_pct",
+       "unit": "%",
+       "aggregation": "avg",
+       "date_grain": "year"
+      }
+     ],
+     "component_ids": [],
+     "resolution": "unresolved",
+     "clarifications": [
+      {
+       "id": "ref_23acb02ee056:instructions",
+       "kind": "reference",
+       "text": "Region Selector = region, chart fixed_size_list. Region = region. Country = country. Access to electricity = AVG(access_pct), unit %, date grain year using year. have access to electricity = AVG(access_pct), unit %, date grain year using year. People without access to electricity = SUM(people_without_access), date grain year using year. Philippines = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Morocco = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Fiji = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Belize = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Urban = AVG(urban_pct), unit %, date grain year using year. Rural = AVG(rural_pct), unit %, date grain year using year.",
+       "reference_id": "ref_23acb02ee056",
+       "image_id": null,
+       "item_id": null,
+       "component_id": null,
+       "batch_id": null
+      }
+     ],
+     "properties": [
+      {
+       "path": "label",
+       "value": "Philippines"
+      }
+     ],
+     "superseded": {
+      "property:0": "ref_23acb02ee056:instructions"
+     },
+     "mapping_origins": {
+      "surface": "{\"needs\": [{\"capability\": \"chart.time_series\", \"value\": null, \"fields\": {\"date_field\": \"year\"}}, {\"capability\": \"argument.title\", \"value\": null, \"fields\": {}}], \"mappings\": [], \"superseded\": {}, \"origins\": {}}",
+      "using": "year",
+      "observed:0": "{\"evidence\": [\"ref_23acb02ee056:instructions\"], \"key\": \"6cfe8394f12401abef1d7021b97291921d57f895da4a41df3049debb69e5c6be\"}",
+      "observed:1": "{\"evidence\": [\"ref_23acb02ee056:instructions\"], \"key\": \"d837f24f11e1849499b1ad151a56c48c2203058f720433a079188c727243d987\"}"
+     },
+     "mapping_conflicts": {}
+    },
+    {
+     "id": "req_741af064068303c17820796a",
+     "source": {
+      "id": "ref_23acb02ee056:o5",
+      "kind": "image",
+      "text": "{\"kind\": \"control\", \"label\": null, \"box\": {\"x\": 0.046, \"y\": 0.202, \"w\": 0.113, \"h\": 0.216}, \"chart_candidate\": \"dropdown\", \"metric_label\": null, \"unit\": null, \"aggregation\": null, \"date_grain\": null, \"confidence\": \"high\", \"id\": \"o5\"}",
+      "reference_id": "ref_23acb02ee056",
+      "image_id": "img_e72cc9ba8b3f",
+      "item_id": "o5",
+      "component_id": null,
+      "batch_id": null
+     },
+     "text": "{\"kind\": \"control\", \"label\": null, \"box\": {\"x\": 0.046, \"y\": 0.202, \"w\": 0.113, \"h\": 0.216}, \"chart_candidate\": \"dropdown\", \"metric_label\": null, \"unit\": null, \"aggregation\": null, \"date_grain\": null, \"confidence\": \"high\", \"id\": \"o5\"}",
+     "needs": [
+      {
+       "capability": "control.dropdown",
+       "value": null,
+       "fields": {}
+      }
+     ],
+     "mappings": [],
+     "component_ids": [],
+     "resolution": "unresolved",
+     "clarifications": [],
+     "properties": [],
+     "superseded": {},
+     "mapping_origins": {},
+     "mapping_conflicts": {}
+    },
+    {
+     "id": "req_fe29ff83d7dd88231df34e0f",
+     "source": {
+      "id": "ref_23acb02ee056:o6",
+      "kind": "image",
+      "text": "{\"kind\": \"chart\", \"label\": \"Morocco\", \"box\": {\"x\": 0.73, \"y\": 0.324, \"w\": 0.24, \"h\": 0.188}, \"chart_candidate\": \"time_series\", \"metric_label\": null, \"unit\": \"%\", \"aggregation\": null, \"date_grain\": \"year\", \"confidence\": \"high\", \"id\": \"o6\"}",
+      "reference_id": "ref_23acb02ee056",
+      "image_id": "img_e72cc9ba8b3f",
+      "item_id": "o6",
+      "component_id": null,
+      "batch_id": null
+     },
+     "text": "{\"kind\": \"chart\", \"label\": \"Morocco\", \"box\": {\"x\": 0.73, \"y\": 0.324, \"w\": 0.24, \"h\": 0.188}, \"chart_candidate\": \"time_series\", \"metric_label\": null, \"unit\": \"%\", \"aggregation\": null, \"date_grain\": \"year\", \"confidence\": \"high\", \"id\": \"o6\"}",
+     "needs": [
+      {
+       "capability": "chart.area",
+       "value": null,
+       "fields": {
+        "date_field": "year"
+       }
+      },
+      {
+       "capability": "argument.title",
+       "value": null,
+       "fields": {}
+      }
+     ],
+     "mappings": [
+      {
+       "label": "Morocco",
+       "field": "urban_pct",
+       "unit": "%",
+       "aggregation": "avg",
+       "date_grain": "year"
+      },
+      {
+       "label": "Morocco",
+       "field": "rural_pct",
+       "unit": "%",
+       "aggregation": "avg",
+       "date_grain": "year"
+      }
+     ],
+     "component_ids": [],
+     "resolution": "unresolved",
+     "clarifications": [
+      {
+       "id": "ref_23acb02ee056:instructions",
+       "kind": "reference",
+       "text": "Region Selector = region, chart fixed_size_list. Region = region. Country = country. Access to electricity = AVG(access_pct), unit %, date grain year using year. have access to electricity = AVG(access_pct), unit %, date grain year using year. People without access to electricity = SUM(people_without_access), date grain year using year. Philippines = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Morocco = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Fiji = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Belize = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Urban = AVG(urban_pct), unit %, date grain year using year. Rural = AVG(rural_pct), unit %, date grain year using year.",
+       "reference_id": "ref_23acb02ee056",
+       "image_id": null,
+       "item_id": null,
+       "component_id": null,
+       "batch_id": null
+      }
+     ],
+     "properties": [
+      {
+       "path": "label",
+       "value": "Morocco"
+      }
+     ],
+     "superseded": {
+      "property:0": "ref_23acb02ee056:instructions"
+     },
+     "mapping_origins": {
+      "surface": "{\"needs\": [{\"capability\": \"chart.time_series\", \"value\": null, \"fields\": {\"date_field\": \"year\"}}, {\"capability\": \"argument.title\", \"value\": null, \"fields\": {}}], \"mappings\": [], \"superseded\": {}, \"origins\": {}}",
+      "using": "year",
+      "observed:0": "{\"evidence\": [\"ref_23acb02ee056:instructions\"], \"key\": \"5dca5e9600a514a1b8f42d617d90860077ede6aa452c61c291bd8441506de23d\"}",
+      "observed:1": "{\"evidence\": [\"ref_23acb02ee056:instructions\"], \"key\": \"7ab9691445680a2b6aa672feba2fcdb0383c9e057f8ffcc998c8dd44f75975f3\"}"
+     },
+     "mapping_conflicts": {}
+    },
+    {
+     "id": "req_e95814dfea67f56f5defdd91",
+     "source": {
+      "id": "ref_23acb02ee056:o7",
+      "kind": "image",
+      "text": "{\"kind\": \"chart\", \"label\": \"have access to electricity worldwide in 2011\", \"box\": {\"x\": 0.042, \"y\": 0.464, \"w\": 0.205, \"h\": 0.105}, \"chart_candidate\": \"scorecard\", \"metric_label\": \"have access to electricity\", \"unit\": \"%\", \"aggregation\": null, \"date_grain\": \"year\", \"confidence\": \"high\", \"id\": \"o7\"}",
+      "reference_id": "ref_23acb02ee056",
+      "image_id": "img_e72cc9ba8b3f",
+      "item_id": "o7",
+      "component_id": null,
+      "batch_id": null
+     },
+     "text": "{\"kind\": \"chart\", \"label\": \"have access to electricity worldwide in 2011\", \"box\": {\"x\": 0.042, \"y\": 0.464, \"w\": 0.205, \"h\": 0.105}, \"chart_candidate\": \"scorecard\", \"metric_label\": \"have access to electricity\", \"unit\": \"%\", \"aggregation\": null, \"date_grain\": \"year\", \"confidence\": \"high\", \"id\": \"o7\"}",
+     "needs": [
+      {
+       "capability": "chart.scorecard",
+       "value": null,
+       "fields": {}
+      },
+      {
+       "capability": "argument.title",
+       "value": null,
+       "fields": {}
+      }
+     ],
+     "mappings": [
+      {
+       "label": "have access to electricity",
+       "field": "access_pct",
+       "unit": "%",
+       "aggregation": "avg",
+       "date_grain": "year"
+      }
+     ],
+     "component_ids": [],
+     "resolution": "unresolved",
+     "clarifications": [
+      {
+       "id": "ref_23acb02ee056:instructions",
+       "kind": "reference",
+       "text": "Region Selector = region, chart fixed_size_list. Region = region. Country = country. Access to electricity = AVG(access_pct), unit %, date grain year using year. have access to electricity = AVG(access_pct), unit %, date grain year using year. People without access to electricity = SUM(people_without_access), date grain year using year. Philippines = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Morocco = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Fiji = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Belize = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Urban = AVG(urban_pct), unit %, date grain year using year. Rural = AVG(rural_pct), unit %, date grain year using year.",
+       "reference_id": "ref_23acb02ee056",
+       "image_id": null,
+       "item_id": null,
+       "component_id": null,
+       "batch_id": null
+      }
+     ],
+     "properties": [
+      {
+       "path": "label",
+       "value": "have access to electricity worldwide in 2011"
+      }
+     ],
+     "superseded": {},
+     "mapping_origins": {
+      "requested:0": "{\"label\":\"have access to electricity\",\"field\":\"access_pct\",\"unit\":\"%\",\"aggregation\":\"avg\",\"date_grain\":\"year\"}",
+      "surface": "{\"needs\": [{\"capability\": \"chart.scorecard\", \"value\": null, \"fields\": {}}, {\"capability\": \"argument.title\", \"value\": null, \"fields\": {}}], \"mappings\": [{\"label\": \"have access to electricity\", \"field\": \"access_pct\", \"unit\": \"%\", \"aggregation\": \"avg\", \"date_grain\": \"year\"}], \"superseded\": {}, \"origins\": {\"requested:0\": \"{\\\"label\\\":\\\"have access to electricity\\\",\\\"field\\\":\\\"access_pct\\\",\\\"unit\\\":\\\"%\\\",\\\"aggregation\\\":\\\"avg\\\",\\\"date_grain\\\":\\\"year\\\"}\"}}",
+      "using": "year",
+      "observed:0": "{\"evidence\": [\"ref_23acb02ee056:instructions\"], \"key\": \"5eb656df0432baac7c7cda9b3cd80e48d2d91d58531a7800d01e44d9f0eb3335\"}"
+     },
+     "mapping_conflicts": {}
+    },
+    {
+     "id": "req_7ac27ecd9ea405482e34e184",
+     "source": {
+      "id": "ref_23acb02ee056:o8",
+      "kind": "image",
+      "text": "{\"kind\": \"chart\", \"label\": \"Fiji\", \"box\": {\"x\": 0.73, \"y\": 0.516, \"w\": 0.24, \"h\": 0.188}, \"chart_candidate\": \"time_series\", \"metric_label\": null, \"unit\": \"%\", \"aggregation\": null, \"date_grain\": \"year\", \"confidence\": \"high\", \"id\": \"o8\"}",
+      "reference_id": "ref_23acb02ee056",
+      "image_id": "img_e72cc9ba8b3f",
+      "item_id": "o8",
+      "component_id": null,
+      "batch_id": null
+     },
+     "text": "{\"kind\": \"chart\", \"label\": \"Fiji\", \"box\": {\"x\": 0.73, \"y\": 0.516, \"w\": 0.24, \"h\": 0.188}, \"chart_candidate\": \"time_series\", \"metric_label\": null, \"unit\": \"%\", \"aggregation\": null, \"date_grain\": \"year\", \"confidence\": \"high\", \"id\": \"o8\"}",
+     "needs": [
+      {
+       "capability": "chart.area",
+       "value": null,
+       "fields": {
+        "date_field": "year"
+       }
+      },
+      {
+       "capability": "argument.title",
+       "value": null,
+       "fields": {}
+      }
+     ],
+     "mappings": [
+      {
+       "label": "Fiji",
+       "field": "urban_pct",
+       "unit": "%",
+       "aggregation": "avg",
+       "date_grain": "year"
+      },
+      {
+       "label": "Fiji",
+       "field": "rural_pct",
+       "unit": "%",
+       "aggregation": "avg",
+       "date_grain": "year"
+      }
+     ],
+     "component_ids": [],
+     "resolution": "unresolved",
+     "clarifications": [
+      {
+       "id": "ref_23acb02ee056:instructions",
+       "kind": "reference",
+       "text": "Region Selector = region, chart fixed_size_list. Region = region. Country = country. Access to electricity = AVG(access_pct), unit %, date grain year using year. have access to electricity = AVG(access_pct), unit %, date grain year using year. People without access to electricity = SUM(people_without_access), date grain year using year. Philippines = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Morocco = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Fiji = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Belize = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Urban = AVG(urban_pct), unit %, date grain year using year. Rural = AVG(rural_pct), unit %, date grain year using year.",
+       "reference_id": "ref_23acb02ee056",
+       "image_id": null,
+       "item_id": null,
+       "component_id": null,
+       "batch_id": null
+      }
+     ],
+     "properties": [
+      {
+       "path": "label",
+       "value": "Fiji"
+      }
+     ],
+     "superseded": {
+      "property:0": "ref_23acb02ee056:instructions"
+     },
+     "mapping_origins": {
+      "surface": "{\"needs\": [{\"capability\": \"chart.time_series\", \"value\": null, \"fields\": {\"date_field\": \"year\"}}, {\"capability\": \"argument.title\", \"value\": null, \"fields\": {}}], \"mappings\": [], \"superseded\": {}, \"origins\": {}}",
+      "using": "year",
+      "observed:0": "{\"evidence\": [\"ref_23acb02ee056:instructions\"], \"key\": \"48efafc99b249c3eef1e9391eb36bbd481d47016aa765e2c44602e189b2aff85\"}",
+      "observed:1": "{\"evidence\": [\"ref_23acb02ee056:instructions\"], \"key\": \"8e9eb21835c39a846796e05b7f1d175b4b53ceba94f425fef1506f4530151d4d\"}"
+     },
+     "mapping_conflicts": {}
+    },
+    {
+     "id": "req_2b56922397cf2b11053e78ec",
+     "source": {
+      "id": "ref_23acb02ee056:o9",
+      "kind": "image",
+      "text": "{\"kind\": \"chart\", \"label\": \"People without access to electricity\", \"box\": {\"x\": 0.045, \"y\": 0.696, \"w\": 0.642, \"h\": 0.16}, \"chart_candidate\": \"bar\", \"metric_label\": \"People without access to electricity\", \"unit\": null, \"aggregation\": null, \"date_grain\": \"year\", \"confidence\": \"high\", \"id\": \"o9\"}",
+      "reference_id": "ref_23acb02ee056",
+      "image_id": "img_e72cc9ba8b3f",
+      "item_id": "o9",
+      "component_id": null,
+      "batch_id": null
+     },
+     "text": "{\"kind\": \"chart\", \"label\": \"People without access to electricity\", \"box\": {\"x\": 0.045, \"y\": 0.696, \"w\": 0.642, \"h\": 0.16}, \"chart_candidate\": \"bar\", \"metric_label\": \"People without access to electricity\", \"unit\": null, \"aggregation\": null, \"date_grain\": \"year\", \"confidence\": \"high\", \"id\": \"o9\"}",
+     "needs": [
+      {
+       "capability": "chart.bar",
+       "value": null,
+       "fields": {}
+      },
+      {
+       "capability": "argument.title",
+       "value": null,
+       "fields": {}
+      }
+     ],
+     "mappings": [
+      {
+       "label": "People without access to electricity",
+       "field": "people_without_access",
+       "unit": null,
+       "aggregation": "sum",
+       "date_grain": "year"
+      }
+     ],
+     "component_ids": [],
+     "resolution": "unresolved",
+     "clarifications": [
+      {
+       "id": "ref_23acb02ee056:instructions",
+       "kind": "reference",
+       "text": "Region Selector = region, chart fixed_size_list. Region = region. Country = country. Access to electricity = AVG(access_pct), unit %, date grain year using year. have access to electricity = AVG(access_pct), unit %, date grain year using year. People without access to electricity = SUM(people_without_access), date grain year using year. Philippines = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Morocco = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Fiji = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Belize = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Urban = AVG(urban_pct), unit %, date grain year using year. Rural = AVG(rural_pct), unit %, date grain year using year.",
+       "reference_id": "ref_23acb02ee056",
+       "image_id": null,
+       "item_id": null,
+       "component_id": null,
+       "batch_id": null
+      }
+     ],
+     "properties": [
+      {
+       "path": "label",
+       "value": "People without access to electricity"
+      }
+     ],
+     "superseded": {},
+     "mapping_origins": {
+      "requested:0": "{\"label\":\"People without access to electricity\",\"field\":\"people_without_access\",\"unit\":null,\"aggregation\":\"sum\",\"date_grain\":\"year\"}",
+      "surface": "{\"needs\": [{\"capability\": \"chart.bar\", \"value\": null, \"fields\": {}}, {\"capability\": \"argument.title\", \"value\": null, \"fields\": {}}], \"mappings\": [{\"label\": \"People without access to electricity\", \"field\": \"people_without_access\", \"unit\": null, \"aggregation\": \"sum\", \"date_grain\": \"year\"}], \"superseded\": {}, \"origins\": {\"requested:0\": \"{\\\"label\\\":\\\"People without access to electricity\\\",\\\"field\\\":\\\"people_without_access\\\",\\\"unit\\\":null,\\\"aggregation\\\":\\\"sum\\\",\\\"date_grain\\\":\\\"year\\\"}\"}}",
+      "using": "year",
+      "observed:0": "{\"evidence\": [\"ref_23acb02ee056:instructions\"], \"key\": \"5998945c1e03b1a0723d10d678651fec8bb3623567d5dee6345be475cd75aa46\"}"
+     },
+     "mapping_conflicts": {}
+    },
+    {
+     "id": "req_097bd71ba1084439cd5611c6",
+     "source": {
+      "id": "ref_23acb02ee056:o10",
+      "kind": "image",
+      "text": "{\"kind\": \"chart\", \"label\": \"Belize\", \"box\": {\"x\": 0.73, \"y\": 0.706, \"w\": 0.245, \"h\": 0.225}, \"chart_candidate\": \"time_series\", \"metric_label\": null, \"unit\": \"%\", \"aggregation\": null, \"date_grain\": \"year\", \"confidence\": \"high\", \"id\": \"o10\"}",
+      "reference_id": "ref_23acb02ee056",
+      "image_id": "img_e72cc9ba8b3f",
+      "item_id": "o10",
+      "component_id": null,
+      "batch_id": null
+     },
+     "text": "{\"kind\": \"chart\", \"label\": \"Belize\", \"box\": {\"x\": 0.73, \"y\": 0.706, \"w\": 0.245, \"h\": 0.225}, \"chart_candidate\": \"time_series\", \"metric_label\": null, \"unit\": \"%\", \"aggregation\": null, \"date_grain\": \"year\", \"confidence\": \"high\", \"id\": \"o10\"}",
+     "needs": [
+      {
+       "capability": "chart.area",
+       "value": null,
+       "fields": {
+        "date_field": "year"
+       }
+      },
+      {
+       "capability": "argument.title",
+       "value": null,
+       "fields": {}
+      }
+     ],
+     "mappings": [
+      {
+       "label": "Belize",
+       "field": "urban_pct",
+       "unit": "%",
+       "aggregation": "avg",
+       "date_grain": "year"
+      },
+      {
+       "label": "Belize",
+       "field": "rural_pct",
+       "unit": "%",
+       "aggregation": "avg",
+       "date_grain": "year"
+      }
+     ],
+     "component_ids": [],
+     "resolution": "unresolved",
+     "clarifications": [
+      {
+       "id": "ref_23acb02ee056:instructions",
+       "kind": "reference",
+       "text": "Region Selector = region, chart fixed_size_list. Region = region. Country = country. Access to electricity = AVG(access_pct), unit %, date grain year using year. have access to electricity = AVG(access_pct), unit %, date grain year using year. People without access to electricity = SUM(people_without_access), date grain year using year. Philippines = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Morocco = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Fiji = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Belize = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Urban = AVG(urban_pct), unit %, date grain year using year. Rural = AVG(rural_pct), unit %, date grain year using year.",
+       "reference_id": "ref_23acb02ee056",
+       "image_id": null,
+       "item_id": null,
+       "component_id": null,
+       "batch_id": null
+      }
+     ],
+     "properties": [
+      {
+       "path": "label",
+       "value": "Belize"
+      }
+     ],
+     "superseded": {
+      "property:0": "ref_23acb02ee056:instructions"
+     },
+     "mapping_origins": {
+      "surface": "{\"needs\": [{\"capability\": \"chart.time_series\", \"value\": null, \"fields\": {\"date_field\": \"year\"}}, {\"capability\": \"argument.title\", \"value\": null, \"fields\": {}}], \"mappings\": [], \"superseded\": {}, \"origins\": {}}",
+      "using": "year",
+      "observed:0": "{\"evidence\": [\"ref_23acb02ee056:instructions\"], \"key\": \"d577816247aacc11ef91ef9facae0838b7f4f48da061be7ed28e7c530e64684c\"}",
+      "observed:1": "{\"evidence\": [\"ref_23acb02ee056:instructions\"], \"key\": \"950427e7c0a0e9c14cfa24405a591330d42a8beeea24c3173ab45d3d49acf9fd\"}"
+     },
+     "mapping_conflicts": {}
+    },
+    {
+     "id": "req_4b60c02adfd21e2f96743c28",
+     "source": {
+      "id": "ref_23acb02ee056:o11",
+      "kind": "image",
+      "text": "{\"kind\": \"control\", \"label\": null, \"box\": {\"x\": 0.215, \"y\": 0.848, \"w\": 0.46, \"h\": 0.042}, \"chart_candidate\": \"date_range\", \"metric_label\": null, \"unit\": null, \"aggregation\": null, \"date_grain\": \"year\", \"confidence\": \"high\", \"id\": \"o11\"}",
+      "reference_id": "ref_23acb02ee056",
+      "image_id": "img_e72cc9ba8b3f",
+      "item_id": "o11",
+      "component_id": null,
+      "batch_id": null
+     },
+     "text": "{\"kind\": \"control\", \"label\": null, \"box\": {\"x\": 0.215, \"y\": 0.848, \"w\": 0.46, \"h\": 0.042}, \"chart_candidate\": \"date_range\", \"metric_label\": null, \"unit\": null, \"aggregation\": null, \"date_grain\": \"year\", \"confidence\": \"high\", \"id\": \"o11\"}",
+     "needs": [
+      {
+       "capability": "control.date_range",
+       "value": null,
+       "fields": {
+        "date_field": "year"
+       }
+      }
+     ],
+     "mappings": [],
+     "component_ids": [],
+     "resolution": "unresolved",
+     "clarifications": [],
+     "properties": [],
+     "superseded": {},
+     "mapping_origins": {},
+     "mapping_conflicts": {}
+    }
+   ]
+  },
+  "before": {
+   "status": "needs_clarification",
+   "reason": "Choose which field supplies control_field for Drop-down list control",
+   "alternatives": []
+  },
+  "dropped": [
+   "o3"
+  ],
+  "draft": {
+   "view_sources": {
+    "base": "s_fixture_1",
+    "joins": [],
+    "union": []
+   },
+   "derived_fields": [
+    {
+     "name": "philippines_urban_pct",
+     "expression": "CASE WHEN country = 'Philippines' THEN urban_pct END",
+     "type": "number",
+     "description": "Urban electricity access percentage for Philippines"
+    },
+    {
+     "name": "philippines_rural_pct",
+     "expression": "CASE WHEN country = 'Philippines' THEN rural_pct END",
+     "type": "number",
+     "description": "Rural electricity access percentage for Philippines"
+    },
+    {
+     "name": "morocco_urban_pct",
+     "expression": "CASE WHEN country = 'Morocco' THEN urban_pct END",
+     "type": "number",
+     "description": "Urban electricity access percentage for Morocco"
+    },
+    {
+     "name": "morocco_rural_pct",
+     "expression": "CASE WHEN country = 'Morocco' THEN rural_pct END",
+     "type": "number",
+     "description": "Rural electricity access percentage for Morocco"
+    },
+    {
+     "name": "fiji_urban_pct",
+     "expression": "CASE WHEN country = 'Fiji' THEN urban_pct END",
+     "type": "number",
+     "description": "Urban electricity access percentage for Fiji"
+    },
+    {
+     "name": "fiji_rural_pct",
+     "expression": "CASE WHEN country = 'Fiji' THEN rural_pct END",
+     "type": "number",
+     "description": "Rural electricity access percentage for Fiji"
+    }
+   ],
+   "rows": [
+    {
+     "question_id": "q1",
+     "section_id": "s1",
+     "page": 1,
+     "component": {
+      "type": "scorecard",
+      "label": "have access to electricity worldwide in 2011",
+      "dimensions": [],
+      "metrics": [
+       {
+        "field": "access_pct",
+        "agg": "avg"
+       }
+      ],
+      "date_dimension": null,
+      "breakdown": null,
+      "sort": null,
+      "options": {
+       "compact_numbers": false
+      }
+     },
+     "note": "Recreates o3 scorecard for global average electricity access rate",
+     "status": "ok",
+     "issue_ids": []
+    },
+    {
+     "question_id": "q2",
+     "section_id": "s1",
+     "page": 1,
+     "component": {
+      "type": "scorecard",
+      "label": "Total Population Without Access",
+      "dimensions": [],
+      "metrics": [
+       {
+        "field": "people_without_access",
+        "agg": "sum"
+       }
+      ],
+      "date_dimension": null,
+      "breakdown": null,
+      "sort": null,
+      "options": {
+       "compact_numbers": true
+      }
+     },
+     "note": "Scorecard showing total population without electricity access",
+     "status": "ok",
+     "issue_ids": []
+    },
+    {
+     "question_id": "q2",
+     "section_id": "s1",
+     "page": 1,
+     "component": {
+      "type": "bar",
+      "label": "People without access to electricity",
+      "dimensions": [
+       "year"
+      ],
+      "metrics": [
+       {
+        "field": "people_without_access",
+        "agg": "sum"
+       }
+      ],
+      "date_dimension": null,
+      "breakdown": null,
+      "sort": {
+       "field": "year",
+       "order": "asc"
+      },
+      "options": {
+       "orientation": "vertical",
+       "stacked": false
+      }
+     },
+     "note": "Recreates o5 bar chart of people without access to electricity by year",
+     "status": "ok",
+     "issue_ids": []
+    },
+    {
+     "question_id": "q3",
+     "section_id": "s1",
+     "page": 1,
+     "component": {
+      "type": "table",
+      "label": "Electricity Access Rate by Country and Region",
+      "dimensions": [
+       "region",
+       "country"
+      ],
+      "metrics": [
+       {
+        "field": "access_pct",
+        "agg": "avg"
+       }
+      ],
+      "date_dimension": null,
+      "breakdown": null,
+      "sort": {
+       "field": "access_pct",
+       "order": "desc"
+      },
+      "options": {
+       "rows_per_page": 15
+      }
+     },
+     "note": "Table of average electricity access rate by region and country",
+     "status": "ok",
+     "issue_ids": []
+    },
+    {
+     "question_id": "q3",
+     "section_id": "s1",
+     "page": 1,
+     "component": {
+      "type": "area",
+      "label": "Urban vs. Rural Electricity Access Over Time",
+      "dimensions": [],
+      "metrics": [
+       {
+        "field": "urban_pct",
+        "agg": "avg"
+       },
+       {
+        "field": "rural_pct",
+        "agg": "avg"
+       }
+      ],
+      "date_dimension": "year",
+      "breakdown": null,
+      "sort": {
+       "field": "year",
+       "order": "asc"
+      },
+      "options": {
+       "stacked": false,
+       "date_granularity": "year"
+      }
+     },
+     "note": "Reconstructed compliant repair: the urban/rural area on page 1",
+     "status": "ok",
+     "issue_ids": []
+    },
+    {
+     "question_id": null,
+     "section_id": "s1",
+     "page": 1,
+     "component": {
+      "type": "fixed_size_list",
+      "label": "Region Selector",
+      "dimensions": [
+       "region"
+      ],
+      "metrics": [],
+      "date_dimension": null,
+      "breakdown": null,
+      "sort": null,
+      "options": {}
+     },
+     "note": "Recreates o2 region selector control",
+     "status": "ok",
+     "issue_ids": []
+    },
+    {
+     "question_id": null,
+     "section_id": "s1",
+     "page": 1,
+     "component": {
+      "type": "date_range",
+      "label": "Year Filter",
+      "dimensions": [],
+      "metrics": [],
+      "date_dimension": "year",
+      "breakdown": null,
+      "sort": null,
+      "options": {}
+     },
+     "note": "Supporting date range filter",
+     "status": "ok",
+     "issue_ids": []
+    },
+    {
+     "question_id": null,
+     "section_id": "s2",
+     "page": 2,
+     "component": {
+      "type": "fixed_size_list",
+      "label": "Region Selector",
+      "dimensions": [
+       "region"
+      ],
+      "metrics": [],
+      "date_dimension": null,
+      "breakdown": null,
+      "sort": null,
+      "options": {}
+     },
+     "note": "Region filter for page 2",
+     "status": "ok",
+     "issue_ids": []
+    },
+    {
+     "question_id": "q4",
+     "section_id": "s2",
+     "page": 2,
+     "component": {
+      "type": "time_series",
+      "label": "Global Average Electricity Access Over Time",
+      "dimensions": [],
+      "metrics": [
+       {
+        "field": "access_pct",
+        "agg": "avg"
+       }
+      ],
+      "date_dimension": "year",
+      "breakdown": null,
+      "sort": {
+       "field": "year",
+       "order": "asc"
+      },
+      "options": {
+       "date_granularity": "year"
+      }
+     },
+     "note": "Year-over-year evolution of average electricity access",
+     "status": "ok",
+     "issue_ids": []
+    },
+    {
+     "question_id": "q4",
+     "section_id": "s2",
+     "page": 2,
+     "component": {
+      "type": "area",
+      "label": "Regional Electricity Access Evolution",
+      "dimensions": [],
+      "metrics": [
+       {
+        "field": "access_pct",
+        "agg": "avg"
+       }
+      ],
+      "date_dimension": "year",
+      "breakdown": "region",
+      "sort": {
+       "field": "year",
+       "order": "asc"
+      },
+      "options": {
+       "date_granularity": "year",
+       "stacked": false
+      }
+     },
+     "note": "Multi-year electricity access evolution across regions",
+     "status": "ok",
+     "issue_ids": []
+    },
+    {
+     "question_id": null,
+     "section_id": "s3",
+     "page": 3,
+     "component": {
+      "type": "fixed_size_list",
+      "label": "Region Selector",
+      "dimensions": [
+       "region"
+      ],
+      "metrics": [],
+      "date_dimension": null,
+      "breakdown": null,
+      "sort": null,
+      "options": {}
+     },
+     "note": "Region filter for page 3",
+     "status": "ok",
+     "issue_ids": []
+    },
+    {
+     "question_id": "q8",
+     "section_id": "s3",
+     "page": 3,
+     "component": {
+      "type": "area",
+      "label": "Fiji Urban vs. Rural Electricity Access",
+      "dimensions": [],
+      "metrics": [
+       {
+        "field": "fiji_urban_pct",
+        "agg": "avg"
+       },
+       {
+        "field": "fiji_rural_pct",
+        "agg": "avg"
+       }
+      ],
+      "date_dimension": "year",
+      "breakdown": null,
+      "sort": {
+       "field": "year",
+       "order": "asc"
+      },
+      "options": {
+       "date_granularity": "year",
+       "stacked": false
+      }
+     },
+     "note": "Recreates o8 area chart for Fiji urban vs rural access",
+     "status": "ok",
+     "issue_ids": []
+    },
+    {
+     "question_id": "q8",
+     "section_id": "s3",
+     "page": 3,
+     "component": {
+      "type": "bar",
+      "label": "Regions by Rural Electricity Access Rate",
+      "dimensions": [
+       "region"
+      ],
+      "metrics": [
+       {
+        "field": "rural_pct",
+        "agg": "avg"
+       }
+      ],
+      "date_dimension": null,
+      "breakdown": null,
+      "sort": {
+       "field": "rural_pct",
+       "order": "asc"
+      },
+      "options": {
+       "orientation": "horizontal",
+       "stacked": false
+      }
+     },
+     "note": "Highlights regions with lowest rural electricity access rates against 50% threshold",
+     "status": "ok",
+     "issue_ids": []
+    },
+    {
+     "question_id": "q5",
+     "section_id": "s2",
+     "page": 2,
+     "component": {
+      "type": "table",
+      "label": "Country Electricity Connectivity Summary",
+      "dimensions": [
+       "country",
+       "region"
+      ],
+      "metrics": [
+       {
+        "field": "access_pct",
+        "agg": "avg"
+       }
+      ],
+      "date_dimension": null,
+      "breakdown": null,
+      "sort": {
+       "field": "access_pct",
+       "order": "desc"
+      },
+      "options": {
+       "rows_per_page": 15
+      }
+     },
+     "note": "Country connectivity summary showing average access rates",
+     "status": "ok",
+     "issue_ids": []
+    },
+    {
+     "question_id": "q5",
+     "section_id": "s2",
+     "page": 2,
+     "component": {
+      "type": "time_series",
+      "label": "Country Access Trajectories Over Time",
+      "dimensions": [],
+      "metrics": [
+       {
+        "field": "access_pct",
+        "agg": "avg"
+       }
+      ],
+      "date_dimension": "year",
+      "breakdown": "country",
+      "sort": {
+       "field": "year",
+       "order": "asc"
+      },
+      "options": {
+       "date_granularity": "year"
+      }
+     },
+     "note": "Multi-year trajectories by country",
+     "status": "ok",
+     "issue_ids": []
+    },
+    {
+     "question_id": "q7",
+     "section_id": "s3",
+     "page": 3,
+     "component": {
+      "type": "bar",
+      "label": "Urban vs. Rural Electricity Access by Region",
+      "dimensions": [
+       "region"
+      ],
+      "metrics": [
+       {
+        "field": "urban_pct",
+        "agg": "avg"
+       },
+       {
+        "field": "rural_pct",
+        "agg": "avg"
+       }
+      ],
+      "date_dimension": null,
+      "breakdown": null,
+      "sort": {
+       "field": "urban_pct",
+       "order": "desc"
+      },
+      "options": {
+       "orientation": "horizontal",
+       "stacked": false
+      }
+     },
+     "note": "Comparison of average urban and rural electricity access across regions",
+     "status": "ok",
+     "issue_ids": []
+    },
+    {
+     "question_id": "q7",
+     "section_id": "s3",
+     "page": 3,
+     "component": {
+      "type": "area",
+      "label": "Urban vs. Rural Electricity Access Over Time",
+      "dimensions": [],
+      "metrics": [
+       {
+        "field": "urban_pct",
+        "agg": "avg"
+       },
+       {
+        "field": "rural_pct",
+        "agg": "avg"
+       }
+      ],
+      "date_dimension": "year",
+      "breakdown": null,
+      "sort": {
+       "field": "year",
+       "order": "asc"
+      },
+      "options": {
+       "stacked": false,
+       "date_granularity": "year"
+      }
+     },
+     "note": "Multi-year area trend of average urban and rural electricity access",
+     "status": "ok",
+     "issue_ids": []
+    },
+    {
+     "question_id": "q9",
+     "section_id": "s3",
+     "page": 3,
+     "component": {
+      "type": "bar",
+      "label": "Population Without Electricity Access by Country",
+      "dimensions": [
+       "country"
+      ],
+      "metrics": [
+       {
+        "field": "people_without_access",
+        "agg": "sum"
+       }
+      ],
+      "date_dimension": null,
+      "breakdown": null,
+      "sort": {
+       "field": "people_without_access",
+       "order": "desc"
+      },
+      "options": {
+       "orientation": "horizontal",
+       "stacked": false
+      }
+     },
+     "note": "Bar chart showing concentration of people lacking electricity access by country",
+     "status": "ok",
+     "issue_ids": []
+    }
+   ]
+  }
+ }
+}

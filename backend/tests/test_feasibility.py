@@ -2467,3 +2467,383 @@ def test_canonical_year_dependency_scan_handles_escaped_literals(expression, dep
     after = normalized_year(snapshot, ledger, bp)
     assert (after == bp) == dependent
     assert ('year_trunc' in {f.name for f in after.derived_fields}) == dependent
+
+
+# 25.8: unlabeled reference control binding (architecture.md#Unlabeled reference control binding).
+UNLABELED = json.loads((Path(__file__).parent / 'data/recreate_unlabeled_control.json').read_text(encoding='utf-8'))
+UNLABELED_INPUTS = Path(__file__).parents[1] / UNLABELED['provenance']['run']
+REGION_SELECTOR = 'Region Selector: fixed_size_list on region (from your instructions)'
+REGION = 'Region: dropdown on region (from your instructions)'
+
+
+def unlabeled_snapshot(instructions=None, items=None, columns=None, mode='recreate'):
+    """What inputs() returns for run 20261027-173624's reference (o5: the unlabeled region list)."""
+    case = UNLABELED['case']
+    rid, image = case['reference']['id'], case['reference']['image_id']
+    text = case['instructions'] if instructions is None else instructions
+    items = case['items'] if items is None else items
+    incoming = [req.Source(id=rid + ':instructions', kind='reference', text=text, reference_id=rid).model_dump()] * bool(text)
+    incoming += [req.Source(id=f'{rid}:{i["id"]}', kind='image', text=json.dumps(i, ensure_ascii=False), reference_id=rid,
+                            image_id=image, item_id=i['id']).model_dump()
+                 for i in items if mode == 'recreate' and (i['kind'] in ('chart', 'control', 'unknown') or i.get('metric_label'))]
+    columns = case['sources'][0]['columns'] if columns is None else columns
+    return {'sources': [{'id': 's', 'table': 'p.d.t', 'columns': [{k: c[k] for k in ('name', 'type', 'bq_type', 'date_like') if k in c}
+                                                                for c in columns]}],
+            'incoming': incoming, 'reference': {'id': rid, 'mode': mode, 'instructions': text, 'images': [{'id': image}],
+                                                'interpretation': {'items': items}},
+            'definitions': {}, 'spec': None, 'confirmed_kpis': case['context']['kpis']}
+
+
+def unlabeled_assess(snapshot, ledger=None, requirements=None):
+    """The run's extracted rows (or `requirements`) rechecked on `snapshot`, without a model call."""
+    if ledger is None:
+        ledger = req.Ledger(requirements=requirements or UNLABELED['case']['requirements']['requirements'])
+        ledger.processed_sources = {s['id']: req.digest(s) for s in snapshot['incoming']}
+    checker = capabilities.Checker(capabilities.load_registry())
+    ledger = req.merge(ledger, snapshot, req.Extraction(requirements=[]))
+    assessment = req.evaluate(snapshot, ledger, checker, check_components=False)
+    ledger.assessment = assessment
+    return ledger, assessment
+
+
+def control_issues(ledger, assessment):
+    """{item id: its control_field issue} of the controls."""
+    owners = {r.text: r.source.item_id for r in ledger.requirements}
+    return {owners[i.requirement]: i for i in assessment.issues if 'supplies control_field' in i.reason}
+
+
+def decide_on(snapshot, ledger, *choices):
+    """req.decide on the current assessment: (issue, alternative label, or None to drop) pairs."""
+    checker = capabilities.Checker(capabilities.load_registry())
+    decisions = [{'issue_id': issue.id, 'action': 'drop' if label is None else 'accept_alternative',
+                  'alternative_id': None if label is None else next(a.id for a in issue.alternatives if a.label == label)}
+                 for issue, label in choices]
+    updated, assessment = req.decide(snapshot, ledger, checker, req.Decisions(assessment_id=ledger.assessment.id, decisions=decisions))
+    updated.assessment = assessment
+    return updated, assessment
+
+
+def second_control(items, label=None, oid='o12'):
+    """A copy of o5 (another unlabeled list, or a labeled one) and its extracted row."""
+    item = {**next(i for i in items if i['id'] == 'o5'), 'id': oid, 'label': label}
+    row = copy.deepcopy(next(r for r in UNLABELED['case']['requirements']['requirements'] if r['source']['item_id'] == 'o5'))
+    rid, text = UNLABELED['case']['reference']['id'], json.dumps(item, ensure_ascii=False)
+    row['id'], row['text'] = 'req_' + oid, text
+    row['source'].update(id=f'{rid}:{oid}', item_id=oid, text=text)
+    return item, row
+
+
+def test_unlabeled_fixture_inputs_are_the_recorded_read_only_copies():
+    import ast
+    import hashlib
+    tree = ast.parse((Path(__file__).parent / 'live/test_reference_design.py').read_text(encoding='utf-8'))
+    [value] = [node.value for node in tree.body if isinstance(node, ast.Assign) and getattr(node.targets[0], 'id', None) == 'INSTRUCTIONS']
+    assert UNLABELED['case']['instructions'] == ast.literal_eval(value)
+    if not UNLABELED_INPUTS.is_dir():
+        pytest.skip('the run evidence (.blueprint/, git-ignored) is local to the machine that recorded it')
+    for name, digest in UNLABELED['provenance']['sha256'].items():
+        assert hashlib.sha256((UNLABELED_INPUTS / name).read_bytes()).hexdigest() == digest, name
+    recorded = json.loads((UNLABELED_INPUTS / 'build/requirements.json').read_text(encoding='utf-8'))
+    assert UNLABELED['case']['requirements']['requirements'] == recorded['requirements']
+
+
+@pytest.mark.usefixtures('catalog_types')
+def test_unlabeled_control_offers_instruction_clauses_then_fields():
+    """25.8 block (run 20261027-173624): the region list o5 was extracted with `label: null`, so its
+    control_field clarification had `alternatives: []` and nothing could bind it. Now code offers the
+    unused instruction control clauses, then the catalog-valid fields; nothing applies itself."""
+    assert UNLABELED['case']['before'] == {'status': 'needs_clarification', 'alternatives': [],
+                                           'reason': 'Choose which field supplies control_field for Drop-down list control'}
+    snapshot = unlabeled_snapshot()
+    ledger, a = unlabeled_assess(snapshot)
+    issue = control_issues(ledger, a)['o5']
+    assert (issue.status, issue.reason) == ('needs_clarification', UNLABELED['case']['before']['reason'])
+    assert issue.resolution == 'unresolved' and a.state == 'blocked'
+    assert [x.label for x in issue.alternatives] == [
+        REGION_SELECTOR, REGION, 'Country: dropdown on country (from your instructions)',
+        # Field offers in name order, without the needs an instruction offer already carries (region, country).
+        *[f'dropdown on {f}' for f in ('access_pct', 'people_without_access', 'rural_pct', 'urban_pct', 'year')]]
+    assert len({x.id for x in issue.alternatives}) == len(issue.alternatives)
+    # Deterministic: a recompute offers the same ids.
+    again = control_issues(*unlabeled_assess(snapshot))['o5']
+    assert [x.id for x in again.alternatives] == [x.id for x in issue.alternatives]
+    # Every other issue is the run's own (the geo map), without alternatives.
+    owners = {r.text: r.source.item_id for r in ledger.requirements}
+    assert {owners[i.requirement] for i in a.issues} == {'o3', 'o5'} and all(not i.alternatives for i in a.issues if i is not issue)
+    assert req.unused_definitions(snapshot, ledger) == ['Region Selector', 'Region', 'Country', 'Access to electricity', 'Urban', 'Rural']
+
+
+@pytest.mark.usefixtures('catalog_types')
+def test_accepted_clause_binds_through_the_decision_and_revalidates_against_the_instructions():
+    snapshot = unlabeled_snapshot()
+    ledger, a = unlabeled_assess(snapshot)
+    issue = control_issues(ledger, a)['o5']
+    decided, after = decide_on(snapshot, ledger, (issue, REGION_SELECTOR), *((i, None) for i in a.issues if i is not issue))
+    assert after.state == 'ready', [i.reason for i in after.issues if i.resolution == 'unresolved']
+    [record] = [d for d in decided.decisions if d.get('observation')]
+    assert record['observation'] == 'o5' and record['alternative']['clause'] == 'Region Selector'
+    assert record['alternative']['needs'] == [{'capability': 'control.fixed_size_list', 'value': None, 'fields': {'control_field': 'region'}}]
+    # The decision is the provenance: the row's mappings, clarifications and meaning stay as extracted.
+    row = next(r for r in decided.requirements if r.source.item_id == 'o5')
+    assert row == next(r for r in ledger.requirements if r.source.item_id == 'o5') and not row.mappings
+    checker = capabilities.Checker(capabilities.load_registry())
+    [(r, needs, _)] = [o for o in req.blueprint_observations(snapshot, decided, checker) if o[0].source.item_id == 'o5']
+    # The same control type and field a label match gives.
+    assert req.observation_meaning(r, needs, []) == {'id': 'o5', 'kind': 'control', 'type': 'fixed_size_list', 'dimensions': ['region']}
+    # A recompute (an explicit check) leaves the decision applying.
+    rechecked, again = unlabeled_assess(snapshot, decided)
+    assert again.state == 'ready' and control_issues(rechecked, again)['o5'].resolution == 'accepted_alternative'
+    text = UNLABELED['case']['instructions']
+    changes = {'removed': text.replace('Region Selector = region, chart fixed_size_list. ', ''),
+               'changed field': text.replace('Region Selector = region,', 'Region Selector = country,'),
+               'changed type': text.replace('chart fixed_size_list', 'chart dropdown')}
+    for name, changed_text in changes.items():
+        changed = unlabeled_snapshot(changed_text)
+        relinked, blocked = unlabeled_assess(changed, decided.model_copy(deep=True))
+        returned = control_issues(relinked, blocked)['o5']
+        assert blocked.state == 'blocked' and returned.resolution == 'unresolved', name
+        assert REGION_SELECTOR not in [x.label for x in returned.alternatives], name
+        # The stored alternative's id is no longer offered.
+        with pytest.raises(req.RunError) as refused:
+            req.decide(changed, relinked, checker, req.Decisions(assessment_id=blocked.id, decisions=[
+                {'issue_id': returned.id, 'action': 'accept_alternative', 'alternative_id': record['alternative']['id']}]))
+        assert (refused.value.status_code, refused.value.message) == (422, 'Choose an offered alternative from this assessment'), name
+        # Restoring the clause restores the binding.
+        _, restored = unlabeled_assess(snapshot, relinked)
+        assert restored.state == 'ready', name
+    # A label match since: an observation now named "Region Selector" claims the clause.
+    items = [{**i, 'label': 'Region Selector'} if i['id'] == 'o2' else i for i in UNLABELED['case']['items']]
+    named = unlabeled_snapshot(items=items)
+    relabeled = decided.model_copy(deep=True)
+    for r in relabeled.requirements:
+        if r.source.item_id == 'o2':
+            r.text = r.source.text = json.dumps(next(i for i in items if i['id'] == 'o2'), ensure_ascii=False)
+    relabeled.processed_sources = {s['id']: req.digest(s) for s in named['incoming']}
+    relabeled, claimed = unlabeled_assess(named, relabeled)
+    assert control_issues(relabeled, claimed)['o5'].resolution == 'unresolved'
+    # An assessment id that is no longer current gets 409.
+    with pytest.raises(req.RunError) as stale:
+        req.decide(snapshot, rechecked, checker, req.Decisions(assessment_id=a.id, decisions=[
+            {'issue_id': issue.id, 'action': 'drop', 'alternative_id': None}]))
+    assert stale.value.status_code == 409
+
+
+@pytest.mark.usefixtures('catalog_types')
+def test_one_clause_binds_one_unlabeled_control():
+    items, rows = copy.deepcopy(UNLABELED['case']['items']), copy.deepcopy(UNLABELED['case']['requirements']['requirements'])
+    item, row = second_control(items)
+    snapshot = unlabeled_snapshot(items=items + [item])
+    ledger, a = unlabeled_assess(snapshot, requirements=rows + [row])
+    issues = control_issues(ledger, a)
+    # Both see the unused clause until one accepts it.
+    assert all(REGION_SELECTOR in [x.label for x in issues[o].alternatives] for o in ('o5', 'o12'))
+    with pytest.raises(req.RunError) as twice:
+        decide_on(snapshot, ledger, (issues['o5'], REGION_SELECTOR), (issues['o12'], REGION_SELECTOR))
+    assert (twice.value.status_code, twice.value.message) == (422, 'Bind the instruction clause Region Selector to one observation')
+    decided, after = decide_on(snapshot, ledger, (issues['o5'], REGION_SELECTOR))
+    issues = control_issues(decided, after)
+    assert issues['o5'].resolution == 'accepted_alternative' and issues['o12'].resolution == 'unresolved'
+    assert REGION_SELECTOR in [x.label for x in issues['o5'].alternatives]
+    assert REGION_SELECTOR not in [x.label for x in issues['o12'].alternatives]
+    # The clause an applying decision binds cannot be chosen for o12, even by o5's own alternative id.
+    reused = next(x.id for x in issues['o5'].alternatives if x.label == REGION_SELECTOR)
+    with pytest.raises(req.RunError) as bound:
+        req.decide(snapshot, decided, capabilities.Checker(capabilities.load_registry()), req.Decisions(
+            assessment_id=after.id, decisions=[{'issue_id': issues['o12'].id, 'action': 'accept_alternative', 'alternative_id': reused}]))
+    assert bound.value.status_code == 422
+    # A single candidate is still the user's decision: one unused clause and one field never bind on their own.
+    region = [c for c in UNLABELED['case']['sources'][0]['columns'] if c['name'] == 'region']
+    single = unlabeled_snapshot('Region Selector = region, chart fixed_size_list.', columns=region)
+    lonely = control_issues(*unlabeled_assess(single))['o5']
+    assert [x.label for x in lonely.alternatives] == [REGION_SELECTOR, 'dropdown on region'] and lonely.resolution == 'unresolved'
+    silent = control_issues(*unlabeled_assess(unlabeled_snapshot('Urban = AVG(rural_pct), unit %.', columns=region)))['o5']
+    assert [x.label for x in silent.alternatives] == ['dropdown on region'] and silent.resolution == 'unresolved'
+
+
+@pytest.mark.usefixtures('catalog_types')
+def test_missing_field_date_range_and_chart_clauses_are_not_offered():
+    """A clause whose field is not in the schema, or typed date_range or a chart type, offers nothing here
+    (unused clauses raise no issue of their own)."""
+    text = ('Region Selector = province, chart fixed_size_list. Year Range = year, chart date_range. '
+            'Region Bars = region, chart bar. Country = country.')
+    ledger, a = unlabeled_assess(unlabeled_snapshot(text))
+    issue = control_issues(ledger, a)['o5']
+    assert [x.label for x in issue.alternatives][:1] == ['Country: dropdown on country (from your instructions)']
+    assert not [x for x in issue.alternatives if '(from your instructions)' in x.label][1:]
+    assert not any(i.reason.startswith(('Region Selector', 'Year Range', 'Region Bars')) for i in a.issues)
+
+
+@pytest.mark.usefixtures('catalog_types')
+def test_wide_schema_keeps_both_unlabeled_controls_visible_with_instruction_offers_only():
+    columns = UNLABELED['case']['sources'][0]['columns'] + [
+        {'name': f'segment_{n:02d}', 'type': 'string', 'bq_type': 'STRING', 'date_like': False} for n in range(20)]
+    items, rows = copy.deepcopy(UNLABELED['case']['items']), copy.deepcopy(UNLABELED['case']['requirements']['requirements'])
+    item, row = second_control(items)
+    snapshot = unlabeled_snapshot(items=items + [item], columns=columns)
+    ledger, a = unlabeled_assess(snapshot, requirements=rows + [row])
+    assert not any(i.id == 'issue_scope' for i in a.issues)
+    issues = control_issues(ledger, a)
+    assert {o: [x.label.split(':')[0] for x in i.alternatives] for o, i in issues.items()} == {
+        o: ['Region Selector', 'Region', 'Country'] for o in ('o5', 'o12')}
+    # With the run's schema both issues' field offers fit the shared limit (8 + 8 of 20).
+    narrow, b = unlabeled_assess(unlabeled_snapshot(items=items + [item]), requirements=rows + [row])
+    assert [len(i.alternatives) for i in control_issues(narrow, b).values()] == [8, 8]
+    # The instruction offers alone resolve both.
+    decided, after = decide_on(snapshot, ledger, (issues['o5'], REGION_SELECTOR), (issues['o12'], REGION))
+    assert all(i.resolution == 'accepted_alternative' for i in control_issues(decided, after).values())
+    assert [d['alternative']['clause'] for d in decided.decisions] == ['Region Selector', 'Region']
+
+
+@pytest.mark.usefixtures('catalog_types')
+def test_labeled_controls_unlabeled_charts_and_other_modes_get_no_binding_offers():
+    items, rows = copy.deepcopy(UNLABELED['case']['items']), copy.deepcopy(UNLABELED['case']['requirements']['requirements'])
+    labeled, labeled_row = second_control(items, label='Year picker', oid='o13')
+    ledger, a = unlabeled_assess(unlabeled_snapshot(items=items + [labeled]), requirements=rows + [labeled_row])
+    assert control_issues(ledger, a)['o13'].alternatives == []  # a labeled control: label match or clarification, as before
+    # An unlabeled chart observation (o2 without its label) gets no new offers.
+    blank = [{**i, 'label': None} if i['id'] == 'o2' else i for i in items]
+    text = json.dumps(next(i for i in blank if i['id'] == 'o2'), ensure_ascii=False)
+    blank_rows = [{**r, 'text': text, 'source': {**r['source'], 'text': text}} if r['source']['item_id'] == 'o2' else r for r in rows]
+    ledger, b = unlabeled_assess(unlabeled_snapshot(items=blank), requirements=blank_rows)
+    owners = {r.text: r.source.item_id for r in ledger.requirements}
+    assert all(not i.alternatives for i in b.issues if owners.get(i.requirement) != 'o5')
+    # Style and data references, and builds without one: the o5 row is no reference observation there.
+    checker = capabilities.Checker(capabilities.load_registry())
+    for snapshot in (unlabeled_snapshot(mode='style'), unlabeled_snapshot(mode='data'), {**unlabeled_snapshot(), 'reference': None}):
+        assert all(req._offers(r, f'need:{n}', snapshot, checker, ledger) == req._offers(r, f'need:{n}', snapshot, checker) == []
+                   for r in ledger.requirements for n in range(len(r.needs)) if r.needs[n].capability.startswith('control.'))
+
+
+@pytest.mark.usefixtures('catalog_types')
+def test_binding_offers_recompute_within_budget():
+    """24 observations (16 unlabeled controls) and 24 definition clauses (15 control clauses) within 100 ms."""
+    items, rows = copy.deepcopy(UNLABELED['case']['items']), copy.deepcopy(UNLABELED['case']['requirements']['requirements'])
+    rows = [r for r in rows if r['source']['item_id'] != 'o3']
+    while len(rows) < 24:
+        item, row = second_control(items, oid=f'o{len(items) + 1}')
+        items.append(item)
+        rows.append(row)
+    clauses = [f'Picker {n} = {("region", "country")[n % 2]}' + (', chart fixed_size_list' if n % 3 == 0 else '') for n in range(12)]
+    snapshot = unlabeled_snapshot(UNLABELED['case']['instructions'] + ' ' + '. '.join(clauses) + '.', items=items)
+    assert len(req._surface_clauses(snapshot['reference']['instructions'])[0]) == 24
+    ledger, a = unlabeled_assess(snapshot, requirements=rows)
+    issues = control_issues(ledger, a)
+    assert len(rows) == 24 and len(issues) == 16 and all(len(i.alternatives) == 15 for i in issues.values())
+    assert not any(i.id == 'issue_scope' for i in a.issues)
+    decided, _ = decide_on(snapshot, ledger, (issues['o5'], REGION_SELECTOR))
+    checker = capabilities.Checker(capabilities.load_registry())
+    timings = []
+    for _ in range(3):
+        start = time.perf_counter()
+        req.evaluate(snapshot, decided, checker, check_components=False)
+        timings.append(time.perf_counter() - start)
+    assert min(timings) < .1, timings
+
+
+def unlabeled_build(blueprint_api, monkeypatch):
+    """Run 20261027-173624's reference and extracted rows installed as a staged build, rechecked in code
+    through the real gate; the planner answers with the fixture's reconstructed draft."""
+    from types import SimpleNamespace
+    from dss.artifacts.models import Context, Design, Outline
+    from dss.render import background
+    from dss.spec.models import TYPES
+    from test_blueprint import artifact
+    monkeypatch.setenv('DSS_ALLOWED_TYPES', ','.join(TYPES))
+    client, app, bid, sid, folder, bq, llm, value = blueprint_api
+    case = UNLABELED['case']
+    case = json.loads(json.dumps(case).replace(case['sources'][0]['id'], sid))
+    source = case['sources'][0]
+    for column in source['columns']:
+        column['sample'] = []
+    with app.state.db.connect() as conn:
+        conn.execute('UPDATE sources SET columns_json=?, bq_table=?, kind=? WHERE id=?',
+                     (json.dumps(source['columns']), source['bq_table'], 'synthetic', sid))
+    artifact(folder, Context.model_validate(case['context']))
+    artifact(folder, Outline.model_validate(case['outline']))
+    artifact(folder, Design.model_validate(case['design']))
+    reference = {'id': case['reference']['id'], 'mode': 'recreate', 'instructions': case['instructions'], 'summary': 'Saved reference',
+                 'images': [{'id': case['reference']['image_id'], 'name': 'reference.png', 'file': 'reference_img_000000000000.png',
+                             'mime_type': 'image/png', 'width': 1200, 'height': 900}],
+                 'interpretation': {'mode': 'recreate', 'items': case['items'], 'aspect_ratio': 1.7196}}
+    (folder / 'references.json').write_text(json.dumps(reference), encoding='utf-8')
+    (folder / 'reference_img_000000000000.png').write_bytes(png())
+    snapshot = req.inputs(app.state.db, bid, folder)
+    ledger = req.Ledger.model_validate(case['requirements'])
+    ledger.processed_sources = {s['id']: req.digest(s) for s in snapshot['incoming']}
+    ledger = req.merge(ledger, snapshot, req.Extraction(requirements=[]))
+    checker = capabilities.Checker(capabilities.load_registry())
+    req.save(folder, ledger, req.evaluate(snapshot, ledger, checker, check_components=False))
+    # The one row repair (for the Location legend's page-1 gap): the planner returns its page-1 rows unchanged.
+    repair = [r for r in case['draft']['rows'] if r['page'] == 1 and r['question_id'] in ('q1', 'q2', 'q3')]
+    llm.replies = [json.dumps(case['draft']), json.dumps({'rows': repair})]
+    from types import SimpleNamespace as Field
+    bq.dry_run = lambda sql: bq.sql.append(sql) or [Field(name=f['name'], field_type='FLOAT', mode='NULLABLE')
+                                                    for f in case['draft']['derived_fields']]
+    bq.created, bq.deleted = [], []
+    bq.create_view = lambda table, sql: bq.created.append(table)
+    bq.delete_view = lambda table: bq.deleted.append(table) or True
+    bq.aggregate = lambda sql: [{'year': '2011-01-01', 'region': 'Asia', 'country': 'Philippines', 'm0': 10, 'm1': 5}]
+    monkeypatch.setattr(background, 'capture', lambda html, path, width, height, scale=None: path.write_bytes(b'PNG'))
+    monkeypatch.setattr(app.state.settings, 'defaults', app.state.settings.defaults.model_copy(update={'designed_pages': False}))
+    return SimpleNamespace(client=client, app=app, bid=bid, folder=folder, llm=llm, bq=bq)
+
+
+def owned_issues(build, assessment):
+    """(observation item id, issue) of the unresolved issues: by requirement text, or a Blueprint
+    observation issue's source evidence."""
+    rows = req.load(build.folder).requirements
+    owners = {r.text: r.source.item_id for r in rows} | {r.source.id: r.source.item_id for r in rows}
+    return [(owners.get(i['requirement']) or next((owners[e] for e in i['evidence'] if e in owners), None), i)
+            for i in assessment['issues'] if i['resolution'] == 'unresolved']
+
+
+def test_unlabeled_region_list_binds_by_clause_and_publishes(blueprint_api, monkeypatch):
+    """The oracle: o5's issue offers the Region Selector clause first; accepting it with the approved geo map
+    (and legend) drops makes the assessment ready, and accept publishes o5 as a page-1 fixed_size_list on
+    region, its binding listed in feasibility.md. Recipe compiles; the fake engine finishes."""
+    from test_blueprint import confirm
+    from test_render import accept, executes
+    from dss.spec.models import DashboardSpec
+    build = unlabeled_build(blueprint_api, monkeypatch)
+    url = f'/api/builds/{build.bid}'
+    assessment = build.client.get(url + '/feasibility').json()
+    pending = owned_issues(build, assessment)
+    assert sorted({o for o, _ in pending}) == ['o3', 'o5'], pending
+    [o5] = [i for o, i in pending if o == 'o5']
+    assert o5['alternatives'][0]['label'] == REGION_SELECTOR and [a['label'] for a in o5['alternatives']][3:] == [
+        f'dropdown on {f}' for f in ('access_pct', 'people_without_access', 'rural_pct', 'urban_pct', 'year')]
+    decisions = [{'issue_id': o5['id'], 'action': 'accept_alternative', 'alternative_id': o5['alternatives'][0]['id']}]
+    decisions += [{'issue_id': i['id'], 'action': 'drop', 'alternative_id': None} for o, i in pending if o == 'o3']
+    stale = build.client.post(url + '/feasibility/decisions', json={'assessment_id': 'assessment_old', 'decisions': decisions})
+    assert stale.status_code == 409 and stale.json()['error']['code'] == 'feasibility_stale'
+    decided = build.client.post(url + '/feasibility/decisions', json={'assessment_id': assessment['id'], 'decisions': decisions})
+    assert decided.status_code == 200, decided.text
+    assert build.client.get(url + '/feasibility').json()['state'] == 'ready'
+    confirm(build.client, build.app, build.bid)
+    assessment = build.client.get(url + '/feasibility').json()
+    # Only the approved legend class may remain (o2, the "Location" bar): drop it explicitly.
+    left = owned_issues(build, assessment)
+    assert {o for o, _ in left} <= {'o2'}, [(o, i['reason']) for o, i in left]
+    if left:
+        dropped = build.client.post(url + '/feasibility/decisions', json={'assessment_id': assessment['id'], 'decisions': [
+            {'issue_id': i['id'], 'action': 'drop', 'alternative_id': None} for _, i in left]})
+        assert dropped.status_code == 200, dropped.text
+        assessment = build.client.get(url + '/feasibility').json()
+    assert assessment['state'] == 'ready', [i['reason'] for i in assessment['issues'] if i['resolution'] == 'unresolved']
+    accept(build)
+    spec = DashboardSpec.model_validate_json((build.folder / 'spec.json').read_text(encoding='utf-8'))
+    pages = {c.id: (p.index, c) for p in spec.pages for c in p.components}
+    ledger = req.load(build.folder)
+    row = next(r for r in ledger.requirements if r.source.item_id == 'o5')
+    [bound] = [e['fulfilled_by'] for e in ledger.verification[row.id] if 'fulfilled_by' in e]
+    assert bound and all(pages[c][0] == 1 and (pages[c][1].type, pages[c][1].field) == ('fixed_size_list', 'region') for c in bound), bound
+    feasibility = (build.folder / 'docs/feasibility.md').read_text(encoding='utf-8')
+    assert '## Decisions\n\n- o5 bound by clause Region Selector\n' in feasibility
+    # A recompute after accept leaves the decision applying.
+    _, rechecked = check(build.client, build.app, build.bid)
+    assert rechecked['state'] == 'ready' and not rechecked['prototype_stale'], rechecked
+    assert next(i for i in rechecked['issues'] if i['id'] == o5['id'])['resolution'] == 'accepted_alternative'
+    executes(build.client, build.app, build.bid, monkeypatch)
+    recipe = [json.loads(line) for line in (build.folder / 'recipe.jsonl').read_text(encoding='utf-8').splitlines()]
+    assert any(op['op'] == 'add_control' and op['component_id'] in bound and op['control_type'] == 'fixed_size_list'
+               and op['field'] == 'region' for op in recipe[1:])

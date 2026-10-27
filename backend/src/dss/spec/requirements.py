@@ -1452,11 +1452,96 @@ def _prerequisites(snapshot, needs, mappings):
     return digest({"fields": {n: fields.get(n) for n in sorted(names)}, "origins": origins, "derived": derived})
 
 
-def _offers(requirement, slot, snapshot, checker):
+def _unlabeled_control(requirement, snapshot):
+    """The chart_candidate of an active recreate image observation of kind `control` with a blank label
+    whose candidate is a field control, else None (architecture.md#Unlabeled reference control binding)."""
+    reference = snapshot.get('reference') or {}
+    if (reference.get('mode') != 'recreate' or requirement.source.kind != 'image'
+            or requirement.source.reference_id != reference.get('id')):
+        return None
+    item = json.loads(requirement.source.text)
+    blank = not (item.get('label') or '').strip()
+    return item.get('chart_candidate') if item.get('kind') == 'control' and blank and item.get('chart_candidate') in FIELD_CONTROLS else None
+
+
+def _matched_labels(snapshot, ledger):
+    """Normalized labels the recreate reference's observations match by name (unused_definitions)."""
+    rid, used = (snapshot.get('reference') or {}).get('id'), set()
+    for r in ledger.requirements:
+        if r.source.kind == 'image' and r.source.reference_id == rid:
+            item = json.loads(r.source.text)
+            used |= {_normal(v) for v in (item.get('label'), item.get('metric_label')) if v} | {_normal(m.label) for m in r.mappings}
+    return used
+
+
+def _control_clause(label, snapshot, candidate):
+    """(type, field) of the instructions' `<Label> = <field>[, chart <type>]` clause with this label when
+    it is a field control (its chart type, else the observation's `candidate`), else None."""
+    reference = snapshot.get('reference') or {}
+    found = _surface_labels(reference.get('instructions') or '').get(_normal(label), [])
+    if len({_surface_key(d) for d in found}) != 1 or found[0]['field'] is None:
+        return None  # absent, or conflicting definitions (a block of their own)
+    kind = found[0]['chart'] or candidate
+    return (kind, found[0]['field']) if kind in FIELD_CONTROLS else None
+
+
+def _bound_clauses(requirement, snapshot, ledger, checker):
+    """Normalized clause labels another observation's applying accepted decision binds."""
+    rows, bound = {r.id: r for r in ledger.requirements}, set()
+    for d in ledger.decisions:
+        clause = (d.get('alternative') or {}).get('clause')
+        other = rows.get(d.get('requirement_id'))
+        if clause and other is not None and other.id != requirement.id and _choice(other, d['slot'], snapshot, ledger, checker) is d:
+            bound.add(_normal(clause))
+    return bound
+
+
+def _binding_offers(requirement, slot, candidate, snapshot, ledger, checker):
+    """Need substitutions for an unlabeled field control's control_field issue: unused instruction control
+    clauses, then catalog-valid fields. Offered, never applied: silence or a sole candidate stays unresolved."""
+    fields, offered, types = schema(snapshot), [], _offered_types()
+    registry = _surface_registry().registry
+
+    def offer(label, kind, field, clause):
+        needs = [capabilities.Need(capability=f'control.{kind}', fields={'control_field': field})]
+        if (kind not in types or registry.get(needs[0].capability) is None
+                or _catalog_problem(kind, (), [field], None, None, fields) or not checker.need(needs[0], fields).ok):
+            return
+        payload = [n.model_dump() for n in needs]
+        if clause is None and any(o['needs'] == payload for o in offered):
+            return  # the instruction offer already carries these needs
+        aid = 'alt_' + digest([requirement.id, meaning(requirement), slot, payload, clause])[:24]
+        offered.append({'id': aid, 'label': label, 'needs': payload, 'clause': clause})
+    used = _matched_labels(snapshot, ledger) | _bound_clauses(requirement, snapshot, ledger, checker)
+    for definition in _surface_clauses((snapshot['reference'].get('instructions') or ''))[0]:
+        label = definition['label']
+        clause = _control_clause(label, snapshot, candidate)
+        if clause and _normal(label) not in used and not any(o['clause'] == label for o in offered):
+            offer(f'{label}: {clause[0]} on {clause[1]} (from your instructions)', *clause, label)
+    for field in sorted(fields):
+        offer(f'{candidate} on {field}', candidate, field, None)
+    return offered
+
+
+def _clause_current(requirement, clause, needs, snapshot, ledger):
+    """A clause decision applies only while its clause is in the current instructions with the same field
+    and type, and no observation's label has matched it since."""
+    candidate = _unlabeled_control(requirement, snapshot)
+    found = _control_clause(clause, snapshot, candidate) if candidate else None
+    if found is None or _normal(clause) in _matched_labels(snapshot, ledger) or len(needs) != 1:
+        return False
+    return needs[0].capability == f'control.{found[0]}' and needs[0].fields == {'control_field': found[1]}
+
+
+def _offers(requirement, slot, snapshot, checker, ledger=None):
     """Small curated substitutions. Every field binding is named in the explicit choice."""
     if not slot.startswith("need:"):
         return []  # Undefined metrics need data/text through the interview, never an inferred definition.
     need = requirement.needs[int(slot.split(":")[1])]
+    candidate = _unlabeled_control(requirement, snapshot)
+    if (ledger is not None and candidate and need.capability.startswith('control.')
+            and 'control_field' not in need.fields and need.capability.split('.', 1)[1] in FIELD_CONTROLS):
+        return _binding_offers(requirement, slot, candidate, snapshot, ledger, checker)
     if need.capability not in {"animation.temporal_playback", "geo.lat_long_points", "refresh.realtime_streaming"}:
         return []
     fields, candidates = schema(snapshot), []
@@ -1523,7 +1608,8 @@ def revalidate_decisions(snapshot, ledger, checker):
         if not r or d["action"] != "accept_alternative" or d.get("applied") or d["meaning"] != meaning(r):
             continue
         needs = [capabilities.Need.model_validate(n) for n in d["alternative"]["needs"]]
-        if _matches(snapshot, r, needs, checker):
+        clause = d["alternative"].get("clause")
+        if (clause is None or _clause_current(r, clause, needs, snapshot, updated)) and _matches(snapshot, r, needs, checker):
             d["applied"] = True
     return updated
 
@@ -1538,6 +1624,9 @@ def _choice(requirement, slot, snapshot, ledger, checker):
             continue
         needs = [capabilities.Need.model_validate(n) for n in d["alternative"]["needs"]]
         if not all(checker.need(n, schema(snapshot)).ok for n in needs):
+            return None
+        clause = d["alternative"].get("clause")
+        if clause is not None and not _clause_current(requirement, clause, needs, snapshot, ledger):
             return None
         if d["prerequisites"] != _prerequisites(snapshot, needs, requirement.mappings):
             return None
@@ -1586,7 +1675,7 @@ def _requirement_issues(snapshot, ledger, checker, *, candidates=_candidates):
             iid = "issue_" + digest([r.id, meaning(r), slot, v.capability, v.status, reason])[:24]
             choice = _choice(r, slot, snapshot, ledger, checker)
             resolution = ("dropped" if choice["action"] == "drop" else "accepted_alternative") if choice else "unresolved"
-            offers = _offers(r, slot, snapshot, checker)
+            offers = _offers(r, slot, snapshot, checker, ledger)
             rows.append((Issue(id=iid, requirement=r.text, status=v.status, reason=reason,
                 evidence=list(v.evidence), alternatives=[Alternative(id=o["id"], label=o["label"]) for o in offers],
                 resolution=resolution), r, slot, offers))
@@ -1646,7 +1735,19 @@ def evaluate(snapshot, ledger, checker, *, check_components=True):
         add("scope", "Assessment scope", capabilities.Verdict("needs_clarification", ledger.scope_error))
     # Dropped or decided issues don't count: only active issues and their alternatives.
     active = [i for i in found if i.resolution == "unresolved"]
-    offered = sum(len(i.alternatives) for i in active)
+    # An unlabeled control's instruction offers never trigger issue_scope; its field offers stay only when
+    # all of them fit the shared limit (architecture.md#Unlabeled reference control binding).
+    offered_by = {issue.id: offers for issue, _, _, offers in requirement_issues if issue.resolution == 'unresolved'}
+    clauses = {o['id'] for offers in offered_by.values() for o in offers if o.get('clause')}
+    by_field = {iid: {o['id'] for o in offers if 'clause' in o and o['clause'] is None} for iid, offers in offered_by.items()}
+    count = sum(len(i.alternatives) for i in active) - sum(len(ids) for ids in by_field.values())
+    for issue in active:
+        ids = by_field.get(issue.id)
+        if ids and count + len(ids) <= MAX_ISSUES:
+            count += len(ids)
+        elif ids:
+            issue.alternatives = [a for a in issue.alternatives if a.id not in ids]
+    offered = sum(a.id not in clauses for i in active for a in i.alternatives)
     if len(active) > MAX_ISSUES or offered > MAX_ISSUES:
         # No silent truncation: one scope issue represents the entire refusal; full ledger retained.
         reason = (f"{len(active)} active issues, over the {MAX_ISSUES}-issue limit" if len(active) > MAX_ISSUES else
@@ -2003,6 +2104,9 @@ def observation_meaning(r, needs, properties, *, labels=True, kpis=None):
              'metrics': metrics, 'dimensions': [m.field for m in r.mappings if m.aggregation in (None, 'none') and m.field],
              'date_field': next((n.fields['date_field'] for n in needs if n.fields.get('date_field')), r.mapping_origins.get('using')),
              'title': next((p.value for p in properties if p.path == 'label'), None) if labels else None}
+    if not value['dimensions'] and value['type'] in FIELD_CONTROLS and item.get('kind') == 'control' and not (item.get('label') or '').strip():
+        # An unlabeled control bound by an explicit decision shows its field like a label-matched one.
+        value['dimensions'] = [n.fields['control_field'] for n in needs if n.fields.get('control_field')]
     return {k: v for k, v in value.items() if v not in (None, [])}
 
 
@@ -2332,15 +2436,18 @@ def decide(snapshot, ledger, checker, body):
     """Validate the entire request before changing a copy; never trust client alternative payloads."""
     current = require_current(snapshot, ledger, checker, body.assessment_id)
     targets = {i.id: (i, r, slot, offers) for i, r, slot, offers in _requirement_issues(snapshot, ledger, checker)}
-    visible = {i.id for i in current.issues if i.resolution == "unresolved"}
+    visible = {i.id: {a.id for a in i.alternatives} for i in current.issues if i.resolution == "unresolved"}
     selected = []
     for item in body.decisions:
         if item.issue_id not in visible or item.issue_id not in targets:
             raise RunError("invalid_request", "Choose an unresolved requirement issue from this assessment", 422)
         issue, r, slot, offers = targets[item.issue_id]
-        alternative = next((o for o in offers if o["id"] == item.alternative_id), None)
+        alternative = next((o for o in offers if o["id"] == item.alternative_id and o["id"] in visible[item.issue_id]), None)
         if item.action == "accept_alternative" and alternative is None:
             raise RunError("invalid_request", "Choose an offered alternative from this assessment", 422)
+        clause = (alternative or {}).get("clause")
+        if clause and any(_normal((other[3] or {}).get("clause") or "") == _normal(clause) for other in selected):
+            raise RunError("invalid_request", f"Bind the instruction clause {clause} to one observation", 422)
         # Two issues of one requirement cannot simultaneously drop and substitute its intent.
         if any(other[1].id == r.id and other[0].action != item.action and
                "drop" in (other[0].action, item.action) for other in selected):
@@ -2357,7 +2464,9 @@ def decide(snapshot, ledger, checker, body):
             "prerequisites": _prerequisites(snapshot, needs, r.mappings),
             "evidence": [e for n in needs for e in checker.need(n, schema(snapshot)).evidence],
             "issue_id": item.issue_id, "baseline": _bindings(snapshot, r),
-            "applied": _matches(snapshot, r, needs, checker) if alternative else False})
+            "applied": _matches(snapshot, r, needs, checker) if alternative else False,
+            # A control binding's provenance names its observation (architecture.md#Unlabeled reference control binding).
+            **({"observation": r.source.item_id} if alternative and "clause" in alternative else {})})
         batch_owned = updated.pending_comments and r.source.batch_id == updated.pending_comments.id
         if alternative and not _matches(snapshot, r, needs, checker) and snapshot["spec"] and not batch_owned:
             updated.prototype_stale = True
@@ -2428,6 +2537,13 @@ def save(folder, ledger, assessment=None):
         body = "# Feasibility\n\nState: " + a.state + "\n\n## Requirements and mappings\n\n"
         body += "\n".join("- " + json.dumps(r.model_dump(), ensure_ascii=False) for r in ledger.requirements)
         body += "\n\n## Issues\n\n" + "\n".join("- " + i.reason for i in a.issues) + "\n"
+        accepted = {i.id for i in a.issues if i.resolution == "accepted_alternative"}
+        # A control binding's decision record is its provenance (architecture.md#Unlabeled reference control binding).
+        bindings = [f"- {d['observation']} bound by clause {d['alternative']['clause']}" if d['alternative']['clause'] else
+                    f"- {d['observation']} bound to field {d['alternative']['needs'][0]['fields']['control_field']}"
+                    for d in ledger.decisions if d.get("observation") and d.get("issue_id") in accepted]
+        if bindings:
+            body += "\n## Decisions\n\n" + "\n".join(bindings) + "\n"
         body += "\n## Verification evidence\n\n" + json.dumps(ledger.verification, ensure_ascii=False, indent=2) + "\n"
         write_doc(docs / "feasibility.md", {"type": "Feasibility Assessment", "title": "Feasibility", "state": a.state}, body)
         references._index(docs, {"feasibility.md": "Feasibility"}, write_doc)

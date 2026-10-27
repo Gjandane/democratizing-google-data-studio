@@ -1,4 +1,4 @@
-"""Task 25.7: real reference fidelity at the contract default stage Settings, with retained synthetic inputs.
+"""Task 25.8: real reference fidelity at the contract default stage Settings, with retained synthetic inputs.
 
 Run explicitly with -m live. Every run retains evidence, including failures; no
 fallback or unresolved feasibility decision is accepted as a successful check.
@@ -22,7 +22,8 @@ from fastapi.testclient import TestClient
 from dss.data.bigquery import BigQuery
 from dss.harness import stages as execution_stages
 from dss.harness.guardrails import RunError, check_reply
-from dss.harness.nodes import designer, reference_brief, synthetic_generate
+from dss.harness.nodes import designer, reference_brief, reference_extract, synthetic_generate
+from dss.harness import tracing
 from dss.spec import requirements
 from dss.spec.capabilities import Checker, load_registry
 from dss.spec.models import CHART_TYPES, CONTROL_TYPES, SYNTHETIC_LABEL, TYPES
@@ -253,8 +254,14 @@ class RecordedFlow(Flow):
             assert calls.status_code == 200, calls.text
             record = calls.json()
             check_reply(json.dumps(record), self.secrets)
+            # Already projected at the runtime boundary. Keep the diagnostic even when the
+            # status assertion below stops this case before any further model action.
+            extraction = [s['diagnostic'] for s in json.loads(trace(self.app, run['run_id'])['spans_json'] or '[]')
+                          if s['node'] == 'reference_extract' and 'diagnostic' in s]
+            check_reply(json.dumps(extraction), self.secrets)
             run.update(settings=record['settings'], calls=[{k: c.get(k) for k in STAGE_CALL_FIELDS} for c in record['calls']],
-                       cost_usd_estimate=record['cost_usd_estimate'], cost_complete=record['cost_complete'])
+                       cost_usd_estimate=record['cost_usd_estimate'], cost_complete=record['cost_complete'],
+                       extraction_diagnostics=extraction)
             assert run['status'] == 'ok', {k: run[k] for k in ('stage', 'node', 'error')}
             spans = [s for s in json.loads(trace(self.app, run['run_id'])['spans_json'] or '[]') if 'sections' in s]
             for request, span in zip(run['requests'], spans):
@@ -439,14 +446,21 @@ def assert_design_stages(spans, spec, mode, settings, design_pages, pages=None, 
     attempted = set(pages or {p['index'] for p in spec['pages']})
     expected = set(attempted)
     rows = {row['page']: row for row in design_pages['pages']}
+    standard = set()
     if mode == 'none':
         standard = {i for i in attempted if not spec['pages'][i - 1].get('design')}
+        inherited = 1 in standard and not pages
         for i in sorted(standard):
             assert rows[i]['layout'] == 'standard' and rows[i]['standard_reason'] == 'layout_fallback', rows[i]
+            assert settings['stages']['html_no_reference']['layout_fallback'] is True
+            assert any(s['node'] == 'designer_fallback' and s.get('page') == (1 if inherited else i)
+                       and s.get('reason') == 'invalid' for s in failed), (i, failed)
         facts.setdefault('standard_layout_pages', []).extend(
             {'page': i, 'standard_reason': rows[i]['standard_reason'],
+             'inherited_from': 1 if inherited and i != 1 else None,
              'spans': [s for s in failed if s.get('page') == i]} for i in sorted(standard))
-        failed = [s for s in failed if s.get('page') not in standard or s.get('reason') != 'invalid']
+        failed = [s for s in failed if not (s['node'] == 'designer_fallback'
+                  and s.get('page') in standard and s.get('reason') == 'invalid')]
         expected -= standard
         if 1 in standard and not pages:
             attempted = {1}  # a page-1 standard layout makes the whole build standard before later pages run
@@ -467,13 +481,42 @@ def assert_design_stages(spans, spec, mode, settings, design_pages, pages=None, 
             assert 0 < span['enforced_input_bound'] <= profile['input_tokens'], span
             assert 0 < span['output_tokens'] <= profile['output_tokens'], span
             assert span.get('stage_duration_ms', span['duration_ms']) <= profile['timeout_s'] * 1000, span
-            assert not span.get('reason') and not span.get('truncated'), span
+            allowed_layout_failure = (node == html_node and span['page'] in standard
+                                      and span.get('reason') == 'invalid')
+            assert (not span.get('reason') or allowed_layout_failure) and not span.get('truncated'), span
             if node == html_node:
                 actual[span['page']] = span['model']
     for i in expected:
         assert rows[i]['layout'] == 'designed' and rows[i]['brief'] is not None, rows[i]
         assert spec['pages'][i - 1]['design']['model'] == actual[i] == rows[i]['html_model'], (i, rows[i])
     assert any(s['node'] == 'publish' and not s.get('coverage_errors') for s in spans), spans
+
+
+@pytest.mark.parametrize('page_count', [1, 2])
+@pytest.mark.parametrize('reason,enabled,accepted', [
+    ('invalid', True, True), ('model', True, False), ('over_budget', True, False),
+    ('stage_timeout', True, False), ('invalid', False, False),
+])
+def test_no_reference_standard_layout_evidence(reason, enabled, accepted, page_count):
+    settings = {'fallback_model': 'worker', 'stages': {
+        'html_brief': {'model': 'planner', 'input_tokens': 12000, 'output_tokens': 1000, 'timeout_s': 600},
+        'html_no_reference': {'model': 'worker', 'input_tokens': 24000, 'output_tokens': 1000,
+                              'timeout_s': 1200, 'layout_fallback': enabled}}}
+    spans = [{'node': node, 'model': model, 'page': 1, 'images': 0,
+              'enforced_input_bound': 1000, 'input_budget': limit, 'output_tokens': 100, 'duration_ms': 1}
+             for node, model, limit in [('reference_brief', 'planner', 12000), ('designer', 'worker', 24000)]]
+    spans[-1]['reason'] = reason
+    spans += [{'node': 'designer_fallback', 'page': 1, 'reason': reason}, {'node': 'publish'}]
+    spec = {'pages': [{'index': i} for i in range(1, page_count + 1)]}
+    pages = {'pages': [{'page': i, 'layout': 'standard', 'standard_reason': 'layout_fallback'}
+                       for i in range(1, page_count + 1)]}
+    facts = {}
+    if accepted:
+        assert_design_stages(spans, spec, 'none', settings, pages, facts=facts)
+        assert facts['standard_layout_pages'][0]['standard_reason'] == 'layout_fallback'
+    else:
+        with pytest.raises(AssertionError):
+            assert_design_stages(spans, spec, 'none', settings, pages, facts=facts)
 
 
 def design_artifacts(flow, folder, evidence, label):
@@ -593,15 +636,37 @@ def comparison(evidence, prototype, mode):
 
 # The user-approved drop classes (change 2026-10-25), each selected by its observation's kind, candidate, label
 # and status, never "first alternative": the geo map (the data has no GEO field), the misread
-# Rural/Urban legend control, and a year slider if one is extracted. Any other issue is a block.
+# Rural/Urban legend (control or chart, user card 2026-10-27), and an extracted year slider.
+# Exact chart labels keep the actual urban/rural analysis outside this approved legend drop.
+def approved_legend(item):
+    if item.get('kind') not in ('chart', 'control'):
+        return False
+    label = item.get('label') or ''
+    if item['kind'] == 'control':
+        return bool(re.search(r'rural|urban|location', label, re.I))
+    return bool(re.fullmatch(
+        r'\s*(?:location(?:\s*\(%\))?(?:\s*:\s*rural\s*[,/]\s*urban)?|'
+        r'(?:rural\s*[/,]\s*urban|urban\s*[/,]\s*rural)(?:\s+legend)?)\s*', label, re.I))
+
+
+@pytest.mark.parametrize('item,expected', [
+    ({'kind': 'chart', 'label': 'Location (%)', 'chart_candidate': 'bar'}, True),
+    ({'kind': 'control', 'label': 'Location'}, True),
+    ({'kind': 'chart', 'label': 'Rural/Urban legend'}, True),
+    ({'kind': 'chart', 'label': 'Urban access over time'}, False),
+    ({'kind': 'chart', 'label': 'Philippines'}, False),
+    ({'kind': 'chart', 'label': 'Urban'}, False),
+    ({'kind': 'decoration', 'label': 'Location (%)'}, False),
+])
+def test_approved_legend_scope(item, expected):
+    assert approved_legend(item) is expected
+
+
 APPROVED_DROPS = (
     # Approval drops this observation as a whole, including a separate aggregation clarification
     # on its country binding; one observation can produce more than one issue.
     ('geo map without a GEO field', lambda item, status: item.get('chart_candidate') == 'geo_map'),
-    # The legend reads "Location: Rural, Urban"; the extractor labels it with either part. Its status
-    # follows the extractor's shape: no or a guessed field (needs_clarification) or no candidate (unknown).
-    ('Rural/Urban legend control', lambda item, status: item.get('kind') == 'control'
-     and re.search(r'rural|urban|location', item.get('label') or '', re.I) and status in ('needs_clarification', 'unknown')),
+    ('Rural/Urban legend', lambda item, status: approved_legend(item)),
     ('year slider', lambda item, status: item.get('kind') == 'control'
      and re.search(r'year|slider', item.get('label') or '', re.I) and not re.search(r'region', item.get('label') or '', re.I)),
 )
@@ -751,7 +816,7 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
     assert all(fixtures[name] == digest for name, digest in HASHES.items())
     generation = json.loads((DATA / 'generation.json').read_text(encoding='utf-8-sig'))
     app, config, project = live_app(tmp_path)
-    evidence = evidence_dir('24.9' if STAGE == '24.9' else '25.7' if FIDELITY else '24.7', mode)
+    evidence = evidence_dir('24.9' if STAGE == '24.9' else '25.8' if FIDELITY else '24.7', mode)
     (evidence / 'test-source.py').write_bytes(Path(__file__).read_bytes())
     print(f'{evidence.parents[1].name} {mode} evidence: {evidence}', flush=True)
     calls, tables = [], set()
@@ -762,16 +827,17 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
     facts = {'mode': mode, 'fixture_sha256': fixtures,
              'input_sha256': {name: hashlib.sha256(value.encode('utf-8')).hexdigest() for name, value in inputs.items()},
              'generation_calls': calls,
-             'settings_basis': 'contract default stage Settings (api.md 3.0), PUT from GET /api/settings/capabilities '
+             'settings_basis': 'contract default stage Settings (api.md 3.1), PUT from GET /api/settings/capabilities '
                                'defaults; the none case turns review_briefs on before its accept',
              'runtime_sha256': {name: hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()
                                 for name, module in [('reference_brief', reference_brief), ('designer', designer),
+                                                     ('reference_extract', reference_extract), ('tracing', tracing),
                                                      ('stages', execution_stages)]},
              'visual_approval': 'pending', 'accepted_substitutions': [], 'dry_engine': True,
              'check_status': 'running', 'fixture_provenance': str(DATA / 'README.md'),
              'approved_fixture_substitutions': [
                  'geo_map omitted; globe remains static real-geography art',
-                 'Rural/Urban legend misread as dropdown omitted',
+                 'Rural/Urban legend omitted whether extracted as control or chart (including Location (%))',
                  'extracted year slider omitted',
                  'four per-country small multiples become native urban/rural area chart',
                  'region selector uses native fixed_size_list',
@@ -783,6 +849,8 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
         # The contract defaults, explicitly: a stored or migrated (.env) profile must not leak into the check.
         capabilities = client.get('/api/settings/capabilities').json()
         defaults = capabilities['defaults']
+        assert defaults['stages']['native_planning']['output_tokens'] == 65536
+        assert defaults['stages']['native_planning']['timeout_s'] == 1200
         assert client.put('/api/settings', json={'gcp_project_id': project, **defaults}).status_code == 200
         current = client.get('/api/settings').json()
         assert {key: current[key] for key in defaults} == defaults, 'contract default stage Settings not in force'
@@ -833,7 +901,7 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
                     drops, left = approved_drops(flow, folder, early)
                     facts['accepted_substitutions'] += drops
                     assert not left, f'Issues outside the approved drops (a block for the architect): {left}'
-            flow.act('blueprint', 'post', '/design/confirm', seconds=700)
+            flow.act('blueprint', 'post', '/design/confirm', seconds=1300)
             assessment = flow.get('/feasibility')
             if any(i['id'].startswith('bp_intent_') for i in assessment['issues']):
                 flow.act('feasibility', 'post', '/feasibility/check', seconds=150)

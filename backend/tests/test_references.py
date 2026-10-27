@@ -167,6 +167,7 @@ def test_recreate_upload_retains_bytes_and_structured_observations(ref):
     assert row["node"] == "reference_extract" and row["status"] == "ok"
     assert [s["node"] for s in spans] == ["router", "reference_extract", "write_reference", "guardrail"]
     assert spans[1]["images"] == 1 and spans[1]["input_tokens_estimate"] > 0 and spans[2]["items"] == 4
+    assert spans[1]['diagnostic'] == {'boundary': 'local_validation', 'category': 'accepted'}
     reply = messages(app.state.db, bid)[-1]
     assert reply["node"] == "reference_extract" and result["summary"] in reply["text"]
 
@@ -529,3 +530,78 @@ def test_decoder_failure_answers_in_the_error_shape(ref, monkeypatch):
     assert response.status_code == 503 and response.json()["error"]["code"] == "invalid_source"
     assert "traceback" not in response.text and model.calls == 0 and traces(app) == []
     assert bid not in app.state.harness.active_builds  # nothing stayed reserved
+
+
+@pytest.mark.parametrize('case,category,boundary', [
+    ('provider', 'provider_response_error', 'provider_response'),
+    ('empty', 'no_final_text', 'final_text'),
+    ('unsafe', 'unsafe_reply', 'reply_guard'),
+    ('malformed', 'malformed_json', 'json_decode'),
+    ('schema', 'provider_schema_rejection', 'provider_schema'),
+    ('local', 'local_pydantic_rejection', 'local_validation'),
+    ('count', 'too_many_elements', 'element_count'),
+    ('items', 'too_many_elements', 'element_count'),
+])
+def test_extraction_rejection_diagnostics_preserve_lifecycle(ref, monkeypatch, case, category, boundary):
+    """One replacement request, no repair, sanitized evidence and old artifacts/lock retained."""
+    from google.adk.models.llm_response import LlmResponse
+    from google.genai import types
+    from dss.harness import stages
+    client, app, bid, folder, model, _ = ref
+    upload(client, app, bid, [('files', ('first.png', png(), 'image/png'))])
+    old = {p.relative_to(folder): p.read_bytes() for p in folder.rglob('*') if p.is_file()}
+    old_reference = client.get(f'/api/builds/{bid}/reference-images').json()
+    secret = 'DIAGNOSTIC_SECRET_SENTINEL'
+    app.state.settings.update({'google_api_key': secret})
+    bad = {
+        'empty': ' ', 'unsafe': output(palette_notes=secret), 'malformed': '{broken',
+        'schema': output([{**item(confidence='private-enum-value'), 'private-extra-key': 'private-value'}]),
+        'local': output([item(box=(900, 0, 200, 100))]),
+        'count': output(count=25), 'items': output([item()] * 25),
+    }.get(case, output())
+
+    class Rejected(Capture):
+        async def generate_content_async(self, req, stream=False):
+            self.calls += 1
+            self.requests.append(req)
+            yield LlmResponse(error_code='private-provider-code', error_message='private-provider-message') if case == 'provider' else LlmResponse(
+                content=types.Content(parts=[types.Part(text=bad)]),
+                usage_metadata=types.GenerateContentResponseUsageMetadata(prompt_token_count=5, candidates_token_count=2))
+    rejected = Rejected(response=bad, requests=[])
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda node: rejected)
+    run_id = upload(client, app, bid, [('files', ('second.png', png(20, 10), 'image/png'))])
+    result = finished(app, run_id)
+    assert result['status'] == 'error' and rejected.calls == 1
+    row = traces(app)[-1]
+    spans = json.loads(row['spans_json'])
+    diagnostic = next(s['diagnostic'] for s in spans if s['node'] == 'reference_extract')
+    assert diagnostic['category'] == category and diagnostic['boundary'] == boundary
+    calls = spans[0]['calls']
+    assert len(calls) == 1 and calls[0]['outcome'] == 'invalid'
+    assert spans[0]['settings']['stages']['reference_interpretation']['validation_repairs'] == 0
+    encoded = json.dumps({'diagnostic': diagnostic, 'trace': spans, 'result': result})
+    assert all(value not in encoded for value in (secret, 'private-enum-value', 'private-extra-key',
+               'private-value', 'private-provider-code', 'private-provider-message', 'box must lie inside'))
+    if case == 'local':
+        assert diagnostic['issues'] == [{'category': 'invariant', 'path': ['items', 0, 'box']}]
+    if case == 'schema':
+        assert diagnostic['issue_count'] >= 2
+    assert client.get(f'/api/builds/{bid}/reference-images').json() == old_reference
+    assert {p.relative_to(folder): p.read_bytes() for p in folder.rglob('*') if p.is_file()} == old
+    # A subsequent valid replacement proves the mutation reservation was released.
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda node: model)
+    upload(client, app, bid, [('files', ('third.png', png(30, 10), 'image/png'))])
+    assert traces(app)[-1]['status'] == 'ok'
+
+
+def test_extraction_schema_issues_are_bounded_and_value_free(ref):
+    client, app, bid, folder, model, _ = ref
+    model.response = output([{**item(), f'private-key-{i}': 'private-value'} for i in range(24)])
+    upload(client, app, bid, [('files', ('a.png', png(), 'image/png'))])
+    spans = json.loads(traces(app)[-1]['spans_json'])
+    diagnostic = next(s['diagnostic'] for s in spans if s['node'] == 'reference_extract')
+    assert diagnostic['issue_count'] == 24 and diagnostic['issues_truncated'] is True
+    assert len(diagnostic['issues']) == 10
+    assert all(issue['category'] == 'extra' and issue['path'] == ['items', i]
+               for i, issue in enumerate(diagnostic['issues']))
+    assert 'private-' not in json.dumps(diagnostic)

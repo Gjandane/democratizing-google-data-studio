@@ -37,6 +37,53 @@ ROUTING = {
 }
 
 
+def test_validation_diagnostic_projects_only_schema_paths_and_owned_categories():
+    from dss.harness.tracing import validation_diagnostic
+    from dss.harness.nodes.reference_extract import ReferenceOutput
+    errors = [
+        {'type': 'extra_forbidden', 'loc': ('items', 0, 'secret-key'), 'input': 'secret-value'},
+        {'type': 'secret-category', 'loc': ('items', 1, 'aggregation', 'secret-union-label'),
+         'msg': 'secret-message', 'ctx': {'secret': 'secret-context'}, 'url': 'https://secret'},
+        {'type': 'int_type', 'loc': ('items', 1000000, 'box', 'x'), 'input': 'secret'},
+        {'type': 'value_error', 'loc': ('items', True, 'secret'), 'ctx': {'error': ValueError('secret')}},
+    ]
+    result = validation_diagnostic(errors * 4, ReferenceOutput.model_json_schema(), local=True)
+    assert result['boundary'] == 'local_validation' and result['category'] == 'local_pydantic_rejection'
+    assert result['issue_count'] == 16 and result['issues_truncated'] is True and len(result['issues']) == 10
+    assert result['issues'][:3] == [
+        {'category': 'extra', 'path': ['items', 0, '?']},
+        {'category': 'other', 'path': ['items', 1, 'aggregation', '?']},
+        {'category': 'type', 'path': ['items', '?', 'box', 'x']},
+    ]
+    assert 'secret' not in json.dumps(result)
+
+
+def test_diagnostic_projection_failure_is_unclassified_and_bounded():
+    from dss.harness.tracing import validation_diagnostic, response_diagnostic, schema_path
+    def broken_errors():
+        raise RuntimeError('private diagnostic failure')
+        yield
+    result = validation_diagnostic(broken_errors(), {}, local=True)
+    assert result == {'boundary': 'local_validation', 'category': 'unclassified'}
+    assert response_diagnostic('private provider code') == {'boundary': 'provider_response', 'category': 'unclassified'}
+    assert schema_path(['private'] * 100, {}) == ['?'] * 13
+
+
+@pytest.mark.parametrize('outcome', ['ok', 'provider_error', 'output_cutoff', 'timeout',
+                                     'input_over_limit', 'cancelled', 'invalid'])
+def test_local_rejection_only_changes_an_existing_ok_call(outcome):
+    from dss.harness.tracing import StageCall
+    with stages.Execution(Config(), Trace()).activate() as run:
+        session = run.session('reference_extract')
+        stages.invalid_output('reference_extract')
+        assert not run.calls  # no fabricated request
+        call = StageCall(session, request(), stages.ARGON, 1)
+        call.value['outcome'] = outcome
+        stages.invalid_output('reference_extract')
+        assert call.value['outcome'] == ('invalid' if outcome == 'ok' else outcome)
+        assert len(run.calls) == 1
+
+
 class FakeTime:
     def __init__(self):
         self.value, self.waits = 0, []

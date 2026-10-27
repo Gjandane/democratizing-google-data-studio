@@ -147,3 +147,19 @@ async def test_call_records_do_not_change_usage_totals(client, app, build_id):
     call = client.get(f"/api/traces/{result['run_id']}/calls").json()['calls'][0]
     assert call['thinking_tokens'] == 17 and call['output_tokens'] == 2 and call['input_billed'] == 5
     assert call['cost_usd_estimate'] == (5 * 0.75 + 19 * 3.75) / 1_000_000
+
+
+async def test_local_invalid_extraction_keeps_usage_and_marks_received_call(client, app, build_id):
+    from test_references import output, item, payload, image
+    from dss.harness.guardrails import RunError
+    with pytest.raises(RunError) as error:
+        await app.state.harness.run('reference_extract', build_id, payload(app, [image()]),
+            llm=FakeLLM(response=output([item(box=(900, 0, 200, 100))])))
+    assert error.value.code == 'llm_unavailable'
+    with app.state.db.connect() as conn:
+        run_id = conn.execute('SELECT run_id FROM traces ORDER BY rowid DESC LIMIT 1').fetchone()[0]
+    usage = check_stream(app, build_id, run_id, 'reference_extract')
+    assert (usage[-1]['input_tokens'], usage[-1]['output_tokens']) == (5, 2)
+    calls = client.get(f'/api/traces/{run_id}/calls').json()['calls']
+    assert len(calls) == 1 and calls[0]['outcome'] == 'invalid'
+    assert calls[0]['input_billed'] == 5 and calls[0]['output_tokens'] == 2

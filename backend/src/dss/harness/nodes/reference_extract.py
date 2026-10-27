@@ -13,6 +13,7 @@ from dss.harness import stages
 from dss.harness.context import fit_request, reference_context
 from dss.harness.guardrails import RunError, check_reply
 from dss.harness.nodes.style_extract import StyleProfile, provider_schema, style_doc
+from dss.harness.tracing import record_reference_diagnostic, response_diagnostic, validation_diagnostic
 from dss.spec import references
 
 MAX_OUTPUT_TOKENS = 32768  # change 2026-10-26; fit_request applies the snapshot profile
@@ -68,12 +69,14 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
 
     async def after_model(callback_context, llm_response):
         if llm_response.error_code:
+            record_reference_diagnostic(trace, response_diagnostic('provider_response_error'))
             return LlmResponse(error_code='llm_unavailable', error_message='Reference model failed')
         raw = ''.join(p.text for p in (llm_response.content.parts or []) if p.text and not p.thought) if llm_response.content else ''
         try:
             state['raw'] = check_reply(raw, (secret,))
         except RunError:
             stages.invalid_output('reference_extract')
+            record_reference_diagnostic(trace, response_diagnostic('unsafe_reply' if raw.strip() else 'no_final_text'))
             return LlmResponse(error_code='llm_unavailable', error_message='Reference model returned unsafe output')
         return LlmResponse(content=types.Content(role='model', parts=[types.Part(text='Observations received for validation.')]),
             usage_metadata=llm_response.usage_metadata)
@@ -82,14 +85,24 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         trace.span('write_reference')
         if too_many(state['raw']):
             stages.invalid_output('reference_extract')
+            record_reference_diagnostic(trace, response_diagnostic('too_many_elements'))
             state['failure'] = RunError('invalid_source', f'The reference shows more than {references.MAX_ITEMS} elements; '
                                         'crop or simplify the screenshot and upload it again', 422)
             return 'Reference extraction did not finish.'
         try:
             output = ReferenceOutput.model_validate_json(state['raw'])
-        except (ValidationError, ValueError):
+        except (ValidationError, ValueError) as exc:
+            stages.invalid_output('reference_extract')
+            span = next((s for s in reversed(trace.spans) if s['node'] == 'reference_extract'), {})
+            # Keep the earlier proven boundary when JSON/provider-schema validation already failed.
+            if span.get('diagnostic', {}).get('category') not in ('malformed_json', 'provider_schema_rejection'):
+                diagnostic = (validation_diagnostic(exc.errors(include_url=False, include_context=False, include_input=False),
+                              ReferenceOutput.model_json_schema(), local=True) if isinstance(exc, ValidationError)
+                              else {'boundary': 'local_validation', 'category': 'unclassified'})
+                record_reference_diagnostic(trace, diagnostic)
             state['failure'] = RunError('llm_unavailable', 'Reference extraction returned invalid observations', 503)
             return 'Reference extraction did not finish.'
+        record_reference_diagnostic(trace, response_diagnostic('accepted'))
         first = images[0]
         interpretation = references.interpret(mode, first['width'], first['height'],
             output.model_dump(include={'palette_notes', 'type_notes', 'spacing_notes'}), output.items)

@@ -1,4 +1,4 @@
-# Electricity reference acceptance fixture (tasks 24.11, 25.7)
+# Electricity reference acceptance fixture (tasks 24.11, 25.7, 25.8)
 
 The image is the existing user-supplied electricity dashboard reference, retained by
 the earlier backend live run. It is a visual reference, not a data source.
@@ -28,7 +28,7 @@ current native type catalog explicitly, and PUTs the contract default stage Sett
 applies. The `none` case also turns `review_briefs` on before its accept: it edits
 one treatment of page 1's brief, approves each page and checks that the published
 `brief_p1.json` hashes to the edited brief. Outputs, spans, StageCalls, cost
-estimates and screenshots go to `.blueprint/qa/task-25.7/<mode>/` (`task-24.7/` with
+estimates and screenshots go to `.blueprint/qa/task-25.8/<mode>/` (`task-24.7/` with
 `DSS_LIVE_STAGE=24.7`, readiness-only `task-24.9/` with `DSS_LIVE_STAGE=24.9`);
 created BigQuery tables/views are cleaned after each case. Earlier task evidence
 (including `task-24.11/`) is preserved unchanged.
@@ -36,7 +36,8 @@ created BigQuery tables/views are cleaned after each case. Earlier task evidence
 The user approved these substitutions on 2026-10-25:
 
 - Drop geo_map; the real-geography globe remains static artwork.
-- Drop the Rural/Urban legend misread as a dropdown and any extracted year slider.
+- Drop the Rural/Urban legend whether extracted as a dropdown, control or chart
+  (including `Location (%)`, user card 2026-10-27), and any extracted year slider.
 - Replace four per-country small multiples with one native urban/rural area chart,
   expressed through the test's INSTRUCTIONS.
 - Use a native fixed_size_list for the region selector.
