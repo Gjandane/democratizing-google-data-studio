@@ -867,7 +867,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: style-only scope; no relaxed observation validation, schema or prompt change; preset choice matches design prefill; diagnostics carry paths/actions only; StageCall outcome flips to ok only on acceptance.
 
 ## Phase 26: Reference analysis gate (change 2026-10-28; replaces 25.11)
-- [ ] 26.1 Contract 3.2 shapes and stage defaults
+- [x] 26.1 Contract 3.2 shapes and stage defaults
   - Goal: the API speaks api.md 3.2 / dashboard-intent.md 1.3 shapes before the behavior lands: `ReferenceSet.analysis` (null until 26.2), `BlueprintRow.reference_item` (null until 26.4), the new error codes defined, and the stage defaults reference_interpretation `gemini-3.8-flash` high with validation_repairs 1 (bound [0,1]) and native_planning thinking `medium`. Stored Settings keep their values.
   - Files: src/dss/api/*.py, src/dss/artifacts/models.py, src/dss/spec/references.py, src/dss/config.py, src/dss/harness/stages.py, tests/test_api_contract.py, tests/test_stage_settings.py, docs/progress.md
   - Depends on: 25.10

@@ -2258,3 +2258,15 @@ assert min(timings) < .1
 - Checks: `blueprint.py stamp`; `lint` 0 errors (existing warnings only); no delta audit (POC, change.md). No pytest, provider, BigQuery or engine call this session.
 - Change requests: 25.11's (user, 2026-10-28) image-to-Argon + Flash analysis + human approval: planned in 26.1-26.6 here, frontend 17.1-17.3, release 2.6. No other open change request.
 - Next: task 26.1, then 26.2-26.6 in order; frontend 17.1-17.2 can run in parallel against the fixtures.
+
+## 2026-10-28: Task 26.1 Contract 3.2 shapes and stage defaults
+- Status: done
+- Plan check: unattended
+- What changed: `references.public` adds `analysis` (record.get, null until 26.2); `BlueprintRow.reference_item: str | None = None`; `references.unapproved(id)` / `analysis_conflict(rev)` build the two 409 RunErrors; stages.py defaults reference_interpretation Flash/high/repairs 1 ([0,1]), native_planning thinking medium. New tests in test_api_contract, test_stage_settings, test_blueprint.
+- Checks: `uv run pytest tests/test_api_contract.py tests/test_stage_settings.py` PASS (new checks fail before); Test (all) `uv run pytest` PASS 2394 passed, 17 deselected. No blueprint-reviewer run (S task, no gate behavior).
+- Decisions: stage defaults live in harness/stages.py (not config.py); stored Settings untouched (test proves a stored Argon/0-repair row keeps values). Existing tests updated to 3.2: test_references (2 asserts validation_repairs 0 -> 1, hit 22 cases), test_stage_execution (native_planning thinking HIGH -> MEDIUM, 2 tests). Error codes are plain strings: constructors in spec/references.py, not yet raised anywhere.
+- Digest: references.public()['analysis'] (None until 26.2); BlueprintRow.reference_item (None); references.unapproved(set_id), analysis_conflict(rev) -> 409 RunError; reference_interpretation default Flash/high/repairs 1, native_planning medium.
+- Tried and failed: none
+- Gotchas: none
+- Left open: none
+- Next: Task 26.2 Flash reference analysis.

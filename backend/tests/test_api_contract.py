@@ -387,7 +387,10 @@ def test_reference_set_contract(thin, monkeypatch):
               "run_accepted.json", 202)
         client.portal.call(drain, app)
         result = client.get(f"/api/builds/{bid}/reference-images")
-        check(result, "../dashboard-intent/reference_set.json")
+        expected = json.loads((INTENT / "reference_set.json").read_text())
+        assert result.json().keys() == expected.keys() and "analysis" in result.json()
+        assert result.json()["analysis"] is None  # 26.2 fills it
+        shape({**result.json(), "analysis": {}}, {**expected, "analysis": {}})
         assert result.json()["images"][0]["file"].startswith("reference_img_")
     for content, name, kind, status in ((png() + b"0" * references.MAX_FILE_BYTES, "a.png", "image/png", 413),
                                         (b"text", "a.txt", "text/plain", 422)):
@@ -397,7 +400,28 @@ def test_reference_set_contract(thin, monkeypatch):
         assert error.json()["error"]["code"] == "invalid_source" and isinstance(error.json()["error"]["detail"]["reason"], str)
     deleted = client.delete(f"/api/builds/{bid}/reference-images")
     assert deleted.status_code == 204 and client.get(f"/api/builds/{bid}/reference-images").json() is None
-    assert fixture.keys() == {"id", "mode", "instructions", "images", "summary"}
+    assert fixture.keys() == {"id", "mode", "instructions", "images", "summary", "analysis"}
+
+
+def test_blueprint_row_reference_item_contract():
+    """api.md 3.2: BlueprintRow.reference_item is present on every row, null until 26.4."""
+    from dss.artifacts.models import Blueprint
+    fixture = json.loads((FIXTURES / "blueprint.json").read_text())
+    assert all("reference_item" in row for row in fixture["rows"])
+    legacy = json.loads(json.dumps(fixture))
+    for row in legacy["rows"]:
+        del row["reference_item"]
+    for source in (fixture, legacy):
+        dumped = Blueprint.model_validate(source).model_dump(mode="json")
+        assert [r.keys() for r in dumped["rows"]] == [r.keys() for r in fixture["rows"]]
+        assert all(r["reference_item"] is None for r in dumped["rows"])
+
+
+def test_reference_gate_error_constructors():
+    from dss.spec import references
+    unapproved, conflict = references.unapproved("ref_1"), references.analysis_conflict(3)
+    assert (unapproved.code, unapproved.status_code, unapproved.detail) == ("reference_unapproved", 409, {"reference_set_id": "ref_1"})
+    assert (conflict.code, conflict.status_code, conflict.detail) == ("reference_analysis_conflict", 409, {"revision": 3})
 
 
 def test_feasibility_contract_states(thin, monkeypatch):

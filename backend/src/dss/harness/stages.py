@@ -22,8 +22,8 @@ LEGACY_DEFAULTS = {'planner_model': ARGON, 'worker_model': FLASH}
 LIMITS = {
     'model_timeout_s': [10, 600], 'generation_timeout_s': [30, 3600],
     'transport_retries': [0, 5],
-    'validation_repairs': {stage: [0, 0 if stage == 'reference_interpretation' else
-                                    1 if stage == 'native_planning' else 5] for stage in GENERATIONS},
+    'validation_repairs': {stage: [0, 1 if stage in ('reference_interpretation', 'native_planning') else 5]
+                           for stage in GENERATIONS},
     'input_margin_pct': [0, 100], 'min_input_tokens': 1024, 'min_output_tokens': 256,
 }
 MODELS = {
@@ -42,11 +42,12 @@ def defaults():
     for stage in GENERATIONS:
         html = stage in ('reference_html', 'html_no_reference')
         long = html or stage == 'native_planning'
-        stages[stage] = {'model': FLASH if html else ARGON, 'thinking': 'high',
+        stages[stage] = {'model': FLASH if html or stage == 'reference_interpretation' else ARGON,
+                         'thinking': 'medium' if stage == 'native_planning' else 'high',
                          'input_tokens': 131072, 'output_tokens': 65536 if long else 32768,
                          'timeout_s': 1200 if long else 600,
                          'transport_retries': 1 if stage in GENERATIONS[:2] else 2,
-                         'validation_repairs': 0 if stage == 'reference_interpretation' else 2 if html else 1,
+                         'validation_repairs': 2 if html else 1,
                          'input_margin_pct': 20}
     stages['html_no_reference']['layout_fallback'] = True
     return {'stages': stages, 'fallback_model': FLASH, 'review_briefs': False}

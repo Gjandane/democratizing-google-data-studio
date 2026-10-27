@@ -582,7 +582,7 @@ def test_extraction_rejection_diagnostics_preserve_lifecycle(ref, monkeypatch, c
     assert diagnostic['category'] == category and diagnostic['boundary'] == boundary
     calls = spans[0]['calls']
     assert len(calls) == 1 and calls[0]['outcome'] == 'invalid'
-    assert spans[0]['settings']['stages']['reference_interpretation']['validation_repairs'] == 0
+    assert spans[0]['settings']['stages']['reference_interpretation']['validation_repairs'] == 1
     encoded = json.dumps({'diagnostic': diagnostic, 'trace': spans, 'result': result})
     assert all(value not in encoded for value in (secret, 'private-enum-value', 'private-extra-key',
                'private-value', 'private-provider-code', 'private-provider-message', 'box must lie inside'))
@@ -680,7 +680,7 @@ def test_common_style_forms_normalize_in_both_modes(ref, mode, field, raw, expec
     assert diagnostic == accepted([(path, 'normalized') for path in paths])
     calls = spans[0]['calls']
     assert len(calls) == 1 and calls[0]['outcome'] == 'ok'  # provider-schema `invalid` flips on acceptance
-    assert spans[0]['settings']['stages']['reference_interpretation']['validation_repairs'] == 0
+    assert spans[0]['settings']['stages']['reference_interpretation']['validation_repairs'] == 1
 
 
 def test_valid_style_takes_no_repair(ref):

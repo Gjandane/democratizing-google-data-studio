@@ -169,7 +169,8 @@ async def test_analysis_defaults_share_one_action_clock_through_count_and_repair
                 await fit_request(memory(node), first, fake, {})
                 await generate(bind_model(node, fake), first)
                 assert first.config.max_output_tokens == 32768 * scale
-                assert first.config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
+                assert first.config.thinking_config.thinking_level == (
+                    types.ThinkingLevel.MEDIUM if node == 'blueprint' else types.ThinkingLevel.HIGH)
                 time.advance(100 * scale)  # code validation/measurement also spends the action clock
                 await fit_request(memory(node), request(), fake, {})
         assert caught.value.code == 'stage_timeout'
@@ -321,7 +322,7 @@ async def test_fallback_has_its_own_retries_same_request_caps_and_one_clock(stag
         await generate(bind_model('blueprint', model), req2)
     assert [c[0] for c in calls] == [stages.ARGON, stages.ARGON, stages.FLASH, stages.FLASH, stages.FLASH]
     assert all(c[0] == c[1] for c in calls)
-    assert all(c[2].thinking_config.thinking_level == types.ThinkingLevel.HIGH and
+    assert all(c[2].thinking_config.thinking_level == types.ThinkingLevel.MEDIUM and
                c[2].max_output_tokens == 65536 for c in calls)
     assert len(clocks) == 1 and clocks[0].end == 30 and time.waits == [1, 1] and time.value == 9
     recorded = trace.spans[0]['calls']

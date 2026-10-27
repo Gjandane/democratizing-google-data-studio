@@ -86,6 +86,7 @@ def test_ecommerce_rows_pages_contract_trace_and_metadata_only(blueprint_api):
     result = client.get(f'/api/builds/{bid}/blueprint').json()
     assert result is not None
     assert result.keys() == fixture('blueprint').keys()
+    assert all(r.keys() == fixture('blueprint')['rows'][0].keys() and r['reference_item'] is None for r in result['rows'])
     assert Blueprint.model_validate(result).model_dump(mode='json') == result
     selected = {q['id'] for s in fixture('outline')['sections'] for q in s['questions'] if q['selected']}
     assert {r['question_id'] for r in result['rows'] if r['question_id']} == selected

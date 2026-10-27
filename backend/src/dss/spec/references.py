@@ -357,7 +357,21 @@ def public(record):
     """The ReferenceSet response: display names and plain file names, never paths or model output."""
     return {"id": record["id"], "mode": record["mode"], "instructions": record["instructions"],
             "images": [{"id": i["id"], "name": i["name"], "file": i["file"]} for i in record["images"]],
-            "summary": record["summary"]}
+            "summary": record["summary"], "analysis": record.get("analysis")}
+
+
+def unapproved(reference_set_id):
+    """409 reference_unapproved (api.md 3.2): the recreate analysis needs approval first."""
+    from dss.harness.guardrails import RunError
+    return RunError("reference_unapproved", "Approve the reference analysis before continuing.", 409,
+                    {"reference_set_id": reference_set_id})
+
+
+def analysis_conflict(revision):
+    """409 reference_analysis_conflict (api.md 3.2): the client edited a stale revision."""
+    from dss.harness.guardrails import RunError
+    return RunError("reference_analysis_conflict", "The reference analysis changed; reload it.", 409,
+                    {"revision": revision})
 
 
 def load(folder):

@@ -171,6 +171,7 @@ class BlueprintRow(Model):
     note: str
     status: Literal['ok', 'blocked']
     issue_ids: list[str]
+    reference_item: str | None = None
 
 
 class JoinKey(Model):

@@ -28,6 +28,28 @@ def test_stage_defaults_and_capabilities(client):
     assert capabilities.json()['limits'] == fixture('capabilities.json')['limits']
 
 
+def test_reference_analysis_and_planning_defaults_follow_3_2(client, tmp_path):
+    defaults = client.get('/api/settings/capabilities').json()
+    expected = fixture('capabilities.json')
+    for stage in ('reference_interpretation', 'native_planning'):
+        assert defaults['defaults']['stages'][stage] == expected['defaults']['stages'][stage]
+        assert defaults['limits']['validation_repairs'][stage] == expected['limits']['validation_repairs'][stage] == [0, 1]
+    reference = defaults['defaults']['stages']['reference_interpretation']
+    assert (reference['model'], reference['thinking'], reference['validation_repairs']) == (stages.FLASH, 'high', 1)
+    assert defaults['defaults']['stages']['native_planning']['thinking'] == 'medium'
+    assert client.put('/api/settings', json={'stages': {'reference_interpretation': {'validation_repairs': 2}}}).status_code == 422
+
+
+def test_stored_pre_3_2_settings_keep_their_values(tmp_path):
+    settings = store(tmp_path)
+    old = {'model': stages.ARGON, 'validation_repairs': 0}
+    settings.update({'stages': {'reference_interpretation': old, 'native_planning': {'thinking': 'high'}}})
+    stored = store(tmp_path).get().public()['stages']
+    assert stored['reference_interpretation']['model'] == stages.ARGON
+    assert stored['reference_interpretation']['validation_repairs'] == 0
+    assert stored['native_planning']['thinking'] == 'high'
+
+
 def test_stored_native_planning_values_override_new_defaults(tmp_path):
     settings = store(tmp_path)
     old = {'output_tokens': 32768, 'timeout_s': 600}
