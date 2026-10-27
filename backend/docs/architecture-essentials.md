@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:2238bce64d96 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:19dce232ddd6 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 docs/architecture.md wins.
 
@@ -60,6 +60,10 @@ tests/          offline fakes; tests/live/ marked live
   unenforced period phrases and show the mapped unit (#Recreate page placement and truthful
   observed titles).
 - Synthetic: opt-in schema/count/seed -> stdlib CSV -> typed BQ intake; protected page-1 footer.
+- Reference extraction diagnostics: code-owned boundary/category + bounded schema paths on the
+  existing span; no raw answers/validator messages/values (#Reference extraction diagnostics).
+  Local rejection marks its call invalid. 25.8 adds diagnostics before one fresh recreate case;
+  any new recreate extraction failure blocks without another case retry. Defaults stay 3.1.
 - Tests offline unless marked live. Research <=20 fetches, no retries.
 
 ## Never do

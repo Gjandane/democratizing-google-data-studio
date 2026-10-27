@@ -667,6 +667,51 @@ Final-audit corrections (2026-10-19):
   A live synthetic screenshot proves actual image parts reach Gemini and extracted geometry/theme
   reaches the deterministic spec. Do not claim pixel-identity based on that check.
 
+### Reference extraction diagnostics
+- Problem (25.8 block, change 2026-10-27): StageCall `invalid` conflates provider response
+  errors, empty text, JSON decoding and provider-schema rejection. Local Pydantic errors are
+  discarded, and a local-only invariant can fail with the call still marked `ok`. The saved
+  25.8 responses were not retained; their precise defect cannot be recovered from usage counts.
+- Objective/input/output: classify the existing response and validation boundaries without
+  changing extraction. Input is the current response, provider schema and local validation
+  result. Output is a bounded, code-owned diagnostic on the existing `reference_extract` span,
+  retained in the live harness's evidence. No new endpoint, StageCall field, setting or contract.
+- Distinguish provider response error, no final text, unsafe reply, malformed JSON,
+  provider-schema rejection, local Pydantic rejection and too-many-elements refusal; use
+  `unclassified` when the boundary cannot prove a narrower cause. Record the last reached
+  boundary, not a guessed root cause. For schema/local errors keep at most 10 issues, total
+  issue count and a truncation flag; each issue has only a code-owned error category and a
+  schema path made from known field names and bounded array indices. Replace unknown keys,
+  union labels and other arbitrary path components with a fixed marker. Never copy validator
+  messages, input values, context, URLs, raw provider codes/messages, exception repr/args,
+  prompts, image text, response text, thoughts or credentials. Unsupported error categories
+  become `other`. Optional response size is a numeric count only. Apply the same projection
+  before persistence, assertions and console output; there is no raw-output debug mode.
+- Invariants: provider-schema and local validation stay distinct, with current strictness;
+  thousandths boxes, item count, nullable fields, text limits and the local box-inside-image
+  invariant stay intact. Rejection of a received response sets its associated StageCall from
+  `ok` to `invalid` (including local-only rejection). Preserve existing provider-error,
+  cutoff/timeout/overflow/cancel outcomes; never invent a call when no request occurred.
+  Successful extraction and atomic replacement remain unchanged.
+- Budget: no additional provider request, validation repair, fallback, sleep or deadline;
+  reuse existing validation where possible. Diagnostic failure cannot replace the original
+  extraction error or turn a refusal into success. Defaults remain api.md 3.1; interpretation
+  still has zero validation repairs. A future actual extraction repair must follow evidence,
+  rather than coerce/drop observations, relax the schema or alter prompts speculatively.
+- Oracle: `tests/test_references.py` plus stage/tracing tests use fake responses for every
+  classifier, local-only box failure, unknown/secret-bearing extra keys, empty and malformed
+  replies, and more than 24 elements. Assert one generation, correct terminal outcome,
+  sanitized diagnostics, unchanged error/lifecycle behavior, old reference/artifact retention
+  and lock release. Local diagnostic work must pass offline before new live work.
+- Live ruling for 25.8: the two failed recreate attempts remain exhausted evidence. After the
+  diagnostics and their regression checks, permit one fresh recreate case at unchanged inputs
+  and contract defaults, starting with the existing synthetic prerequisite. Use that case's
+  reference action as the diagnostic probe; no separate paid probe or automatic case retry.
+  Failure stops the live check before other cases, with sanitized boundary evidence and a new
+  architect block; a valid extraction may continue that same case through existing acceptance.
+  One clean response does not prove the intermittent failure fixed. The full three-case check
+  remains required for completion; keep the original retry rule for other failures/cases.
+
 ### Capability verification
 - Problem: an allowed chart type alone cannot prove that the requested behavior is implementable.
   Objective: preserve every explicit requirement and explain unsupported/unknown work early.
@@ -1326,6 +1371,7 @@ Final-audit corrections (2026-10-19):
   and cleans candidates; a second invalid measurement never publishes. No-reference requests,
   artifact bytes and fallback are unchanged. Existing text/slot/footer/security checks remain
   the oracle; no relaxed checks to pass a live screenshot.
+### Reference live acceptance
 - Live acceptance: backend-owned reproducible recreate fixture from the electricity reference,
   same synthetic data and explicit accepted substitutions; real configured planner/worker,
   dry engine. Save the reference/prototype side by side and redacted stage counts/models/times.
@@ -1804,3 +1850,4 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-26 | Cost estimates: verified per-model prices in the backend capability table; per-call, per-run and per-build USD estimates (StageCall, RunCalls, `GET /builds/{id}/cost`), labeled estimated with the price date | prices in the frontend; no costs (interview closing default) | user request 2026-10-26 after the interview | change configurable model stages (user) |
 | 2026-10-26 | Restore the <100 ms recomputation oracle by measured, evaluation-local reuse before the live fidelity run | relax or rerun the timing test; defer | 24.11 block: 107.8/103.6 ms; the oracle stays | change configurable model stages (architect, from the 24.11 follow-up draft) |
 | 2026-10-27 | native_planning defaults 131,072 / 65,536 tokens and 1,200 s per action (api.md 3.1); stored Settings keep their values. In 25.8: `llm_unavailable` from a schema-invalid answer on a 0-repair stage reruns once like a transient error; the Rural/Urban legend is dropped however it is extracted | thinking medium at 600 s / 32,768; a test-only Settings override; a reference_interpretation repair (contract change); keep blocking the legend-as-chart | 25.7 block: recreate blueprint timed out at 600 s; a 3,600 s benchmark used 25,240 thinking + 2,060 answer of 32,768 in 239 s; reference_extract schema failures ~3/26 runs | change 2026-10-27 (user cards) |
+| 2026-10-27 | Add sanitized extraction-boundary diagnostics inside 25.8, then one fresh recreate attempt with no further invalid-response retry; preserve all defaults, validators, inputs and the acceptance gate | guess a normalization/prompt fix; add interpretation repairs or fallback; repeat the old run without new evidence | both recreate attempts stopped before publication, but `invalid` is not proof of schema rejection and local validation discards its issue details; a repair needs a classified failure | change 25.8 diagnostics (architect ruling; no new contract or dependency) |
