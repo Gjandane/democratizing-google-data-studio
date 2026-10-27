@@ -2192,3 +2192,24 @@ assert min(timings) < .1
 - Gotchas: none new; AGENTS unchanged.
 - Left open: 25.10 live/visual acceptance; first definition sample exceeds one second; no cold-start SLO or cosmetic waiver claimed.
 - Next: Task 25.10 in a new backend builder chat; retain its existing user-decision/visual STOP.
+
+## 2026-10-27: Task 25.10 Live stage defaults and reference fidelity approval
+- Status: blocked
+- Plan check: off
+- What changed: Committed 25.9's pending work first (user card). User chose the live campaign. Run 1 blocked on unlabeled date_range o11 (year slider); user widened the year-slider drop (test harness only) and authorized a rerun. Run 2's recreate reference_extract answer was rejected; blocked per rule (user card).
+- Checks: Done-when offline six-file suite PASS: 368 passed, 2 deselected, 601.99 s. Live run 1: 1 failed, 100.22 s (reconcile). Harness offline after widening: 49 passed. Live run 2: 1 failed, 45.66 s (reference_extract). Earlier evidence 10,874 files unchanged. Full suite and review not run (blocked, no runtime change).
+- Decisions: `approved_year_slider` matches a year/slider-labeled control or an unlabeled control with chart_candidate date_range; never box/order. Harness change committed with this block (user-approved, in Files) so the next session starts clean. Evidence: .blueprint/qa/task-25.10/README.md.
+- Blocked because: (b) recreate extraction acceptance needs a code/plan ruling; the plan forbids rerunning a rejected recreate reference_extract answer.
+- Question: How should a recreate reference_extract answer whose only schema failures are style hex/font patterns be handled, and does 25.10 then get a new campaign?
+- Options: A (recommended) plan an offline repair that normalizes or omits invalid style values in recreate extraction (observations are what recreate needs), then one new 25.10 campaign. B: the user reclassifies such rejections as one-rerun transients, then rerun 25.10 unchanged.
+- Failure output (run 2):
+  stage reference_interpretation, node reference_extract, gemini-4-argon, thinking high, fallback false
+  input 3268 measured / 4434 enforced / 131072; output 204 + 1673 thinking / 32768; outcome invalid; 24672 ms
+  diagnostic boundary provider_schema, category provider_schema_rejection, issue_count 8
+  pattern at style.palette[0], [1], [2], style.background, style.surface, style.text, style.accent, style.font_family
+  AssertionError: {'stage': 'reference', 'node': 'reference_extract', 'error': 'llm_unavailable'}
+- Digest: 25.10 blocked: run 1 unlabeled date_range year slider (drop widened in harness, user card); run 2 recreate reference_extract rejected on style hex/font patterns; no prototype, no visual approval. Evidence .blueprint/qa/task-25.10/.
+- Tried and failed: run 1 (harness predicate, fixed with user approval); run 2 (rejected extraction, no rerun per rule).
+- Gotchas: added to AGENTS.md (unlabeled date_range year slider; style-only pattern rejection).
+- Left open: o3 `Location` bar (legend) remains a feasible chart with no issue; name it at the eventual STOP. Style and none cases not reached.
+- Next: architect resolves the extraction question, then a new 25.10 campaign.

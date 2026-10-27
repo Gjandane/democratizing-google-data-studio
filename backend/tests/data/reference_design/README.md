@@ -37,7 +37,9 @@ The user approved these substitutions on 2026-10-25:
 
 - Drop geo_map; the real-geography globe remains static artwork.
 - Drop the Rural/Urban legend whether extracted as a dropdown, control or chart
-  (including `Location (%)`, user card 2026-10-27), and any extracted year slider.
+  (including `Location (%)`, user card 2026-10-27), and any extracted year slider
+  (a year/slider-labeled control, or an unlabeled `date_range` control, user card
+  2026-10-27 after 25.10 run 1; never matched by box or item order).
 - Replace four per-country small multiples with one native urban/rural area chart,
   expressed through the test's INSTRUCTIONS.
 - Use a native fixed_size_list for the region selector.

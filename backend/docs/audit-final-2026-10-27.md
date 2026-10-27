@@ -13,7 +13,7 @@ additional demonstrable product-code blocker. No new audit-fix phase is added.
 | Gate | Evidence | Final disposition |
 | --- | --- | --- |
 | 25.9 deterministic recomputation acceptance | Historical complete definition/grain/evaluate workload: 1,076.885 / 105.065 / 104.367 ms against 100 ms. Final aligned full suite: 2,341 passed; all original timing samples retained, including first 1,136.191 ms and subsequent 76.008 / 75.017 ms for that workload. | CLOSED by the user-approved 250 ms warm acceptance and complete offline verification below. Reviewed runtime retained; no process-cold measurement or cold-start SLO claimed. |
-| 25.10 current real-model recreation and visual approval | The latest two recreate runs published nothing: footer validation failed before its approved fix, then native planning timed out at 1,200 s. Current binding/footer repairs have offline evidence. | User decision pending: one final bounded campaign with actual-output approval, or explicitly defer recreation acceptance as experimental/unverified at POC closure. |
+| 25.10 current real-model recreation and visual approval | The latest two recreate runs published nothing: footer validation failed before its approved fix, then native planning timed out at 1,200 s. Current binding/footer repairs have offline evidence. | User chose the campaign (2026-10-27). BLOCKED: run 1 left an unlabeled date_range year slider (drop widened by user card); run 2's recreate reference_extract answer was rejected (provider_schema pattern on style fields), no rerun per rule. Evidence: .blueprint/qa/task-25.10/README.md. |
 
 Preview cosmetic decision pending: clipped trailing scorecard decimals and crowded
 style-chart axes may be accepted as POC limitations only with the user's explicit

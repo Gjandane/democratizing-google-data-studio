@@ -84,4 +84,5 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - ADK Workflow wraps exceptions from `before_model`; retain sanitized stage failures in the action context so overflow and deadline codes survive that boundary.
 - FastAPI 0.159 keeps included-router wrappers in `app.routes`: recurse `effective_candidates()` when inventorying write routes; OpenAPI omits hidden routes.
 - Reference extraction can return a null-label control despite a named instruction definition; its field binding can stay unresolved, and neither its screenshot position nor a missing label authorizes an inferred binding or legend drop.
+- Reference extraction can return the electricity year slider as an unlabeled `date_range` control (25.10 run 1): label-only drop predicates miss it, and a whole recreate extraction can be rejected on style-only hex/font patterns (run 2).
 - native_planning at the 3.1 defaults ran 300 s in 25.9 run 1 and hit the 1,200 s stage_timeout with no response in run 2 on identical inputs: one live recreate can cost ~25 min before failing.

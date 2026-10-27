@@ -662,13 +662,37 @@ def test_approved_legend_scope(item, expected):
     assert approved_legend(item) is expected
 
 
+def approved_year_slider(item):
+    """A year/slider-labeled control, or (user card 2026-10-27, run 20261027-235348) an unlabeled date-range
+    control: the reference's only date control is its year slider. Never matched by box or item order."""
+    if item.get('kind') != 'control':
+        return False
+    label = (item.get('label') or '').strip()
+    if not label:
+        return item.get('chart_candidate') == 'date_range'
+    return bool(re.search(r'year|slider', label, re.I)) and not re.search(r'region', label, re.I)
+
+
+@pytest.mark.parametrize('item,expected', [
+    ({'kind': 'control', 'label': 'Year slider', 'chart_candidate': 'date_range'}, True),
+    ({'kind': 'control', 'label': 'Year', 'chart_candidate': 'dropdown'}, True),
+    ({'kind': 'control', 'label': None, 'chart_candidate': 'date_range', 'date_grain': 'year'}, True),
+    ({'kind': 'control', 'label': ' ', 'chart_candidate': 'date_range'}, True),
+    ({'kind': 'control', 'label': None, 'chart_candidate': 'dropdown'}, False),
+    ({'kind': 'control', 'label': 'Region by year', 'chart_candidate': 'dropdown'}, False),
+    ({'kind': 'control', 'label': 'Period', 'chart_candidate': 'date_range'}, False),
+    ({'kind': 'chart', 'label': None, 'chart_candidate': 'date_range'}, False),
+])
+def test_approved_year_slider_scope(item, expected):
+    assert approved_year_slider(item) is expected
+
+
 APPROVED_DROPS = (
     # Approval drops this observation as a whole, including a separate aggregation clarification
     # on its country binding; one observation can produce more than one issue.
     ('geo map without a GEO field', lambda item, status: item.get('chart_candidate') == 'geo_map'),
     ('Rural/Urban legend', lambda item, status: approved_legend(item)),
-    ('year slider', lambda item, status: item.get('kind') == 'control'
-     and re.search(r'year|slider', item.get('label') or '', re.I) and not re.search(r'region', item.get('label') or '', re.I)),
+    ('year slider', lambda item, status: approved_year_slider(item)),
 )
 
 
@@ -726,6 +750,8 @@ UNLABELED_LIST = {'id': 'o5', 'kind': 'control', 'label': None, 'chart_candidate
      [_issue('i1', 'a', REGION_OFFER), _issue('i2', 'b', REGION_OFFER)], [], ['i1', 'i2']),
     ({'a': UNLABELED_LIST, 'g': {'id': 'o3', 'kind': 'chart', 'chart_candidate': 'geo_map', 'label': 'Map'}},
      [_issue('i1', 'a', REGION_OFFER), _issue('i3', 'g')], ['i1_0', None], []),
+    ({'a': UNLABELED_LIST, 's': {'id': 'o11', 'kind': 'control', 'label': None, 'chart_candidate': 'date_range'}},
+     [_issue('i1', 'a', REGION_OFFER), _issue('i4', 's')], ['i1_0', None], []),
 ])
 def test_region_offer_selection(owners, issues, accepted, left):
     decisions, _, offers, remaining = choose_decisions({'issues': issues}, owners)
@@ -1095,7 +1121,7 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
              'approved_fixture_substitutions': [
                  'geo_map omitted; globe remains static real-geography art',
                  'Rural/Urban legend omitted whether extracted as control or chart (including Location (%))',
-                 'extracted year slider omitted',
+                 'extracted year slider omitted (year/slider-labeled control or unlabeled date_range control)',
                  'four per-country small multiples become native urban/rural area chart',
                  'region selector uses native fixed_size_list',
              ] if mode == 'recreate' else []}
