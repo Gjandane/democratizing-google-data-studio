@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:19dce232ddd6 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:459ca0dc451b (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 docs/architecture.md wins.
 
@@ -58,12 +58,14 @@ tests/          offline fakes; tests/live/ marked live
   existing one repair; unresolved KPIs block (#Recreate date binding normalization).
   Recreate observations count only on their reference page; code-assigned observed titles drop
   unenforced period phrases and show the mapped unit (#Recreate page placement and truthful
-  observed titles).
+  observed titles). An unlabeled field control's control_field issue offers unused instruction
+  control clauses, then catalog-valid fields; never auto-bound (#Unlabeled reference control
+  binding).
 - Synthetic: opt-in schema/count/seed -> stdlib CSV -> typed BQ intake; protected page-1 footer.
 - Reference extraction diagnostics: code-owned boundary/category + bounded schema paths on the
   existing span; no raw answers/validator messages/values (#Reference extraction diagnostics).
-  Local rejection marks its call invalid. 25.8 adds diagnostics before one fresh recreate case;
-  any new recreate extraction failure blocks without another case retry. Defaults stay 3.1.
+  Local rejection marks its call invalid. 25.8 added diagnostics; in 25.9 a rejected
+  recreate extraction answer blocks without rerun (provider-transient: one). Defaults stay 3.1.
 - Tests offline unless marked live. Research <=20 fetches, no retries.
 
 ## Never do

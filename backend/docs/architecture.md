@@ -703,14 +703,16 @@ Final-audit corrections (2026-10-19):
   replies, and more than 24 elements. Assert one generation, correct terminal outcome,
   sanitized diagnostics, unchanged error/lifecycle behavior, old reference/artifact retention
   and lock release. Local diagnostic work must pass offline before new live work.
-- Live ruling for 25.8: the two failed recreate attempts remain exhausted evidence. After the
-  diagnostics and their regression checks, permit one fresh recreate case at unchanged inputs
-  and contract defaults, starting with the existing synthetic prerequisite. Use that case's
-  reference action as the diagnostic probe; no separate paid probe or automatic case retry.
-  Failure stops the live check before other cases, with sanitized boundary evidence and a new
-  architect block; a valid extraction may continue that same case through existing acceptance.
-  One clean response does not prove the intermittent failure fixed. The full three-case check
-  remains required for completion; keep the original retry rule for other failures/cases.
+- Live ruling for 25.8 (used): the two failed recreate attempts remain exhausted evidence; the
+  one permitted fresh recreate case (run 20261027-173624-405b4862) extracted cleanly and
+  blocked at feasibility on an unlabeled control (#Unlabeled reference control binding). One
+  clean response does not prove the intermittent failure fixed.
+- Live ruling for 25.9: the full three-case check runs at unchanged inputs and contract
+  defaults. A recreate reference_extract answer that is rejected (`llm_unavailable` from an
+  invalid/unparseable answer, any diagnostic boundary) blocks with its saved diagnostic and no
+  rerun; no separate paid probe. A provider-transient failure there (429/500/503 after retries
+  and fallback, or `stage_model_unavailable`) keeps the one-rerun rule, like every other stage
+  and case.
 
 ### Capability verification
 - Problem: an allowed chart type alone cannot prove that the requested behavior is implementable.
@@ -1026,6 +1028,77 @@ Final-audit corrections (2026-10-19):
   fixtures still publish; their only allowed differences are observed titles gaining a unit
   suffix or losing a period phrase, each listed in the progress entry. Style, data and
   no-reference fingerprints are unchanged.
+
+### Unlabeled reference control binding
+- Problem (25.8 block, change 2026-10-27 binding): run 20261027-173624-405b4862 extracted the
+  electricity region checkbox list as control o5 with `label: null` (the image shows no
+  title), so `Region Selector = region, chart fixed_size_list` matched nothing and feasibility
+  blocked on "Choose which field supplies control_field". Labels stay the only automatic match;
+  neither box position, item order nor a missing label authorizes code to bind it. Evidence:
+  .blueprint/qa/task-25.8/recreate/20261027-173624-405b4862/ (assessment-before-blueprint.json,
+  build/references.json).
+- Objective: give that clarification issue code-built alternatives through the existing
+  `_offers` -> `feasibility/decisions` path, so the user binds it explicitly. No contract,
+  endpoint, Issue shape, model call or instruction grammar change.
+- Input: an active recreate image observation of kind `control` with a null/blank label, its
+  chart_candidate in FIELD_CONTROLS (dropdown, fixed_size_list), and its control_field
+  clarification issue; the active reference instructions; the connected schema. Output: the
+  issue's `alternatives` (ids from the existing digest scheme, deterministic order).
+- Offers are need substitutions on the issue's existing `need:<i>` slot (the control_field
+  issue from capabilities), built in `_offers` like today's ones: the internal alternative is
+  `{id, label, needs, clause}`; the public Alternative stays `{id, label}`. Each is offered only
+  when the catalog and capability checker accept its needs. In this order:
+  1. Instruction offers: each definition clause of the form `<Label> = <field>[, chart <type>]`
+     whose type is in FIELD_CONTROLS and that is unused. The type is the clause's `chart` type,
+     else the observation's chart_candidate. Needs: `control.<type>` with
+     `{control_field: <field>}`; `clause` holds the clause label. Label:
+     `<Label>: <type> on <field> (from your instructions)`, with the catalog type id.
+  2. Field offers: each schema field the catalog accepts as control_field for the extracted
+     chart_candidate, sorted by name. Needs: `control.<chart_candidate>` with that field;
+     `clause` null. Label: `<type> on <field>`, with the catalog type id. Omit a field offer
+     whose needs equal an instruction offer's.
+- Unused clause: no observation's label matched it, and no applying accepted decision binds it.
+- Ids: the existing digest scheme plus the `clause` value, so a clause offer and a field offer
+  never share an id.
+- Scope cap: the evaluate-wide limit of MAX_ISSUES active issues/alternatives (issue_scope)
+  must never hide this issue. Instruction offers are always included. Field offers are added
+  only when all of them fit within that shared limit together with every other active
+  issue/alternative; otherwise this issue gets no field offers. Drop always stays available.
+- Provenance: the accepted decision record (requirement id, slot, alternative with its
+  `clause` label, observation source id) is the binding's provenance. It shows in
+  feasibility.md's decision list as `<observation id> bound by clause <Label>` or
+  `<observation id> bound to field <field>`. Accepting does not edit the requirement's
+  mappings, clarifications or `meaning`: the decision applies through the existing chosen-needs
+  path (`_covered`, `blueprint_observations`), so its meaning key stays stable across recomputes.
+  The binding gives the same control type and field a label match would.
+- Rules: offers never apply themselves; silence, a single candidate or a single unused clause
+  is still an unresolved issue. A labeled control keeps today's behavior (label match or
+  clarification). An unlabeled chart (non-control) observation gets no new offers. Changing or
+  removing the instructions, reference or schema recomputes the offers. Revalidation
+  (`_choice`/`revalidate_decisions`) additionally requires a stored `clause` to be present in
+  the current instructions with the same field and type, and not label-matched since; otherwise
+  the decision stops applying and the issue returns unresolved.
+- Edge cases: two unlabeled field controls both see an unused clause offer until one accepts it;
+  then it is no longer offered to the other. `decide` refuses (422 invalid_request) one clause
+  chosen for two issues in a request, or a clause already bound by an applying decision. A
+  clause with a field missing from the schema is not offered (unused clauses raise no issue).
+  Clauses typed `date_range` or a chart type are not offered here.
+- Budget: no model call; the 100 ms recomputation oracle holds with 24 observations and 24
+  definition clauses.
+- Oracle: an offline staged fixture from read-only copies of the 20261027-173624 run's inputs
+  (references.json, requirements.json, assessment-before-blueprint.json; current INSTRUCTIONS).
+  Before the change o5's issue has `alternatives: []`. After it the first alternative is
+  `Region Selector: fixed_size_list on region (from your instructions)`, and the field offers
+  follow. Accepting it plus the approved geo_map/legend/slider drops makes the assessment ready,
+  and accept publishes o5 as a page-1 fixed_size_list bound to region, with the binding listed
+  in feasibility.md; recipe compiles, fake engine done. A recompute after accept leaves the
+  decision applying. Negatives: removing or changing the clause (field still in the schema)
+  returns the issue unresolved; an id for a removed/changed clause gets 422 "Choose an offered
+  alternative"; a stale assessment id gets 409; one clause for two unlabeled controls is
+  refused; with 20+ schema columns and two unlabeled controls both issues stay visible
+  (instruction offers only, no issue_scope); labeled controls, unlabeled charts and
+  style/data/no-reference builds are byte-identical; the 18.2, 21.1, 22.1, 24.9 and 24.10
+  fixtures publish unchanged.
 
 ### Build docs
 - Problem: the durable design brief (OKF bundle per version), written by code (change 2026-10-21).
@@ -1851,3 +1924,4 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-26 | Restore the <100 ms recomputation oracle by measured, evaluation-local reuse before the live fidelity run | relax or rerun the timing test; defer | 24.11 block: 107.8/103.6 ms; the oracle stays | change configurable model stages (architect, from the 24.11 follow-up draft) |
 | 2026-10-27 | native_planning defaults 131,072 / 65,536 tokens and 1,200 s per action (api.md 3.1); stored Settings keep their values. In 25.8: `llm_unavailable` from a schema-invalid answer on a 0-repair stage reruns once like a transient error; the Rural/Urban legend is dropped however it is extracted | thinking medium at 600 s / 32,768; a test-only Settings override; a reference_interpretation repair (contract change); keep blocking the legend-as-chart | 25.7 block: recreate blueprint timed out at 600 s; a 3,600 s benchmark used 25,240 thinking + 2,060 answer of 32,768 in 239 s; reference_extract schema failures ~3/26 runs | change 2026-10-27 (user cards) |
 | 2026-10-27 | Add sanitized extraction-boundary diagnostics inside 25.8, then one fresh recreate attempt with no further invalid-response retry; preserve all defaults, validators, inputs and the acceptance gate | guess a normalization/prompt fix; add interpretation repairs or fallback; repeat the old run without new evidence | both recreate attempts stopped before publication, but `invalid` is not proof of schema rejection and local validation discards its issue details; a repair needs a classified failure | change 25.8 diagnostics (architect ruling; no new contract or dependency) |
+| 2026-10-27 | An unlabeled field control's control_field issue offers unused instruction control clauses, then catalog-valid fields (only when they fit the issue scope), as code-built need substitutions; the user picks one and the decision record is its provenance. The 25.9 live harness pre-accepts only the `Region Selector` clause offer for an unlabeled control. In 25.9 a rejected recreate extraction answer blocks without rerun; provider-transient errors keep one rerun | label-free instruction form matched by control type; drop the region list; infer by position or a sole candidate | 25.8 fresh recreate blocked on o5 (unlabeled region list, label null); extractor type/labels vary per run; explicit choice keeps code from inferring | change 25.8 binding (user cards) |
