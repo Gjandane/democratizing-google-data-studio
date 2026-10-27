@@ -2050,3 +2050,17 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none
 - Left open: P3 stale `MAX_OUTPUT_TOKENS = 32768` in src/dss/harness/nodes/blueprint.py:26,280 (profile overrides it); P3 "Settings 3.0" docstrings in stages.py:1 and test_stage_settings.py:1.
 - Next: Task 25.8. Start by reviewing the committed live test edits (tests/live/test_reference_design.py 3.0) and .blueprint/qa/task-25.7/ evidence.
+
+## 2026-10-27: Task 25.8 Live stage defaults and reference fidelity approval
+- Status: blocked
+- Plan check: off
+- What changed: 25.8 harness/fixture README: 3.1 defaults, approved legend chart drop, corrected fallback oracle. Evidence: `.blueprint/qa/task-25.8/README.md`.
+- Checks: Focused 368 passed/548.63s; harness 24 passed/0.29s; live 2 failed/1 passed/738.55s; sole retries 1 failed/1 passed/651.06s; `uv run pytest` 2258 passed/1038.50s.
+- Decisions: Runtime/defaults/fixtures unchanged. Reviewed harness edits uncommitted; ZIP preserved. None/style: four designed pages each, no fallback; edited brief hash matched. P1 resolved.
+- Tried and failed: Recreate extraction twice: `llm_unavailable`, StageCall `invalid`, Argon high, zero repairs, no publication. Retries exhausted; fidelity/revision/STOP unavailable.
+- Gotchas: none.
+- Left open: P2 both smoke page-1 scorecards clip decimals; P2 style page-2 axes overlap. Slots/screenshots/costs in QA README.
+- Blocked because: (b) runtime fix needs planning outside Files.
+- Question: What repair should precede another recreate acceptance run?
+- Options: A plan extraction fix / B change defaults, reauthorize acceptance / Recommend: A, preserve defaults.
+- Next: New backend chat, gpt-6.1-sol high, `$blueprint-solution-architect`.

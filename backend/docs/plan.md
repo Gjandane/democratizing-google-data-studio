@@ -832,7 +832,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: Settings were already stored (seeded from the 3.0 defaults) -> keep their values; no migration or rewrite of stored stages (decided by default, change 2026-10-27: stored Settings override defaults, as the keep-explicit-values rule already does).
   - Done when: `uv run pytest tests/test_stage_settings.py tests/test_api_contract.py` and `uv run pytest` pass; the existing defaults-equal-contract test fails before the change against the 3.1 stage-settings fixtures, and a new test proves stored native_planning values of 32,768/600 read back unchanged after the change. No live models.
   - Review focus: ../contracts/api.md 3.1; only native_planning's output_tokens and timeout_s defaults change.
-- [ ] 25.8 Live stage defaults and reference fidelity approval
+- [!] 25.8 Live stage defaults and reference fidelity approval
   - Goal: (moved from 24.11, then from 25.7 by change 2026-10-27) with default stage Settings (api.md 3.1), demonstrate the electricity reference with supported native charts plus the style, no-reference, later-page, revision and review paths on real models, then the user's visual acceptance.
   - Spec: docs/architecture.md#Reference HTML composition
   - Files: tests/live/test_reference_design.py, tests/data/reference_design/, docs/progress.md, .blueprint/qa/task-25.8/
