@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:6fd3f92c9e5e (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:4cf1670af09f (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 docs/architecture.md wins.
 
@@ -72,8 +72,11 @@ tests/          offline fakes; tests/live/ marked live
   existing span; no raw answers/validator messages/values (#Reference extraction diagnostics).
   Local rejection marks its call invalid. 25.8 added diagnostics; in live acceptance a rejected
   recreate extraction answer blocks without rerun (provider-transient: one). Defaults stay 3.1.
-  After offline repair 25.9, one new live campaign is authorized in 25.10 at 1,200 s planning;
-  deterministic failures stop. Region Selector authorization is checked across assessments.
+  Style values never reject a recreate extraction: common color/font forms are normalized,
+  then still-invalid fields take the build's prefill preset; style mode still rejects them
+  (#Recreate extraction style repair). After offline repair 25.10, one new live campaign is
+  authorized in 25.11 at 1,200 s planning; deterministic failures stop. Region Selector
+  authorization is checked across assessments.
 - Tests offline unless marked live. Research <=20 fetches, no retries.
   Durable stage-import, brief-publication/recovery and test-oracle rules live in
   architecture.md#Implementation conventions and #Testing.

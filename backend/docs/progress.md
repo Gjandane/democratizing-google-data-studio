@@ -2213,3 +2213,12 @@ assert min(timings) < .1
 - Gotchas: added to AGENTS.md (unlabeled date_range year slider; style-only pattern rejection).
 - Left open: o3 `Location` bar (legend) remains a feasible chart with no issue; name it at the eventual STOP. Style and none cases not reached.
 - Next: architect resolves the extraction question, then a new 25.10 campaign.
+
+## 2026-10-28: Change 25.10 repair: recreate extraction style repair before live acceptance
+- Class: Design repair at POC; no product, interface, dependency or stage-default change. Only backend planning docs changed.
+- What changed: architecture.md adds #Recreate extraction style repair, points the diagnostics budget at it, renames the live extraction ruling to 25.11 (a style-only issue set no longer counts as rejected), adds a 25.10-block resume bullet to #Reference live acceptance and one decision row. Essentials updated/stamped. PRD open question now names 25.11. plan.md: blocked 25.10 becomes `Recreate extraction style repair` (S, offline, Spec), reopened with blueprint.py; new 25.11 `Live stage defaults and reference fidelity approval` (M) carries the former 25.10 content with task-25.11 evidence folders, depends on 25.10 and retains the visual STOP.
+- Why: 25.10 run 2 rejected a whole recreate reference_extract answer on 8 style-only `pattern` issues (palette[0..2], background, surface, text, accent, font_family); recreate needs the observations, and the same inputs extracted cleanly in earlier runs.
+- Ruling (user cards 2026-10-28): option A, offline style repair then one new campaign; no rerun allowance added. Both modes normalize common color/font forms; recreate falls back per field to the build's design-prefill preset; style mode still rejects an unrecoverable style value; observations stay strict in both modes; StageCall ends ok on acceptance with sanitized `style_repairs`.
+- Checks: `blueprint.py stamp`; `lint` 0 errors / 17 existing warnings; `reopen 25.10`. No pytest, provider, BigQuery or engine call this session. No delta audit (POC).
+- Change requests: the 25.10 block question is settled by the ruling above, planned in 25.10 plus 25.11. The widened year-slider drop and the o3 `Location` legend note carry into 25.11's If line. No other open change request.
+- Next: task 25.10 (offline), then 25.11 (live + visual STOP).

@@ -292,8 +292,9 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
   validation repairs, clearly labeled and with a Settings enable/disable switch (A).
 
 ## Open questions
-- Visual fidelity approval remains the STOP in 25.10; model clock and offline repair scope
-  settled by the user's answer on 2026-10-27. No other planning question is open.
+- Visual fidelity approval remains the STOP in 25.11; model clock and offline repair scope
+  settled by the user's answer on 2026-10-27, recreate style repair by the user's card on
+  2026-10-28. No other planning question is open.
 
 ## Later
 - Date-grain parity: feasibility can read component options while the compiler derives

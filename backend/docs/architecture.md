@@ -697,7 +697,8 @@ Final-audit corrections (2026-10-19):
   reuse existing validation where possible. Diagnostic failure cannot replace the original
   extraction error or turn a refusal into success. Defaults remain api.md 3.1; interpretation
   still has zero validation repairs. A future actual extraction repair must follow evidence,
-  rather than coerce/drop observations, relax the schema or alter prompts speculatively.
+  rather than coerce/drop observations, relax the schema or alter prompts speculatively. The
+  one evidence-based repair so far touches style values only (#Recreate extraction style repair).
 - Oracle: `tests/test_references.py` plus stage/tracing tests use fake responses for every
   classifier, local-only box failure, unknown/secret-bearing extra keys, empty and malformed
   replies, and more than 24 elements. Assert one generation, correct terminal outcome,
@@ -707,12 +708,55 @@ Final-audit corrections (2026-10-19):
   one permitted fresh recreate case (run 20261027-173624-405b4862) extracted cleanly and
   blocked at feasibility on an unlabeled control (#Unlabeled reference control binding). One
   clean response does not prove the intermittent failure fixed.
-- Live ruling for 25.9 (now 25.10): the full three-case check runs at unchanged inputs and contract
+- Live ruling for 25.9 (then 25.10, now 25.11): the full three-case check runs at unchanged inputs and contract
   defaults. A recreate reference_extract answer that is rejected (`llm_unavailable` from an
   invalid/unparseable answer, any diagnostic boundary) blocks with its saved diagnostic and no
   rerun; no separate paid probe. A provider-transient failure there (429/500/503 after retries
   and fallback, or `stage_model_unavailable`) keeps the one-rerun rule, like every other stage
-  and case.
+  and case. From 25.11 "rejected" means rejected after #Recreate extraction style repair: a
+  recreate answer whose only issues are style issues is no longer rejected.
+
+### Recreate extraction style repair
+- Problem (25.10 block, change 2026-10-28): run 20261027-235732-232ce244 rejected a whole
+  recreate reference_extract answer on 8 `pattern` issues, all under `style` (palette[0..2],
+  background, surface, text, accent, font_family). Gemini treats the response schema's
+  `pattern` as a hint. Recreate needs the observations; the style only seeds the design
+  prefill. The same inputs extracted cleanly in 25.8/25.9 runs, so this is intermittent.
+- Ruling (user card 2026-10-28), for the whole class: style values never reject a recreate
+  extraction; in style mode, where the style is the deliverable, an unrecoverable style value
+  still rejects as today. Observations, item count, boxes and every non-style field keep their
+  current strictness in both modes: any non-style issue rejects the whole answer exactly as
+  now, with its diagnostic.
+- Normalization (both modes, before local validation, on `style` values only): trim
+  whitespace; color `#RGB` expands to `#RRGGBB`; six hex digits without `#` get one;
+  `#RRGGBBAA` drops alpha; `rgb(r,g,b)`/`rgba(r,g,b,a)` with integer channels 0-255 become hex;
+  existing upper-casing stays. Font: a CSS family list keeps its first family, with
+  surrounding quotes removed. A normalized value must then pass the unchanged StyleProfile
+  rules; nothing else (named colors, guesses, nearest-color) counts as normalization.
+- Recreate fallback: each style field still invalid, missing or of the wrong type after
+  normalization takes the value of the theme preset that design prefill uses for this build
+  (artifacts.design DEFAULTS by archetype): background, surface, text, accent, font_family,
+  radius. Palette keeps its valid entries in order when at least 2 remain (at most 8),
+  otherwise the preset palette. Invalid `notes` become ''; unknown keys under `style` are
+  dropped; a missing or non-object `style` takes the whole preset profile.
+- Outcome: an answer accepted after normalization/fallback is a successful extraction: the
+  reference_extract StageCall ends `ok` (not the provider-schema `invalid` set on response),
+  the span diagnostic is `accepted` and adds a bounded `style_repairs` projection (at most 10
+  entries of known style path + action `normalized` or `preset`, total count, truncation flag;
+  never values). style.md and the reference summary use the repaired profile. A rejection
+  keeps today's diagnostic, outcome and error unchanged.
+- Invariants: no change to the provider schema, prompts, item/observation models, stage
+  Settings, caps, retries or repair count (still zero); no additional request. The repair is
+  code-owned and deterministic; same answer, same result.
+- Budget: pure local work, negligible next to the generation; one generation per extraction.
+- Oracle: `tests/test_references.py` (plus stage/tracing tests as needed) with fake answers:
+  each normalization form in recreate and style modes; recreate with named colors, a bad font,
+  wrong types, a missing style, a too-short palette and unknown style keys -> accepted with
+  preset values and identical observations; a fake shaped like run 2 (the 8 style paths
+  invalid) -> accepted in recreate; style mode with an unrecoverable value -> rejected with
+  the unchanged diagnostic and error; any observation issue alongside style issues ->
+  rejected in both modes. Assert one generation, StageCall outcome, sanitized `style_repairs`
+  (no values), old reference retained on rejection and lock release.
 
 ### Capability verification
 - Problem: an allowed chart type alone cannot prove that the requested behavior is implementable.
@@ -1508,6 +1552,11 @@ Final-audit corrections (2026-10-19):
   (native_planning 1,200 s). Recreate first with `-x`; the existing per-case transient retry
   rule stays, deterministic timeout/cap/coverage/fidelity failures stop without another run.
   Prior 25.9 evidence is immutable. No larger clock or automatic timeout retry is authorized.
+- Resume after the 25.10 block (user card 2026-10-28): offline task 25.10 adds
+  #Recreate extraction style repair, then 25.11 gets one new acceptance campaign under the
+  same rules; task-25.10 live evidence is immutable and new evidence goes under task-25.11.
+  The year-slider drop widened in 25.10 (user card) stays. Repaired style paths, if any, are
+  recorded and named at the STOP.
 - The fixture harness tracks Region Selector acceptance across every assessment in the recreate
   case, not just one response. For an unlabeled field control, readiness without the approved
   clause decision is a block before native_planning. At most one observation may receive
@@ -2039,3 +2088,4 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-27 | Retain the user-approved footer fix: visible paint/text is forbidden in the reserved band, transparent stretched containers alone are allowed; preserve tests and existing native-slot rules | reject every transparent container box; change generated HTML to avoid the false positive | 25.9 run 1 failed on a flex child stretched by measurement, with content above the footer; approved implementation is already present | change 25.9 repair (records prior user approval) |
 | 2026-10-27 | Keep native_planning's contract default at 1,200 s; after offline repairs allow one new 25.10 acceptance campaign under the existing stop rules; harness checks binding provenance across assessments | raise the default at the program root; defer live acceptance; rerun a deterministic timeout | user chose keep 1,200 seconds, repair, then one new live attempt; prior 25.9 runs stay immutable and unpublished | change 25.9 repair (user answer) |
 | 2026-10-27 | Final POC deterministic feasibility acceptance is 250 ms warm; retain existing workloads/samples/semantics and report first/cold time separately | another optimization campaign to retain 100 ms; favorable reruns | explicit user concession after full-workload 104-105 ms warm and 1.08 s first-sample evidence; no backend contract fixes 100 ms | final audit 2026-10-27 (user answer) |
+| 2026-10-28 | Recreate reference_extract normalizes common style color/font forms and falls back per field to the build's design-prefill preset, so style values never reject a recreate extraction; style mode still rejects an unrecoverable style value; observations stay strict; offline 25.10 precedes live 25.11 | treat style-pattern rejections as one-rerun transients; repair plus a rerun allowance; preset fallback in style mode too | 25.10 run 2 rejected a whole recreate answer on 8 style-only `pattern` issues; the same inputs extracted cleanly before | change 2026-10-28 (user card) |
