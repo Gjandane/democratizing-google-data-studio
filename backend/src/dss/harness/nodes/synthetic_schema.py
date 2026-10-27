@@ -1,4 +1,4 @@
-"""One bounded schema suggestion from stored recreate observations; never generates rows."""
+"""One bounded schema suggestion from the recreate reference analysis items; never generates rows."""
 from typing import Annotated
 
 from google.adk.agents import LlmAgent

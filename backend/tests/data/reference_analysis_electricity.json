@@ -1,0 +1,143 @@
+{
+  "about": "Task 26.2: the electricity reference as a reference-analysis model answer (boxes in thousandths, from recreate_electricity.json) with the agreed split: bar bottom, area right and the region fixed_size_list native; headline, KPI text, globe and legends static. Replaces the observation fixture's vision reply once 26.5 retires it.",
+  "instructions": "Region Selector = region, chart fixed_size_list. Region = region. Country = country. Access to electricity = AVG(access_pct), unit %, date grain year using year. have access to electricity = AVG(access_pct), unit %, date grain year using year. People without access to electricity = SUM(people_without_access), date grain year using year. Philippines = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Morocco = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Fiji = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Belize = AVG(urban_pct) and AVG(rural_pct), unit %, chart area, date grain year using year. Urban = AVG(urban_pct), unit %, date grain year using year. Rural = AVG(rural_pct), unit %, date grain year using year.",
+  "reply": {
+    "style": {
+      "palette": [
+        "#0B1F6B",
+        "#F2B134",
+        "#4C9F70"
+      ],
+      "background": "#FFFFFF",
+      "surface": "#FFFFFF",
+      "text": "#0F172A",
+      "accent": "#0B1F6B",
+      "font_family": "Georgia",
+      "radius": 0,
+      "notes": "Navy globe on white with amber accents."
+    },
+    "element_count": 8,
+    "palette_notes": "Navy and amber on white.",
+    "type_notes": "Serif headline.",
+    "spacing_notes": "Dense left column, small multiples on the right.",
+    "items": [
+      {
+        "label": "Access to electricity headline",
+        "kind": "text",
+        "box": {
+          "x": 42,
+          "y": 28,
+          "w": 256,
+          "h": 128
+        },
+        "disposition": "static",
+        "type": null,
+        "shows": "",
+        "reason": "A title is drawn in the background."
+      },
+      {
+        "label": "Region Selector",
+        "kind": "control",
+        "box": {
+          "x": 45,
+          "y": 204,
+          "w": 116,
+          "h": 218
+        },
+        "disposition": "native",
+        "type": "fixed_size_list",
+        "shows": "region",
+        "reason": "An always-visible list of regions filters the page."
+      },
+      {
+        "label": "Share with access in 2011",
+        "kind": "kpi",
+        "box": {
+          "x": 44,
+          "y": 465,
+          "w": 203,
+          "h": 98
+        },
+        "disposition": "static",
+        "type": null,
+        "shows": "access % worldwide, 2011",
+        "reason": "A single-year figure stays as art."
+      },
+      {
+        "label": "Population with access to electricity",
+        "kind": "legend",
+        "box": {
+          "x": 45,
+          "y": 640,
+          "w": 270,
+          "h": 22
+        },
+        "disposition": "static",
+        "type": null,
+        "shows": "",
+        "reason": "A legend label stays as art."
+      },
+      {
+        "label": "Globe of access to electricity",
+        "kind": "image",
+        "box": {
+          "x": 287,
+          "y": 105,
+          "w": 381,
+          "h": 585
+        },
+        "disposition": "static",
+        "type": null,
+        "shows": "access % by country",
+        "reason": "An illustrated globe stays as art."
+      },
+      {
+        "label": "People without access to electricity",
+        "kind": "chart",
+        "box": {
+          "x": 46,
+          "y": 696,
+          "w": 642,
+          "h": 201
+        },
+        "disposition": "native",
+        "type": "bar",
+        "shows": "people without access by year",
+        "reason": "Bars over years are a native bar chart."
+      },
+      {
+        "label": "Location Rural Urban legend",
+        "kind": "legend",
+        "box": {
+          "x": 758,
+          "y": 32,
+          "w": 212,
+          "h": 82
+        },
+        "disposition": "static",
+        "type": null,
+        "shows": "rural and urban",
+        "reason": "A legend stays as art."
+      },
+      {
+        "label": "Rural and urban access by country",
+        "kind": "chart",
+        "box": {
+          "x": 728,
+          "y": 136,
+          "w": 228,
+          "h": 792
+        },
+        "disposition": "native",
+        "type": "area",
+        "shows": "urban % and rural % by year for four countries",
+        "reason": "Filled areas over years are a native area chart."
+      }
+    ]
+  },
+  "native": {
+    "Region Selector": "fixed_size_list",
+    "People without access to electricity": "bar",
+    "Rural and urban access by country": "area"
+  }
+}

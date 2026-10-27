@@ -876,7 +876,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: an existing test asserts reference_interpretation's [0,0] repair bound or Argon default -> update it to 3.2 and name it in the entry.
   - Done when: `uv run pytest tests/test_api_contract.py tests/test_stage_settings.py` passes with new checks that fail before the change: `GET reference-images` matches ../contracts/fixtures/dashboard-intent/reference_set.json's keys with `analysis` present (null allowed); a Blueprint response matches api/blueprint.json incl. `reference_item`; `GET /api/settings/capabilities` defaults and limits equal stage-settings/capabilities.json's for reference_interpretation and native_planning; a stored pre-3.2 Settings row keeps its values; then `uv run pytest` passes.
   - Review focus: ../contracts/api.md 3.2 shapes only (no gate behavior yet); fixtures unchanged.
-- [ ] 26.2 Flash reference analysis
+- [x] 26.2 Flash reference analysis
   - Goal: a recreate upload's reference_extract run returns the validated ReferenceAnalysis (pending, revision 1) from the image(s), instructions and allowed types, instead of observations; style uploads commit `analysis: null`; the synthetic proposal reads the items; New version copies the analysis.
   - Spec: docs/architecture.md#Reference analysis and approval gate
   - Files: src/dss/harness/nodes/reference_extract.py, src/dss/spec/references.py, src/dss/spec/capabilities.py, src/dss/harness/nodes/synthetic_schema.py, src/dss/api/builds.py, prompts/v1/reference_extract.md, tests/test_references.py, tests/test_synthetic.py, tests/data/, docs/progress.md

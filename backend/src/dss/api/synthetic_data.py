@@ -73,7 +73,8 @@ async def propose(build_id: str, request: Request):
     write_stage(state, build_id)
     folder = version_folder(state, build_id)
     reference = references.load(folder)
-    if not reference or reference['mode'] != 'recreate':
+    # A pre-1.3 recreate set has no analysis to read (synthetic-data.md 1.3): re-upload to analyze it.
+    if not reference or reference['mode'] != 'recreate' or not reference.get('analysis'):
         raise RunError('synthetic_schema_unavailable', 'Choose Recreate mode with a reference image, '
                        'or enter a manual sample-data schema', 422)
     if reference['id'] != body.reference_set_id:

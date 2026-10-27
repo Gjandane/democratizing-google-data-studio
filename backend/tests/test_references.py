@@ -22,10 +22,14 @@ from dss.main import create_app
 from pydantic import ValidationError
 from dss.memory.episodic import messages
 from dss.spec import references
+from dss.spec import validate
 from dss.spec.models import DashboardSpec
+from google.adk.models.llm_response import LlmResponse
+from google.genai import types
 from fakes import FakeLLM, fake_models
 from test_audit_style import STYLE, drain
 
+CONTRACT = Path(__file__).resolve().parents[2] / "contracts/fixtures/dashboard-intent"
 # A real 16x8 baseline JPEG produced by Chromium's canvas encoder.
 JPEG = (Path(__file__).parent / "data/reference.jpg").read_bytes()
 
@@ -49,18 +53,20 @@ def big_jpeg(width, height):
     return b"\xff\xd8\xff\xe0" + struct.pack(">H", 16) + b"JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00" + sof + b"\xff\xd9"
 
 
-def item(kind="chart", label="Revenue", box=(20, 100, 300, 200), candidate="Scorecard", metric="Revenue",
-         unit="USD", aggregation="sum", grain=None, confidence="high"):
-    return {"kind": kind, "label": label, "box": dict(zip("xywh", box)), "chart_candidate": candidate,
-            "metric_label": metric, "unit": unit, "aggregation": aggregation, "date_grain": grain, "confidence": confidence}
+def item(label="Revenue KPI", kind="kpi", box=(20, 100, 300, 200), disposition="native", kind_type="scorecard",
+         shows="revenue in USD", reason="One headline number."):
+    return {"label": label, "kind": kind, "box": dict(zip("xywh", box)), "disposition": disposition, "type": kind_type,
+            "shows": shows, "reason": reason}
 
 
-ITEMS = [item(),
-         item(label="Trend", box=(340, 100, 640, 400), candidate="time series", metric=None, unit=None, aggregation=None,
-              grain="month", confidence="medium"),
-         item(kind="control", label=None, box=(20, 20, 200, 50), candidate=None, metric=None, unit=None,
-              aggregation=None, confidence="low"),
-         item(label="Flow", box=(20, 520, 960, 400), candidate="sankey", metric=None, unit=None, aggregation=None)]
+# Model order differs from reading order: code sorts by box centre (top-to-bottom, then left-to-right).
+ITEMS = [item(label="Monthly trend", kind="chart", box=(340, 100, 640, 400), kind_type="Time series",
+              shows="revenue by month", reason="A line over time."),
+         item(),
+         item(label="Region filter", kind="control", box=(20, 20, 200, 50), kind_type="dropdown", shows="region",
+              reason="A list of regions."),
+         item(label="Flow diagram", kind="other", box=(20, 520, 960, 400), disposition="static", kind_type=None,
+              shows="orders flowing between stages", reason="No allowed type draws a sankey.")]
 
 
 def output(items=ITEMS, count=None, **changes):
@@ -69,13 +75,35 @@ def output(items=ITEMS, count=None, **changes):
                        "items": items, **changes})
 
 
+def style_view(text, request):
+    """A style-mode request has no items in its schema: the fake answers that schema."""
+    if "items" in (request.config.response_json_schema or {}).get("properties", {}):
+        return text
+    try:
+        reply = json.loads(text)
+    except ValueError:
+        return text
+    if not isinstance(reply, dict):
+        return text
+    return json.dumps({k: v for k, v in reply.items() if k not in ("items", "element_count")})
+
+
 class Capture(FakeLLM):
+    """Records requests; `replies` (when set) answers successive calls, then `response`."""
     requests: list = []
+    replies: list = []
+    replies_seen: list = []
 
     async def generate_content_async(self, llm_request, stream=False):
         self.requests.append(llm_request)
-        async for response in super().generate_content_async(llm_request, stream):
-            yield response
+        text = self.replies.pop(0) if self.replies else self.response
+        self.replies_seen.append(text)
+        saved, self.response = self.response, style_view(text, llm_request)
+        try:
+            async for response in super().generate_content_async(llm_request, stream):
+                yield response
+        finally:
+            self.response = saved
 
 
 @pytest.fixture
@@ -127,7 +155,7 @@ def finished(app, run_id):
     return json.loads(row[0])
 
 
-def test_recreate_upload_retains_bytes_and_structured_observations(ref):
+def test_recreate_upload_returns_a_pending_analysis_in_reading_order(ref):
     client, app, bid, folder, model, decoded = ref
     data = png(160, 100)
     assert client.get(f"/api/builds/{bid}/reference-images").json() is None
@@ -137,22 +165,36 @@ def test_recreate_upload_retains_bytes_and_structured_observations(ref):
     assert result["mode"] == "recreate" and result["instructions"] == "Use net sales for Revenue."
     assert result["id"].startswith("ref_") and image["id"].startswith("img_") and image["name"] == "Sales_Board.png"
     assert image["file"] == f"reference_{image['id']}.png" and "/" not in image["file"]
-    assert result["summary"] == ("Recreate reference: 3 charts, 1 control; chart candidates scorecard, time_series, sankey; "
-                                 "aspect ratio 1.60.")
     assert client.get(f"/api/builds/{bid}/files/{image['file']}").content == data
+    analysis = result["analysis"]
+    references.ReferenceAnalysis.model_validate(analysis)
+    pending = json.loads((CONTRACT / "reference_set.pending.json").read_text(encoding="utf-8"))
+    assert set(result) == set(pending) and set(analysis) == set(pending["analysis"])
+    assert set(analysis["items"][0]) == set(pending["analysis"]["items"][0])
+    assert (analysis["revision"], analysis["state"], analysis["note"], analysis["issues"]) == (1, "pending", "", [])
+    assert analysis["summary"] == "2 charts and 1 control can be native Data Studio components; 1 item stays static art."
+    assert result["summary"] == "Recreate reference (aspect ratio 1.60): " + analysis["summary"]
+    # Reading order by box centre: filter (y 0.045), KPI (0.2), trend (0.3), flow (0.72).
+    assert [(i["id"], i["label"]) for i in analysis["items"]] == [
+        ("r1", "Region filter"), ("r2", "Revenue KPI"), ("r3", "Monthly trend"), ("r4", "Flow diagram")]
+    assert analysis["items"][1] == {
+        "id": "r2", "label": "Revenue KPI", "kind": "kpi", "box": {"x": 0.02, "y": 0.1, "w": 0.3, "h": 0.2},
+        "disposition": "native", "type": "scorecard", "shows": "revenue in USD", "reason": "One headline number.",
+        "proposed": {"disposition": "native", "type": "scorecard"}}
+    assert analysis["items"][2]["type"] == "time_series"  # type tokens normalize like catalog names
+    assert analysis["items"][3]["type"] is None and analysis["items"][3]["disposition"] == "static"
+    assert [i["proposed"] for i in analysis["items"]] == [{k: i[k] for k in ("disposition", "type")} for i in analysis["items"]]
+    assert analysis["allowed_types"] == [t for t in references.TYPES if t in validate.allowed_types()]
     record = json.loads((folder / "references.json").read_text(encoding="utf-8"))
-    observed = record["interpretation"]["items"]
-    assert [i["id"] for i in observed] == ["o1", "o2", "o3", "o4"]
-    assert observed[0]["box"] == {"x": 0.02, "y": 0.1, "w": 0.3, "h": 0.2}
-    assert [i["chart_candidate"] for i in observed] == ["scorecard", "time_series", None, "sankey"]
-    # Unknown observations stay null; nothing is filled in by code.
-    assert observed[1]["metric_label"] is None and observed[1]["aggregation"] is None and observed[2]["label"] is None
-    assert record["interpretation"]["aspect_ratio"] == 1.6 and record["images"][0]["width"] == 160
+    # Downstream observation readers see an empty list (items never become observations).
+    assert record["interpretation"]["items"] == [] and record["interpretation"]["aspect_ratio"] == 1.6
+    assert record["analysis"] == analysis and record["images"][0]["width"] == 160
     reference_md = (folder / "docs/reference.md").read_text(encoding="utf-8")
     meta = yaml.safe_load(reference_md.split("---", 2)[1])
     assert meta["type"] == "Reference Interpretation" and meta["canvas"] == {"width": 1200, "height": 750}
-    assert '"grid": {"col": 1, "row": 4, "w": 4, "h": 8}' in reference_md
-    assert "No matching component type for o4" in reference_md and "Chart type unknown for o3" in reference_md
+    assert "## Reference analysis (revision 1, pending)" in reference_md
+    assert '- r2 (kpi, native scorecard): {"label": "Revenue KPI"' in reference_md
+    assert "- r4 (other, static art)" in reference_md and '"grid": {"col": 1, "row": 4, "w": 4, "h": 8}' in reference_md
     style = yaml.safe_load((folder / "docs/style.md").read_text(encoding="utf-8").split("---", 2)[1])
     assert style["reference_set"] == result["id"] and style["sources"] == ["Sales_Board.png"]
     docs = client.get(f"/api/builds/{bid}").json()["docs"]
@@ -173,46 +215,77 @@ def test_recreate_upload_retains_bytes_and_structured_observations(ref):
     assert spans[1]["images"] == 1 and spans[1]["input_tokens_estimate"] > 0 and spans[2]["items"] == 4
     assert spans[1]['diagnostic'] == {'boundary': 'local_validation', 'category': 'accepted'}
     reply = messages(app.state.db, bid)[-1]
-    assert reply["node"] == "reference_extract" and result["summary"] in reply["text"]
+    assert reply["node"] == "reference_extract" and analysis["summary"] in reply["text"] and "approve" in reply["text"]
 
 
-def test_style_mode_imports_no_chart_or_data_requirements(ref):
+def test_request_holds_images_instructions_and_allowed_types_but_no_data(ref, monkeypatch):
+    """The model never sees rows, fields or schema; it gets the allowed types with what each draws."""
+    from dss.spec.capabilities import component_types, load_registry
+    client, app, bid, folder, model, _ = ref
+    columns = [{"name": "net_sales_zq7", "type": "FLOAT", "values": [{"value": "row_value_zq7", "count": 3}]}]
+    with app.state.db.connect() as conn:  # a connected source with a schema the analysis must not see
+        conn.execute("INSERT INTO sources VALUES('src_zq7',?,'csv','sales_zq7.csv','p.d.sales_zq7',3,?)",
+                     (bid, json.dumps(columns)))
+    monkeypatch.setenv("DSS_ALLOWED_TYPES", "bar,dropdown,scorecard,time_series,text")
+    upload(client, app, bid, [("files", ("a.png", png(), "image/png"))], instructions="Keep the KPI cards.")
+    request = model.requests[0]
+    system = str(request.config.system_instruction)
+    expected = component_types(load_registry(), {"bar", "dropdown", "scorecard", "time_series", "text"})
+    assert [t["type"] for t in expected] == ["scorecard", "time_series", "bar", "text", "dropdown"]
+    assert expected[1] == {"type": "time_series", "draws": "lines of metrics over a date dimension",
+                           "needs": ["date_field"], "limits": {"max_metrics": 5}}
+    assert json.dumps(expected) in system and "Keep the KPI cards." in system
+    texts = system + "".join(p.text or "" for c in request.contents for p in c.parts)
+    assert "zq7" not in texts  # no source, table, field or row value
+    assert "Aggregate profile" not in texts and "Compact fields" not in texts and "datasource" not in texts
+    analysis = client.get(f"/api/builds/{bid}/reference-images").json()["analysis"]
+    assert analysis["allowed_types"] == ["scorecard", "time_series", "bar", "text", "dropdown"]
+
+
+def test_stage_profile_runs_the_analysis_and_records_the_call(ref):
+    client, app, bid, folder, model, _ = ref
+    upload(client, app, bid, [("files", ("a.png", png(), "image/png"))])
+    spans = json.loads(traces(app)[-1]["spans_json"])
+    profile = spans[0]["settings"]["stages"]["reference_interpretation"]
+    assert (profile["model"], profile["thinking"], profile["validation_repairs"]) == ("gemini-3.8-flash", "high", 1)
+    [call] = spans[0]["calls"]
+    assert (call["stage"], call["node"], call["requested_model"], call["thinking"], call["outcome"]) == (
+        "reference_interpretation", "reference_extract", "gemini-3.8-flash", "high", "ok")
+    assert model.requests[0].config.thinking_config.thinking_level.name == "HIGH"
+
+
+def test_style_mode_commits_a_null_analysis_and_keeps_the_style_profile(ref, monkeypatch):
     client, app, bid, folder, model, _ = ref
     upload(client, app, bid, [("files", ("a.png", png(), "image/png")), ("files", ("b.jpg", JPEG, "image/jpeg"))], mode="style")
     record = json.loads((folder / "references.json").read_text(encoding="utf-8"))
-    for observed in record["interpretation"]["items"]:
-        assert [observed[k] for k in ("chart_candidate", "metric_label", "unit", "aggregation", "date_grain")] == [None] * 5
-    assert record["summary"].startswith("Style reference from 2 images: palette #1E40AF, #0D9488, #F59E0B")
+    assert record["analysis"] is None and client.get(f"/api/builds/{bid}/reference-images").json()["analysis"] is None
+    assert record["interpretation"]["items"] == []
+    assert record["style"] == StyleProfile.model_validate(STYLE).model_dump()
+    assert record["summary"] == "Style reference from 2 images: palette #1E40AF, #0D9488, #F59E0B."
     assert [i["mime_type"] for i in record["images"]] == ["image/png", "image/jpeg"]
     assert (folder / record["images"][1]["file"]).read_bytes() == JPEG
-    assert "set chart_candidate" in model.requests[0].config.system_instruction
+    request = model.requests[0]
+    assert "items" not in request.config.response_json_schema["properties"]
+    assert "Allowed native component types" not in str(request.config.system_instruction)
+    assert "style mode has no items" in str(request.config.system_instruction)
+    # A style answer carrying items is not a style answer: one repair, then rejected; the set stays.
+    raw = FakeLLM(response=output())
+    monkeypatch.setattr(app.state.models, "llm_for", lambda node: raw)
+    run_id = upload(client, app, bid, [("files", ("c.png", png(), "image/png"))], mode="style")
+    assert finished(app, run_id)["status"] == "error" and raw.calls == 2
+    assert references.load(folder) == record
 
 
 @pytest.mark.parametrize("mode", ["style", "recreate"])
-def test_only_recreate_observations_reuse_confirmed_definitions(ref, mode):
-    """Task 18.2: a style reference adds no chart/data requirement and never reads Context KPIs."""
+def test_reference_images_add_no_observation_requirements(ref, mode):
+    """Items never become observations: 26.4 builds requirements from approved native items."""
     from dss.spec import requirements as req
     client, app, bid, folder, model, _ = ref
-    with app.state.db.connect() as conn:
-        conn.execute("UPDATE builds SET artifacts_json=? WHERE id=?", (json.dumps({"context": "confirmed"}), bid))
-    import asyncio
-    from dss.artifacts.models import Context
-    from dss.artifacts.okf import write_artifact
-    from test_api_contract import FIXTURES
-    context = Context.model_validate_json((FIXTURES / "context.json").read_text(encoding="utf-8"))
-    async def ignore(*args):
-        pass
-    asyncio.run(write_artifact(folder / "docs/context.md", context, emit=ignore))
     upload(client, app, bid, [("files", ("a.png", png(), "image/png"))], mode=mode, instructions="Revenue = SUM(revenue) in USD")
     snapshot = req.inputs(app.state.db, bid, folder)
-    images = [s for s in snapshot["incoming"] if s["kind"] == "image"]
+    assert not [s for s in snapshot["incoming"] if s["kind"] == "image"]
     if mode == "style":
-        assert not images and "confirmed_kpis" not in snapshot
-    else:
-        assert len(images) == len(ITEMS) and [k["id"] for k in snapshot["confirmed_kpis"]] == [k.id for k in context.kpis]
-        with app.state.db.connect() as conn:
-            conn.execute("UPDATE builds SET artifacts_json=? WHERE id=?", (json.dumps({"context": "draft"}), bid))
-        assert req.inputs(app.state.db, bid, folder)["confirmed_kpis"] == []  # a draft edit authorizes nothing
+        assert "confirmed_kpis" not in snapshot  # a style reference never reads Context KPIs
 
 
 def test_recreate_needs_exactly_one_and_style_at_most_three(ref):
@@ -350,27 +423,127 @@ def test_more_than_24_elements_asks_for_a_crop(ref):
     client, app, bid, folder, model, _ = ref
     model.response = output(ITEMS, count=30)
     run_id = upload(client, app, bid, [("files", ("busy.png", png(), "image/png"))])
-    assert "crop or simplify" in finished(app, run_id)["error"] and model.calls == 1
+    assert "crop or simplify" in finished(app, run_id)["error"] and model.calls == 1  # never repaired
     assert not (folder / "references.json").exists() and not list(folder.glob("reference_*"))
     model.response = output([item(box=(0, 0, 10, 10))] * 25)
     run_id = upload(client, app, bid, [("files", ("busy.png", png(), "image/png"))])
-    assert "crop or simplify" in finished(app, run_id)["error"]
+    assert "crop or simplify" in finished(app, run_id)["error"] and model.calls == 2
+    # A repair answer that reports more than 24 elements also asks for a crop.
+    model.replies = [output([item(kind="unknown")]), output(ITEMS, count=25)]
+    run_id = upload(client, app, bid, [("files", ("busy.png", png(), "image/png"))])
+    assert "crop or simplify" in finished(app, run_id)["error"] and model.calls == 4
 
 
-@pytest.mark.parametrize("bad", [
-    output([item(box=(900, 0, 200, 100))]),             # box leaves the image
-    output([item(confidence="certain")]),               # outside the enum
-    output([{**item(), "kind": "chart", "extra": 1}]),  # unexpected key
-    output(palette_notes="x" * 1001),
-    "not json",
-])
-def test_invalid_observations_fail_without_repair_and_write_nothing(ref, bad):
+BAD_ITEMS = {
+    "box-outside": item(box=(900, 0, 200, 100)),
+    "box-empty": item(box=(10, 10, 0, 50)),
+    "kind-enum": item(kind="widget"),
+    "extra-key": {**item(), "confidence": "high"},
+    "label-empty": item(label="   "),
+    "label-long": item(label="x" * 121),
+    "shows-long": item(shows="x" * 301),
+    "reason-long": item(reason="x" * 301),
+    "type-not-allowed": item(kind="chart", kind_type="sankey"),
+    "native-without-type": item(kind_type=None),
+    "control-type-on-chart": item(kind="chart", kind_type="dropdown"),
+    "control-without-control-type": item(kind="control", kind_type="bar"),
+    "static-with-type": item(disposition="static"),
+    "disposition-enum": item(disposition="maybe"),
+}
+
+
+@pytest.mark.parametrize("bad", list(BAD_ITEMS), ids=list(BAD_ITEMS))
+def test_invalid_analysis_gets_one_repair_with_its_error_paths(ref, bad):
     client, app, bid, folder, model, _ = ref
-    model.response = bad
+    model.replies = [output([item(label="Regional table", kind="chart", box=(0, 0, 500, 500), kind_type="table"),
+                             BAD_ITEMS[bad]])]
+    upload(client, app, bid, [("files", ("a.png", png(), "image/png"))])
+    assert model.calls == 2
+    first, second = model.requests
+    task = "".join(p.text or "" for p in second.contents[0].parts)
+    previous, checks = task.split("Previous answer:\n", 1)[1].split("\nChecks failed:\n")
+    assert previous == model.replies_seen[0]  # the guarded previous answer, as untrusted data
+    errors = json.loads(checks)
+    assert errors and all(e["path"].startswith("items.1") for e in errors)
+    assert [p.inline_data.data for p in second.contents[0].parts if p.inline_data] == [png()]
+    assert second.config.system_instruction == first.config.system_instruction
+    assert second.config.response_json_schema == first.config.response_json_schema
+    # The repaired answer (the default, valid) is committed as revision 1.
+    analysis = client.get(f"/api/builds/{bid}/reference-images").json()["analysis"]
+    assert len(analysis["items"]) == len(ITEMS) and analysis["revision"] == 1
+    spans = json.loads(traces(app)[-1]["spans_json"])
+    assert [c["outcome"] for c in spans[0]["calls"]] == ["invalid", "ok"]
+    attempts = [s for s in spans if s["node"] == "reference_extract"]
+    assert [s["attempt"] for s in attempts] == [1, 2] and attempts[1]["diagnostic"]["category"] == "accepted"
+    assert attempts[0]["diagnostic"]["boundary"] in ("local_validation", "provider_schema")
+    assert "x" * 120 not in json.dumps(spans)
+
+
+def test_the_repair_lists_schema_and_code_rule_errors_together(ref):
+    client, app, bid, folder, model, _ = ref
+    model.replies = [output([item(kind="widget"), item(kind="chart", kind_type="Sankey"), item(disposition="static")])]
+    upload(client, app, bid, [("files", ("a.png", png(), "image/png"))])
+    task = "".join(p.text or "" for p in model.requests[1].contents[0].parts)
+    errors = json.loads(task.split("\nChecks failed:\n", 1)[1])
+    assert {e["path"] for e in errors} == {"items.0.kind", "items.1.type", "items.2.type"}
+
+
+@pytest.mark.parametrize("bad", [output([item(kind="chart", kind_type="sankey")]), output(palette_notes="x" * 1001),
+                                 output([]), "not json"], ids=["type", "notes", "no-items", "json"])
+def test_a_failed_repair_fails_the_upload_and_keeps_the_old_set(ref, bad):
+    client, app, bid, folder, model, _ = ref
+    upload(client, app, bid, [("files", ("first.png", png(), "image/png"))])
+    old = client.get(f"/api/builds/{bid}/reference-images").json()
+    files = {p.relative_to(folder): p.read_bytes() for p in folder.rglob("*") if p.is_file()}
+    model.replies, before = [bad, bad], model.calls
+    run_id = upload(client, app, bid, [("files", ("second.png", png(20, 10), "image/png"))])
+    result = finished(app, run_id)
+    assert result["status"] == "error" and model.calls - before == 2
+    assert result["error"] == "Reference analysis returned an invalid answer"
+    assert traces(app)[-1]["error"] == "llm_unavailable"
+    assert client.get(f"/api/builds/{bid}/reference-images").json() == old
+    assert {p.relative_to(folder): p.read_bytes() for p in folder.rglob("*") if p.is_file()} == files
+    assert bid not in app.state.harness.active_builds
+
+
+def test_zero_repairs_in_the_stage_profile_fail_without_a_repair(ref):
+    client, app, bid, folder, model, _ = ref
+    response = client.put("/api/settings", json={"stages": {"reference_interpretation": {"validation_repairs": 0}}})
+    assert response.status_code == 200, response.text
+    model.response = output([item(kind_type="sankey")])
     run_id = upload(client, app, bid, [("files", ("a.png", png(), "image/png"))])
     assert finished(app, run_id)["status"] == "error" and model.calls == 1
     assert not (folder / "references.json").exists() and not list(folder.glob("reference_*"))
-    assert not (folder / "docs/style.md").exists() and traces(app)[0]["status"] == "error"
+
+
+def test_summary_counts_charts_controls_and_static_items_with_singular_forms():
+    def answers(*items):
+        return [references.AnalysisAnswer.model_validate(i) for i in items]
+    allowed = list(references.TYPES)
+    chart, control = item(kind="chart", kind_type="bar"), item(kind="control", kind_type="date_range")
+    static = item(kind="text", disposition="static", kind_type=None)
+    cases = [
+        ((chart, control, static), "1 chart and 1 control can be native Data Studio components; 1 item stays static art."),
+        ((chart, chart, static, static), "2 charts and 0 controls can be native Data Studio components; 2 items stay static art."),
+        ((item(),), "1 chart and 0 controls can be a native Data Studio component; 0 items stay static art."),
+        ((control, control), "0 charts and 2 controls can be native Data Studio components; 0 items stay static art."),
+        ((static,), "0 charts and 0 controls can be native Data Studio components; 1 item stays static art."),
+    ]
+    for given, expected in cases:
+        assert references.analyze(answers(*given), allowed).summary == expected
+    # The contract fixtures' summaries follow the same rule (a native image item counts as a chart).
+    for name in ("reference_set.json", "reference_set.pending.json"):
+        fixture = references.ReferenceAnalysis.model_validate(
+            json.loads((CONTRACT / name).read_text(encoding="utf-8"))["analysis"])
+        assert references.analysis_summary(fixture.items) == fixture.summary
+
+
+def test_reading_order_is_top_to_bottom_then_left_to_right_by_box_centre():
+    answers = [references.AnalysisAnswer.model_validate(item(label=label, box=box)) for label, box in (
+        ("right", (600, 100, 300, 100)), ("left", (100, 100, 300, 100)), ("low", (0, 800, 100, 100)),
+        ("tall", (400, 0, 100, 400)))]
+    analysis = references.analyze(answers, list(references.TYPES))
+    assert [(i.id, i.label) for i in analysis.items] == [("r1", "left"), ("r2", "right"), ("r3", "tall"), ("r4", "low")]
 
 
 def test_replacement_is_atomic_and_rolls_back_on_failure(ref, monkeypatch):
@@ -403,14 +576,19 @@ def test_replacement_is_atomic_and_rolls_back_on_failure(ref, monkeypatch):
 def test_remove_reload_and_version_copy(ref, tmp_path):
     client, app, bid, folder, model, _ = ref
     upload(client, app, bid, [("files", ("a.png", png(), "image/png"))])
+    # An edited, approved analysis (26.3's routes) is copied with its state and revision.
+    record = references.load(folder)
+    record["analysis"].update(revision=3, state="approved", note="Keep the flow as art.")
+    (folder / "references.json").write_text(json.dumps(record), encoding="utf-8")
     current = client.get(f"/api/builds/{bid}/reference-images").json()
     # The set survives a restart on the same data folder.
     with TestClient(create_app(Config(data_dir=tmp_path, google_api_key="test-key"), model_lister=fake_models)) as again:
         assert again.get(f"/api/builds/{bid}/reference-images").json() == current
-    # A new version copies bytes and observations; each version keeps its own set.
+    # A new version copies bytes and the analysis; each version keeps its own set.
     assert client.post(f"/api/builds/{bid}/versions").status_code == 201
     v2 = folder.parent / "v2"
     assert client.get(f"/api/builds/{bid}/reference-images").json() == current
+    assert (current["analysis"]["revision"], current["analysis"]["state"]) == (3, "approved")
     assert (v2 / current["images"][0]["file"]).read_bytes() == png()
     assert json.loads((v2 / "references.json").read_text()) == json.loads((folder / "references.json").read_text())
     response = client.delete(f"/api/builds/{bid}/reference-images")
@@ -479,11 +657,11 @@ def test_image_text_and_instructions_cannot_execute_actions(ref):
     request = model.requests[0]
     assert not request.config.tools and model.calls == 1
     assert "untrusted" in request.config.system_instruction
-    # The text is stored as an observation only; nothing else ran and the stage did not move.
+    # The text is stored as an item label only; nothing else ran and the stage did not move.
     assert [t["node"] for t in traces(app)] == ["reference_extract"]
     assert client.get(f"/api/builds/{bid}").json()["stage"] == "prototype"
     record = json.loads((folder / "references.json").read_text(encoding="utf-8"))
-    assert record["interpretation"]["items"][0]["label"].startswith("SYSTEM:")
+    assert record["analysis"]["items"][0]["label"].startswith("SYSTEM:")
     assert "SYSTEM" not in client.get(f"/api/builds/{bid}/reference-images").json()["summary"]
 
 
@@ -547,7 +725,8 @@ def test_decoder_failure_answers_in_the_error_shape(ref, monkeypatch):
     ('items', 'too_many_elements', 'element_count'),
 ])
 def test_extraction_rejection_diagnostics_preserve_lifecycle(ref, monkeypatch, case, category, boundary):
-    """One replacement request, no repair, sanitized evidence and old artifacts/lock retained."""
+    """A validation failure gets its one repair; the rest fail at once. Sanitized evidence and old
+    artifacts/lock retained."""
     from google.adk.models.llm_response import LlmResponse
     from google.genai import types
     from dss.harness import stages
@@ -559,7 +738,7 @@ def test_extraction_rejection_diagnostics_preserve_lifecycle(ref, monkeypatch, c
     app.state.settings.update({'google_api_key': secret})
     bad = {
         'empty': ' ', 'unsafe': output(palette_notes=secret), 'malformed': '{broken',
-        'schema': output([{**item(confidence='private-enum-value'), 'private-extra-key': 'private-value'}]),
+        'schema': output([{**item(kind='private-enum-value'), 'private-extra-key': 'private-value'}]),
         'local': output([item(box=(900, 0, 200, 100))]),
         'count': output(count=25), 'items': output([item()] * 25),
     }.get(case, output())
@@ -575,13 +754,16 @@ def test_extraction_rejection_diagnostics_preserve_lifecycle(ref, monkeypatch, c
     monkeypatch.setattr(app.state.models, 'llm_for', lambda node: rejected)
     run_id = upload(client, app, bid, [('files', ('second.png', png(20, 10), 'image/png'))])
     result = finished(app, run_id)
-    assert result['status'] == 'error' and rejected.calls == 1
+    repaired = case in ('malformed', 'schema', 'local')
+    assert result['status'] == 'error' and rejected.calls == 1 + repaired
     row = traces(app)[-1]
     spans = json.loads(row['spans_json'])
-    diagnostic = next(s['diagnostic'] for s in spans if s['node'] == 'reference_extract')
+    diagnostics = [s['diagnostic'] for s in spans if s['node'] == 'reference_extract']
+    assert len(diagnostics) == 1 + repaired and diagnostics[0] == diagnostics[-1]
+    diagnostic = diagnostics[0]
     assert diagnostic['category'] == category and diagnostic['boundary'] == boundary
     calls = spans[0]['calls']
-    assert len(calls) == 1 and calls[0]['outcome'] == 'invalid'
+    assert [c['outcome'] for c in calls] == ['invalid'] * (1 + repaired)
     assert spans[0]['settings']['stages']['reference_interpretation']['validation_repairs'] == 1
     encoded = json.dumps({'diagnostic': diagnostic, 'trace': spans, 'result': result})
     assert all(value not in encoded for value in (secret, 'private-enum-value', 'private-extra-key',
@@ -638,17 +820,21 @@ def extract(client, app, bid, model, response, mode='recreate'):
     return finished(app, run_id), diagnostic, spans, model.calls - before
 
 
-def expected_diagnostic(text):
+def expected_diagnostic(text, mode='recreate'):
     """Today's rejection diagnostic for the answer as returned: provider schema first, then local."""
     from jsonschema import Draft202012Validator
-    schema = provider_schema(ReferenceOutput)
+    from dss.harness.nodes.reference_extract import StyleOutput
+    model = ReferenceOutput if mode == 'recreate' else StyleOutput
+    if mode == 'style':  # the fake answers the style schema (no items)
+        text = json.dumps({k: v for k, v in json.loads(text).items() if k not in ('items', 'element_count')})
+    schema = provider_schema(model)
     provider = validation_diagnostic(Draft202012Validator(schema).iter_errors(json.loads(text)), schema)
     if provider['issue_count']:
         return provider
     with pytest.raises(ValidationError) as caught:
-        ReferenceOutput.model_validate_json(text)
+        model.model_validate_json(text)
     return validation_diagnostic(caught.value.errors(include_url=False, include_context=False, include_input=False),
-                                 ReferenceOutput.model_json_schema(), local=True)
+                                 model.model_json_schema(), local=True)
 
 
 def accepted(repairs):
@@ -717,11 +903,13 @@ def test_recreate_style_falls_back_to_the_prefill_preset(ref, style, changes, re
     client, app, bid, folder, model, _ = ref
     upload(client, app, bid, [('files', ('first.png', png(), 'image/png'))])
     baseline = references.load(folder)['interpretation']
+    analysis_baseline = references.load(folder)['analysis']['items']
     result, diagnostic, spans, generations = extract(client, app, bid, model, answer(style))
     assert result['status'] == 'ok' and generations == 1
     record = references.load(folder)
     expected = StyleProfile.model_validate(PRESET if changes is None else {**STYLE, **changes}).model_dump()
-    assert record['style'] == expected and record['interpretation'] == baseline  # identical observations
+    assert record['style'] == expected and record['interpretation'] == baseline
+    assert record['analysis']['items'] == analysis_baseline  # identical items: style repair never touches them
     meta = yaml.safe_load((folder / 'docs/style.md').read_text(encoding='utf-8').split('---', 2)[1])
     assert {k: meta[k] for k in expected if k != 'notes'} == {k: v for k, v in expected.items() if k != 'notes'}
     assert diagnostic == accepted(repairs)
@@ -754,9 +942,9 @@ def test_style_repair_is_deterministic_and_leaves_the_answer_untouched():
 
 
 def rejection_baseline(client, app, bid, model):
-    """A valid set to retain plus the error a plain observation rejection reports today."""
+    """A valid set to retain plus the error a plain item rejection reports today."""
     upload(client, app, bid, [('files', ('first.png', png(), 'image/png'))])
-    result, *_ = extract(client, app, bid, model, answer(items=[item(confidence='certain')]))
+    result, *_ = extract(client, app, bid, model, answer(items=[item(kind='certain')]))
     assert result['status'] == 'error'
     return result['error'], references.load(folder_of(app, bid)), snapshot(folder_of(app, bid))
 
@@ -771,9 +959,9 @@ def snapshot(folder):
 
 def assert_rejected(client, app, bid, model, folder, text, mode, error, record, files):
     result, diagnostic, spans, generations = extract(client, app, bid, model, text, mode)
-    assert result['status'] == 'error' and result['error'] == error and generations == 1
-    assert diagnostic == expected_diagnostic(text) and 'style_repairs' not in diagnostic
-    assert [c['outcome'] for c in spans[0]['calls']] == ['invalid']
+    assert result['status'] == 'error' and result['error'] == error and generations == 2  # the one repair
+    assert diagnostic == expected_diagnostic(text, mode) and 'style_repairs' not in diagnostic
+    assert [c['outcome'] for c in spans[0]['calls']] == ['invalid', 'invalid']
     assert references.load(folder) == record and snapshot(folder) == files  # old reference retained
     assert not any(value in json.dumps(spans) for value in SENTINELS)
     assert bid not in app.state.harness.active_builds
@@ -792,9 +980,24 @@ def test_style_mode_keeps_rejecting_unrecoverable_style(ref, style):
 
 
 @pytest.mark.parametrize('mode', ['recreate', 'style'])
-@pytest.mark.parametrize('bad', [item(confidence='certain'), item(box=(900, 0, 200, 100))], ids=['enum', 'box'])
-def test_observation_issue_with_style_issues_rejects_in_both_modes(ref, mode, bad):
-    """Repair never hides an observation defect, even one only local validation sees (box)."""
+@pytest.mark.parametrize('bad', [item(kind='certain'), item(box=(900, 0, 200, 100))], ids=['enum', 'box'])
+def test_item_issue_with_style_issues_rejects_in_both_modes(ref, mode, bad):
+    """Style repair never hides an item defect, even one only local validation sees (box)."""
     client, app, bid, folder, model, _ = ref
     error, record, files = rejection_baseline(client, app, bid, model)
     assert_rejected(client, app, bid, model, folder, answer({**RUN2, 'text': '#abc'}, items=[bad]), mode, error, record, files)
+
+
+def test_electricity_fixture_analyzes_to_the_agreed_split(ref, monkeypatch):
+    """tests/data/reference_analysis_electricity.json (26.4's offline fixture) commits as pending revision 1."""
+    client, app, bid, folder, model, _ = ref
+    monkeypatch.setenv("DSS_ALLOWED_TYPES", ",".join(references.TYPES))  # the root .env may narrow it
+    fixture = json.loads((Path(__file__).parent / "data/reference_analysis_electricity.json").read_text(encoding="utf-8"))
+    model.response = json.dumps(fixture["reply"])
+    upload(client, app, bid, [("files", ("electricity.png", png(), "image/png"))], instructions=fixture["instructions"])
+    analysis = client.get(f"/api/builds/{bid}/reference-images").json()["analysis"]
+    assert {i["label"]: i["type"] for i in analysis["items"] if i["disposition"] == "native"} == fixture["native"]
+    assert [i["id"] for i in analysis["items"]] == [f"r{n}" for n in range(1, 9)]
+    assert analysis["items"][0]["label"] == "Location Rural Urban legend"  # top-most centre first
+    assert analysis["summary"] == "2 charts and 1 control can be native Data Studio components; 5 items stay static art."
+    assert all(i["type"] is None for i in analysis["items"] if i["disposition"] == "static")

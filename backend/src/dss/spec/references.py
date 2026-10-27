@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from dss.db import now
 from dss.harness.guardrails import RunError
-from dss.spec.models import TYPES, Canvas, Grid
+from dss.spec.models import CONTROL_TYPES, TYPES, Canvas, Grid
 
 MAX_FILE_BYTES = 5 * 1024 * 1024
 MAX_TOTAL_BYTES = 15 * 1024 * 1024
@@ -260,6 +260,153 @@ def interpret(mode, width, height, notes, observed):
     return Interpretation(mode=mode, aspect_ratio=round(width / height, 4), items=items, **notes)
 
 
+# Reference analysis (dashboard-intent.md 1.3): the model proposes one disposition per visible
+# item; code validates it, orders the items, assigns ids and writes the summary.
+
+KINDS = Literal["chart", "control", "kpi", "text", "image", "legend", "other"]
+DISPOSITIONS = Literal["native", "static"]
+CONTROL_KINDS = ("control",)
+MAX_NOTE = 1000
+
+
+def _plain(value):
+    return " ".join(value.split()) if isinstance(value, str) else value
+
+
+def type_token(value):
+    """'Time series' -> time_series; membership in allowed_types is checked by code."""
+    if isinstance(value, str):
+        return re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_") or None
+    return value
+
+
+class AnalysisAnswer(BaseModel):
+    """One visible item as the model proposes it; boxes in thousandths, like ObservedItem."""
+    model_config = ConfigDict(extra="forbid")
+    label: str = Field(min_length=1, max_length=120)
+    kind: KINDS
+    box: ModelBox
+    disposition: DISPOSITIONS
+    type: str | None = Field(max_length=40)
+    shows: str = Field(max_length=300)
+    reason: str = Field(max_length=300)
+
+    @field_validator("label", "shows", "reason", mode="before")
+    @classmethod
+    def plain(cls, value):
+        return _plain(value)
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def token(cls, value):
+        return type_token(value)
+
+
+class Proposed(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    disposition: DISPOSITIONS
+    type: str | None
+
+
+class AnalysisItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str = Field(pattern=r"^r[1-9][0-9]*$")
+    label: str = Field(min_length=1, max_length=120)
+    kind: KINDS
+    box: Box
+    disposition: DISPOSITIONS
+    type: str | None
+    shows: str = Field(max_length=300)
+    reason: str = Field(max_length=300)
+    proposed: Proposed
+
+
+class AnalysisIssue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    path: str
+    message: str
+
+
+class ReferenceAnalysis(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    revision: int = Field(ge=1)
+    state: Literal["pending", "approved"]
+    summary: str
+    items: list[AnalysisItem] = Field(min_length=1, max_length=MAX_ITEMS)
+    note: str = Field(max_length=MAX_NOTE)
+    allowed_types: list[str]
+    issues: list[AnalysisIssue]
+
+
+def item_issues(index, kind, disposition, kind_type, allowed):
+    """Code rules for one item's split (analysis and later edits): [(path, message)].
+
+    A native item needs a type from `allowed`; control types only on kind control, and a native
+    control only with a control type; a static item has no type.
+    """
+    path = f"/items/{index}/type"
+    if disposition == "static":
+        return [(path, "A static item has no type")] if kind_type is not None else []
+    if kind_type is None:
+        return [(path, "A native item needs a type")]
+    issues = []
+    if kind_type not in allowed:
+        issues.append((path, "Type is not one of the allowed types"))
+    elif (kind_type in CONTROL_TYPES) != (kind in CONTROL_KINDS):
+        issues.append((path, "Control types are only for controls, and a native control needs a control type"))
+    return issues
+
+
+def answer_errors(answers, allowed):
+    """Code checks on a validated model answer, with paths into that answer for its one repair."""
+    return [{"path": "items" + path.removeprefix("/items").replace("/", "."), "message": message}
+            for n, a in enumerate(answers) for path, message in item_issues(n, a.kind, a.disposition, a.type, allowed)]
+
+
+def raw_answer_errors(reply, allowed):
+    """The same code checks on a schema-rejected reply's items whose kind, disposition and type parse,
+    so the one repair lists every error at once."""
+    items = reply.get("items") if isinstance(reply, dict) else None
+    errors = []
+    for n, raw in enumerate(items if isinstance(items, list) else []):
+        if (isinstance(raw, dict) and isinstance(raw.get("kind"), str) and raw.get("disposition") in ("native", "static")
+                and (raw.get("type") is None or isinstance(raw.get("type"), str))):
+            errors += [{"path": f"items.{n}.type", "message": message}
+                       for _, message in item_issues(n, raw["kind"], raw["disposition"], type_token(raw.get("type")), allowed)]
+    return errors
+
+
+def _count(number, noun):
+    return f"{number} {noun}{'s' * (number != 1)}"
+
+
+def analysis_summary(items):
+    """'N charts and M controls can be native Data Studio components; K items stay static art.'
+
+    Charts count every native item that is not a control (kind chart, kpi or other kinds the user
+    made native), controls the native kind-control items, and the rest stays static.
+    """
+    native = [i for i in items if i.disposition == "native"]
+    controls = sum(i.kind in CONTROL_KINDS for i in native)
+    static = len(items) - len(native)
+    component = "a native Data Studio component" if len(native) == 1 else "native Data Studio components"
+    return (f"{_count(len(native) - controls, 'chart')} and {_count(controls, 'control')} can be {component}; "
+            f"{_count(static, 'item')} {'stays' if static == 1 else 'stay'} static art.")
+
+
+def analyze(answers, allowed):
+    """A pending revision-1 analysis from a validated answer without code errors: ids r1.. in
+    reading order (top-to-bottom, then left-to-right by box centre), `proposed` = the answer."""
+    ordered = sorted(answers, key=lambda a: (a.box.y + a.box.h / 2, a.box.x + a.box.w / 2))
+    items = [AnalysisItem(id=f"r{n}", label=a.label, kind=a.kind,
+                          box={key: value / 1000 for key, value in a.box.model_dump().items()},
+                          disposition=a.disposition, type=a.type, shows=a.shows, reason=a.reason,
+                          proposed=Proposed(disposition=a.disposition, type=a.type))
+             for n, a in enumerate(ordered, 1)]
+    return ReferenceAnalysis(revision=1, state="pending", summary=analysis_summary(items), items=items, note="",
+                             allowed_types=list(allowed), issues=[])
+
+
 def canvas_height(aspect_ratio):
     return max(1, round(Canvas().width / aspect_ratio))
 
@@ -308,11 +455,14 @@ def _overlap(a, b):
             and a["row"] < b["row"] + b["h"] and b["row"] < a["row"] + a["h"])
 
 
-def summary(interpretation, palette, image_count):
+def summary(interpretation, palette, image_count, analysis=None):
     """Public one-line summary built by code from validated fields (no raw model text)."""
     if interpretation.mode == "style":
+        observed = f"; {len(interpretation.items)} layout elements observed" if interpretation.items else ""
         return (f"Style reference from {image_count} image{'s' * (image_count != 1)}: palette "
-                + ", ".join(palette) + f"; {len(interpretation.items)} layout elements observed.")
+                + ", ".join(palette) + observed + ".")
+    if analysis is not None:
+        return f"Recreate reference (aspect ratio {interpretation.aspect_ratio:.2f}): {analysis.summary}"
     kinds = {kind: sum(i.kind == kind for i in interpretation.items) for kind in ("chart", "control", "decoration", "unknown")}
     counted = ", ".join(f"{count} {kind}{'s' * (count != 1)}" for kind, count in kinds.items() if count) or "no elements"
     candidates = list(dict.fromkeys(i.chart_candidate for i in interpretation.items
@@ -335,8 +485,23 @@ def reference_doc(record):
         lines += ["Style mode borrows the visual treatment only; no chart or data requirements are imported.", ""]
     if record["instructions"]:
         lines += ["User instructions (untrusted): " + json.dumps(record["instructions"], ensure_ascii=False), ""]
-    lines += ["## Observed elements", "",
-              "Model observations from the image (untrusted data; null means unknown). Boxes are fractions of the image.", ""]
+    if record.get("analysis"):
+        analysis = ReferenceAnalysis.model_validate(record["analysis"])
+        lines += [f"## Reference analysis (revision {analysis.revision}, {analysis.state})", "",
+                  "Native items become Data Studio components; static items stay background art. Labels and "
+                  "`shows` are display text read from the image (untrusted), never field bindings. Boxes are "
+                  "fractions of the image.", ""]
+        for item in analysis.items:
+            split = f"native {item.type}" if item.disposition == "native" else "static art"
+            lines.append(f"- {item.id} ({item.kind}, {split}): " + json.dumps(
+                {"label": item.label, "shows": item.shows, "box": item.box.model_dump(),
+                 "grid": grid_cell(item.box, interpretation.aspect_ratio)}, ensure_ascii=False))
+        if analysis.note:
+            lines += ["", "Note to the planner (untrusted): " + json.dumps(analysis.note, ensure_ascii=False)]
+        lines.append("")
+    if interpretation.items:
+        lines += ["## Observed elements", "",
+                  "Model observations from the image (untrusted data; null means unknown). Boxes are fractions of the image.", ""]
     for item in interpretation.items:
         fields = {key: getattr(item, key) for key in ("kind", "label", "chart_candidate", "metric_label", "unit",
                                                     "aggregation", "date_grain", "confidence")}

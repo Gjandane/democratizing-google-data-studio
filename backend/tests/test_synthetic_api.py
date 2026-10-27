@@ -31,11 +31,10 @@ PARSE = {"INTEGER": int, "NUMERIC": Decimal, "STRING": str, "DATE": date.fromiso
 def recreate_reference(client, app, bid, monkeypatch, mode='recreate'):
     """Use actual reference extraction with FakeLLM; no screenshot is sent for the proposal."""
     from dss.spec import references
-    from fakes import FakeLLM
-    from test_references import png, output
+    from test_references import Capture, png, output
     with monkeypatch.context() as patch:
         patch.setattr(references, 'decode', lambda images: None)
-        patch.setattr(app.state.models, 'llm_for', lambda _: FakeLLM(response=output()))
+        patch.setattr(app.state.models, 'llm_for', lambda _: Capture(response=output(), requests=[]))
         response = client.post(f'/api/builds/{bid}/reference-images', data={'mode': mode},
                                files=[('files', ('ref.png', png(), 'image/png'))])
         assert response.status_code == 202, response.text
@@ -622,7 +621,9 @@ def test_screenshot_only_flow_reaches_context_outline_and_design(setup, monkeypa
     wait(app)
     assert client.get(f"/api/builds/{bid}/context").json()["issues"] == []
     drafted = str(llm.seen[0].config.system_instruction)
-    assert f"source_id={source['id']}" in drafted and "unit_price" in drafted and "Observed labels" in drafted
+    assert f"source_id={source['id']}" in drafted and "unit_price" in drafted
+    # 26.2: a recreate upload commits analysis items, no observations (26.4 feeds the approved items).
+    assert "Observed labels" not in drafted
     assert client.post(f"/api/builds/{bid}/context/confirm").status_code == 202
     wait(app)
     assert "Recreate observations" in str(llm.seen[1].config.system_instruction)

@@ -612,7 +612,7 @@ def test_reference_replacement_deletion_sticky_prototype_staleness(thin, monkeyp
     use_model(monkeypatch, app)
     check(client, app, bid)
     monkeypatch.setattr(references, "decode", lambda _: None)
-    vision = Capture(response=output(items=[]), requests=[])
+    vision = Capture(response=output(), requests=[])
     monkeypatch.setattr(app.state.models, "llm_for", lambda _: vision)
     def upload():
         response = client.post(f"/api/builds/{bid}/reference-images", data={"mode": "recreate"},

@@ -159,7 +159,8 @@ async def test_local_invalid_extraction_keeps_usage_and_marks_received_call(clie
     with app.state.db.connect() as conn:
         run_id = conn.execute('SELECT run_id FROM traces ORDER BY rowid DESC LIMIT 1').fetchone()[0]
     usage = check_stream(app, build_id, run_id, 'reference_extract')
-    assert (usage[-1]['input_tokens'], usage[-1]['output_tokens']) == (5, 2)
+    assert (usage[-1]['input_tokens'], usage[-1]['output_tokens']) == (10, 4)  # both calls, repair included
     calls = client.get(f'/api/traces/{run_id}/calls').json()['calls']
-    assert len(calls) == 1 and calls[0]['outcome'] == 'invalid'
-    assert calls[0]['input_billed'] == 5 and calls[0]['output_tokens'] == 2
+    # 26.2: the stage's one validation repair is a second received, invalid call.
+    assert len(calls) == 2 and [c['outcome'] for c in calls] == ['invalid', 'invalid']
+    assert all(c['input_billed'] == 5 and c['output_tokens'] == 2 for c in calls)

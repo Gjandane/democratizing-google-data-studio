@@ -42,7 +42,7 @@ def test_validation_diagnostic_projects_only_schema_paths_and_owned_categories()
     from dss.harness.nodes.reference_extract import ReferenceOutput
     errors = [
         {'type': 'extra_forbidden', 'loc': ('items', 0, 'secret-key'), 'input': 'secret-value'},
-        {'type': 'secret-category', 'loc': ('items', 1, 'aggregation', 'secret-union-label'),
+        {'type': 'secret-category', 'loc': ('items', 1, 'type', 'secret-union-label'),
          'msg': 'secret-message', 'ctx': {'secret': 'secret-context'}, 'url': 'https://secret'},
         {'type': 'int_type', 'loc': ('items', 1000000, 'box', 'x'), 'input': 'secret'},
         {'type': 'value_error', 'loc': ('items', True, 'secret'), 'ctx': {'error': ValueError('secret')}},
@@ -52,7 +52,7 @@ def test_validation_diagnostic_projects_only_schema_paths_and_owned_categories()
     assert result['issue_count'] == 16 and result['issues_truncated'] is True and len(result['issues']) == 10
     assert result['issues'][:3] == [
         {'category': 'extra', 'path': ['items', 0, '?']},
-        {'category': 'other', 'path': ['items', 1, 'aggregation', '?']},
+        {'category': 'other', 'path': ['items', 1, 'type', '?']},
         {'category': 'type', 'path': ['items', '?', 'box', 'x']},
     ]
     assert 'secret' not in json.dumps(result)

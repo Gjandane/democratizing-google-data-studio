@@ -374,10 +374,10 @@ def test_reference_set_contract(thin, monkeypatch):
     from fakes import FakeLLM
     from dss.spec import references
     from test_audit_style import drain
-    from test_references import output, png
+    from test_references import Capture, output, png
     client, app, bid, folder = thin
     monkeypatch.setattr(references, "decode", lambda images: None)
-    monkeypatch.setattr(app.state.models, "llm_for", lambda _: FakeLLM(response=output()))
+    monkeypatch.setattr(app.state.models, "llm_for", lambda _: Capture(response=output(), requests=[]))
     fixture = json.loads((INTENT / "reference_set.json").read_text())
     response = client.get(f"/api/builds/{bid}/reference-images")
     assert response.status_code == 200 and response.json() is None
@@ -389,8 +389,16 @@ def test_reference_set_contract(thin, monkeypatch):
         result = client.get(f"/api/builds/{bid}/reference-images")
         expected = json.loads((INTENT / "reference_set.json").read_text())
         assert result.json().keys() == expected.keys() and "analysis" in result.json()
-        assert result.json()["analysis"] is None  # 26.2 fills it
-        shape({**result.json(), "analysis": {}}, {**expected, "analysis": {}})
+        if path == "style-images":  # style sets have no analysis (1.3)
+            assert result.json()["analysis"] is None
+            shape({**result.json(), "analysis": {}}, {**expected, "analysis": {}})
+        else:  # recreate: a pending analysis in the reference_set.pending.json shape
+            pending = json.loads((INTENT / "reference_set.pending.json").read_text())
+            references.ReferenceAnalysis.model_validate(result.json()["analysis"])
+            assert result.json()["analysis"]["state"] == "pending" and result.json()["analysis"]["revision"] == 1
+            got = result.json()
+            shape({**got, "analysis": {**got["analysis"], "items": []}}, {**pending, "analysis": {**pending["analysis"], "items": []}})
+            assert all(item.keys() == pending["analysis"]["items"][0].keys() for item in got["analysis"]["items"])
         assert result.json()["images"][0]["file"].startswith("reference_img_")
     for content, name, kind, status in ((png() + b"0" * references.MAX_FILE_BYTES, "a.png", "image/png", 413),
                                         (b"text", "a.txt", "text/plain", 422)):

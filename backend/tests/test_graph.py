@@ -107,7 +107,8 @@ def test_prototype_branch_designs_pages_before_render(blueprint_api, monkeypatch
 
 def reference_model(app, monkeypatch, llm, mode):
     monkeypatch.setattr(references, 'decode', lambda images: None)
-    monkeypatch.setattr(app.state.models, 'llm_for', lambda node: FakeLLM(response=output()) if node == 'reference_extract' else llm)
+    from test_references import Capture
+    monkeypatch.setattr(app.state.models, 'llm_for', lambda node: Capture(response=output(), requests=[]) if node == 'reference_extract' else llm)
     files = [('files', ('ref.png', png(), 'image/png'))]
     return accepted(app.state.client.post(f'/api/builds/{app.state.bid}/reference-images', data={'mode': mode}, files=files))
 

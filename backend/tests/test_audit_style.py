@@ -32,8 +32,8 @@ STYLE = {'palette': ['#1e40af', '#0d9488', '#F59E0B'], 'background': '#f1f5f9', 
 
 
 def reference(style=STYLE):
-    """A reference_extract reply with no observed elements (style-images is a reference alias)."""
-    return json.dumps({'style': style, 'element_count': 0, 'palette_notes': '', 'type_notes': '', 'spacing_notes': '', 'items': []})
+    """A style-mode reference_extract reply: the style profile and notes, no items (style-images is a reference alias)."""
+    return json.dumps({'style': style, 'palette_notes': '', 'type_notes': '', 'spacing_notes': ''})
 
 
 def style_payload(app):

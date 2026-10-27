@@ -146,6 +146,45 @@ def load_registry(path: Path | None = None) -> Registry:
     return Registry.model_validate_json(Path(path or REGISTRY_PATH).read_text(encoding="utf-8"))
 
 
+# What each native component type draws or filters, for the reference analysis request
+# (architecture.md#Reference analysis and approval gate); limits and data needs come from the registry.
+DRAWS = {
+    "scorecard": "one headline number for a single metric",
+    "time_series": "lines of metrics over a date dimension",
+    "area": "filled areas of metrics over a date dimension",
+    "bar": "bars comparing metrics across the values of a dimension",
+    "pie": "shares of one metric across the values of a dimension",
+    "table": "rows of dimension values with metric columns",
+    "pivot_table": "a cross-tab of metrics by row and column dimensions",
+    "geo_map": "a metric shaded by a geographic dimension (country, region, city)",
+    "scatter": "points placed by two metrics, one per dimension value",
+    "text": "a text box",
+    "image": "a static image",
+    "date_range": "filters the page by a date range",
+    "dropdown": "filters the page by values of one dimension, picked from a drop-down list",
+    "fixed_size_list": "filters the page by values of one dimension, picked from an always-visible list",
+}
+
+
+def component_types(registry: Registry, allowed) -> list[dict]:
+    """The native component types a reference item may use: registry chart, control and element
+    types the app supports, narrowed by `allowed`, in catalog order, each with one line on what it
+    draws or filters, the data it needs and its product/engine limits."""
+    found = {c.component_type: c for c in registry.capabilities
+             if c.component_type and c.kind in ("chart_type", "control_type", "element") and c.app.status == "supported"}
+    result = []
+    for name in (*CHART_TYPES, "text", "image", *CONTROL_TYPES):
+        if name in found and name in allowed:
+            c = found[name]
+            entry = {"type": name, "draws": DRAWS.get(name, c.label)}
+            if c.data:
+                entry["needs"] = [p.name for p in c.data]
+            if limits := {**c.native_product.limits, **c.app.limits}:
+                entry["limits"] = limits
+            result.append(entry)
+    return result
+
+
 @dataclass(frozen=True)
 class Verdict:
     status: Outcome

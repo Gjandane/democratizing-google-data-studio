@@ -3,8 +3,8 @@ type: Procedural Skill
 title: Suggest an invented sample-data schema
 ---
 # Synthetic schema
-Use observed labels, units, chart candidates and date grains to suggest the smallest useful
-dataset. Choose plausible invented values; disclose every unseen definition and distribution.
+Use the reference analysis items (label, kind, shows, native or static) to suggest the smallest
+useful dataset. Choose plausible invented values; disclose every unseen definition and distribution.
 Default row_count 1000, seed 42, schema_version 1. Return at most 20 assumptions of at most
 240 characters each. Explain that all sample rows will be invented, never recovered.
 

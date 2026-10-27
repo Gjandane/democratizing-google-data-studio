@@ -2270,3 +2270,15 @@ assert min(timings) < .1
 - Gotchas: none
 - Left open: none
 - Next: Task 26.2 Flash reference analysis.
+
+## 2026-10-28: Task 26.2 Flash reference analysis
+- Status: done
+- Plan check: unattended
+- What changed: reference_extract now returns a validated ReferenceAnalysis (recreate) or StyleProfile only (style, `analysis: null`), with the stage's one validation repair (previous answer + error paths); synthetic proposal reads items, 422 for a pre-1.3 set. New `references` analysis models/rules, `capabilities.component_types`, electricity analysis fixture.
+- Checks: `uv run pytest tests/test_references.py tests/test_synthetic.py` PASS (227 passed); Test (all) `uv run pytest` PASS (2417 passed, 17 deselected)
+- Decisions: model boxes stay thousandths (normalized to 0..1 by code); type tokens normalized ("Time series" -> time_series); summary "charts" = native non-control items (matches both contract fixtures, where a native image item counts); repair runs in both modes (style answers with items fail); repair is a direct call from `save` through the bound stage model (+ run.usage event) since the graph caps ADK at one call; `interpretation` kept with items [] for downstream readers; set summary "Recreate reference (aspect ratio X): <analysis summary>". Edited outside Files (needed): context.py (request/allowed types, synthetic items), api/synthetic_data.py (422), skills + synthetic prompt, and tests with old-shape fakes (test_render gets a transitional `seed_observations`). AGENTS.md gotcha added.
+- Digest: references.{AnalysisItem,ReferenceAnalysis,analyze(answers,allowed),analysis_summary(items),item_issues(i,kind,disp,type,allowed)->[(path,msg)]}; capabilities.component_types(registry,allowed); references.json `analysis`; tests/data/reference_analysis_electricity.json
+- Tried and failed: none
+- Gotchas: none beyond AGENTS.md
+- Left open: P3 type descriptions hard-coded in capabilities.DRAWS (limits/needs from registry) - src/dss/spec/capabilities.py
+- Next: Task 26.3 Approval gate API. Start from `references.item_issues` for PUT issues and recompute allowed_types per read (`component_types`).

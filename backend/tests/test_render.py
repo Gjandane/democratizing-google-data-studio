@@ -559,7 +559,7 @@ def recreate_build(blueprint_api, monkeypatch, matching=True, data=RECREATE, syn
     if not designed:
         monkeypatch.setattr(app.state.settings, 'defaults', app.state.settings.defaults.model_copy(update={'designed_pages': False}))
     build = SimpleNamespace(client=client, app=app, bid=bid, folder=folder, llm=llm, value=value, context=context, data=data,
-                            vision=Capture(response=output(items=data['items']), requests=[]), extraction=None)
+                            vision=Capture(response=output(), requests=[]), extraction=None)
     from test_reference_brief import BriefLLM
     from test_designer import ReferenceHTMLLLM
     build.brief = brief or BriefLLM()
@@ -570,6 +570,20 @@ def recreate_build(blueprint_api, monkeypatch, matching=True, data=RECREATE, syn
     return build
 
 
+def seed_observations(build):
+    """Transitional (26.2-26.4): uploads now commit a reference analysis and no observations, while
+    the observation path these tests exercise still exists; write the fixture's observations into
+    the committed set as a pre-26.2 extraction would have. 26.4 moves these tests to approved items."""
+    from dss.spec import references
+    record = references.load(build.folder)
+    image = record['images'][0]
+    observed = [references.ObservedItem.model_validate(item) for item in build.data['items']]
+    record['interpretation'] = references.interpret(
+        'recreate', image['width'], image['height'],
+        {k: record['interpretation'][k] for k in ('palette_notes', 'type_notes', 'spacing_notes')}, observed).model_dump()
+    (build.folder / references.SET_FILE).write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
+
+
 def upload_recreate(build, instructions=''):
     from test_references import png
     response = build.client.post(f'/api/builds/{build.bid}/reference-images', data={'mode': 'recreate', 'instructions': instructions},
@@ -577,6 +591,7 @@ def upload_recreate(build, instructions=''):
     assert response.status_code == 202, response.text
     from test_context_node import wait
     wait(build.app)
+    seed_observations(build)
     reference = build.client.get(f'/api/builds/{build.bid}/reference-images').json()
     # One extraction reply for exactly the new sources; code reconciles every definition.
     extraction = build.data['extraction']
