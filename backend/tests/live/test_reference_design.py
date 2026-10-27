@@ -1,4 +1,4 @@
-"""Task 25.8: real reference fidelity at the contract default stage Settings, with retained synthetic inputs.
+"""Task 25.9: real reference fidelity at the contract default stage Settings, with retained synthetic inputs.
 
 Run explicitly with -m live. Every run retains evidence, including failures; no
 fallback or unresolved feasibility decision is accepted as a successful check.
@@ -672,22 +672,75 @@ APPROVED_DROPS = (
 )
 
 
-def approved_drops(flow, folder, assessment):
-    """Drop exactly the approved observation issues; returns the recorded substitutions, or the issues left."""
-    owners = {r.text: json.loads(r.source.text) for r in requirements.load(folder).requirements if r.source.kind == 'image'}
-    decisions, left, recorded = [], [], []
-    for issue in (i for i in assessment['issues'] if i['resolution'] == 'unresolved'):
+# The one approved binding (user card 2026-10-27): the instruction clause offer for an unlabeled control
+# (architecture.md#Unlabeled reference control binding). Never a field offer, never a labeled observation.
+REGION_OFFER = 'Region Selector: fixed_size_list on region (from your instructions)'
+
+
+def choose_decisions(assessment, owners):
+    """Pure selection over unresolved issues: (decisions, drops, offers, left). The Region Selector offer is
+    accepted only on one unlabeled control observation's issue; anywhere else, or twice, it is left (a block)."""
+    decisions, drops, offers, left = [], [], [], []
+    unresolved = [i for i in assessment['issues'] if i['resolution'] == 'unresolved']
+    offered = [i for i in unresolved if any(a['label'] == REGION_OFFER for a in i.get('alternatives', []))]
+    for issue in unresolved:
         item = owners.get(issue['requirement'])
+        alternative = next((a for a in issue.get('alternatives', []) if a['label'] == REGION_OFFER), None)
+        if alternative is not None:
+            if (len(offered) == 1 and item and item.get('kind') == 'control'
+                    and not (item.get('label') or '').strip()):
+                decisions.append({'issue_id': issue['id'], 'action': 'accept_alternative',
+                                  'alternative_id': alternative['id']})
+                offers.append({'offer': REGION_OFFER, 'alternative_id': alternative['id'], 'issue_id': issue['id'],
+                               'item': item.get('id'), 'chart_candidate': item.get('chart_candidate'),
+                               'status': issue['status'], 'reason': issue['reason']})
+            else:
+                left.append(issue)
+            continue
         name = next((n for n, accepts in APPROVED_DROPS if item and accepts(item, issue['status'])), None)
         if name is None:
             left.append(issue)
             continue
         decisions.append({'issue_id': issue['id'], 'action': 'drop', 'alternative_id': None})
-        recorded.append({'drop': name, 'issue_id': issue['id'], 'item': item.get('id'), 'label': item.get('label'),
-                         'status': issue['status'], 'reason': issue['reason']})
+        drops.append({'drop': name, 'issue_id': issue['id'], 'item': item.get('id'), 'label': item.get('label'),
+                      'status': issue['status'], 'reason': issue['reason']})
+    return decisions, drops, offers, left
+
+
+def _issue(iid, requirement, *labels):
+    return {'id': iid, 'requirement': requirement, 'resolution': 'unresolved', 'status': 'clarification',
+            'reason': 'r', 'alternatives': [{'id': f'{iid}_{n}', 'label': label} for n, label in enumerate(labels)]}
+
+
+UNLABELED_LIST = {'id': 'o5', 'kind': 'control', 'label': None, 'chart_candidate': 'dropdown'}
+
+
+@pytest.mark.parametrize('owners,issues,accepted,left', [
+    ({'a': UNLABELED_LIST}, [_issue('i1', 'a', REGION_OFFER, 'fixed_size_list on region')], ['i1_0'], []),
+    ({'a': {**UNLABELED_LIST, 'label': ' '}}, [_issue('i1', 'a', REGION_OFFER)], ['i1_0'], []),
+    ({'a': UNLABELED_LIST}, [_issue('i1', 'a', 'dropdown on region')], [], ['i1']),
+    ({'a': {**UNLABELED_LIST, 'label': 'Regions'}}, [_issue('i1', 'a', REGION_OFFER)], [], ['i1']),
+    ({'a': {**UNLABELED_LIST, 'kind': 'chart'}}, [_issue('i1', 'a', REGION_OFFER)], [], ['i1']),
+    ({'a': UNLABELED_LIST, 'b': {**UNLABELED_LIST, 'id': 'o12'}},
+     [_issue('i1', 'a', REGION_OFFER), _issue('i2', 'b', REGION_OFFER)], [], ['i1', 'i2']),
+    ({'a': UNLABELED_LIST, 'g': {'id': 'o3', 'kind': 'chart', 'chart_candidate': 'geo_map', 'label': 'Map'}},
+     [_issue('i1', 'a', REGION_OFFER), _issue('i3', 'g')], ['i1_0', None], []),
+])
+def test_region_offer_selection(owners, issues, accepted, left):
+    decisions, _, offers, remaining = choose_decisions({'issues': issues}, owners)
+    assert [d['alternative_id'] for d in decisions] == accepted
+    assert [i['id'] for i in remaining] == left
+    assert all(o['item'] == 'o5' for o in offers)
+
+
+def approved_drops(flow, folder, assessment):
+    """Drop exactly the approved observation issues and accept the approved binding offer; returns the
+    recorded substitutions and offers, or the issues left (nothing is submitted then)."""
+    owners = {r.text: json.loads(r.source.text) for r in requirements.load(folder).requirements if r.source.kind == 'image'}
+    decisions, drops, offers, left = choose_decisions(assessment, owners)
     if decisions and not left:
         flow.call('decisions', 'post', '/feasibility/decisions', json={'assessment_id': assessment['id'], 'decisions': decisions})
-    return recorded if not left else [], left
+    return (drops, offers, left) if not left else ([], [], left)
 
 
 # DSS_LIVE_STAGE=24.7 stops after the published, dry-run recreate build: the design-stage, fidelity and
@@ -816,7 +869,7 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
     assert all(fixtures[name] == digest for name, digest in HASHES.items())
     generation = json.loads((DATA / 'generation.json').read_text(encoding='utf-8-sig'))
     app, config, project = live_app(tmp_path)
-    evidence = evidence_dir('24.9' if STAGE == '24.9' else '25.8' if FIDELITY else '24.7', mode)
+    evidence = evidence_dir('24.9' if STAGE == '24.9' else '25.9' if FIDELITY else '24.7', mode)
     (evidence / 'test-source.py').write_bytes(Path(__file__).read_bytes())
     print(f'{evidence.parents[1].name} {mode} evidence: {evidence}', flush=True)
     calls, tables = [], set()
@@ -832,8 +885,9 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
              'runtime_sha256': {name: hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()
                                 for name, module in [('reference_brief', reference_brief), ('designer', designer),
                                                      ('reference_extract', reference_extract), ('tracing', tracing),
-                                                     ('stages', execution_stages)]},
-             'visual_approval': 'pending', 'accepted_substitutions': [], 'dry_engine': True,
+                                                     ('stages', execution_stages),
+                                                     ('design_page', designer.design_page)]},
+             'visual_approval': 'pending', 'accepted_substitutions': [], 'accepted_offers': [], 'dry_engine': True,
              'check_status': 'running', 'fixture_provenance': str(DATA / 'README.md'),
              'approved_fixture_substitutions': [
                  'geo_map omitted; globe remains static real-geography art',
@@ -898,8 +952,9 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
                 early = flow.get('/feasibility')
                 dump(evidence / 'assessment-before-blueprint.json', early)
                 if early['state'] != 'ready':
-                    drops, left = approved_drops(flow, folder, early)
+                    drops, offers, left = approved_drops(flow, folder, early)
                     facts['accepted_substitutions'] += drops
+                    facts['accepted_offers'] += offers
                     assert not left, f'Issues outside the approved drops (a block for the architect): {left}'
             flow.act('blueprint', 'post', '/design/confirm', seconds=1300)
             assessment = flow.get('/feasibility')
@@ -909,8 +964,9 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
             dump(evidence / 'assessment.json', assessment)
             if assessment['state'] != 'ready' and mode == 'recreate':
                 # There is intentionally no "first alternative or drop" loop: only the approved classes.
-                drops, left = approved_drops(flow, folder, assessment)
+                drops, offers, left = approved_drops(flow, folder, assessment)
                 facts['accepted_substitutions'] += drops
+                facts['accepted_offers'] += offers
                 assert not left, f'Issues outside the approved drops (a block for the architect): {left}'
                 assessment = flow.get('/feasibility')
                 dump(evidence / 'assessment-after-drops.json', assessment)

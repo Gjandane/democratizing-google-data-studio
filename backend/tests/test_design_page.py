@@ -275,6 +275,47 @@ def test_synthetic_footer_is_reserved_below_the_design():
     assert 'reaches into the synthetic data footer' in result.errors[0]['message']
 
 
+STRETCH = ('<style>.dss-design-p1{display:flex;padding:12px}{extra}</style>'
+           '<div class="dashboard"{wrap}><div class="card" style="height:300px">'
+           '<div data-slot="p1_kpi" style="width:240px;height:96px"></div></div>{tail}</div>')
+
+
+@pytest.mark.parametrize('extra,wrap,tail,errors', [
+    # The fixed final page height stretches a flex child into the footer band; nothing visible reaches it.
+    ('', '', '', []),
+    ('.dss-design-p1 .dashboard{display:flex;flex-direction:column}', '', '', []),
+    # Visible paint, a slot or text that the stretch carries into the band still fails.
+    ('.dss-design-p1 .dashboard{background:#FFF}', '', '', ['div.dashboard']),
+    ('.dss-design-p1 .dashboard{border:1px solid #CBD5E1}', '', '', ['div.dashboard']),
+    ('.dss-design-p1 .dashboard{box-shadow:0 1px 2px #000}', '', '', ['div.dashboard']),
+    ('.dss-design-p1 .dashboard{display:flex;flex-direction:column;justify-content:space-between}', '',
+     '<p class="note">Source: synthetic</p>', ['div.dashboard > p.note']),
+    ('.dss-design-p1 .dashboard{display:flex;flex-direction:column}.dss-design-p1 .card{flex:1;background:#FFF}',
+     '', '', ['div.dashboard > div.card']),
+    ('.dss-design-p1 .dashboard{background-image:linear-gradient(#FFF,#EEE)}', '', '', ['div.dashboard']),
+    ('.dss-design-p1 .dashboard{background:rgba(0,0,0,0)}', '', '', []),
+    # A marker or a shape drawn outside its svg's box paints without a box of its own.
+    ('.dss-design-p1 .dashboard{display:flex;flex-direction:column;justify-content:space-between}', '',
+     '<ul class="marks"><li></li></ul>', ['div.dashboard > ul.marks > li']),
+    ('.dss-design-p1 svg{overflow:visible}', '',
+     '<svg width="20" height="20" viewBox="0 0 20 20"><rect y="30" width="20" height="40"/></svg>',
+     ['div.dashboard > svg > rect']),
+])
+def test_footer_counts_only_what_a_stretch_makes_visible(extra, wrap, tail, errors):
+    html = STRETCH.replace('{extra}', extra).replace('{wrap}', wrap).replace('{tail}', tail)
+    measured = design_page.measure(html, {'p1_kpi': 'scorecard'}, 1200, footer=64)
+    assert [e['path'] for e in measured.errors] == errors, measured.errors
+    assert all('reaches into the synthetic data footer' in e['message'] for e in measured.errors)
+    assert measured.boxes['p1_kpi']['h'] == 96
+
+
+def test_a_stretched_slot_reaching_the_footer_fails():
+    html = ('<style>.dss-design-p1{display:flex;padding:12px}</style>'
+            '<div data-slot="p1_kpi" style="width:240px;min-height:96px"></div>')
+    measured = design_page.measure(html, {'p1_kpi': 'scorecard'}, 1200, footer=64)
+    assert [e['path'] for e in measured.errors] == ['div[data-slot="p1_kpi"]'], measured.errors
+
+
 @pytest.mark.parametrize('width', [1199, 1921, 1440.0, True])
 def test_canvas_width_outside_the_range_is_an_error(width):
     result = design_page.measure(RAW, SLOTS, width)

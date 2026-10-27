@@ -2110,3 +2110,17 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: test_feasibility already defines `choose(client,bid,...)`; the new pure helper is `decide_on`.
 - Left open: P3 one clause can bind two observations after a spec-mismatch revalidation cycle - requirements.py:_clause_current; P3 timing covers one clause decision, not 16 - tests/test_feasibility.py.
 - Next: Task 25.9 Live stage defaults and reference fidelity approval.
+
+## 2026-10-27: Task 25.9 Live stage defaults and reference fidelity approval
+- Status: blocked
+- Plan check: off
+- What changed: Live harness (tests/live/test_reference_design.py): evidence task-25.9; `choose_decisions` accepts only `Region Selector: fixed_size_list on region (from your instructions)` on one unlabeled control, records `accepted_offers`; design_page hash in runtime_sha256. User-approved (card) footer fix outside Files: src/dss/render/design_page.py footer rule counts only painting elements (+svg shapes, list markers) and text; tests/test_design_page.py +12 cases.
+- Checks: focused six-file 368 passed/431.65s; live run 1 1 failed/850.78s (page-1 reference_html footer x3); after fix focused+design_page 419 passed/459.54s; live run 2 1 failed/1329.77s (native_planning stage_timeout 1200 s); `uv run pytest` 1 failed (recompute timing 125-166 ms, pre-existing), 2302 passed/1433.83s; final affected suites 445 passed/573.63s. History 2164 files unchanged. Evidence .blueprint/qa/task-25.9/README.md.
+- Decisions: Run 1 accepted the offer on o5 (alt_bae835673cff9247fccca3ed) plus o3 geo drops. Footer fix + rerun per user card; block after run 2 per user card. Not a default/cap change. AGENTS.md gains 4 gotchas.
+- Tried and failed: run 1 (footer false positive, fixed); run 2 (planning timeout; also capability_check bound unlabeled o5 itself as dropdown/region, bypassing offers).
+- Gotchas: see AGENTS.md.
+- Left open: P3 architecture.md footer wording (nothing visible) and test_design_page.py outside Files; P3 two-offer guard per assessment - tests/live/test_reference_design.py; pre-existing recompute oracle failure - requirements.py allowed_types; prior P2 scorecard clipping/style axes.
+- Blocked because: (b) native_planning clock variance, the model-inferred binding of an unlabeled control and the failing recompute oracle need architect/user decisions (defaults are the user's call).
+- Question: How should 25.9 resume: raise/keep the native_planning clock, and must a model-filled control_field on an unlabeled control become an issue (or block in the harness)?
+- Options: A plan a reconcile rule (strip/flag model control_field on unlabeled controls), fix allowed_types caching, keep 1,200 s and authorize one rerun / B user raises the planning clock and reruns as is / Recommend: A, since B can still publish a dropdown instead of the native list.
+- Next: New backend chat, best at high, `/blueprint-solution-architect`.

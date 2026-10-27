@@ -501,6 +501,18 @@ GEOMETRY = r'''root => {
   }
   const all = [...root.querySelectorAll('*')].filter(e => e.localName !== 'style');
   const index = new Map(all.map((e, i) => [e, i]));
+  // Whether the element's own box draws anything (slots, art and graphics always count). A transparent
+  // container the final page height stretches is invisible; text is checked by its glyph rects.
+  const shown = c => c && c !== 'transparent' && !/^rgba\(.*,\s*0\)$/.test(c);
+  const paints = e => {
+    if (e.matches('[data-slot], svg, i[data-art], i[data-icon]') || e.closest('svg')) return true;
+    const s = getComputedStyle(e);
+    if (s.display === 'list-item' && s.listStyleType !== 'none') return true;  // its marker
+    if (shown(s.backgroundColor) || s.backgroundImage !== 'none' || s.boxShadow !== 'none') return true;
+    // Outlines and pseudo-element content cannot paint: the sanitizer's property list has neither.
+    return ['Top', 'Right', 'Bottom', 'Left'].some(k => parseFloat(s['border' + k + 'Width']) > 0
+        && s['border' + k + 'Style'] !== 'none' && shown(s['border' + k + 'Color']));
+  };
   return {
     height: R.height, texts,
     slots: [...root.querySelectorAll('[data-slot]')].map(e =>
@@ -514,7 +526,7 @@ GEOMETRY = r'''root => {
       return {path: describe(e.closest('i[data-icon], i[data-art]') || e), art: art && art.getAttribute('data-art'),
               rect: rel(e.getBoundingClientRect())};
     }),
-    elements: all.map(e => ({path: describe(e), rect: rel(e.getBoundingClientRect()),
+    elements: all.map(e => ({path: describe(e), rect: rel(e.getBoundingClientRect()), paints: paints(e),
                              parent: index.has(e.parentElement) ? index.get(e.parentElement) : -1})),
   };
 }'''
@@ -607,14 +619,26 @@ def _rules(geometry, slots, width, height, footer_y, footer, nested=()):
                 break
     if footer_y is not None:
         band = (0, footer_y, width, footer_y + footer)
-        hits = []
+        # Only what is drawn counts: the final page height can stretch a transparent container (a flex or
+        # grid child of the root) into the band without anything visible reaching it.
+        hits, reported = [], []
+
+        def reach(path):
+            reported.append(path)
+            error(path, f'{path} reaches into the synthetic data footer code draws '
+                        f'at y={footer_y}-{footer_y + footer}: keep every element above y={footer_y}')
         for element in geometry['elements']:
             l, t, r, b = element['rect']
             hit = r - l > 0 and b - t > 0 and _hit((l, t, r, b), band)
-            if hit and (element['parent'] < 0 or not hits[element['parent']]):
-                error(element['path'], f'{element["path"]} reaches into the synthetic data footer code draws '
-                                       f'at y={footer_y}-{footer_y + footer}: keep every element above y={footer_y}')
-            hits.append(hit)
+            # A parent reported (or its own hit suppressed by its parent) covers its descendants.
+            covered = element['parent'] >= 0 and hits[element['parent']]
+            if hit and element.get('paints', True) and not covered:
+                reach(element['path'])
+            hits.append(covered or (hit and element.get('paints', True)))
+        for text in geometry['texts']:
+            if any(_hit(rect, band) for rect in text['rects']) and not any(
+                    text['path'] == path or text['path'].startswith(path + ' > ') for path in reported):
+                reach(text['path'])
     if height > MAX_HEIGHT:
         error('height', f'the page is {height} px tall: the limit is {MAX_HEIGHT} px')
     return boxes, errors
