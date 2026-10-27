@@ -1,5 +1,5 @@
 # Contract: backend HTTP API (REST + SSE)
-Version 3.0 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
+Version 3.1 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
 (recipe ops with ids, stage rules, engine_busy, shared fixtures). 1.1 (2026-10-19) Cloud Run:
 Access (session endpoints, `access_required`), engine status `mode`/agent fields, Agent endpoints,
 errors `access_denied`, `login_on_agent`, `agent_offline`, `agent_timeout`; fixtures
@@ -48,6 +48,9 @@ Revised the same day by the delta audits before any build: per-stage repair boun
 (RunCalls), brief review revisions, migration keeps every explicit legacy value (`issues`), the
 no-reference standard layout only after HTML repairs, and cost estimates (user request): model
 prices in capabilities, per-call/run costs and `GET /api/builds/{id}/cost`.
+3.1 (2026-10-27, change backend 25.7 block, user card; no shape or route change): native_planning
+defaults `output_tokens` 32,768 -> 65,536 and `timeout_s` 600 -> 1,200 (fixtures stage-settings/
+capabilities, settings and run_calls). Stored Settings keep their values.
 Requirements and feasibility follow contracts/dashboard-intent.md 1.2.
 Provider: backend. Consumers: frontend, release. Base: `http://localhost:8000/api` (the frontend
 uses relative `/api`, proxied by Vite; contracts/conventions.md). JSON bodies, UTF-8. Errors use
@@ -363,7 +366,7 @@ profile; `fallback_model` `gemini-3.8-flash`; `review_briefs` false):
 | interview | context, outline_propose, outline_suggest, outline_other | gemini-3.8-flash | low | each node's existing caps (not a setting) | 30 | existing (not a setting) |
 | routine | every other model node (capability_check, revise, synthetic_schema, consolidate, ux_audit, style_extract, research) | gemini-3.8-flash | low | each node's existing caps | 30 | existing |
 | reference_interpretation | reference_extract | gemini-4-argon | high | 131,072 / 32,768 | 600 per action | 1 / 0 |
-| native_planning | blueprint | gemini-4-argon | high | 131,072 / 32,768 | 600 per action | 1 / 1 (row repair; the one view SQL repair stays fixed) |
+| native_planning | blueprint | gemini-4-argon | high | 131,072 / 65,536 | 1,200 per action | 1 / 1 (row repair; the one view SQL repair stays fixed) |
 | html_brief | reference_brief, for pages with and without a reference | gemini-4-argon | high | 131,072 / 32,768 | 600 per page | 2 / 1 |
 | reference_html | reference_html | gemini-3.8-flash | high | 131,072 / 65,536 | 1,200 per page | 2 / 2 |
 | html_no_reference | designer (pages without a reference), plus `layout_fallback: true` | gemini-3.8-flash | high | 131,072 / 65,536 | 1,200 per page | 2 / 2 |

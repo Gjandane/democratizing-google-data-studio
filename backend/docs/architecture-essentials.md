@@ -1,10 +1,10 @@
-<!-- essentials-of: docs/architecture.md sha256:baabb9fe2c4e (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:2238bce64d96 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 docs/architecture.md wins.
 
 ## Stack
 - Python 3.12/uv; FastAPI/uvicorn (no reload), SSE; ADK 2.x Workflow/LlmAgent; Gemini models
-  per stage from Settings (api.md 3.0; defaults Argon for analysis and briefs, Flash 3.8 for
+  per stage from Settings (api.md 3.1; defaults Argon for analysis and briefs, Flash 3.8 for
   interview, routine and HTML; architecture.md#Stage settings).
   SQLite/FTS5; BigQuery/ADC; Playwright Chromium; httpx. Cloud: one instance, local dss-agent.
 
@@ -74,7 +74,7 @@ tests/          offline fakes; tests/live/ marked live
 ## Contracts
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
-| ../contracts/api.md | 3.0 | provides | `uv run pytest tests/test_api_contract.py` |
+| ../contracts/api.md | 3.1 | provides | `uv run pytest tests/test_api_contract.py` |
 | ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.3 | provides recipes; consumes events | `uv run pytest tests/test_recipe_contract.py` |
 | ../contracts/conventions.md | 1.4 | consumes | manual: env names, ports, paths and IDs match |
 | ../contracts/dashboard-intent.md | 1.2 | provides | `uv run pytest tests/test_api_contract.py tests/test_feasibility.py` |

@@ -596,3 +596,6 @@ context. Task status lives in docs/plan.md, not here.
 - Release checklist (POC): AGENTS.md Commands run the mock demo in under 5 minutes; core flow verified live in 16.6 (settings save/reset, 2-page brief review, Trace costs) and by `npm test`; known limitations in PRD `## Later`; core screens match stage-settings-ui.md and the UI design section at 1280/1440 (reviewer, Phase 16 screenshots).
 - Lint: 0 errors; warnings: 36 tasks (past 20), essentials 6,393 chars (> 6,000, was 6,346 before), one old out-of-order progress date.
 - Next: nothing left to build in frontend. Program: engine and backend final audits as their plans require; then the integration audit at the program root.
+
+## 2026-10-27: Change api.md 3.1 (native planning defaults)
+- What changed: the essentials cite api.md 3.1. Only native_planning default values in stage-settings fixtures changed (output 65,536, 1,200 s); no shape change, no frontend task.

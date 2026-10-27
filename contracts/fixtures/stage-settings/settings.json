@@ -24,8 +24,8 @@
       "model": "gemini-4-argon",
       "thinking": "high",
       "input_tokens": 131072,
-      "output_tokens": 32768,
-      "timeout_s": 600,
+      "output_tokens": 65536,
+      "timeout_s": 1200,
       "transport_retries": 1,
       "validation_repairs": 1,
       "input_margin_pct": 20

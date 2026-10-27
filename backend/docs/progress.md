@@ -2031,3 +2031,10 @@ context. Task status lives in docs/plan.md, not here.
 - Question: Which native_planning/reference_interpretation defaults (timeout, thinking, repairs) and which extra drop for the legend-as-chart observation should 25.7 use?
 - Options: A architect rules on defaults (contract table) plus the drop class, then rerun 25.7 / B keep defaults and allow one rerun per case as provider variance / Recommend: A: 25k thinking tokens in 239 s makes 600 s and 32,768 marginal, not variance.
 - Next: new backend chat, `best` high, /blueprint-solution-architect; evidence .blueprint/qa/task-25.7/README.md.
+
+## 2026-10-27: Change 25.7 block: native planning defaults (api.md 3.1)
+- What changed: contracts/api.md 3.1 and stage-settings fixtures (capabilities, settings, run_calls): native_planning default output_tokens 32,768 -> 65,536, timeout_s 600 -> 1,200 per action. Task 25.7 rewritten to apply those defaults (S, reopened); the live fidelity check moved to new task 25.8 (Depends on 25.7). Essentials and architecture decision log updated, stamped.
+- Why: 25.7 blocked (question (b)): recreate blueprint `stage_timeout` at 600 s; a 3,600 s benchmark used 25,240 thinking + 2,060 answer tokens of 32,768 in 239 s. User cards 2026-10-27: raise the caps (not thinking medium, not a test-only override); treat `llm_unavailable` from a schema-invalid answer on a 0-repair stage as transient (one rerun); drop the Rural/Urban legend however it is extracted (the 'Location (%)' chart misread included).
+- Decided by default: stored Settings (seeded from 3.0) keep 600/32,768; no migration. A local app picks up the new defaults only after native planning is edited in Settings.
+- Affected: backend 25.7, 25.8; release 2.6 now `Needs: backend 25.8`. Frontend: version reference only.
+- Change requests: the 25.7 question (defaults and the legend drop) is settled: planned in 25.7 and 25.8.

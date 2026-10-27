@@ -502,3 +502,6 @@ context. Task status lives in docs/plan.md, not here.
 - Not run: no product code, tests, live models or paid calls. Backend's uncommitted HIGH-request code from blocked 24.11 stays for 24.11's first If to commit.
 - Release: 2.6 also Needs backend 25.7 and frontend 16.6; new 2.8 (e2e waits from the stage clocks, stage-settings fixture check) Needs backend 25.1, and 4.2/4.3 depend on it. program.md: contract table, roadmap bullet, two decision rows. Engine: conventions row 1.4 only.
 - Next: backend 24.11 in backend/ (offline), then 25.1-25.7; frontend 16.1-16.5 in frontend/ in parallel against the fixtures, 16.6 after backend 25.6; release 2.8 after backend 25.1.
+
+## 2026-10-27: Change api.md 3.1 (native planning defaults, backend 25.7 block)
+- What changed: contracts/api.md 3.1 and stage-settings fixtures (native_planning output 65,536, 1,200 s per action); program decision log and roadmap; release 2.6 `Needs: backend 25.8` (the live fidelity check moved there). Release 2.8 reads the clocks from Settings: unchanged.
