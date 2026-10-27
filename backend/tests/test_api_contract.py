@@ -425,6 +425,27 @@ def test_blueprint_row_reference_item_contract():
         assert all(r["reference_item"] is None for r in dumped["rows"])
 
 
+def test_reference_analysis_routes_contract(thin, monkeypatch):
+    """api.md 3.2: PUT analysis and approve answer a ReferenceSet; conflict and gate errors use the error shape."""
+    from dss.spec import references
+    from test_reference_gate import choices, reference_set, url
+    client, app, bid, folder = thin
+    monkeypatch.setenv("DSS_ALLOWED_TYPES", ",".join(references.TYPES))
+    reference_set(folder)
+    analysis = client.get(f"/api/builds/{bid}/reference-images").json()["analysis"]
+    edited = client.put(url(bid), json={"revision": 1, "items": choices(analysis), "note": ""})
+    approved = client.post(url(bid, "/approve"), json={"revision": 2})
+    for response, name in ((edited, "reference_set.pending.json"), (approved, "reference_set.json")):
+        expected = json.loads((INTENT / name).read_text())
+        assert response.status_code == 200 and response.json().keys() == expected.keys()
+        assert response.json()["analysis"].keys() == expected["analysis"].keys()
+        assert response.json()["analysis"]["state"] == expected["analysis"]["state"]
+    conflict = client.post(url(bid, "/approve"), json={"revision": 1})
+    assert conflict.status_code == 409
+    shape(conflict.json(), {"error": {"code": "", "message": "", "detail": {"revision": 1}}})
+    assert conflict.json()["error"]["code"] == "reference_analysis_conflict"
+
+
 def test_reference_gate_error_constructors():
     from dss.spec import references
     unapproved, conflict = references.unapproved("ref_1"), references.analysis_conflict(3)

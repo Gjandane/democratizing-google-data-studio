@@ -1001,3 +1001,36 @@ def test_electricity_fixture_analyzes_to_the_agreed_split(ref, monkeypatch):
     assert analysis["items"][0]["label"] == "Location Rural Urban legend"  # top-most centre first
     assert analysis["summary"] == "2 charts and 1 control can be native Data Studio components; 5 items stay static art."
     assert all(i["type"] is None for i in analysis["items"] if i["disposition"] == "static")
+
+
+def test_analysis_edits_and_approval_are_code_only_and_reread_allowed_types():
+    """26.3: PUT/approve rules on the contract's pending set; issues follow the allowed types of each read."""
+    fixture = json.loads((CONTRACT / "reference_set.pending.json").read_text(encoding="utf-8"))
+    interpretation = references.interpret("recreate", 160, 100, {"palette_notes": "", "type_notes": "", "spacing_notes": ""}, [])
+    record = {**fixture, "style": {"palette": ["#0B1F6B"]}, "interpretation": interpretation.model_dump()}
+    allowed = fixture["analysis"]["allowed_types"]
+    narrowed = [t for t in allowed if t != "geo_map"]
+    assert references.approved(record, allowed) is False  # pending
+    projected = references.current_analysis(record["analysis"], narrowed)
+    assert [i.model_dump() for i in projected.issues] == [{"path": "/items/5/type", "message": "Type is not one of the allowed types"}]
+    assert projected.allowed_types == narrowed
+    split = [{"id": i["id"], "disposition": i["disposition"], "type": i["type"]} for i in fixture["analysis"]["items"]]
+    split[5] = {"id": "r6", "disposition": "static", "type": "geo_map"}
+    edited, reference_change = references.edit(record, references.AnalysisEdit(revision=1, items=split, note="Keep the map as a picture."), narrowed)
+    approved_fixture = json.loads((CONTRACT / "reference_set.json").read_text(encoding="utf-8"))["analysis"]
+    analysis = edited["analysis"]
+    assert reference_change is False and (analysis["revision"], analysis["state"], analysis["issues"]) == (2, "pending", [])
+    assert analysis["items"][5]["type"] is None and analysis["items"][5]["proposed"] == {"disposition": "native", "type": "geo_map"}
+    assert analysis["summary"] == approved_fixture["summary"] and edited["summary"].endswith(approved_fixture["summary"])
+    with pytest.raises(RunError) as stale:
+        references.approve(edited, references.AnalysisApproval(revision=1), narrowed)
+    assert (stale.value.code, stale.value.detail) == ("reference_analysis_conflict", {"revision": 2})
+    done = references.approve(edited, references.AnalysisApproval(revision=2), narrowed)
+    assert done["analysis"]["state"] == "approved" and references.approved(done, narrowed)
+    assert references.approve(done, references.AnalysisApproval(revision=2), narrowed) is None  # idempotent
+    # Re-editing the approved analysis is a reference change; a pre-1.3 set has nothing to edit.
+    assert references.edit(done, references.AnalysisEdit(revision=2, items=split), narrowed)[1] is True
+    with pytest.raises(RunError) as missing:
+        references.edit({**record, "analysis": None}, references.AnalysisEdit(revision=1, items=split), allowed)
+    assert missing.value.status_code == 404 and references.approved({**record, "analysis": None}, allowed) is False
+    assert references.approved({**record, "mode": "style", "analysis": None}, allowed) and references.approved(None, allowed)

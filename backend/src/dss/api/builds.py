@@ -432,6 +432,51 @@ def get_references(build_id: str, request: Request):
     return None if record is None else references.public(record)
 
 
+async def change_analysis(request, build_id, model, apply):
+    """PUT/approve: code only under the per-build action lock; no run, no model call."""
+    from pydantic import ValidationError
+    from dss.api.prototype import current
+    from dss.api.synthetic_data import read_json
+    from dss.spec import references
+    from dss.spec import requirements
+    body = await read_json(request)  # parsed before the lock: a slow client cannot own a build
+    try:
+        body = model.model_validate(body)
+    except ValidationError as exc:
+        raise RunError("invalid_request", "Invalid reference analysis request", 422, {"issues": [
+            {"path": "/" + "/".join(map(str, e["loc"])), "message": "Invalid reference analysis request: " + e["type"]}
+            for e in exc.errors(include_input=False, include_context=False)]}) from None
+    state = request.app.state
+    with workflow.action(state, build_id, workflow.STAGES[:workflow.STAGES.index("build")]) as build:
+        _, folder = current(state, build_id)
+        record, allowed = references.load(folder), references.current_types()
+        changed, reference_change = apply(record, body, allowed)
+        if changed is not None:
+            references.save_analysis(folder, changed, f"reference analysis {changed['id']} revision "
+                                     f"{changed['analysis']['revision']} {changed['analysis']['state']}")
+            if reference_change:
+                # An edit to an approved analysis is a reference change (#Replan freshness recovery).
+                requirements.reference_changed(folder)
+                workflow.save(state.db, build_id, workflow.reference_changed(build))
+            record = changed
+            await state.harness.emit(build_id, None, "docs.updated",
+                                     {"docs": build_response(state.db, state.settings.get(), build_id)["docs"]})
+        return references.public(record, allowed)
+
+
+@router.put("/{build_id}/reference-images/analysis")
+async def edit_analysis(build_id: str, request: Request):
+    from dss.spec import references
+    return await change_analysis(request, build_id, references.AnalysisEdit, references.edit)
+
+
+@router.post("/{build_id}/reference-images/analysis/approve")
+async def approve_analysis(build_id: str, request: Request):
+    from dss.spec import references
+    return await change_analysis(request, build_id, references.AnalysisApproval,
+                                 lambda record, body, allowed: (references.approve(record, body, allowed), False))
+
+
 @router.post("/{build_id}/reference-images", status_code=202)
 async def post_references(build_id: str, request: Request):
     return await upload_references(build_id, request, legacy=False)

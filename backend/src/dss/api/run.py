@@ -28,8 +28,11 @@ def refresh(folder, version, *, db=None, build_id=None):
 
 def gate(state, build_id, folder):
     try:
-        from dss.artifacts.state import require_confirmed
+        from dss.artifacts.state import legacy, require_confirmed
+        from dss.spec import references
         build, _ = current(state, build_id)
+        if not legacy(build, folder):  # a pre-2.0 build's recipe and run are not gated
+            references.require_approved(folder)
         require_confirmed(build, folder)
         read_spec(folder, db=state.db, build_id=build_id)
         execution_preflight(state.db, build_id, folder)

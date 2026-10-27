@@ -518,11 +518,121 @@ def reference_doc(record):
     return metadata, "\n".join(lines) + "\n"
 
 
-def public(record):
-    """The ReferenceSet response: display names and plain file names, never paths or model output."""
+def public(record, allowed=None):
+    """The ReferenceSet response: display names and plain file names, never paths or model output.
+
+    The analysis is projected against the current allowed types (`current_analysis`)."""
+    analysis = record.get("analysis")
     return {"id": record["id"], "mode": record["mode"], "instructions": record["instructions"],
             "images": [{"id": i["id"], "name": i["name"], "file": i["file"]} for i in record["images"]],
-            "summary": record["summary"], "analysis": record.get("analysis")}
+            "summary": record["summary"],
+            "analysis": None if analysis is None else current_analysis(analysis, allowed).model_dump()}
+
+
+class AnalysisChoice(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str = Field(min_length=1, max_length=8)
+    disposition: DISPOSITIONS
+    type: str | None = Field(default=None, max_length=40)
+
+
+class AnalysisEdit(BaseModel):
+    """PUT reference-images/analysis: the user's split (dashboard-intent.md 1.3)."""
+    model_config = ConfigDict(extra="forbid")
+    revision: int = Field(ge=1, strict=True)
+    items: list[AnalysisChoice] = Field(min_length=1, max_length=MAX_ITEMS)
+    note: str = Field(default="", max_length=MAX_NOTE)
+
+
+class AnalysisApproval(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    revision: int = Field(ge=1, strict=True)
+
+
+def current_types():
+    """The types a native item may use now: the registry narrowed by the current DSS_ALLOWED_TYPES.
+
+    Read once per operation (#Feasibility recomputation performance preservation)."""
+    from dss.spec.capabilities import component_types, load_registry
+    from dss.spec.validate import allowed_types
+    return [entry["type"] for entry in component_types(load_registry(), allowed_types())]
+
+
+def current_analysis(analysis, allowed=None):
+    """The analysis as read now: `allowed_types` and `issues` recomputed from the current types, and
+    an approved analysis with an issue reads `pending` (the gate closes) until the user edits it."""
+    allowed = current_types() if allowed is None else allowed
+    stored = ReferenceAnalysis.model_validate(analysis)
+    issues = [AnalysisIssue(path=path, message=message) for n, item in enumerate(stored.items)
+              for path, message in item_issues(n, item.kind, item.disposition, item.type, allowed)]
+    return stored.model_copy(update={"allowed_types": list(allowed), "issues": issues,
+                                     "state": "pending" if issues else stored.state})
+
+
+def approved(record, allowed=None):
+    """Whether this set lets design/confirm, blueprint, recipe and run proceed: style sets always;
+    a recreate set only with an analysis that reads approved now (a pre-1.3 `null` never does)."""
+    if record is None or record["mode"] != "recreate":
+        return True
+    return record.get("analysis") is not None and current_analysis(record["analysis"], allowed).state == "approved"
+
+
+def require_approved(folder):
+    """The `reference_unapproved` gate: code only, before any model call, view write or feasibility gate."""
+    record = load(folder)
+    if not approved(record):
+        raise unapproved(record["id"])
+
+
+def _editable(record):
+    if record is None or record.get("analysis") is None:
+        raise RunError("not_found", "No reference analysis; upload a recreate reference to analyze it", 404)
+    return ReferenceAnalysis.model_validate(record["analysis"])
+
+
+def edit(record, body, allowed):
+    """Apply a PUT: the full id set exactly once, type null for static, issues filled, revision + 1,
+    pending. Labels, boxes, `shows`, `reason` and `proposed` never change. Returns (record, was_approved)."""
+    stored = _editable(record)
+    if body.revision != stored.revision:
+        raise analysis_conflict(stored.revision)
+    choices = {choice.id: choice for choice in body.items}
+    if len(choices) != len(body.items) or choices.keys() != {item.id for item in stored.items}:
+        raise RunError("invalid_request", "Name every analysis item exactly once", 422,
+                       {"issues": [{"path": "/items", "message": "Every item id exactly once"}]})
+    items = [item.model_copy(update={"disposition": choices[item.id].disposition,
+                                     "type": choices[item.id].type if choices[item.id].disposition == "native" else None})
+             for item in stored.items]
+    edited = current_analysis(stored.model_copy(update={
+        "revision": stored.revision + 1, "state": "pending", "items": items, "note": body.note,
+        "summary": analysis_summary(items)}), allowed)
+    return _with(record, edited), stored.state == "approved"
+
+
+def approve(record, body, allowed):
+    """Approve the current revision without issues; the same revision again returns it unchanged.
+    Returns the new record, or None when nothing changes."""
+    stored = _editable(record)
+    if body.revision != stored.revision:
+        raise analysis_conflict(stored.revision)
+    analysis = current_analysis(stored, allowed)
+    if analysis.issues:
+        raise RunError("artifact_invalid", "Resolve the analysis issues before approving", 409,
+                       {"issues": [issue.model_dump() for issue in analysis.issues]})
+    if stored.state == "approved":
+        return None
+    return _with(record, analysis.model_copy(update={"state": "approved"}))
+
+
+def _with(record, analysis):
+    interpretation = Interpretation.model_validate(record["interpretation"])
+    return {**record, "analysis": analysis.model_dump(),
+            "summary": summary(interpretation, record["style"]["palette"], len(record["images"]), analysis)}
+
+
+def save_analysis(folder, record, entry):
+    """Persist an edited analysis: reference.md (the split) then references.json, all or nothing."""
+    commit(folder, record, [], {"reference.md": reference_doc(record)}, entry=entry)
 
 
 def unapproved(reference_set_id):
@@ -555,7 +665,7 @@ def _front(path):
     return (yaml.safe_load(text.split("---", 2)[1]) or {}) if text.startswith("---") else {}
 
 
-def commit(folder, record, images, docs):
+def commit(folder, record, images, docs, entry=None):
     """Replace the version's reference set atomically: everything lands, or nothing changes.
 
     `docs` maps a build-doc name to (frontmatter, body). references.json is written last (the
@@ -576,7 +686,7 @@ def commit(folder, record, images, docs):
         for name, (metadata, body) in docs.items():
             write_doc(docs_dir / name, metadata, body)
         _index(docs_dir, {name: metadata["title"] for name, (metadata, _) in docs.items()}, write_doc)
-        _log(docs_dir, f"reference set {record['id']} ({record['mode']}, {len(images)} image(s)) saved", write_doc)
+        _log(docs_dir, entry or f"reference set {record['id']} ({record['mode']}, {len(images)} image(s)) saved", write_doc)
         temporary = folder / (SET_FILE + ".tmp")
         temporary.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
         temporary.replace(folder / SET_FILE)

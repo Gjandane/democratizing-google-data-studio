@@ -2758,6 +2758,7 @@ def test_binding_offers_recompute_within_budget(record_property):
 def unlabeled_build(blueprint_api, monkeypatch, polluted=False):
     """Run 20261027-173624's reference and extracted rows installed as a staged build, rechecked in code
     through the real gate; the planner answers with the fixture's reconstructed draft."""
+    from test_render import approved_static_analysis
     from types import SimpleNamespace
     from dss.artifacts.models import Context, Design, Outline
     from dss.render import background
@@ -2779,7 +2780,8 @@ def unlabeled_build(blueprint_api, monkeypatch, polluted=False):
     reference = {'id': case['reference']['id'], 'mode': 'recreate', 'instructions': case['instructions'], 'summary': 'Saved reference',
                  'images': [{'id': case['reference']['image_id'], 'name': 'reference.png', 'file': 'reference_img_000000000000.png',
                              'mime_type': 'image/png', 'width': 1200, 'height': 900}],
-                 'interpretation': {'mode': 'recreate', 'items': case['items'], 'aspect_ratio': 1.7196}}
+                 'interpretation': {'mode': 'recreate', 'items': case['items'], 'aspect_ratio': 1.7196},
+                 'analysis': approved_static_analysis()}
     (folder / 'references.json').write_text(json.dumps(reference), encoding='utf-8')
     (folder / 'reference_img_000000000000.png').write_bytes(png())
     snapshot = req.inputs(app.state.db, bid, folder)

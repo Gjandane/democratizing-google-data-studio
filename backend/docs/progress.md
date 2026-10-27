@@ -2282,3 +2282,15 @@ assert min(timings) < .1
 - Gotchas: none beyond AGENTS.md
 - Left open: P3 type descriptions hard-coded in capabilities.DRAWS (limits/needs from registry) - src/dss/spec/capabilities.py
 - Next: Task 26.3 Approval gate API. Start from `references.item_issues` for PUT issues and recompute allowed_types per read (`component_types`).
+
+## 2026-10-28: Task 26.3 Approval gate API
+- Status: done
+- Plan check: unattended
+- What changed: `PUT reference-images/analysis` and `POST .../analysis/approve` (builds.py; code only under `workflow.action`, connect-prototype). The `reference_unapproved` gate runs on design/confirm, blueprint regenerate/accept, recipe and run (workflow.py, run.py). references.py adds the edit/approve rules and a projection that rereads allowed types on every read. state.py adds `legacy()` and `reference_changed()`. New tests/test_reference_gate.py, plus tests in test_references and test_api_contract.
+- Checks: `uv run pytest tests/test_reference_gate.py tests/test_references.py tests/test_api_contract.py` PASS (186 passed; 13 failed with the source changes stashed); Test (all) `uv run pytest` PASS (2436 passed, 17 deselected)
+- Decisions: `allowed_types`, `issues` and the narrowed `pending` state are a read-only projection: the stored state stays approved, so restoring the allowlist reopens the gate without an edit. Editing or approving a style set, a pre-1.3 `null` set or no set returns 404 `not_found`. The gate runs before `require_confirmed`, because an edit marks the Blueprint stale and the actionable error should be `reference_unapproved`. A pre-2.0 (legacy) build's recipe/run is not gated. Editing an approved analysis calls `requirements.reference_changed` (assessment invalidated, prototype stale) and marks the Blueprint `stale` (stage kept). Editing a pending analysis is not a reference change, although the digest still changes. The analysis summary and the set summary are rewritten on each edit. reference.md is rewritten via `commit(..., entry=)`. Edited outside Files, because the gate broke them: transitional fixtures in test_render (`approved_static_analysis()`), test_blueprint and test_feasibility get an approved all-static analysis. AGENTS.md gotcha added.
+- Digest: references: current_types(), current_analysis(a, allowed), approved(record, allowed=None), require_approved(folder), edit/approve(record, body, allowed), AnalysisEdit/Approval; state: legacy(build, folder), reference_changed(build); test_render approved_static_analysis().
+- Tried and failed: The gate first ran after `require_confirmed`, so recipe answered `wrong_stage` after an edit. Moved the gate before it.
+- Gotchas: none beyond AGENTS.md
+- Left open: P3 Re-approving after an edit makes a `stale` Blueprint acceptable without a replan (`confirmed()` only refuses `missing`); 26.4's item coverage may close it - src/dss/artifacts/state.py. P3 No test that the gate holds on a new version (copy_inputs copies references.json whole) - tests/test_reference_gate.py
+- Next: Task 26.4. Start by `status --task 26.4`; read requirements.inputs (still reads observations) and the native_planning context.

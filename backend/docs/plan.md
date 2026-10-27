@@ -886,7 +886,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: the vision fixtures in tests/data/ use the old `items` observation shape -> add new analysis fixtures beside them; keep the old ones until 26.5.
   - Done when: `uv run pytest tests/test_references.py tests/test_synthetic.py` passes with fake-model tests (failing before) for every Spec rule: ids in reading order, `proposed` copy, summary wording incl. singular forms, box/type/control-kind/length validation, the one repair then a failed upload keeping the old set, >24 items asks for a crop, style -> null with StyleProfile kept, style-field repair still applied in recreate, no rows/fields/schema in the request (inspect it), the stage profile used (Flash default, StageCall recorded), synthetic proposal built from items and 422 for a pre-1.3 recreate set, New version copy; then `uv run pytest` passes.
   - Review focus: the model proposes, code validates; no field binding in the analysis; old set preserved on failure; dashboard-intent.md 1.3 Reference analysis and approval.
-- [ ] 26.3 Approval gate API
+- [x] 26.3 Approval gate API
   - Goal: PUT analysis and approve per dashboard-intent.md 1.3, the `reference_unapproved` gate on design/confirm, blueprint/regenerate, blueprint/accept, recipe and run, and reference-change invalidation when an approved analysis is edited.
   - Spec: docs/architecture.md#Reference analysis and approval gate
   - Files: src/dss/api/feasibility.py, src/dss/api/workflow.py, src/dss/api/run.py, src/dss/api/builds.py, src/dss/spec/references.py, src/dss/artifacts/state.py, tests/test_references.py, tests/test_api_contract.py, tests/test_reference_gate.py, docs/progress.md

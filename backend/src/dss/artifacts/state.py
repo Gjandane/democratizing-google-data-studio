@@ -99,8 +99,19 @@ def save(db, build_id, transition):
                      (transition['stage'], transition['artifacts_json'], now(), build_id))
 
 
-def require_confirmed(build, folder):
+def reference_changed(build):
+    """An edit to an approved reference analysis: a saved Blueprint goes stale (the stage stays)."""
     values = states(build)
-    legacy = all(value == 'missing' for value in values.values()) and (folder / 'spec.json').is_file()
-    if not legacy and any(value != 'confirmed' for value in values.values()):
+    if values['blueprint'] != 'missing':
+        values['blueprint'] = 'stale'
+    return {'stage': build['stage'], 'artifacts_json': json.dumps(values)}
+
+
+def legacy(build, folder):
+    """A pre-2.0 build: no staged artifacts, only a saved spec."""
+    return all(value == 'missing' for value in states(build).values()) and (folder / 'spec.json').is_file()
+
+
+def require_confirmed(build, folder):
+    if not legacy(build, folder) and any(value != 'confirmed' for value in states(build).values()):
         raise wrong_stage(build)

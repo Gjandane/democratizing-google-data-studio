@@ -14,6 +14,7 @@ from dss.harness.guardrails import RunError
 from dss.harness.nodes import context as node
 from dss.harness.nodes import outline as outline_node
 from dss.harness.nodes import blueprint as blueprint_node
+from dss.spec import references
 
 router = APIRouter(prefix='/api/builds')
 
@@ -276,6 +277,7 @@ async def confirm_design(build_id: str, request: Request):
     state = request.app.state
     with stages.action(state, build_id, ('design',)) as build:
         folder, outline = design_inputs(state, build)
+        references.require_approved(folder)
         draft = design_node.load(folder)
         issues = ([i.model_dump() for i in design_node.validate(draft, outline).issues] if draft else
                   [{'path': '', 'message': 'Draft Design first'}])
@@ -300,6 +302,7 @@ async def accept_blueprint(build_id: str, request: Request):
     state = request.app.state
     with stages.action(state, build_id, ('blueprint',)) as build:
         folder, _ = design_inputs(state, build)
+        references.require_approved(folder)
         draft = blueprint_node.preflight(state.db, build_id, folder)
         transition = stages.confirmed(build, 'blueprint')
         # The prototype branch owns layout/publication and saves this confirmation
@@ -318,6 +321,7 @@ async def regenerate_blueprint(build_id: str, request: Request):
         folder, _ = design_inputs(state, build)
         if stages.states(build)['design'] != 'confirmed':
             raise stages.wrong_stage(build)
+        references.require_approved(folder)
         transition = stages.edited({**build, 'stage': 'blueprint'}, 'blueprint')
         stages.save(state.db, build_id, transition)
         build = {**build, **transition}

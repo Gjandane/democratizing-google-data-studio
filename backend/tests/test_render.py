@@ -570,6 +570,17 @@ def recreate_build(blueprint_api, monkeypatch, matching=True, data=RECREATE, syn
     return build
 
 
+def approved_static_analysis():
+    """Transitional (26.3-26.4): the observation path predates the approval gate (26.3). An approved
+    all-static analysis (zero native items is a valid approval) passes the gate and adds no requirements."""
+    from dss.spec import references
+    item = references.AnalysisItem(id='r1', label='Reference page', kind='other', box={'x': 0, 'y': 0, 'w': 1, 'h': 1},
+        disposition='static', type=None, shows='', reason='Observation-path fixture.',
+        proposed={'disposition': 'static', 'type': None})
+    return references.ReferenceAnalysis(revision=1, state='approved', summary=references.analysis_summary([item]),
+        items=[item], note='', allowed_types=[], issues=[]).model_dump()
+
+
 def seed_observations(build):
     """Transitional (26.2-26.4): uploads now commit a reference analysis and no observations, while
     the observation path these tests exercise still exists; write the fixture's observations into
@@ -581,6 +592,7 @@ def seed_observations(build):
     record['interpretation'] = references.interpret(
         'recreate', image['width'], image['height'],
         {k: record['interpretation'][k] for k in ('palette_notes', 'type_notes', 'spacing_notes')}, observed).model_dump()
+    record['analysis'] = approved_static_analysis()
     (build.folder / references.SET_FILE).write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
 
 
@@ -1106,7 +1118,8 @@ def saved_year_build(blueprint_api, monkeypatch, case, data=None):
     ref = {'id': image.reference_id, 'mode': 'recreate', 'instructions': data['instructions'], 'summary': 'Saved reference',
            'images': [{'id': image.image_id, 'name': 'reference.png', 'file': 'reference_img_000000000000.png',
                        'mime_type': 'image/png', 'width': 1200, 'height': 900}],
-           'interpretation': {'mode': 'recreate', 'items': data['items'], 'aspect_ratio': 1.3333}}
+           'interpretation': {'mode': 'recreate', 'items': data['items'], 'aspect_ratio': 1.3333},
+           'analysis': approved_static_analysis()}
     (folder / 'references.json').write_text(json.dumps(ref), encoding='utf-8')
     (folder / 'reference_img_000000000000.png').write_bytes(png())
     # Identity pseudonymization invalidates the old hashes. Rebind extracted

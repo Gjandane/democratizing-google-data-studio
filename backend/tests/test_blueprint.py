@@ -279,8 +279,9 @@ def native_year_inputs(blueprint_api):
         columns = json.loads(conn.execute('SELECT columns_json FROM sources WHERE id=?', (sid,)).fetchone()[0])
         columns.append(dict(name='year', type='date', bq_type='DATE', bucket_start='year', null_pct=0, sample=[]))
         conn.execute('UPDATE sources SET columns_json=? WHERE id=?', (json.dumps(columns), sid))
+    from test_render import approved_static_analysis
     (folder / 'references.json').write_text(json.dumps(dict(id='ref_native', mode='recreate', instructions='',
-        images=[], interpretation={'items': []})), encoding='utf-8')
+        images=[], interpretation={'items': []}, analysis=approved_static_analysis())), encoding='utf-8')
     row = next(r for r in value['rows'] if r['question_id'] == 'q4')
     row['component'].update(type='time_series', dimensions=[], date_dimension='year_trunc',
                             sort={'field': 'year_trunc', 'order': 'asc'})
