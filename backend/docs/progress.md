@@ -2074,3 +2074,18 @@ context. Task status lives in docs/plan.md, not here.
 - Decisions: keep 25.8's ID and fidelity meaning rather than replace an acceptance gate with a diagnostic-only completion. The diagnostic scope fits its current M session; block with evidence if an actual fix is needed outside that scope. POC change reviewed narrowly; no dependency lookup needed because dependencies are unchanged.
 - Left open: full recreate/later-page/revision fidelity and user visual approval; previously observed scorecard decimal clipping and style page-2 axis overlap remain acceptance concerns. Pre-existing uncommitted edits to tests/live/test_reference_design.py and tests/data/reference_design/README.md are preserved untouched; the builder must preserve/checkpoint them before starting, never discard them to clean the tree. Normal process access confirms Git mode; sandbox status falsely reported folder mode.
 - Next: reopen 25.8 with the blueprint script and hand off in backend/ to gpt-6-astra high (frontier: Spec plus visual STOP). Implement and verify diagnostics before any new live call; keep earlier live test edits and evidence intact.
+
+
+## 2026-10-27: Task 25.8 Live stage defaults and reference fidelity approval
+- Status: blocked
+- Plan check: off
+- What changed: Bounded extraction diagnostics, truthful local-invalid StageCalls, regressions/evidence. Diagnosis: `.blueprint/qa/task-25.8/diagnostics-20261027/README.md`.
+- Checks: Diagnostic prerequisite 196 passed/56.00s; design/revision 368 passed/439.51s; live `-x` 1 failed/99.85s; `uv run pytest` 2277 passed/984.10s. Read-only review: no findings. Historical integrity: 2122 unchanged files.
+- Decisions: Defaults/inputs/validation unchanged; no extraction repair. AGENTS records nullable-label trap. Code retained uncommitted in working tree and `diagnostic-code.zip`; checkpoint retained.
+- Tried and failed: Sole recreate passed extraction; feasibility blocked on unlabeled dropdown o5 needing control_field. No retry/planning/HTML/publication/other cases. Estimate $0.051634, incomplete; StageCalls/hashes saved.
+- Gotchas: none beyond AGENTS.
+- Left open: Prior P2 scorecard clipping/style axes; recreate fidelity, revision and user STOP unavailable.
+- Blocked because: (b) Actual control-binding repair needs scope beyond diagnostics.
+- Question: How should an unlabeled reference control receive explicit field/type binding before acceptance resumes?
+- Options: A plan binding repair / B user clarification and revised acceptance instructions / Recommend: A.
+- Next: New backend chat, gpt-6.1-sol high, `$blueprint-solution-architect`.
