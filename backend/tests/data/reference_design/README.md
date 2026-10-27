@@ -1,4 +1,4 @@
-# Electricity reference acceptance fixture (task 24.11)
+# Electricity reference acceptance fixture (tasks 24.11, 25.7)
 
 The image is the existing user-supplied electricity dashboard reference, retained by
 the earlier backend live run. It is a visual reference, not a data source.
@@ -23,10 +23,15 @@ needed to reproduce it. Full hashes for every fixture are also saved per run.
 
 Run from backend: `uv run pytest -m live tests/live/test_reference_design.py`.
 Real configured models and BigQuery are required. The test sets dry engine and the
-current native type catalog explicitly. Outputs, spans and screenshots go to
-`.blueprint/qa/task-24.11/` (`task-24.7/` with `DSS_LIVE_STAGE=24.7`,
-readiness-only `task-24.9/` with `DSS_LIVE_STAGE=24.9`); created BigQuery
-tables/views are cleaned after each case. Previous task evidence is preserved.
+current native type catalog explicitly, and PUTs the contract default stage Settings
+(`GET /api/settings/capabilities` defaults) so no stored or `.env`-migrated profile
+applies. The `none` case also turns `review_briefs` on before its accept: it edits
+one treatment of page 1's brief, approves each page and checks that the published
+`brief_p1.json` hashes to the edited brief. Outputs, spans, StageCalls, cost
+estimates and screenshots go to `.blueprint/qa/task-25.7/<mode>/` (`task-24.7/` with
+`DSS_LIVE_STAGE=24.7`, readiness-only `task-24.9/` with `DSS_LIVE_STAGE=24.9`);
+created BigQuery tables/views are cleaned after each case. Earlier task evidence
+(including `task-24.11/`) is preserved unchanged.
 
 The user approved these substitutions on 2026-10-25:
 

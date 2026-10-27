@@ -1,4 +1,4 @@
-"""Task 24.11: real two-stage reference fidelity with retained synthetic inputs.
+"""Task 25.7: real reference fidelity at the contract default stage Settings, with retained synthetic inputs.
 
 Run explicitly with -m live. Every run retains evidence, including failures; no
 fallback or unresolved feasibility decision is accepted as a successful check.
@@ -13,12 +13,14 @@ import re
 import time
 from contextlib import aclosing
 from contextvars import ContextVar
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from dss.data.bigquery import BigQuery
+from dss.harness import stages as execution_stages
 from dss.harness.guardrails import RunError, check_reply
 from dss.harness.nodes import designer, reference_brief, synthetic_generate
 from dss.spec import requirements
@@ -207,10 +209,38 @@ def observe_intake(monkeypatch, app, bid, evidence, secrets):
     return finish
 
 
+STAGE_CALL_FIELDS = ('stage', 'node', 'page', 'attempt', 'transport_attempt', 'requested_model', 'model', 'fallback',
+                     'thinking', 'input_measured', 'input_billed', 'input_enforced', 'input_limit', 'output_tokens',
+                     'thinking_tokens', 'output_limit', 'outcome', 'duration_ms', 'cost_usd_estimate')
+
+
+def check_calls(record, defaults):
+    """Each StageCall against its run's snapshot, which holds the contract default profiles: the profile's
+    model and thinking requested, a fallback only to fallback_model and always visible, enforced input
+    within its limit, answer plus thinking within the output cap."""
+    settings = record['settings']
+    if settings is None:  # a code-only run (the dry engine) need not snapshot model settings
+        assert not record['calls'], record
+        return
+    assert settings['stages'] == defaults['stages'] and settings['fallback_model'] == defaults['fallback_model'], settings
+    for call in record['calls']:
+        profile = settings['stages'][call['stage']]
+        assert call['requested_model'] == profile['model'] and call['thinking'] == profile['thinking'], call
+        assert call['fallback'] == (call['model'] != call['requested_model']), call
+        assert not call['fallback'] or call['model'] == settings['fallback_model'], call
+        if None not in (call['input_enforced'], call['input_limit']):
+            assert call['input_enforced'] <= call['input_limit'], call
+        if call['outcome'] == 'ok' and None not in (call['output_tokens'], call['output_limit']):
+            assert call['output_tokens'] + (call['thinking_tokens'] or 0) <= call['output_limit'], call
+
+
 class RecordedFlow(Flow):
+    secrets, defaults = (), None
+
     def act(self, stage, method, path, seconds=300, **kwargs):
-        """Flow.act, except that a request refused over its budget before any provider call (its span's
-        reason `over_budget`, as the reference HTML repair does) is not counted as a sent request."""
+        """Flow.act, plus the run's StageCalls and cost estimate (kept even when the run failed). Generation
+        budgets come from the run's own Settings snapshot; a request refused over its limit before any
+        provider call (its span's reason `over_budget`) is not counted as a sent request."""
         print(f'  starting {stage}', flush=True)
         try:
             response, start = self._send(stage, method, path, kwargs)
@@ -219,14 +249,22 @@ class RecordedFlow(Flow):
             self._time(stage, start)
             run = {'stage': stage, **usage(self.app, response.json()['run_id'])}
             self.runs.append(run)
+            calls = self.client.get(f"/api/traces/{run['run_id']}/calls")
+            assert calls.status_code == 200, calls.text
+            record = calls.json()
+            check_reply(json.dumps(record), self.secrets)
+            run.update(settings=record['settings'], calls=[{k: c.get(k) for k in STAGE_CALL_FIELDS} for c in record['calls']],
+                       cost_usd_estimate=record['cost_usd_estimate'], cost_complete=record['cost_complete'])
             assert run['status'] == 'ok', {k: run[k] for k in ('stage', 'node', 'error')}
             spans = [s for s in json.loads(trace(self.app, run['run_id'])['spans_json'] or '[]') if 'sections' in s]
             for request, span in zip(run['requests'], spans):
-                if span['node'] == 'reference_html' and span.get('attempt') == 2:
-                    assert span['input_budget'] == 24000, span
-                    request['budget'] = 24000
+                name = execution_stages.stage_for(span['node'])
+                if 'input_budget' in span and name in execution_stages.GENERATIONS:
+                    assert span['input_budget'] == record['settings']['stages'][name]['input_tokens'], span
+                    request['budget'] = span['input_budget']
             sent = [r for r, s in zip(run['requests'], spans) if s.get('reason') != 'over_budget' or s.get('input_tokens')]
             check_usage({**run, 'requests': sent})
+            check_calls(record, self.defaults)
             return run
         finally:
             print(f'  finished {stage}: {self.timings.get(stage)} seconds', flush=True)
@@ -330,10 +368,8 @@ def observe_generation(monkeypatch, calls, *, evidence=None, secrets=()):
         def count_wrapper(original_fit):
             async def counted(memory, request, model, span):
                 call = {'stage': span['node'], 'page': span['page'], 'attempt': span['attempt'],
-                        'model': model.model, 'output_limit': request.config.max_output_tokens,
-                        'requested_thinking': request.config.thinking_config.thinking_level.value,
+                        'model': model.model,
                         'images': sum(p.inline_data is not None for c in request.contents for p in c.parts),
-                        'request_sha256': hashlib.sha256(request.model_dump_json(exclude_none=True).encode()).hexdigest(),
                         'usage': [], 'transport_attempts': [], 'generation_started': False,
                         'truncated': None, 'status': 'counting'}
                 calls.append(call)
@@ -345,6 +381,11 @@ def observe_generation(monkeypatch, calls, *, evidence=None, secrets=()):
                     call.update(status='count_failed', exception_class=type(exc).__name__)
                     raise
                 finally:
+                    # fit_request applies the stage profile (thinking, output cap) before it counts.
+                    level = request.config.thinking_config and request.config.thinking_config.thinking_level
+                    call.update(output_limit=request.config.max_output_tokens,
+                                requested_thinking=getattr(level, 'value', level),
+                                request_sha256=hashlib.sha256(request.model_dump_json(exclude_none=True).encode()).hexdigest())
                     call['count_seconds'] = round(time.monotonic() - started, 3)
                     call['input_budget'] = memory.budget
                     call['enforced_input_bound'] = span.get('enforced_input_bound')
@@ -386,42 +427,95 @@ def stage_evidence(app, flow):
             for run in flow.runs]
 
 
-def assert_design_stages(app, run, spec, mode, models, pages=None, facts=None):
-    assert run['status'] == 'ok', {k: run.get(k) for k in ('stage', 'node', 'error')}
-    spans = json.loads(trace(app, run['run_id'])['spans_json'] or '[]')
-    failed = [s for s in spans if s['node'] in ('designer_fallback', 'redesign_failed', 'reference_html_timeout')]
-    expected = pages or {p['index'] for p in spec['pages']}
+def run_spans(app, runs):
+    """The spans of one design action, which a brief review splits over its accept and approve runs."""
+    return [s for run in runs for s in json.loads(trace(app, run['run_id'])['spans_json'] or '[]')]
+
+
+def assert_design_stages(spans, spec, mode, settings, design_pages, pages=None, facts=None):
+    """html_brief then HTML on every attempted page, within the snapshot's profiles. Reference pages never use
+    the standard layout; a no-reference page may (layout_fallback only), recorded with its reason and label."""
+    failed = [s for s in spans if s['node'] in ('designer_fallback', 'redesign_failed', 'design_failed')]
+    attempted = set(pages or {p['index'] for p in spec['pages']})
+    expected = set(attempted)
+    rows = {row['page']: row for row in design_pages['pages']}
     if mode == 'none':
-        # Existing no-reference behavior (task 24.8 If): a later page may fall back to the kit; recorded, not
-        # failed. Page 1 still requires its planner design.
-        later = {i for i in expected if i > 1 and not spec['pages'][i - 1].get('design')}
-        facts.setdefault('later_page_fallbacks', []).extend(
-            {'page': i, 'spans': [s for s in failed if s.get('page') == i]} for i in sorted(later))
-        failed = [s for s in failed if s.get('page') not in later]
-        expected -= later
-    assert not failed, spans
+        standard = {i for i in attempted if not spec['pages'][i - 1].get('design')}
+        for i in sorted(standard):
+            assert rows[i]['layout'] == 'standard' and rows[i]['standard_reason'] == 'layout_fallback', rows[i]
+        facts.setdefault('standard_layout_pages', []).extend(
+            {'page': i, 'standard_reason': rows[i]['standard_reason'],
+             'spans': [s for s in failed if s.get('page') == i]} for i in sorted(standard))
+        failed = [s for s in failed if s.get('page') not in standard or s.get('reason') != 'invalid']
+        expected -= standard
+        if 1 in standard and not pages:
+            attempted = {1}  # a page-1 standard layout makes the whole build standard before later pages run
+    assert not failed, failed
     assert all(spec['pages'][i - 1].get('design') for i in expected), 'kit fallback'
-    if mode == 'none':
-        assert not any(s['node'] in ('reference_brief', 'reference_html') for s in spans)
-        assert expected <= {s['page'] for s in spans if s['node'] == 'designer'}
-    else:
-        assert not any(s['node'] == 'designer' for s in spans)
-        for node, model, limit, seconds in (
-            ('reference_brief', models.planner_model, 4000, 120),
-            ('reference_html', models.worker_model, 16000, 600),
-        ):
-            stages = [s for s in spans if s['node'] == node]
-            assert {s['page'] for s in stages} == expected, stages
-            for span in stages:
-                assert span['model'] == model and span['images'] == 1, span
-                budget = 24000 if node == 'reference_html' and span['attempt'] == 2 else 12000
-                assert span['input_budget'] == budget, span
-                assert 0 < span['enforced_input_bound'] <= budget, span
-                assert 0 < span['output_tokens'] <= limit, span
-                assert span.get('stage_duration_ms', span['duration_ms']) <= seconds * 1000, span
-                assert not span.get('reason') and not span.get('truncated'), span
-        assert all(spec['pages'][i - 1]['design']['model'] == models.worker_model for i in expected)
+    html_node, html_stage = ('designer', 'html_no_reference') if mode == 'none' else ('reference_html', 'reference_html')
+    assert not any(s['node'] == ('reference_html' if mode == 'none' else 'designer') for s in spans), spans
+    actual = {}
+    for node, stage in (('reference_brief', 'html_brief'), (html_node, html_stage)):
+        profile = settings['stages'][stage]
+        found = [s for s in spans if s['node'] == node]
+        assert {s['page'] for s in found} == attempted, (node, found)
+        for span in found:
+            # The actual model: the profile's, or the visible fallback model (StageCalls flag it).
+            assert span['model'] in (profile['model'], settings['fallback_model']), span
+            assert span['images'] == (0 if mode == 'none' else 1), span
+            assert span['input_budget'] == profile['input_tokens'], span
+            assert 0 < span['enforced_input_bound'] <= profile['input_tokens'], span
+            assert 0 < span['output_tokens'] <= profile['output_tokens'], span
+            assert span.get('stage_duration_ms', span['duration_ms']) <= profile['timeout_s'] * 1000, span
+            assert not span.get('reason') and not span.get('truncated'), span
+            if node == html_node:
+                actual[span['page']] = span['model']
+    for i in expected:
+        assert rows[i]['layout'] == 'designed' and rows[i]['brief'] is not None, rows[i]
+        assert spec['pages'][i - 1]['design']['model'] == actual[i] == rows[i]['html_model'], (i, rows[i])
     assert any(s['node'] == 'publish' and not s.get('coverage_errors') for s in spans), spans
+
+
+def design_artifacts(flow, folder, evidence, label):
+    """design-pages of the current version; each published brief file hashes to its recorded sha256."""
+    pages = flow.get('/design-pages')
+    dump(evidence / f'{label}.design-pages.json', pages)
+    assert pages['review'] is None, pages['review']
+    for row in pages['pages']:
+        if row['brief'] is not None:
+            digest = hashlib.sha256((folder / f"brief_p{row['page']}.json").read_bytes()).hexdigest()
+            assert digest == row['brief']['sha256'], row
+    return pages
+
+
+REVIEW_EDIT = ' Reviewed edit: keep generous padding around this component.'
+
+
+def review_pages(flow, facts):
+    """review_briefs on: approve each paused page in order, after editing one treatment of page 1's brief.
+    Returns the approve runs; the design action's spans are spread over these and the accept run."""
+    runs, reviewed = [], []
+    while (review := flow.get('/design-pages')['review']) is not None:
+        assert len(reviewed) < review['pages'] and review['page'] == len(reviewed) + 1, (review['page'], reviewed)
+        assert not review['issues'] and not review['stale'], review['issues']
+        if not reviewed:
+            value = deepcopy(review['brief']['brief'])
+            value['slots'][0]['treatment'] += REVIEW_EDIT
+            edited = flow.call('review_edit', 'put', '/briefs/review', json={
+                'review_id': review['review_id'], 'revision': review['revision'], 'brief': value})
+            assert edited['revision'] == review['revision'] + 1 and edited['brief']['origin'] == 'edited', edited
+            assert not edited['issues'], edited['issues']
+            assert edited['brief']['sha256'] == hashlib.sha256(reference_brief.canonical(value)).hexdigest()
+            facts['review_edit'] = {'page': 1, 'slot': value['slots'][0]['id'], 'appended': REVIEW_EDIT,
+                                    'generated_sha256': review['brief']['sha256'], 'edited_sha256': edited['brief']['sha256']}
+            review = edited
+        reviewed.append({'page': review['page'], 'review_id': review['review_id'], 'revision': review['revision'],
+                         'origin': review['brief']['origin'], 'sha256': review['brief']['sha256']})
+        runs.append(flow.act(f"approve_p{review['page']}", 'post', '/briefs/review/approve', seconds=1900, json={
+            'review_id': review['review_id'], 'revision': review['revision'], 'sha256': review['brief']['sha256']}))
+    facts['brief_reviews'] = reviewed
+    assert reviewed and 'review_edit' in facts, 'review_briefs did not pause'
+    return runs
 
 
 def coverage(app, bid, folder):
@@ -583,9 +677,12 @@ def fidelity_inventory(spec, proof, evidence):
     result['later_only_observations'] = [rid for rid, bound in proof['bindings'].items()
         if rid in proof['image_requirements'] and not (set(bound) & ids)]
     result['titles'] = [{'id': c['id'], 'label': c['label']} for c in first['components'] if c['type'] == 'scorecard']
-    result['area_slots'] = [{'id': c['id'], 'metrics': c.get('metrics'), 'box': c['box']}
+    result['area_slots'] = [{'id': c['id'], 'metrics': c.get('metrics'), 'box': c['box'],
+                             'right_panel': c['box']['x'] > spec['canvas']['width'] * .6}
         for c in first['components'] if c['type'] == 'area']
-    # DOM reads only: widths of rendered values and date labels, no source rows or provider replies.
+    yearly = {'chart_' + c['id'] for c in first['components']
+              if any(m['field'] == 'people_without_access' for m in c.get('metrics', []))}
+    # DOM reads only: geometry of rendered values, labels and artwork; no source rows or provider replies.
     try:
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch()
@@ -607,14 +704,39 @@ def fidelity_inventory(spec, proof, evidence):
                     const dates = texts.filter(t => /^\\d{4}-\\d{2}-\\d{2}$/.test(t.textContent));
                     const overlap = (a,b) => {const x=a.getBoundingClientRect(), y=b.getBoundingClientRect();
                       return x.left < y.right && y.left < x.right && x.top < y.bottom && y.top < x.bottom;};
+                    const box = el.getBoundingClientRect();
                     return {id: el.id, svg_present: !!el.querySelector('svg'), full_date_labels: dates.length,
-                      overlapping_text_pairs: texts.reduce((n,t,i) => n + texts.slice(i+1).filter(u=>overlap(t,u)).length,0)};
+                      overlapping_text_pairs: texts.reduce((n,t,i) => n + texts.slice(i+1).filter(u=>overlap(t,u)).length,0),
+                      texts_outside_slot: texts.filter(t => {const r = t.getBoundingClientRect();
+                        return r.left < box.left - 1 || r.right > box.right + 1 || r.top < box.top - 1 || r.bottom > box.bottom + 1;}).length};
+                  }),
+                  // Positions as fractions of page 1; the artwork's name, never its markup.
+                  art: [...document.querySelectorAll('section[data-page="1"] i[data-art]')].map(el => {
+                    const r = el.getBoundingClientRect(), s = el.closest('section').getBoundingClientRect();
+                    return {art: el.dataset.art, center_x: (r.left + r.width / 2 - s.left) / s.width,
+                      center_y: (r.top + r.height / 2 - s.top) / s.height, width: r.width, height: r.height};
+                  }),
+                  headings: [...document.querySelectorAll('section[data-page="1"] h1')].map(el => {
+                    const r = el.getBoundingClientRect(), s = el.closest('section').getBoundingClientRect();
+                    return {left: (r.left - s.left) / s.width, right: (r.right - s.left) / s.width, top: (r.top - s.top) / s.height};
                   })
                 })''')
             finally:
                 browser.close()
     except Exception as exc:
         result['render_diagnostic_unavailable'] = type(exc).__name__
+    rendered = result.get('rendered') or {}
+    # Earlier visible issues (24.11 runs), recorded for the visual STOP; components are never changed to hide one.
+    result['visible_issues'] = {
+        'scorecards_clipped': [s['id'] for s in rendered.get('scorecards', []) if s.get('clipped')],
+        'yearly_labels': [c for c in rendered.get('charts', []) if c['id'] in yearly],
+        'access_title': [t['label'] for t in result['titles'] if 'worldwide' in t['label'] or '%' in t['label']],
+        'right_panel_area': [a['id'] for a in result['area_slots'] if a['right_panel']],
+    }
+    globes = [a for a in rendered.get('art', []) if a['art'].startswith('globe-')]
+    result['layout_errors'] = (['page-1 render diagnostics unavailable'] if 'rendered' not in result else
+        ['real-geography globe artwork not rendered on page 1'] if not globes else
+        [] if any(.3 <= g['center_x'] <= .7 for g in globes) else ['globe artwork must be centre'])
     dump(evidence / 'fidelity-inventory.json', result)
     return result
 
@@ -629,8 +751,7 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
     assert all(fixtures[name] == digest for name, digest in HASHES.items())
     generation = json.loads((DATA / 'generation.json').read_text(encoding='utf-8-sig'))
     app, config, project = live_app(tmp_path)
-    evidence = evidence_dir('24.9' if STAGE == '24.9' else '24.11' if FIDELITY else '24.7',
-                            f'high-comparison/{mode}' if FIDELITY else mode)
+    evidence = evidence_dir('24.9' if STAGE == '24.9' else '25.7' if FIDELITY else '24.7', mode)
     (evidence / 'test-source.py').write_bytes(Path(__file__).read_bytes())
     print(f'{evidence.parents[1].name} {mode} evidence: {evidence}', flush=True)
     calls, tables = [], set()
@@ -641,9 +762,11 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
     facts = {'mode': mode, 'fixture_sha256': fixtures,
              'input_sha256': {name: hashlib.sha256(value.encode('utf-8')).hexdigest() for name, value in inputs.items()},
              'generation_calls': calls,
-             'comparison': 'HIGH reference stages; historical LOW evidence in RESUMED.md',
+             'settings_basis': 'contract default stage Settings (api.md 3.0), PUT from GET /api/settings/capabilities '
+                               'defaults; the none case turns review_briefs on before its accept',
              'runtime_sha256': {name: hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()
-                                for name, module in [('reference_brief', reference_brief), ('designer', designer)]},
+                                for name, module in [('reference_brief', reference_brief), ('designer', designer),
+                                                     ('stages', execution_stages)]},
              'visual_approval': 'pending', 'accepted_substitutions': [], 'dry_engine': True,
              'check_status': 'running', 'fixture_provenance': str(DATA / 'README.md'),
              'approved_fixture_substitutions': [
@@ -657,13 +780,21 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
     observe_generation(monkeypatch, calls, evidence=evidence / 'failed-drafts', secrets=secrets)
     started = time.monotonic()
     with TestClient(app) as client:
-        assert client.put('/api/settings', json={'gcp_project_id': project}).status_code == 200
+        # The contract defaults, explicitly: a stored or migrated (.env) profile must not leak into the check.
+        capabilities = client.get('/api/settings/capabilities').json()
+        defaults = capabilities['defaults']
+        assert client.put('/api/settings', json={'gcp_project_id': project, **defaults}).status_code == 200
+        current = client.get('/api/settings').json()
+        assert {key: current[key] for key in defaults} == defaults, 'contract default stage Settings not in force'
         service = BigQuery(app.state.settings.get())
         bid = client.post('/api/builds', json={'archetype': 'executive', 'mode': 'data',
                                                'title': 'Access to electricity — synthetic sample'}).json()['id']
         folder = config.data_dir / 'builds' / bid / 'v1'
         flow = RecordedFlow(app, client, bid)
-        facts.update(build_id=bid, models={'planner': config.planner_model, 'worker': config.worker_model})
+        flow.secrets, flow.defaults = secrets, defaults
+        facts.update(build_id=bid, default_settings=defaults,
+                     models={stage: profile['model'] for stage, profile in defaults['stages'].items()},
+                     model_capabilities=[{key: m[key] for key in ('id', 'available', 'price')} for m in capabilities['models']])
         try:
             with monkeypatch.context() as intake_patch:
                 finish_intake = observe_intake(intake_patch, app, bid, evidence, secrets)
@@ -679,7 +810,7 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
             downloaded = client.get(flow.url + f"/synthetic-data/{source['id']}/csv")
             assert downloaded.status_code == 200 and downloaded.content == (DATA / 'sample.csv').read_bytes()
             if mode != 'none':
-                flow.act('reference', 'post', '/reference-images', seconds=180,
+                flow.act('reference', 'post', '/reference-images', seconds=700,
                          data={'mode': mode, 'instructions': inputs['instructions']},
                          files=[('files', ('electricity-access.jpg', (DATA / 'electricity-access.jpg').read_bytes(), 'image/jpeg'))])
             flow.act('context', 'post', '/context', seconds=150,
@@ -702,7 +833,7 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
                     drops, left = approved_drops(flow, folder, early)
                     facts['accepted_substitutions'] += drops
                     assert not left, f'Issues outside the approved drops (a block for the architect): {left}'
-            flow.act('blueprint', 'post', '/design/confirm', seconds=400)
+            flow.act('blueprint', 'post', '/design/confirm', seconds=700)
             assessment = flow.get('/feasibility')
             if any(i['id'].startswith('bp_intent_') for i in assessment['issues']):
                 flow.act('feasibility', 'post', '/feasibility/check', seconds=150)
@@ -728,13 +859,31 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
                 assert not calls, calls
                 facts['check_status'] = 'passed_stage_only'
                 return
-            run = flow.act('prototype', 'post', '/blueprint/accept', seconds=1600)
+            review = mode == 'none' and FIDELITY
+            if review:
+                # The review path (contract 3.0): pause after each brief, edit one treatment, approve.
+                assert client.put('/api/settings', json={'review_briefs': True}).status_code == 200
+            # Page clocks: html_brief 600 s then HTML 1,200 s on page 1, then later pages; this is a hang guard.
+            design_runs = [flow.act('prototype', 'post', '/blueprint/accept', seconds=3700)]
+            if review:
+                assert flow.get()['stage'] == 'blueprint', 'a brief review must leave the stage unchanged'
+                design_runs += review_pages(flow, facts)
             spec, proof = capture(flow, folder, evidence, 'prototype')
+            pages = design_artifacts(flow, folder, evidence, 'prototype')
             if mode == 'recreate' and FIDELITY:
                 facts['fidelity_inventory'] = fidelity_inventory(spec, proof, evidence)
             if FIDELITY:
-                assert_design_stages(app, run, spec, mode, app.state.settings.get(), facts=facts)
+                assert_design_stages(run_spans(app, design_runs), spec, mode, design_runs[-1]['settings'], pages, facts=facts)
                 assert len(spec['pages']) >= 2, 'later-page route not exercised'
+            if facts.get('standard_layout_pages'):
+                # The labeled standard layout: design-pages (checked above) and the assistant message.
+                assert any('uses the standard layout' in m['text'] for m in flow.get('/messages')
+                           if m['role'] == 'assistant'), 'standard layout label missing'
+            if review:
+                edited = facts['review_edit']['edited_sha256']
+                assert pages['pages'][0]['brief']['origin'] == 'edited' and pages['pages'][0]['brief']['sha256'] == edited
+                assert hashlib.sha256((folder / 'brief_p1.json').read_bytes()).hexdigest() == edited
+                assert flow.get()['stage'] == 'prototype'
             if mode == 'recreate':
                 assert proof['image_requirements'], 'recreate did not import observations'
                 dropped = {d['item'] for d in facts['accepted_substitutions']}
@@ -748,11 +897,12 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
             if mode == 'recreate' and FIDELITY:
                 target = next(c for c in spec['pages'][0]['components'] if c['type'] == 'fixed_size_list')
                 old_html = spec['pages'][0]['design']['html']
-                run = flow.act('revision', 'post', '/comments', seconds=850, json={'comments': [{
+                run = flow.act('revision', 'post', '/comments', seconds=1900, json={'comments': [{
                     'component_id': target['id'],
                     'text': 'Move this region list card down by 24 pixels, keeping it on the left and preserving the other visual regions.'}]})
                 revised, _ = capture(flow, folder, evidence, 'revised')
-                assert_design_stages(app, run, revised, mode, app.state.settings.get(), pages={1}, facts=facts)
+                revised_pages = design_artifacts(flow, folder, evidence, 'revised')
+                assert_design_stages(run_spans(app, [run]), revised, mode, run['settings'], revised_pages, pages={1}, facts=facts)
                 assert revised['pages'][0]['design']['source'] == 'revise'
                 assert revised['pages'][0]['design']['html'] != old_html
                 assert [c['id'] for c in revised['pages'][0]['components']] == [c['id'] for c in spec['pages'][0]['components']]
@@ -769,7 +919,9 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
                 assert call['usage'], call
                 assert all(u['output'] <= call['output_limit'] and (u['output_including_thinking'] is None
                            or u['output_including_thinking'] <= call['output_limit']) for u in call['usage']), call
-                assert call['requested_thinking'] == ('LOW' if mode == 'none' else 'HIGH'), call
+                profile = defaults['stages'][execution_stages.stage_for(call['stage'])]
+                assert call['requested_thinking'] == profile['thinking'].upper(), call
+                assert call['output_limit'] == profile['output_tokens'], call
             flow.act('dry_engine', 'post', '/run', seconds=300)
             events = [json.loads(line) for line in (folder / 'events.jsonl').read_text(encoding='utf-8').splitlines() if line]
             finished = [event for event in events if event['event'] == 'run_finished']
@@ -784,6 +936,7 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
                 # fails fidelity. The same structural acceptance oracle still must pass.
                 facts['active_check'] = 'fidelity'
                 require_fidelity(spec)
+                assert not facts['fidelity_inventory']['layout_errors'], facts['fidelity_inventory']['layout_errors']
                 facts.pop('active_check')
             facts['check_status'] = 'passed'
         except BaseException:
@@ -795,6 +948,11 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
             facts['published_prototype'] = published.status_code == 200 and bool(published.json())
             facts['seconds'] = round(time.monotonic() - started, 2)
             facts['stages'] = stage_evidence(app, flow)
+            try:
+                cost = client.get(flow.url + '/cost')
+                facts['build_cost'] = cost.json() if cost.status_code == 200 else {'status': cost.status_code}
+            except Exception as exc:
+                facts['build_cost'] = {'unavailable': type(exc).__name__}
             try:
                 keep(evidence, flow, folder, facts)
             finally:

@@ -2017,3 +2017,17 @@ context. Task status lives in docs/plan.md, not here.
 - Left open: none.
 - Next: Task 25.7 live defaults and reference fidelity approval.
 
+
+## 2026-10-27: Task 25.7 Live stage defaults and reference fidelity approval
+- Status: blocked
+- Plan check: off
+- What changed: tests/live/test_reference_design.py moved to 3.0: PUTs capability defaults, records StageCalls/costs per run and build, checks html_brief -> HTML from each run's snapshot, design-pages/brief hashes, review edit/approve in the none case, globe-centre DOM check and visible-issue inventory; evidence .blueprint/qa/task-25.7/ (README.md). Fixture README updated.
+- Checks: focused `uv run pytest tests/test_reference_brief.py tests/test_designer.py tests/test_design_briefs.py tests/test_brief_review.py tests/test_render.py tests/test_revise.py` PASS (365; 520.63s). Live `uv run pytest -m live tests/live/test_reference_design.py` FAIL (1 passed none, 2 failed; 1445.67s). Test (all) not run (block).
+- Decisions: review_briefs exercised in the none case (one design action, three pauses). Clipped scorecards/axis labels recorded, not asserted (inspect at STOP). Test edits kept and committed unreviewed.
+- Tried and failed: recreate blueprint `stage_timeout` (Argon high, enforced 6,395, no response in 599,296 ms); style reference_extract schema-invalid (169 + 1,489 thinking), 0 repairs -> llm_unavailable. No rerun. User-requested benchmark (timeout 3,600): blueprint 334.8 s, attempt 1 239.4 s with 25,240 thinking tokens (cap 32,768); then blocked on unapproved observation 'Location (%)' (legend read as a chart).
+- Gotchas: in AGENTS.md.
+- Left open: recreate/style/later-page/revision fidelity; visual STOP; reviewer pass on the test edits; full suite.
+- Blocked because: (b) passing needs a default stage Settings or plan ruling (no reruns, no default changes allowed here).
+- Question: Which native_planning/reference_interpretation defaults (timeout, thinking, repairs) and which extra drop for the legend-as-chart observation should 25.7 use?
+- Options: A architect rules on defaults (contract table) plus the drop class, then rerun 25.7 / B keep defaults and allow one rerun per case as provider variance / Recommend: A: 25k thinking tokens in 239 s makes 600 s and 32,768 marginal, not variance.
+- Next: new backend chat, `best` high, /blueprint-solution-architect; evidence .blueprint/qa/task-25.7/README.md.
