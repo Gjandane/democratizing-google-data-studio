@@ -31,6 +31,7 @@ import { ContextEditor } from './context/ContextEditor';
 import { DesignPicker } from './design/DesignPicker';
 import { OutlinePicker, selectedCount } from './outline/OutlinePicker';
 import { useReviewLock } from './briefs/reviewLock';
+import { GateReason, isReferenceUnapproved, useAnalysisGate } from './reference/gate';
 import { StageFrame } from './StageFrame';
 import { STAGE_LABELS, staleCause } from './Stepper';
 
@@ -201,6 +202,12 @@ function ArtifactStageBody({
   const reviewLockRef = useRef(reviewLock);
   reviewLockRef.current = reviewLock;
   const locked = stream.running !== null || pending !== null || readOnly || reviewLock !== null;
+  // A recreate analysis waits for approval (reference/gate): Confirm design and Regenerate/Accept blueprint wait with it.
+  const analysisPending = useAnalysisGate()?.pending === true;
+  const gated = { primary: analysisPending && (name === 'design' || name === 'blueprint'), secondary: analysisPending && name === 'blueprint' };
+  const gatedRef = useRef(gated);
+  gatedRef.current = gated;
+  const gateId = `${name}-analysis-gate`;
 
   let valid = value !== null;
   let status: ReactNode = null;
@@ -223,6 +230,7 @@ function ArtifactStageBody({
     else if (!rows.some((r) => r.status === 'ok')) status = 'Accept needs at least one row that is not blocked';
     else if (!acceptReady) status = 'Accept opens once feasibility and references are ready';
   }
+  if (gated.primary) status = <GateReason id={gateId} />;
   // While a run holds the build's lock, the strip's phrase says why everything waits.
   if (stream.running) status = `${presetFor(stream.running).phrases[0]}…`;
   if (reviewLock) status = reviewLock;
@@ -257,7 +265,7 @@ function ArtifactStageBody({
   };
 
   const act = async (kind: 'primary' | 'secondary') => {
-    if (busy.current || savingRef.current || reviewLockRef.current) return;
+    if (busy.current || savingRef.current || reviewLockRef.current || gatedRef.current[kind]) return;
     busy.current = true;
     setPending(kind);
     setActionError(null);
@@ -273,6 +281,8 @@ function ArtifactStageBody({
       }
     } catch (error) {
       if (!mounted.current) return;
+      // The analysis isn't approved after all: the gate's notice already takes focus to the review.
+      if (isReferenceUnapproved(error)) return;
       const issues = error instanceof ApiError && error.code === 'artifact_invalid' ? artifactIssues(error) : [];
       // The assessment changed under us: the panel refetches, so the rows show what blocks now.
       if (error instanceof ApiError && error.code === 'feasibility_blocked') slotHost?.requestRefresh();
@@ -312,12 +322,12 @@ function ArtifactStageBody({
       revision={value?.revision ?? null}
       status={status}
       secondary={
-        <Button disabled={locked || saving || !copy.secondaryIn.includes(build.stage)} loading={pending === 'secondary'} onClick={() => void act('secondary')}>
+        <Button disabled={locked || saving || gated.secondary || !copy.secondaryIn.includes(build.stage)} aria-describedby={gated.secondary ? gateId : undefined} loading={pending === 'secondary'} onClick={() => void act('secondary')}>
           {copy.secondary}
         </Button>
       }
       primary={
-        <Button variant="primary" disabled={locked || saving || !here || !valid} loading={pending === 'primary'} onClick={() => void act('primary')}>
+        <Button variant="primary" disabled={locked || saving || gated.primary || !here || !valid} aria-describedby={gated.primary ? gateId : undefined} loading={pending === 'primary'} onClick={() => void act('primary')}>
           {copy.confirm}
         </Button>
       }
@@ -335,7 +345,7 @@ function ArtifactStageBody({
           message={stageError?.message ?? runError.text}
           actions={stageError && <StageErrorActions error={stageError} runId={stream.runErrorIds?.[retryNode]} />}
           onRetry={() => void act(retryNode === 'prototype' ? 'primary' : 'secondary')}
-          retryDisabled={locked || (retryNode === 'prototype' ? !here || !valid : !copy.secondaryIn.includes(build.stage))}
+          retryDisabled={locked || (retryNode === 'prototype' ? gated.primary || !here || !valid : gated.secondary || !copy.secondaryIn.includes(build.stage))}
         />
       )}
       {actionError && (

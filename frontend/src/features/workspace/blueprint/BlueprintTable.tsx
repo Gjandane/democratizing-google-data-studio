@@ -25,6 +25,7 @@ import { useContext, useEffect, useRef, useState } from 'react';
 import { api } from '../../../api/client';
 import type { Blueprint, BlueprintComponent, BlueprintRow, Build, Outline } from '../../../api/types';
 import { focusRing } from '../../../components/focus';
+import { useAnalysisGate } from '../reference/gate';
 import { IssueSlotContext, rowResolved } from './issueSlots';
 
 const TYPES: Record<string, { label: string; icon: LucideIcon }> = {
@@ -43,6 +44,9 @@ const TYPES: Record<string, { label: string; icon: LucideIcon }> = {
   area: { label: 'Area chart', icon: ChartArea },
   fixed_size_list: { label: 'Fixed-size list control', icon: ListChecks },
 };
+
+/** A catalog type's readable name (the reference analysis' type select uses the same names). */
+export const typeLabel = (type: string): string => TYPES[type]?.label ?? type;
 
 /** A catalog type as an icon plus a label; an unknown type keeps its id as the label. */
 export function chartType(component: BlueprintComponent): { label: string; icon: LucideIcon } {
@@ -129,6 +133,8 @@ function IssueRow({ row, columns, owns, ownerLabel, slotRef }: {
 
 export function BlueprintTable({ build, blueprint, outlineSeq }: { build: Build; blueprint: Blueprint; outlineSeq: number }) {
   const host = useContext(IssueSlotContext);
+  // Rows that recreate an approved reference item name it (api.md 3.2); the id stands in until the set loads.
+  const referenceItems = new Map(useAnalysisGate()?.set?.analysis?.items.map((item) => [item.id, item.label]) ?? []);
   const [outline, setOutline] = useState<Outline | null>(null);
   // One stable ref callback per issue id, so React never detaches a slot the panel portals into.
   const refs = useRef(new Map<string, (el: HTMLElement | null) => void>());
@@ -225,6 +231,11 @@ export function BlueprintTable({ build, blueprint, outlineSeq }: { build: Build;
                           {row.component.label}
                           {row.note && <> · {row.note}</>}
                         </span>
+                        {row.reference_item && (
+                          <span className="block text-caption text-text-muted [overflow-wrap:anywhere]">
+                            Recreates: {referenceItems.get(row.reference_item) ?? row.reference_item}
+                          </span>
+                        )}
                       </th>
                       <td className={cell}>
                         <span className="inline-flex min-w-0 items-start gap-1.5">

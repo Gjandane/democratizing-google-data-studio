@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { api } from '../../api/client';
-import { ApiError, referenceValidation, type BuildEventMap, type ReferenceMode, type ReferenceSet } from '../../api/types';
+import { ApiError, referenceValidation, type BuildEventMap, type ReferenceAnalysis, type ReferenceItem, type ReferenceMode, type ReferenceSet } from '../../api/types';
 import { Button } from '../../components/Button';
 import { ErrorState } from '../../components/ErrorState';
 import { TextArea } from '../../components/Input';
@@ -8,10 +8,14 @@ import { focusRing } from '../../components/focus';
 import { LoadingState } from '../../components/Spinner';
 import { subscribeWorkspace, useRefocusAfter } from './stretch';
 import { useReviewLock } from './briefs/reviewLock';
+import { AnalysisImage } from './reference/AnalysisImage';
+import { AnalysisReview } from './reference/AnalysisReview';
+import { useAnalysisGate } from './reference/gate';
 
 type Finished = BuildEventMap['run.finished'];
 const modeName = (mode: ReferenceMode) => mode === 'style' ? 'Use style' : 'Recreate dashboard';
 const displayName = (name: string) => name.split(/[\\/]/).pop() || 'Reference image';
+const safeFile = (file: string) => /^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*\.(png|jpe?g)$/i.test(file);
 const referenceError = (error: unknown) => {
   if (error instanceof ApiError) {
     if (error.status === 413) return 'Reference images exceed the upload limit. Use at most 5 MiB each and 15 MiB total.';
@@ -59,9 +63,16 @@ export function ReferencePanel({ buildId, version = 1, readOnly = false, disable
   const finished = useRef(new Map<string, Finished>());
   const activeRuns = useRef(new Set<string>());
   const [externalBusy, setExternalBusy] = useState(false);
+  // The recreate analysis review: its Approve, the item whose box shows on the image, and its heading.
+  const [approving, setApproving] = useState(false);
+  const [highlight, setHighlight] = useState<ReferenceItem | null>(null);
+  const reviewHeading = useRef<HTMLElement | null>(null);
+  const wantReviewFocus = useRef(false);
+  const gate = useAnalysisGate();
+  const report = gate?.report;
   // A brief review waits (WorkspaceShell's lock): upload and remove wait with it.
   const reviewLock = useReviewLock();
-  const locked = busy || disabled || externalBusy || reviewLock !== null;
+  const locked = busy || disabled || externalBusy || reviewLock !== null || approving;
   useRefocusAfter(busy, upload);
   // A background refetch keeps the loaded set and readiness; an error stays (closed) until a GET succeeds.
   useLayoutEffect(() => {
@@ -70,6 +81,18 @@ export function ReferencePanel({ buildId, version = 1, readOnly = false, disable
   useLayoutEffect(() => {
     savedChange.current?.(loaded && !loadError ? saved : undefined);
   }, [loaded, loadError, saved]);
+  // The workspace's analysis gate follows every loaded or saved set (a failed GET keeps the last one).
+  useLayoutEffect(() => {
+    if (loaded) report?.(saved);
+  }, [loaded, saved, report]);
+  // A focus request's refetch landed: focus the review heading it shows (a pending review, or the approved line).
+  useLayoutEffect(() => {
+    if (!wantReviewFocus.current) return;
+    wantReviewFocus.current = false;
+    if (!reviewHeading.current) return;
+    panel.current?.scrollIntoView?.({ block: 'nearest' });
+    reviewHeading.current.focus();
+  });
 
   useLayoutEffect(() => {
     if (!focusRequest) return;
@@ -159,11 +182,26 @@ export function ReferencePanel({ buildId, version = 1, readOnly = false, disable
     return () => { current = false; mounted.current = false; ++fetchSeq.current; unsubscribe(); };
   }, [buildId, version]);
 
-  const reload = () => {
+  const reviewRequest = gate?.focusRequest ?? 0;
+  const seenRequest = useRef(reviewRequest);
+  useLayoutEffect(() => {
+    if (reviewRequest === seenRequest.current) return;
+    seenRequest.current = reviewRequest;
+    // A focus request (the gate's "Review it", or a 409 reference_unapproved): the review heading
+    // now, then again once the refetch lands (the server may know a newer analysis, another window's).
+    const details = panel.current?.querySelector('details');
+    if (details) details.open = true;
+    panel.current?.scrollIntoView?.({ block: 'nearest' });
+    (reviewHeading.current ?? summary.current)?.focus();
+    reload(true);
+  }, [reviewRequest]);
+
+  const reload = (focusReview = false) => {
     const seq = ++fetchSeq.current;
     setLoading(true);
     api.getReferences(buildId).then((value) => {
       if (!mounted.current || seq !== fetchSeq.current) return;
+      if (focusReview) wantReviewFocus.current = true;
       setLoading(false); setLoadError(null); setSaved(value); setLoaded(true);
       if (value && !dirty.current) { setMode(value.mode); setInstructions(value.instructions); }
     }, (reason: unknown) => {
@@ -221,18 +259,23 @@ export function ReferencePanel({ buildId, version = 1, readOnly = false, disable
         <summary ref={summary} className={`cursor-pointer rounded-control text-title font-semibold text-text ${focusRing}`}>References</summary>
         <div className="mt-3 flex min-w-0 flex-col gap-3">
           {!loaded && !loadError && <LoadingState>Loading references…</LoadingState>}
-          {loadError && <ErrorState title="Couldn't load references" message={loadError} onRetry={reload} retryLabel="Retry references" retryLoading={loading} />}
+          {loadError && <ErrorState title="Couldn't load references" message={loadError} onRetry={() => reload()} retryLabel="Retry references" retryLoading={loading} />}
           {loaded && !saved && <p className="text-body text-text-muted">No references yet. Add a style example or a dashboard to recreate.</p>}
           {saved && <div className="min-w-0 space-y-2">
             <p className="text-body font-medium text-text">Saved mode: {modeName(saved.mode)}</p>
             <ul className="flex min-w-0 flex-wrap gap-3" aria-label="Saved reference images">
-              {saved.images.map((image) => <li key={image.id} className="w-32 min-w-0">
-                {/^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*\.(png|jpe?g)$/i.test(image.file) && <img src={api.fileUrl(buildId, image.file)} alt={`${modeName(saved.mode)} reference: ${displayName(image.name)}`} className="h-20 w-32 rounded-control border border-border bg-surface-muted object-contain" />}
-                <p title={displayName(image.name)} className="truncate text-caption text-text-muted">{displayName(image.name)}</p>
-              </li>)}
+              {saved.images.map((image) => saved.analysis
+                ? <AnalysisImage key={image.id} src={safeFile(image.file) ? api.fileUrl(buildId, image.file) : null} alt={`${modeName(saved.mode)} reference: ${displayName(image.name)}`} name={displayName(image.name)} box={highlight?.box ?? null} />
+                : <li key={image.id} className="w-32 min-w-0">
+                  {safeFile(image.file) && <img src={api.fileUrl(buildId, image.file)} alt={`${modeName(saved.mode)} reference: ${displayName(image.name)}`} className="h-20 w-32 rounded-control border border-border bg-surface-muted object-contain" />}
+                  <p title={displayName(image.name)} className="truncate text-caption text-text-muted">{displayName(image.name)}</p>
+                </li>)}
             </ul>
             <p className="whitespace-pre-wrap text-body text-text [overflow-wrap:anywhere]">{saved.summary}</p>
             {saved.instructions && <p className="whitespace-pre-wrap text-label text-text-muted [overflow-wrap:anywhere]">Instructions: {saved.instructions}</p>}
+            {saved.mode === 'recreate' && (saved.analysis
+              ? <AnalysisReview key={saved.id} buildId={buildId} set={saved as ReferenceSet & { analysis: ReferenceAnalysis }} disabled={locked || Boolean(loadError)} readOnly={readOnly} headingRef={reviewHeading} onSaved={(value) => { fetchSeq.current++; setLoading(false); setSaved(value); }} onReload={() => reload()} onHighlight={setHighlight} onBusyChange={setApproving} />
+              : <p ref={(el) => { reviewHeading.current = el; }} tabIndex={-1} className="rounded-control text-body font-medium text-text outline-none">Upload the reference again to analyze it.</p>)}
           </div>}
           {!readOnly && <form className="flex min-w-0 flex-col gap-3" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
             <fieldset disabled={locked || !loaded || Boolean(loadError)} className="flex min-w-0 flex-col gap-3">

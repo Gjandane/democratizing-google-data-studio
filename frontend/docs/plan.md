@@ -310,7 +310,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: S
   - Done when: `npm test` and `npm run typecheck` pass with tests/contract.test.ts (failing before) accepting reference_set.json, reference_set.pending.json, api/blueprint.json and api/blueprint.blocked.json with exact guards, and rejecting an item with disposition `"maybe"`, a native item whose `type` is missing, a ReferenceSet without `analysis` and a BlueprintRow without `reference_item`; client functions for PUT analysis and approve use the exact contract paths and bodies; the mock's recreate upload returns a pending analysis, its approve returns approved, and its design/confirm answers `409 reference_unapproved` until then.
   - Review focus: ../contracts/dashboard-intent.md 1.3 and api.md 3.2 shapes (exact guards, `| null`); no fixture copied into src/.
-- [ ] 17.2 Reference analysis review
+- [x] 17.2 Reference analysis review
   - Goal: after a recreate upload the References panel asks the user to approve the analysis: the summary as the question, each item with its native/static choice and type, the user's note, Approve; every blocked action points back to it; Blueprint rows show the item they recreate.
   - Spec: docs/reference-ui.md#Reference analysis review
   - Files: src/features/workspace/ReferencePanel.tsx, src/features/workspace/reference/* (new), src/features/workspace/WorkspaceShell.tsx, src/features/workspace/ArtifactStage.tsx, src/features/workspace/blueprint/BlueprintTable.tsx, src/features/workspace/design/*, src/mocks/*.ts, tests/reference-analysis.test.tsx (new), tests/references.test.tsx, tests/blueprint.test.tsx, screenshots/

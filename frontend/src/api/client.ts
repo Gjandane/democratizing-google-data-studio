@@ -3,6 +3,7 @@
 import { withAccessNotice } from '../features/access/accessNotice';
 import { withServiceNotice } from '../features/settings/serviceNotice';
 import { withReviewNotice } from '../features/workspace/briefs/reviewLock';
+import { withReferenceNotice } from '../features/workspace/reference/gate';
 import { createMockApi } from '../mocks/api';
 import {
   ApiError,
@@ -372,6 +373,7 @@ export const isMockMode = import.meta.env.VITE_MOCK === '1';
 /**
  * The client every component uses; a 503 that points at Settings also raises the app banner, a
  * `401 access_required` sends the app back to the access-code gate, and a `409 brief_review_pending`
- * makes the open workspace read its brief review again.
+ * makes the open workspace read its brief review again; a `409 reference_unapproved` takes it to the
+ * reference analysis review.
  */
-export const api: ApiClient = withAccessNotice(withServiceNotice(withReviewNotice(isMockMode ? createMockApi() : httpApi)));
+export const api: ApiClient = withAccessNotice(withServiceNotice(withReviewNotice(withReferenceNotice(isMockMode ? createMockApi() : httpApi))));

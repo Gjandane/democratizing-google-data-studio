@@ -616,3 +616,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: architect contract commits can change shared stage-settings fixtures and break older tests; run the full suite before building.
 - Left open: P3 mock nulls a static item's non-null type (test sends it) - src/mocks/api.ts; P3 note >1000 is an issue, not 422 - src/mocks/api.ts
 - Next: Task 17.2 Reference analysis review (Spec docs/reference-ui.md#Reference analysis review).
+
+## 2026-10-28: Task 17.2 Reference analysis review
+- Status: done
+- Plan check: off
+- What changed: reference/ (gate.tsx, AnalysisReview.tsx, AnalysisImage.tsx): recreate analysis review in ReferencePanel (rows, Native/Static, type select, note, Approve = PUT if edited then approve, Edit split warning, box overlay on a fixed thumbnail); one workspace gate disables Confirm design, Regenerate/Accept blueprint, Generate recipe, Build; BlueprintTable "Recreates: <label>"; mock setMockReferences.
+- Checks: `npm run typecheck` PASS; `npm test` PASS 25 files, 543 tests (reference-analysis 17 new). Manual headless Chrome 1280x800 + 1440x900: pending/edited/approved/blocked yes, no overflow, no exceptions; keyboard rows -> note -> Approve -> focus on Approved line yes; Review it focuses heading yes. screenshots/17.2-{pending,edited,approved,blocked}-{1280,1440}.png
+- Decisions: gate = AnalysisGateContext (Workspace owns, panel reports each loaded/saved set; unknown before first load = not pending, server 409 backstops). src/api/client.ts (outside Files, 1 line): withReferenceNotice in the client chain so a 409 reference_unapproved from any action (BuildStage, FeasibilityPanel too) focuses the review after a refetch. A server issue stops blocking Approve once the user changes that row/note. Build view: BuildStage gets referencesReady && !pending plus a GateReason line. Native with no type falls back to saved, then proposed type, else "Choose a type".
+- Digest: reference/gate.tsx: useAnalysisGate() -> {set, pending, report(set), focusRequest, focusReview()}, analysisPending(set), GateReason, ANALYSIS_GATE_REASON, withReferenceNotice; BlueprintTable typeLabel(type); mock setMockReferences(buildId, set|null)
+- Tried and failed: none
+- Gotchas: a button disabled by a parent fieldset reports `.disabled === false`; check `matches(':disabled')`. Editing an approved split marks the prototype stale (Continue to build closes) until a fresh assessment.
+- Left open: P3 Build view gate line not aria-linked to BuildStage buttons; Build still also says "Generate the recipe first." - WorkspaceShell.tsx; P3 type select keeps a current type outside allowed_types as an extra option - reference/AnalysisReview.tsx; P3 programmatic focus targets (review h3, Approved line) use outline-none - reference/AnalysisReview.tsx
+- Next: Task 17.3 Live reference analysis walkthrough.

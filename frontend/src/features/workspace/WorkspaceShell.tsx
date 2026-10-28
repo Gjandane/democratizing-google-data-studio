@@ -19,6 +19,7 @@ import { PrototypeStage } from './prototype/PrototypeStage';
 import { ArtifactStage } from './ArtifactStage';
 import { FeasibilityPanel, type FeasibilityGates } from './FeasibilityPanel';
 import { ReferencePanel } from './ReferencePanel';
+import { AnalysisGateContext, GateReason, onReferenceUnapproved, useAnalysisGate, useAnalysisGateState } from './reference/gate';
 import { prototypeStale, STAGE_LABELS, staleCause, Stepper } from './Stepper';
 import { BriefReviewPanel } from './briefs/BriefReviewPanel';
 import { onReviewPending, REVIEW_LOCK_REASON, ReviewLockContext } from './briefs/reviewLock';
@@ -110,6 +111,8 @@ function StageArea({
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [assessmentRefresh, refreshAssessment] = useState(0);
   const { applying, commentsError, buildRun, stretchRuns } = stream;
+  // A recreate analysis waiting for approval keeps Generate recipe and Build off (reference/gate).
+  const analysisPending = useAnalysisGate()?.pending === true;
   const showBuild = shown === build.stage && (build.stage === 'build' || ((build.stage === 'prototype' || build.stage === 'done') && buildOpen));
   // A result from an earlier version's run doesn't belong to the current version.
   const run = buildRun.finished && buildRun.finished.version !== build.current_version ? idleRun : buildRun;
@@ -184,7 +187,12 @@ function StageArea({
             {showBuild ? (
               <>
                 {references}
-                <BuildStage build={build} run={run} referencesReady={referencesReady} feasibilityReady={feasibility.buildReady} />
+                {analysisPending && build.stage !== 'done' && (
+                  <p className="mt-4 rounded-control bg-surface-muted px-3 py-2 text-body text-text">
+                    <GateReason />
+                  </p>
+                )}
+                <BuildStage build={build} run={run} referencesReady={referencesReady && !analysisPending} feasibilityReady={feasibility.buildReady} />
               </>
             ) : view === 'connect' ? (
               <ConnectStage build={build} onBuildChange={onBuildChange} stretchRuns={stretchRuns} onReferenceReadyChange={setReferencesReady} onAssessmentInvalidated={() => refreshAssessment((n) => n + 1)} />
@@ -253,6 +261,11 @@ function Workspace({ build, shown, mainRef, onBuildChange }: { build: Build; sho
   const unread = announced !== null && !handled.has(announced.review_id) && designPages.loading;
   const reviewLock = review !== null || unread || (awaitRun !== null && !runSeen) ? REVIEW_LOCK_REASON : null;
 
+  // The reference analysis gate: one per workspace; a 409 reference_unapproved from any action opens its review.
+  const analysisGate = useAnalysisGateState();
+  const focusAnalysis = analysisGate.focusReview;
+  useEffect(() => onReferenceUnapproved(focusAnalysis), [focusAnalysis]);
+
   const reviewHeading = useRef<HTMLHeadingElement>(null);
   const leftReview = useRef(false);
   const shownReview = review?.review_id ?? null;
@@ -295,10 +308,12 @@ function Workspace({ build, shown, mainRef, onBuildChange }: { build: Build; sho
 
   return (
     <ReviewLockContext.Provider value={reviewLock}>
-      <div className="grid min-h-0 grid-cols-[var(--layout-chat)_minmax(0,1fr)]">
-        <ActivityColumn build={build} stream={stream} />
-        <StageArea build={build} shown={shown} mainRef={mainRef} stream={stream} buildOpen={buildOpen} onBuildOpen={toggleBuild} pendingComments={pendingComments} onPendingChange={setPendingComments} onBuildChange={onBuildChange} review={reviewPanel} reviewLock={reviewLock} />
-      </div>
+      <AnalysisGateContext.Provider value={analysisGate}>
+        <div className="grid min-h-0 grid-cols-[var(--layout-chat)_minmax(0,1fr)]">
+          <ActivityColumn build={build} stream={stream} />
+          <StageArea build={build} shown={shown} mainRef={mainRef} stream={stream} buildOpen={buildOpen} onBuildOpen={toggleBuild} pendingComments={pendingComments} onPendingChange={setPendingComments} onBuildChange={onBuildChange} review={reviewPanel} reviewLock={reviewLock} />
+        </div>
+      </AnalysisGateContext.Provider>
     </ReviewLockContext.Provider>
   );
 }

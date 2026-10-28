@@ -248,6 +248,13 @@ export function setMockArtifact<K extends ArtifactName>(buildId: string, name: K
   artifactsOf(buildId)[name] = clone(value);
 }
 
+/** Replaces the current version's reference set (null removes it) without events. For tests and previews. */
+export function setMockReferences(buildId: string, set: ReferenceSet | null): void {
+  const key = `${buildId}:${findBuild(buildId).current_version}`;
+  if (set) state.references.set(key, clone(set));
+  else state.references.delete(key);
+}
+
 /** Overrides feasibility without mutating shared fixtures. For tests and previews. */
 export function setMockAssessment(buildId: string, assessment: Assessment, pendingIssueIds?: string[]): void {
   if (assessment.pending_comments) state.pendingIssueIds.set(buildId, new Set(pendingIssueIds ?? assessment.issues.map((issue) => issue.id)));
