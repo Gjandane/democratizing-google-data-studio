@@ -25,3 +25,47 @@ with them; on row 2 the user flagged the scorecard text size and low-definition 
 Screenshots (page 1, cropped to the canvas): `docs/img/acceptance-2.4-csv.png`,
 `docs/img/acceptance-2.4-research.png`, `docs/img/acceptance-2.4-bigquery.png`,
 `docs/img/acceptance-2.4-gcs.png`.
+
+## Local, screenshot + synthetic data (task 2.6)
+
+Recreate mode from the user's "Access to electricity" screenshot (not committed), no CSV:
+Executive dashboard, reference analysis approved in the References panel, synthetic CSV
+generated in the UI, outline and design as prefilled from the reference.
+
+| # | Date | Source | Input | Build id | Last stage | Report link | Checked | Verdict |
+|---|---|---|---|---|---|---|---|---|
+| 5 | 2026-10-28 | Screenshot + synthetic data (user screenshot) | user screenshot (recreate); synthetic CSV 2,000 rows, seed 42, sha256 eb6e5770..., columns country, region, year (DATE, Jan 1 2000-2019), access_pct, urban_pct, rural_pct, people_without_access | b_236ae4aa34ee | done, engine `partial` (33 ok, 16 failed of 49) | https://datastudio.google.com/reporting/67390721-34a6-443f-96de-2f2428bcd1c9 | "Synthetic sample data" label once per page in the prototype and in the report; prototype designer spans `images: 1`, globe art `globe-europe-africa` on background_p1; recipe: 4 country `area` with `date_granularity: year`, region list `fixed_size_list`, split bar `stacked_percent` | PASS with findings (user, 2026-10-29: "Accept it now and add it to the report weaknesses") |
+
+Reference split: Flash proposed 10 native (headline text, rural/urban bar, 4 country areas,
+continent list, globe `geo_map`, 78 % scorecard, yearly bar) and 4 static (2 legends, bottom card
+title, year slider). User changes: headline and globe to static. Approved: 8 native, 6 static.
+
+Capability matrix (page 1 against the screenshot):
+
+| Element | Result | On its panel |
+|---|---|---|
+| Headline | background decoration | yes |
+| Region checkbox list | live `fixed_size_list` (shows an extra Record Count column) | yes |
+| 78 % KPI and caption | KPI live `scorecard` AVG(access_pct) (55.11 on synthetic rows); caption missing; 2 extra scorecards added (total without access, countries) | yes |
+| Globe | background decoration (static globe art) | yes |
+| Color legend (map scale) | missing (not drawn on the background) | - |
+| Year bar chart, 2011 highlighted | live `bar` on `year`; highlight missing (deferred); labels per day, top 10 + "Others" | yes |
+| Year slider | substituted by a live `date_range` control | yes |
+| Rural/urban split bar | live `bar` 100 % stacked; only 1 of 6 region rows visible | yes |
+| Four country area charts | live `area` x4, wrong fields: each shows Record Count by region instead of the country's rural/urban % | yes |
+
+Screenshot (page 1, report view): `docs/img/acceptance-2.6-synthetic.png`.
+
+### Known weaknesses (2.6, to fix later)
+
+Found in the run above; each names the part that owns the fix. Open until a task fixes it.
+
+| ID | Part | Where | Symptom | Evidence |
+|---|---|---|---|---|
+| W1 | engine | `add_chart` area (s008, s013, s017, s020, s029) | Data Studio pre-fills a new area chart with breakdown `region` and metric Record Count; the engine can't remove them ("Data Studio does not expose a field removal control"), the chart keeps the wrong fields and its set_style fails | screencast rerun 2/2, last frame: Area chart properties with the auto fields |
+| W2 | engine | box placement (s005 bar, s019 date_range, s038/s044 table) | "chart box did not match the requested position and size"; the split bar shows 1 of 6 rows | screencast rerun 2/2 (s005) |
+| W3 | engine | `add_chart` area with breakdown (s033) | "field year not in data source" | events.jsonl |
+| W4 | contract/backend | yearly `bar` on a DATE column (s015) | recipe 1.3 allows `date_granularity` only on time_series/area: bar labels "Jan 1, 2000" and groups beyond 10 into "Others" | recipe.jsonl s015 options |
+| W5 | backend | prototype background | static legends (rural/urban, map scale) not drawn on background_p1 | background_p1.png |
+| W6 | backend | prototype render | page-1 reference HTML failed validation 3x on the first run; retry passed | trace r_2051c7758120 |
+| W7 | backend | scorecard pick | KPI caption missing; two non-reference scorecards on page 1 | report page 1 |

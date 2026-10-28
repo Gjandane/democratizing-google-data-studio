@@ -527,3 +527,20 @@ context. Task status lives in docs/plan.md, not here.
 - Question: Plan engine tasks for area auto-fields and box placement (plus a release fix for check_contracts' ReferenceSet schema), then rerun 2.6?
 - Options: A engine task(s) + release check fix, then 2.6 reruns from a new build (same CSV spec) / B accept 2.6 with failed 16 as findings (Done when change) / Recommend: A, area is the core of the recreation and Done when needs failed 0.
 - Next: architect at program root plans the engine fixes; rerun 2.6 with this split (r2, r6 static).
+
+## 2026-10-29: Task 2.6 Manual acceptance: screenshot recreation with synthetic data
+- Status: blocked
+- Plan check: off
+- What changed: docs/acceptance.md row 5 (b_236ae4aa34ee), capability matrix, "Known weaknesses (2.6)" W1-W7; docs/img/acceptance-2.6-synthetic.png (user's report screenshot, page 1, no avatar/email).
+- Checks: user viewed the finished report (pages 1-2) and accepted it with findings. `check_contracts.py` FAIL 1 of 13 (reference_set.json `analysis`, same as 2026-10-28 entry). Live run still `failed: 16` (Done when needs 0).
+- Decisions: user verdict "PASS with findings" (2026-10-29: "Accept it now and add it to the report weaknesses"); engine failures logged as weaknesses W1-W3, not fixed. Marker left `[!]`: Done when needs failed 0, and only the architect changes it.
+- Change request: accept 2.6 with engine `partial` (16 failed ops) as recorded weaknesses W1-W7 in docs/acceptance.md; change Done when's `failed: 0` / "no op fails" for 2.6, then mark it done (user, 2026-10-29).
+- Change request: `date_granularity` on `bar` with a DATE dimension (W4, yearly bar).
+- Change request: plan fixes for W1-W3 (engine) and W5-W7 (backend), and check_contracts' ReferenceSet schema for api 3.2.
+- Tried and failed: none
+- Gotchas: none
+- Left open: W1-W7 (docs/acceptance.md).
+- Blocked because: (b) accepting needs a plan change to 2.6's Done when.
+- Question: Change 2.6's Done when to accept failed ops as recorded weaknesses and mark it done?
+- Options: A apply the change request and mark 2.6 done (user's choice) / B keep failed 0 and fix the engine first / Recommend: A, the user accepted.
+- Next: architect at program root applies the change request; then 2.7.
