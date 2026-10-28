@@ -126,3 +126,11 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
   Later), backend W5-W7 (backend/docs/PRD.md Later), and W4, a contract change at the program
   root: recipe 1.4 `date_granularity` on `bar` with a DATE dimension (engine applies it first,
   backend emits it after).
+- Release 2.7 and 2.8, e2e driver upkeep (change 2026-10-29, user deferred them to reach Cloud Run):
+  2.8's waits per action from `GET /api/settings` stage clocks instead of a fixed 600 s (blueprint
+  3,900 s, design confirm 900 s, reference upload 900 s on the fixture) and check_contracts
+  validating the stage-settings fixtures and events.review.sse; 2.7's full local live pass of
+  `e2e_references.py --cases synthetic,recreate`. Its code is committed; the open point was the
+  synthetic v2 GPS refusal reading `stale`, ruled for 4.3 as a refusal when the GPS issues stay
+  unresolved, and backend returning `blocked` after an outline Other on a built version is a
+  backend item (backend/docs/PRD.md Later). The bench `server_url: "hosted"` mask moved into 4.2/4.3.

@@ -192,6 +192,10 @@ phases" below.
 - Native planning defaults (change 2026-10-27, backend 25.7 block, user cards; api.md 3.1, no shape change): backend 25.7 (defaults) -> 25.8 (live fidelity, visual STOP) in backend/; release 2.6 `Needs: backend 25.8`. Frontend and release 2.8 read the defaults from the API: no task.
 - Reference analysis gate (change 2026-10-28, backend 25.11 block, user request and cards; api.md 3.2, dashboard-intent.md 1.3, synthetic-data.md 1.3): backend 26.1 (3.2 shapes and defaults) -> 26.2 (Flash reference analysis) -> 26.3 (approval gate API) -> 26.4 (Argon planning and brief from the image + approved items) -> 26.5 (observation path removed) -> 26.6 (live acceptance, visual STOP; replaces 25.11) in backend/; frontend 17.1 (1.3/3.2 types, mocks) -> 17.2 (analysis review on the reference panel) against the fixtures, in parallel with backend; frontend 17.3 (live walkthrough) `Needs: backend 26.4`. Release 2.6 now needs backend 26.6 and frontend 17.3 (instead of backend 25.8) and goes through the gate.
 - Acceptance with findings (change 2026-10-29, release 2.6, user): 2.6 is accepted as PASS with findings (engine `partial`, 16 of 49 ops failed; weaknesses W1-W7 in docs/acceptance.md) and reopened only for check_contracts' ReferenceSet shape (dashboard-intent 1.3). No part tasks: W1-W7 go to the owner parts' PRD Later lists for a later version. Next: release 2.6 (close), 2.7, 2.8, 3.1, 3.2 (push), 4.1 (deploy), 4.2-4.4; 4.3 passes on a hosted `partial` only when its failures match W1-W7.
+- Release upkeep deferred (change 2026-10-29, user cards): release 2.7 and 2.8 (e2e driver upkeep, no
+  app code) go to release PRD Later; 4.1 is next, 4.2 and 4.3 no longer wait on them and carry the
+  bench URL mask themselves; 4.3 reads a `stale` synthetic GPS refusal with unresolved issues as a
+  refusal. Backend returning `blocked` there is a later backend item. Next: 4.1 (deploy), 4.2-4.4.
 
 ## Integration checks
 - `uv run --project integration python integration/check_contracts.py`: the recipe and event

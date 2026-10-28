@@ -98,24 +98,9 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: a step fails inside a part (synthetic schema, generation, reference intake, prototype, recipe) -> block this task naming the part, the step and the API error body.
   - If: the live run has failed ops -> diagnose with the screencast gotcha (AGENTS.md) and record each in the Known weaknesses table with its owner part (change 2026-10-29); not a block.
   - If: a time series on a date bucket still draws per day (spikes on the bucket's first day), or the "Synthetic sample data" label shows twice -> the change 2026-10-23 fixes (engine 12.1, backend 23.1, 23.2) didn't hold: block naming the part, the build id and the op (`date_granularity` missing in the recipe = backend; present but not applied = engine).
-- [!] 2.7 Synthetic label recipe check follows backend 23.2
-  - Goal: integration/e2e_references.py's synthetic case still asserts "recipe places the 'Synthetic sample data' text"; after backend 23.2 the background is the label's only copy in the report (contracts/synthetic-data.md), so that check fails on the next run, including 4.3's hosted run. Flip it: the recipe places no label text, and the prototype and its background layer still say the label (the existing check). Also (change 2026-10-29): every case that uploads a recreate reference approves its analysis (`POST reference-images/analysis/approve` with the set's current revision) before design/confirm, as the backend requires since 26.3 (contracts/dashboard-intent.md 1.3, `409 reference_unapproved`); and .env.example lists conventions 1.5's `GOOGLE_OAUTH_CLIENT_ID`, `DSS_SIGNIN_ALLOW` and `GCP_PROJECT_NUMBER` (names only, empty) so check_contracts passes again.
-  - Files: integration/e2e_references.py, .env.example
-  - Depends on: 2.5
-  - Size: S
-  - Needs: backend 23.2; backend 26.3
-  - Done when: with the parts started by `./start.sh` and the real engine (`DSS_ENGINE_DRY_RUN=0`; the driver refuses dry-run), `uv run --project integration python integration/e2e_references.py --server http://localhost:8000 --live --cases synthetic,recreate` exits 0 with the flipped check and the approval step (rerun once on a live-model failure, per the gotcha), and the same label check run over a recipe preview that still holds the label text fails (shown once in the progress entry, not kept as code); then `git checkout -- deck/data/bench-references-local.json` (this run is a check, not the bench); `uv run --project integration python integration/check_contracts.py` passes.
-  - If: the synthetic case fails at a step before the recipe -> block naming the part, the step and the API error body; never weaken another check.
-  - If: the pending analysis has `issues` -> fail that case listing them; never edit the analysis to clear them.
-  - Review focus: only the recipe-label assertion and the approval step change; the prototype/background label check and every other case stay as they are.
-- [ ] 2.8 E2e waits and contract check follow api.md 3.0
-  - Goal: the e2e drivers wait as long as the configured stage clocks allow instead of a fixed 600 s per action, and check_contracts also validates the stage-settings fixtures (change configurable model stages 2026-10-26, delta audit); and both drivers record a non-local `--server` as `server_url: "hosted"` in their bench, never the URL (change 2026-10-29: the URL stays out of the public repo).
-  - Files: integration/e2e_flow1.py, integration/e2e_references.py, integration/check_contracts.py
-  - Depends on: 2.7
-  - Size: S
-  - Needs: backend 25.1
-  - Done when: both drivers read `GET /api/settings` (3.0) once per run and wait per action: blueprint accept and comments 2 x (html_brief + the larger HTML profile's timeout_s) + 300 s (page 1 then later pages), design confirm native_planning.timeout_s + 300 s, reference upload reference_interpretation.timeout_s + 300 s, never under 600 s; a unit check in check_contracts (or a driver `--print-waits`) prints the waits for contracts/fixtures/stage-settings/settings.json (3,900 s, 900 s, 900 s); `uv run --project integration python integration/check_contracts.py` also parses every stage-settings fixture, finds every event in events.review.sse in contracts/api.md, and rejects a mutated copy with an unknown event; with `./start.sh` and `DSS_ENGINE_DRY_RUN=1`, `uv run --project integration python integration/e2e_flow1.py` exits 0 (rerun once on a live-model failure, per the gotcha); deck/data bench files unchanged except a new dry-run bench of today; a unit check in check_contracts shows each driver's bench record for `--server https://example.run.app` holds `server_url: "hosted"`.
-  - Review focus: no other assertion changes; waits derive from Settings, never a hardcoded larger constant.
+Change 2026-10-29 deferral: 2.7 and 2.8 (e2e driver upkeep, no app code) moved to docs/PRD.md
+Later; 2.7's committed driver code (label flip, analysis approval, .env.example names) stays and
+4.3 exercises it; the hosted-URL mask moved into 4.2 and 4.3.
 
 ## Phase 3: GitHub
 - [x] 3.1 README: pitch, features and simplified architecture
@@ -151,22 +136,25 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: gcloud reports expired credentials -> ask the user to run `gcloud auth login` and `gcloud auth application-default login` themselves; never handle their password.
   - If: an organization policy blocks `allUsers` (allow-unauthenticated) -> stop and ask the user; never weaken the access code instead.
 - [ ] 4.2 Deployed end-to-end through the local build agent
-  - Goal: `e2e_flow1.py --server <URL>` runs flow 1 against the deployed service with the access code while `dss-agent` runs locally, first in dry-run and then live.
+  - Goal: `e2e_flow1.py --server <URL>` runs flow 1 against the deployed service with the access code while `dss-agent` runs locally, first in dry-run and then live; the driver records a non-local `--server` as `server_url: "hosted"` in its bench, never the URL (from deferred 2.8, change 2026-10-29).
   - Files: integration/e2e_flow1.py, deck/data/*.json
-  - Depends on: 4.1; 2.8
+  - Depends on: 4.1
   - Size: S
   - Needs: backend 5.2; backend 5.3; frontend 5.1
-  - Done when: with `uv run --project backend dss-agent --server <URL> --dry-run` running locally, `uv run --project integration python integration/e2e_flow1.py --server <URL>` exits 0 with stage `done`; with the agent restarted without `--dry-run`, `uv run --project integration python integration/e2e_flow1.py --server <URL> --live` exits 0, prints a `https://datastudio.google.com/` link plus the seconds-per-stage table and token totals, and writes its bench JSON; manual: the same flow clicked through the UI at the URL reaches the link, and the Build stage shows the agent as connected.
+  - Done when: with `uv run --project backend dss-agent --server <URL> --dry-run` running locally, `uv run --project integration python integration/e2e_flow1.py --server <URL>` exits 0 with stage `done`; with the agent restarted without `--dry-run`, `uv run --project integration python integration/e2e_flow1.py --server <URL> --live` exits 0, prints a `https://datastudio.google.com/` link plus the seconds-per-stage table and token totals, and writes its bench JSON with `server_url: "hosted"` (`git grep -F "$DSS_AGENT_SERVER"` finds nothing); manual: the same flow clicked through the UI at the URL reaches the link, and the Build stage shows the agent as connected.
   - If: the hosted run fails inside a part -> block this task with the part, the step and the API error body.
+  - If: an action hits the driver's fixed 600 s wait on hosted -> rerun once; on a repeat, block asking for 2.8's stage-clock waits (PRD Later) to come back as a task.
 - [ ] 4.3 Hosted reference, refusal and synthetic acceptance
   - Goal: the same rules as 2.5 hold on the hosted service, plus the persisted synthetic CSV across a service restart.
   - Spec: contracts/dashboard-intent.md#Required oracle cases; contracts/dashboard-intent.md#Scope; contracts/synthetic-data.md#Acceptance oracle
-  - Files: deck/data/bench-references-hosted.json
-  - Depends on: 4.2; 2.5; 2.7; 2.8
+  - Files: deck/data/bench-references-hosted.json, integration/e2e_references.py
+  - Depends on: 4.2; 2.5
   - Size: M
-  - Done when: with `dss-agent` running locally against the URL, `uv run --project integration python integration/e2e_references.py --server "$DSS_AGENT_SERVER" --live` exits 0 with the same cases as 2.5, and records the tested git revision and the Cloud Run revision; after a restart of the service (a new revision from `bash deploy/deploy.sh`), the synthetic CSV downloaded again has the same checksum; manual: the screenshot + synthetic source clicked through the hosted UI reaches the Data Studio link with the "Synthetic sample data" label; results, timing and run date go to deck/data/bench-references-hosted.json with no secrets or private images.
+  - Done when: with `dss-agent` running locally against the URL, `uv run --project integration python integration/e2e_references.py --server "$DSS_AGENT_SERVER" --live` exits 0 with the same cases as 2.5, and records the tested git revision and the Cloud Run revision; after a restart of the service (a new revision from `bash deploy/deploy.sh`), the synthetic CSV downloaded again has the same checksum; manual: the screenshot + synthetic source clicked through the hosted UI reaches the Data Studio link with the "Synthetic sample data" label; results, timing and run date go to deck/data/bench-references-hosted.json with no secrets or private images, and `server_url: "hosted"` (the driver masks a non-local `--server`, never the URL; `git grep -F "$DSS_AGENT_SERVER"` finds nothing).
   - STOP: the user watches the hosted click-through and approves the result on a card.
   - Review focus: localhost and hosted follow identical rules; a dry-run agent is not evidence.
+  - If: the synthetic case's v2 outline-Other GPS step reads `stale` instead of `blocked` -> it passes as a refusal only when the unsupported_app GPS issues stay unresolved and the recipe stays refused (`409`); widen only that check in e2e_references.py and record `gps_state` in the bench (change 2026-10-29; backend `blocked` is PRD Later).
+  - If: an action hits the driver's fixed 600 s wait -> rerun once; on a repeat, block asking for 2.8's stage-clock waits (PRD Later).
   - If: a hosted gate can't finish by the deadline -> report the failed requirement for the user's scope decision; never silently relabel it optional.
   - If: the hosted click-through's engine run ends `partial` with failures that match docs/acceptance.md's Known weaknesses W1-W7 (change 2026-10-29, fixes deferred) -> record the counts and the matching W ids in the bench and pass; a failure not in that table -> block naming the part, the op and the error.
 - [ ] 4.4 README hosted section and final push

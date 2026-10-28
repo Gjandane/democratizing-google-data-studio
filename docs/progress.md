@@ -642,3 +642,9 @@ context. Task status lives in docs/plan.md, not here.
 - Question: Should the synthetic GPS refusal accept `stale` with unresolved unsupported_app GPS issues (recipe still refused), or does backend owe `blocked` here?
 - Options: A widen that check to `state in {blocked, stale}` with the unresolved GPS issues still required / B backend task: outline_other assessment reads `blocked`, then rerun 2.7 / Recommend: A if the architect reads stale+issues as a refusal per dashboard-intent; else B.
 - Next: Task 2.7 after the architect's ruling; then rerun only `--cases synthetic` live.
+
+## 2026-10-29: Change defer release 2.7 and 2.8
+- What changed: docs/plan.md drops 2.7 (blocked) and 2.8 (to do), both e2e driver upkeep with no app code; 4.2 and 4.3 no longer depend on them. 4.2 and 4.3 now mask a non-local `--server` as `server_url: "hosted"` in their bench (from 2.8; 4.3 gains integration/e2e_references.py in Files) and block on a repeated 600 s wait timeout. 4.3 reads the synthetic v2 GPS refusal as passed when it is `stale` with the unsupported_app GPS issues unresolved and the recipe refused (ruling on 2.7 session 2's question, option A). docs/PRD.md Later and docs/program.md roadmap record the deferral.
+- Why: user asked whether 2.7/2.8 are core; they are test-harness only, and Cloud Run (phase 4) comes first. User chose on cards: defer both, keep the URL mask; accept `stale` + unresolved issues as a refusal.
+- Tasks affected: 2.7, 2.8 (deferred), 4.2, 4.3. 2.7's committed driver code (label flip, analysis approval, .env.example names) stays; 4.3's hosted run is its first full exercise.
+- Change requests: 2.7 session 1 question (approval step) settled earlier in session 2; session 2 question (GPS stale): planned in 4.3's If line; backend `blocked` deferred to PRD Later.
