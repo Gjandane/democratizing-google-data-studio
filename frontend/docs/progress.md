@@ -628,3 +628,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: a button disabled by a parent fieldset reports `.disabled === false`; check `matches(':disabled')`. Editing an approved split marks the prototype stale (Continue to build closes) until a fresh assessment.
 - Left open: P3 Build view gate line not aria-linked to BuildStage buttons; Build still also says "Generate the recipe first." - WorkspaceShell.tsx; P3 type select keeps a current type outside allowed_types as an extra option - reference/AnalysisReview.tsx; P3 programmatic focus targets (review h3, Approved line) use outline-none - reference/AnalysisReview.tsx
 - Next: Task 17.3 Live reference analysis walkthrough.
+
+## 2026-10-28: Task 17.3 Live reference analysis walkthrough
+- Status: done
+- Plan check: off
+- What changed: no source change; live walkthrough of 17.1-17.2 against the real backend 3.2 (backend 8000 with DSS_ENGINE_DRY_RUN=1, `npm run dev`, headless Chrome over CDP, 1280x800, samples/reference-dashboard.png as recreate reference); screenshots/17.3-{analysis,blueprint}-1280.png.
+- Checks: `npm test` PASS (25 files/543 tests); `npm run typecheck` PASS. Live: new build, recreate upload -> pending analysis (7 items, 6 native/1 static) yes; Orders -> Static, category bar -> Pie, note, Approve yes (server: approved rev 2, note kept, r3 static, r6 pie); Confirm design disabled before approval ("Approve the reference analysis first. Review it") and API POST design/confirm = 409 reference_unapproved, works after approval yes; Blueprint shows "Recreates: <label>" on 5 native item rows (Orders static has none), category row is a Pie chart yes; Edit split -> Continue -> flip Orders to Native -> Approve: warning "Changing the split marks the Blueprint and prototype as out of date" shown, blueprint went stale server-side yes; style reference build shows "Saved mode: Use style", no review, analysis null yes. No dedicated reviewer run (no code change); viewed both screenshots.
+- Decisions: none. Live API matches the 3.2/1.3 guards: no guard loosened. Screenshots show only the repo's own samples/reference-dashboard.png thumbnail, no third-party image.
+- Digest: Live API 3.2 matches frontend guards (reference analysis GET/PUT/approve, 409 reference_unapproved, blueprint reference_item). No code change. Evidence: screenshots/17.3-{analysis,blueprint}-1280.png.
+- Tried and failed: none
+- Gotchas: in CDP scripts Native/Static are radio inputs (`input[type=radio][name$="-r3"][value=static]`), not buttons; set selects/textareas through the native value setter plus a bubbling change/input event. Reference upload for live runs: `curl -F files=@../samples/reference-dashboard.png -F mode=recreate -F instructions=... localhost:5173/api/builds/<id>/reference-images`; analysis takes ~20 s.
+- Left open: none
+- Next: none (last task of the plan).
