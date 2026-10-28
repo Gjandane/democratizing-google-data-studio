@@ -12,7 +12,7 @@ Written 2026-10-18.
 - Context: Google GCP hackathon (AI Builder Cup). Deadline: no longer binding; the user keeps the full
   scope past 2026-10-23 01:05 MPST (change 2026-10-23; earlier 2026-10-20 and 2026-10-19 01:05).
 - Hosted on Cloud Run in this version (change 2026-10-19): the app runs as one Cloud Run service
-  behind a shared access code; the Data Studio build runs through a build agent on the user's
+  behind Google sign-in (change 2026-10-29; the shared access code stays for scripts); the Data Studio build runs through a build agent on the user's
   machine, because the engine needs the signed-in Chrome profile.
 
 ## Parts
@@ -51,9 +51,10 @@ Written 2026-10-18.
   semantic memory = an OKF bundle (no vector store), episodic memory = SQLite + FTS5,
   consolidation after every 5 builds that reach `done` (worker model), one trace per run.
 - Goal: deployed on Cloud Run (contracts/conventions.md, Cloud deployment): one service, one
-  instance, shared access code, state on a GCS volume, secrets in Secret Manager, the engine run by
+  instance, Google sign-in at the gate (code for scripts), state on a GCS volume, secrets in Secret Manager, the engine run by
   a local build agent; deployed with one script (`bash deploy/deploy.sh`).
-- Non-goal: auth, accounts, multi-user (POC, one local user).
+- Non-goal: per-user accounts, roles or data isolation (POC): Google sign-in only opens the one
+  shared history (change 2026-10-29).
 - Non-goal: the engine in the cloud (headless Chrome with a stored Google session): the Google
   session stays on the user's machine; the build agent runs the engine there.
 - Non-goal: more than one Cloud Run instance, autoscaling, a custom domain, IAP or per-user accounts.
@@ -80,7 +81,7 @@ Written 2026-10-18.
    sources file (backend) -> flow 1 from the context step.
 3. **History:** open a past build from History (frontend) -> comment edits -> re-run the
    recipe as a new dashboard version (backend, engine).
-4. **Hosted (must-have after flow 1):** the user opens the Cloud Run URL and enters the access code
+4. **Hosted (must-have after flow 1):** the user opens the Cloud Run URL and signs in with Google
    (frontend, backend) -> flow 1 runs in the hosted app -> on Build, the backend queues a job ->
    `dss-agent` on the user's machine pulls it and runs `dsengine` with the signed-in Chrome (backend,
    engine) -> events stream back to the hosted Build stage -> the dashboard link shows.
@@ -104,7 +105,7 @@ Written 2026-10-18.
   of five dashboard sources (CSV upload, research mode, screenshot + synthetic data, BigQuery,
   GCS) -> README and the first GitHub push -> Cloud Run deploy and hosted acceptance -> final push.
 - Start everything locally: `./start.ps1` (Windows) or `./start.sh`: backend on 8000, frontend on 5173.
-- Hosted: the Cloud Run URL plus the access code; builds need `uv run --project backend dss-agent`
+- Hosted: the Cloud Run URL plus Google sign-in (any Google account by default); builds need `uv run --project backend dss-agent`
   running on the user's machine.
 - Ships: all code, the planning docs (docs/, AGENTS.md, CLAUDE.md: they show the process), the
   submission deck draft `deck/AI-Builder-Cup-Submission.pptx` and `.pdf` as built by release 1.3
@@ -300,4 +301,5 @@ phases" below.
 | 2026-10-26 | After the delta audits (user cards): grouped stage selectors kept; no-reference standard layout only after HTML repairs; migration keeps every explicit legacy model; brief review edits carry revision/sha256; cost estimates added on user request (verified backend prices, per call/run/build, labeled estimated) | one selector per model step; today's fall-back-on-anything; non-default-only migration; no costs | user cards and request 2026-10-26; a parallel architect session's review (backend/docs/stage-settings-reconciliation.md) | change configurable model stages (user) |
 | 2026-10-27 | api.md 3.1: native_planning defaults output 65,536 and 1,200 s per action (no shape change; stored Settings keep their values); backend 25.7 rewritten to apply them, live fidelity moved to backend 25.8; release 2.6 now needs backend 25.8 | thinking medium; a test-only override; keep 3.0 defaults | backend 25.7 block: Argon high blueprint hit 600 s, 25k thinking tokens of 32,768 in a benchmark | change backend 25.7 block (user cards) |
 | 2026-10-28 | Reference analysis gate (api.md 3.2, dashboard-intent.md 1.3, synthetic-data.md 1.3): a recreate upload gets a Flash analysis (each item native component with a catalog type, or static art, with box and reason) that the user approves or edits (split, type, note) before design/confirm, blueprint, recipe or run (`409 reference_unapproved`); approved native items replace image observations as requirements, static items are consented art; Argon blueprint and brief get the image plus the approved items; `BlueprintRow.reference_item`; defaults reference_interpretation Flash high with 1 repair, native_planning thinking medium; the observation path (extraction, reconciliation, unlabeled-control offers, approved drops) is deleted; style mode has no gate; backend 26.1-26.6 (26.6 replaces 25.11), frontend 17.1-17.3, release 2.6 gated on both | keep observations with native_planning medium (fastest; edge cases stay); gate at design/confirm with field bindings; keep the old path behind a flag | backend 25.7-25.11 blocked on observation edge cases settled by harness-only drops/offers; one explicit user decision replaces them; Flash is cheaper for the analysis; Argon high timed out twice at 1,200 s where medium answered in 79 s | change 2026-10-28 (user request and cards) |
+| 2026-10-29 | Google sign-in at the hosted gate (api.md 3.3, conventions 1.5): `POST /api/session {google_id_token}` verified with google-auth, `DSS_SIGNIN_ALLOW` (empty = any Google account; `@domain` via `hd`, or emails) so a domain lock after the hackathon is one env change and a redeploy; signed 24 h cookie keyed by the code; the code and header stay for scripts and e2e drivers; agent token unchanged; backend 27.1, frontend 18.1, release 4.1 gated on both | IAP on Cloud Run (the local build agent would need Google ID tokens too; lifts the IAP non-goal); code only | user wants Google sign-in on the hosted link; in-app keeps SSE, iframe and agent paths unchanged | change 2026-10-29 (user, release 4.1 block, cards) |
 | 2026-10-29 | Release 2.6 accepted as PASS with findings; W1-W7 (engine area auto-fields and box placement, `bar` date grain, backend legends, HTML flake, scorecard pick) deferred to the parts' Later lists; 2.6 reopened only to fix check_contracts' ReferenceSet schema; GitHub and Cloud Run next | plan engine/backend/contract fixes now, gate 4.3 on them | user: finish the GitHub upload and Cloud Run deployment first; the report is usable with recorded findings | change 2026-10-29 (user, release 2.6 block) |

@@ -2347,3 +2347,9 @@ assert min(timings) < .1
 - Class: Product (deferred work only): PRD Later gains release 2.6's backend weaknesses W5-W7 and W4's backend half (emit `date_granularity` on `bar`, after the engine).
 - Why: user, 2026-10-29: log the weaknesses for a later version; GitHub upload and Cloud Run deployment come first.
 - Tasks affected: none; no task added.
+
+## 2026-10-29: Change Google sign-in (program root)
+- Why: the user wants Google sign-in on the hosted link instead of only the access code (release 4.1 block). Cards: in-app Google sign-in (not IAP: the local build agent would need Google ID tokens too), any Google account but configurable to a domain later, access code kept for scripts.
+- Contracts: api.md 3.3 (Access: `POST /api/session {google_id_token}`, `Session.google_client_id`/`user`, `403 signin_not_allowed`, `400 google_signin_off`; fixtures api/session.json updated, api/session.google.json new); conventions.md 1.5 (`GOOGLE_OAUTH_CLIENT_ID`, `DSS_SIGNIN_ALLOW`, Cloud deployment Access bullet and fail-closed rule). docs/program.md: goals, non-goal (no per-user accounts), hosted flow, decision log.
+- What changed here: architecture.md Cloud mode (Google sign-in bullet, oracle) and decision log; essentials contract versions and the `google-auth` row (verified 2026-10-29, other rows re-verified by `deps --write`); PRD non-goals; plan Phase 27 with 27.1 Google sign-in session (M).
+- Tasks affected: 27.1 new; release 4.1 needs it.

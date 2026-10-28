@@ -546,3 +546,6 @@ context. Task status lives in docs/plan.md, not here.
 - Class: Product (deferred work only): PRD Later gains release 2.6's engine weaknesses W1-W3 and W4's engine half (recipe 1.4 `date_granularity` on `bar`).
 - Why: user, 2026-10-29: log the weaknesses for a later version; GitHub upload and Cloud Run deployment come first.
 - Tasks affected: none; no task added.
+
+## 2026-10-29: Change Google sign-in (program root)
+- What changed here: essentials' conventions row 1.4 -> 1.5 only (the new names are backend-only). No task affected.

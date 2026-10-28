@@ -1,5 +1,5 @@
 # Conventions (shared by every part)
-Version 1.4 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
+Version 1.5 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
 (added DSS_ALLOWED_TYPES, DSS_CONSOLIDATE_EVERY, DSS_ENGINE_TIMEOUT_S, background_p<n>.png, engine lock).
 1.1 (2026-10-19) Cloud Run deployment: one hosted service, access code, local build agent, DB backup
 (added PORT, DSS_STATIC_DIR, DSS_ACCESS_CODE, DSS_ENGINE_MODE, DSS_AGENT_SERVER,
@@ -14,6 +14,9 @@ static-frontend revision of that service). No other name, path or behaviour chan
 1.4 (2026-10-26, change configurable model stages) model choice moves to per-stage Settings
 (contracts/api.md 3.0): `DSS_PLANNER_MODEL`/`DSS_WORKER_MODEL` only seed the one-time migration;
 the agent-mode lock fixes the key and GCP values, not model settings. No name added or removed.
+1.5 (2026-10-29, change Google sign-in) added `GOOGLE_OAUTH_CLIENT_ID` and `DSS_SIGNIN_ALLOW`:
+the browser signs in with Google at the gate (contracts/api.md 3.3); the access code stays for
+scripts. Cloud deployment: Access bullet, fail-closed rule, shared-history wording.
 Only the architect at the program root edits this file. Parts read it; they never edit it.
 
 ## Ports and URLs
@@ -53,6 +56,8 @@ values. Names:
 | `PORT` | `8000` | backend | listen port; Cloud Run sets it (8080) |
 | `DSS_STATIC_DIR` | (empty = serve no frontend) | backend | built frontend folder served at `/` with SPA fallback (container: `/app/frontend/dist`) |
 | `DSS_ACCESS_CODE` | (empty = no gate) | backend | shared access code, at least 12 characters; when set, `/api` needs it (contracts/api.md, Access). Cloud Run: from Secret Manager; the root `.env` value also gates the local app |
+| `GOOGLE_OAUTH_CLIENT_ID` | (empty = no Google sign-in) | backend | 1.5: OAuth 2.0 Web client id (public, not a secret) for Google sign-in at the gate (contracts/api.md 3.3, Access); its Authorized JavaScript origins list the Cloud Run URL, `http://localhost:5173` and `http://localhost:8000`; needs `DSS_ACCESS_CODE`. Cloud Run: a plain env var |
+| `DSS_SIGNIN_ALLOW` | (empty = any Google account) | backend | 1.5: who may sign in with Google: empty or `*` = any verified Google account; otherwise a comma list of `@domain` (the token's Workspace `hd` claim) and exact emails. Cloud Run: a plain env var, changed by editing `.env` and rerunning `bash deploy/deploy.sh` |
 | `DSS_AGENT_TOKEN` | (empty) | backend, agent | secret token for `/api/agent/*` (header `X-DSS-Agent-Token`), at least 24 characters; never shown in the UI. Cloud Run: from Secret Manager |
 | `DSS_ENGINE_MODE` | `local` | backend | `local` = the backend runs `DSS_ENGINE_CMD` itself; `agent` = builds are queued for a build agent (Cloud Run) |
 | `DSS_AGENT_SERVER` | (empty) | agent | base URL of the hosted app the agent pulls jobs from (`https://<service>-<hash>.<region>.run.app`) |
@@ -118,7 +123,11 @@ backend stores them in SQLite. The API key is write-only through the API: it is 
   `DSS_ENGINE_MODE=agent`. Startup probe on `GET /api/health`. Never `DSS_DEV`.
 - Fail closed: when `K_SERVICE` is set (Cloud Run), the backend refuses to start if
   `DSS_ACCESS_CODE` is shorter than 12 characters or, in agent mode, `DSS_AGENT_TOKEN` is shorter
-  than 24.
+  than 24. Anywhere, `GOOGLE_OAUTH_CLIENT_ID` without `DSS_ACCESS_CODE` refuses to start (1.5).
+- Access (1.5): the browser signs in with Google (any account unless `DSS_SIGNIN_ALLOW` narrows
+  it); the access code stays for scripts, the e2e drivers and the owner. The OAuth consent screen
+  is External and In production (basic scopes need no Google verification; in Testing only
+  listed test users get in).
 - One instance only (`--min-instances 1 --max-instances 1`), CPU always allocated
   (`--no-cpu-throttling`, agent runs continue after the `202`), request timeout 3600 s (SSE and
   long polls).
@@ -139,7 +148,7 @@ backend stores them in SQLite. The API key is write-only through the API: it is 
   profile must be able to read `BQ_DATASET` (a project owner or BigQuery Data Viewer + Job User),
   so the report's data source can read the views.
 - Uploads through Cloud Run are limited to 32 MB per request (Cloud Run answers `413` itself).
-- Shared by everyone with the code: one history and one engine lock; builds need the owner's
+- Shared by everyone who gets in (Google sign-in or the code): one history and one engine lock; builds need the owner's
   `dss-agent` online, otherwise the hosted app stops at the recipe (Build shows the agent panel).
 
 ## Errors

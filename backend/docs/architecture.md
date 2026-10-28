@@ -131,6 +131,19 @@ Files per version: `data/builds/<id>/v<n>/` (../contracts/conventions.md).
 - Access: `POST /api/session` compares the code with `hmac.compare_digest` and sleeps 1 s on a
   miss; the cookie value is an HMAC of a fixed label keyed by the code (no extra secret; changing
   the code logs everyone out); `Secure` when the request is https.
+- Google sign-in (change 2026-10-29, ../contracts/api.md 3.3 Access): only when
+  `GOOGLE_OAUTH_CLIENT_ID` is set; startup refuses it without `DSS_ACCESS_CODE`. `POST
+  /api/session {google_id_token}` verifies with `google.oauth2.id_token.verify_oauth2_token(token,
+  google.auth.transport.requests.Request(), client_id)` (signature against Google's cached certs,
+  `aud`, `iss`, `exp`), run off the event loop; then `email_verified` must be true and
+  `DSS_SIGNIN_ALLOW` (parsed once: trimmed, lower-cased, empty entries dropped; empty or `*` = any
+  account; `@d` matches `hd == d`, never an email suffix; other entries match the email). A Google
+  cookie is `g.<base64url email>.<expiry epoch s>.<hex HMAC-SHA256 keyed by the code over
+  "google|<email>|<expiry>">`, expiry now + 24 h; the access check accepts the code cookie or a
+  Google cookie whose HMAC matches (`hmac.compare_digest`) and whose expiry is in the future, and
+  `GET /api/session` returns its email as `user`. Verifier errors map to `401 access_denied` after
+  the 1 s delay; the token and the verifier's message are never logged or traced. The agent token
+  path is unchanged.
 - DB backup: when `DSS_DB_PATH` is outside `DSS_DATA_DIR`, startup copies
   `<DSS_DATA_DIR>/dss.sqlite` to `DSS_DB_PATH` if the local file is missing. A background task
   checks every 30 s whether anything was written since the last backup (a dirty flag set by the db
@@ -164,7 +177,7 @@ Files per version: `data/builds/<id>/v<n>/` (../contracts/conventions.md).
   Run get Cloud Run's own `413`; the hosted app with no agent stops at the recipe (`424
   agent_offline`), which is also the cut fallback (docs/program.md).
 - Oracle: tests/test_cloud_mode.py, tests/test_agent_server.py, tests/test_agent_client.py (plan
-  tasks 5.1-5.3); every earlier test passes with the code empty and `DSS_ENGINE_MODE=local`.
+  tasks 5.1-5.3), tests/test_google_signin.py (27.1, the verifier stubbed, no network); every earlier test passes with the code empty and `DSS_ENGINE_MODE=local`.
 
 ### Build consistency
 Final-audit corrections (2026-10-19):
@@ -2145,6 +2158,7 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-18 | Threads for engine subprocess and Playwright; no `--reload` | asyncio subprocess, async Playwright | Windows event loop limits | audit |
 | 2026-10-18 | One-page specs; `DSS_ALLOWED_TYPES` gate; no `events_fts` | multi-page; all types always | deadline; fallback if engine ops slip | audit |
 | 2026-10-18 | Thin slice task 1.3 first; context assembler and consolidation after the build path | memory first | critical path to integration | audit |
+| 2026-10-29 | Google sign-in at the gate (api.md 3.3): google-auth ID-token check, `DSS_SIGNIN_ALLOW`, signed 24 h cookie keyed by the code; code and agent token unchanged | IAP; any-account session without a list | user request (release 4.1 block); a domain lock later is one env change | change 2026-10-29 (program root) |
 | 2026-10-19 | Cloud mode in this part: static frontend, `$PORT`, access code, DB on local disk with a backup-API copy to `/data` | SQLite on gcsfuse; Firestore | one code path for local and Cloud Run; gcsfuse has no locking | change 2026-10-19 |
 | 2026-10-19 | Delta audit: backup every 30 s when dirty via /tmp, graceful shutdown <= 3 s, fail-closed start, separate agent token, settings lock, path guards, report_url host check, agent split 5.2/5.3, 5.1 right after 1.3 | backup only after builds; access code for the agent | restarts and redeploys lost unbuilt work; a code holder could steal jobs or swap the API key | change 2026-10-19 (audit) |
 | 2026-10-19 | `run.usage` emitted from the one place graph.py sums tokens; consolidate/eval runs (no build stream) emit none | a usage field on `run.finished` only | the UI shows tokens climbing during the run; one emit site | change 2026-10-19 |

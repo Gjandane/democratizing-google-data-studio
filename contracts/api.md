@@ -1,5 +1,5 @@
 # Contract: backend HTTP API (REST + SSE)
-Version 3.2 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
+Version 3.3 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
 (recipe ops with ids, stage rules, engine_busy, shared fixtures). 1.1 (2026-10-19) Cloud Run:
 Access (session endpoints, `access_required`), engine status `mode`/agent fields, Agent endpoints,
 errors `access_denied`, `login_on_agent`, `agent_offline`, `agent_timeout`; fixtures
@@ -59,6 +59,11 @@ reference-images/analysis`, `POST reference-images/analysis/approve`, errors
 repairs 1, bound [0,1]), native_planning thinking `medium`. Stored Settings keep their values.
 Fixtures: dashboard-intent/reference_set.json, new reference_set.pending.json, api/blueprint.json,
 api/blueprint.blocked.json, stage-settings/capabilities, settings and run_calls.
+3.3 (2026-10-29, change Google sign-in, user request): Access adds Google sign-in for the
+browser when `GOOGLE_OAUTH_CLIENT_ID` is set: `POST /api/session` also takes
+`{google_id_token}`, `Session` adds `google_client_id` and `user`, errors
+`403 signin_not_allowed` and `400 google_signin_off`; the code, its header and the agent token
+are unchanged. Fixtures: api/session.json, new api/session.google.json.
 Requirements and feasibility follow contracts/dashboard-intent.md 1.3.
 Provider: backend. Consumers: frontend, release. Base: `http://localhost:8000/api` (the frontend
 uses relative `/api`, proxied by Vite; contracts/conventions.md). JSON bodies, UTF-8. Errors use
@@ -103,7 +108,9 @@ Settings   = { stages: StageProfiles, fallback_model: string, review_briefs: boo
                google_api_key_set: boolean, notices: string[],
                issues: ValidationIssue[] /* stored values that fail validation now, e.g. a migrated
                unknown model id; the UI shows each on its field */ }   /* 3.0; types in Stage settings */
-Session    = { required: boolean /* DSS_ACCESS_CODE is set */, ok: boolean /* this request carries a valid code */ }
+Session    = { required: boolean /* DSS_ACCESS_CODE is set */, ok: boolean /* this request carries a valid code or session cookie */,
+               google_client_id: string|null /* 3.3: GOOGLE_OAUTH_CLIENT_ID when Google sign-in is on; else null */,
+               user: string|null /* 3.3: the email of a Google session cookie; null for the code or no session */ }
 EngineStatus = { mode: "local"|"agent", chrome_running: boolean, signed_in: boolean,
                agent_connected: boolean /* a heartbeat in the last 30 s; false in local mode */,
                agent_last_seen: string|null }
@@ -119,7 +126,25 @@ cookie (set by `POST /api/session`; HttpOnly, SameSite=Strict, Secure on https) 
 `EventSource` and the prototype iframe can't send headers; scripts use the header. The cookie is
 `Secure` whenever the request arrived over https (Cloud Run's `X-Forwarded-Proto`). A wrong code
 answers after a 1 s delay. When the code is empty, nothing is gated and `GET /api/session`
-returns `{required: false, ok: true}`. The Agent endpoints use their own token instead (below).
+returns `{required: false, ok: true, google_client_id: null, user: null}`. The Agent endpoints use
+their own token instead (below).
+
+Google sign-in (3.3). When `GOOGLE_OAUTH_CLIENT_ID` is set (it needs `DSS_ACCESS_CODE` set too),
+`GET /api/session` returns it as `google_client_id`, and the browser signs in with Google instead
+of typing the code: the frontend gets a Google ID token from Google Identity Services and sends
+`POST /api/session {google_id_token}`. The backend verifies the token's signature, `aud` (= the
+client id), `iss` and `exp` with google-auth, requires `email_verified`, then applies
+`DSS_SIGNIN_ALLOW` (contracts/conventions.md): empty or `*` admits any Google account; otherwise
+a comma list where `@example.com` matches a token whose `hd` claim is `example.com` (never an
+email suffix) and any other entry matches the email exactly, case-insensitive. Allowed ->
+`200 Session` (`user` = the email) with a `dss_session` cookie that carries the email and an
+expiry 24 h ahead, signed with an HMAC keyed by the code (changing the code still logs everyone
+out; an expired or tampered cookie is `401 access_required`). A valid token outside the list ->
+`403 signin_not_allowed` (`detail.email`); an invalid or expired token -> `401 access_denied`
+after the 1 s delay; Google sign-in off -> `400 google_signin_off`. The body holds exactly one
+of `code` and `google_id_token`. `{code}` and `X-DSS-Access-Code` keep working (scripts, e2e
+drivers, the owner); the browser gate shows only Google sign-in when `google_client_id` is set.
+The ID token is never stored or logged.
 Every `{name}`/`{file}` path parameter must match `^[A-Za-z0-9._-]+$` and resolve inside its
 folder; otherwise `400 invalid_name`.
 
@@ -128,7 +153,7 @@ folder; otherwise `400 invalid_name`.
 |---|---|---|
 | `GET /api/health` | — | `{status: "ok"}` (never gated; Cloud Run probes it) |
 | `GET /api/session` | — | `Session` |
-| `POST /api/session` | `{code: string}` | `200 Session` with `Set-Cookie: dss_session=...`; wrong code -> `401 access_denied` |
+| `POST /api/session` | `{code: string}` or (3.3) `{google_id_token: string}` | `200 Session` with `Set-Cookie: dss_session=...`; wrong code or invalid token -> `401 access_denied`; 3.3: `403 signin_not_allowed`, `400 google_signin_off` (Access) |
 | `GET /api/settings` | — | `Settings` |
 | `PUT /api/settings` | `SettingsUpdate` (Stage settings), plus `google_api_key?: string` (write-only) | `Settings`; any validation issue -> `422 invalid_settings` and nothing is saved. Agent mode (Cloud Run): `google_api_key` or a GCP field -> `403 settings_locked` |
 | `GET /api/settings/capabilities` | — | `SettingsCapabilities` (3.0) |
@@ -323,7 +348,8 @@ the current stage; `detail.stage`); `409 artifact_invalid` (confirm with open va
 `detail.reason`); `424 engine_not_signed_in`; `503 llm_unavailable` (no API key or the model
 call failed); `503 gcp_not_configured` (no `gcp_project_id`). The UI sends the user to Settings
 on both 503s. Cloud Run: `401 access_required` (the UI shows the access-code gate);
-`401 access_denied` (wrong code); `409 login_on_agent`; `424 agent_offline` (the UI shows how to
+`401 access_denied` (wrong code or Google token); 3.3: `403 signin_not_allowed` (the gate names
+the email and offers another Google account); `409 login_on_agent`; `424 agent_offline` (the UI shows how to
 start the build agent); `403 settings_locked` (Settings shows the field as fixed by the
 deployment); `413` from Cloud Run (an HTML page, not the JSON shape) on uploads over 32 MB: the UI
 checks file size first and maps any 413 to "Files over 32 MB can't be uploaded to the hosted app";

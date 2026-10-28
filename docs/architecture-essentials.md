@@ -43,14 +43,15 @@ docs/img/                README screenshots from 2.4/2.6, cropped (no email, ava
   `DSS_DATA_DIR=/data`, `DSS_DB_PATH=/tmp/dss.sqlite`, `DSS_ENGINE_MODE=agent`,
   `DSS_STATIC_DIR=/app/frontend/dist` (never `DSS_DEV`); secrets `GOOGLE_API_KEY`,
   `DSS_ACCESS_CODE`, `DSS_AGENT_TOKEN`; bucket `<project>-dss-state` at `/data`; runtime SA roles
-  per the contract; `--allow-unauthenticated` only with the access code; every deploy guards the
+  per the contract; `--allow-unauthenticated` only with the gate (Google sign-in, code for scripts; env
+  `GOOGLE_OAUTH_CLIENT_ID`, `DSS_SIGNIN_ALLOW`, plain); every deploy guards the
   project number and sets SA, port, ingress, env and secrets in full, then traffic to latest (4.1).
   Commands and checks refer to secrets as unexpanded `$VARS`, never literal values.
 - Diagrams: one HTML page per diagram on a 1840x800 canvas, white background, black text, Google
   accents (#4285F4, #EA4335, #FBBC04, #34A853), the vendored font, no network requests.
 - Numbers in README come only from deck/data/bench-*.json (e2e runs), with the run date.
 - Links, exactly: GitHub https://github.com/Gjandane/democratizing-google-data-studio ; hosted app
-  https://dss-frontend-872000338860.asia-southeast1.run.app (access code on request; builds need
+  https://dss-frontend-872000338860.asia-southeast1.run.app (Google sign-in; builds need
   the owner's `dss-agent` online).
 - README diagrams: deck/img d5 (node graph), d4 (harness, OKF not RAG), d8 (Google Cloud).
 - README claims a feature on a target only after its acceptance passed there (local 2.4-2.6, hosted 4.2-4.3).
@@ -67,8 +68,8 @@ docs/img/                README screenshots from 2.4/2.6, cropped (no email, ava
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
 | contracts/recipe.md | 1.3 | consumes (validates fixtures) | `uv run --project integration python integration/check_contracts.py` |
-| contracts/api.md | 3.1 | consumes (e2e, local and deployed) | `uv run --project integration python integration/e2e_flow1.py` |
-| contracts/conventions.md | 1.4 | consumes | `uv run --project integration python integration/check_contracts.py` (every env name is in .env.example) |
+| contracts/api.md | 3.3 | consumes (e2e, local and deployed) | `uv run --project integration python integration/e2e_flow1.py` |
+| contracts/conventions.md | 1.5 | consumes | `uv run --project integration python integration/check_contracts.py` (every env name is in .env.example) |
 | contracts/dashboard-intent.md | 1.1 | consumes | `uv run --project integration python integration/check_contracts.py`; tasks 2.5 and 4.3 end-to-end |
 | contracts/synthetic-data.md | 1.1 | consumes | release 2.5, 2.6 and 4.3 |
 

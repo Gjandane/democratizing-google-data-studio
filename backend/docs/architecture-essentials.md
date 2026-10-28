@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:cfd0631a632b (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:2c7bbe25d4a6 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 docs/architecture.md wins.
 
@@ -90,31 +90,32 @@ tests/          offline fakes; tests/live/ marked live
 ## Contracts
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
-| ../contracts/api.md | 3.2 | provides | `uv run pytest tests/test_api_contract.py` |
+| ../contracts/api.md | 3.3 | provides | `uv run pytest tests/test_api_contract.py` |
 | ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.3 | provides recipes; consumes events | `uv run pytest tests/test_recipe_contract.py` |
-| ../contracts/conventions.md | 1.4 | consumes | manual: env names, ports, paths and IDs match |
+| ../contracts/conventions.md | 1.5 | consumes | manual: env names, ports, paths and IDs match |
 | ../contracts/dashboard-intent.md | 1.3 | provides | `uv run pytest tests/test_api_contract.py tests/test_feasibility.py` |
 | ../contracts/synthetic-data.md | 1.3 | provides | `uv run pytest tests -k synthetic` |
 
 ## Dependencies
 | Package | Registry | Version | Why | Verified |
 | --- | --- | --- | --- | --- |
-| fastapi | pypi | >=0.115 | API | 2026-10-22 (0.159.1) |
-| uvicorn | pypi | >=0.30 | ASGI server | 2026-10-22 (0.54.0) |
-| sse-starlette | pypi | >=2.1 | SSE stream | 2026-10-22 (3.5.0) |
-| python-multipart | pypi | >=0.0.9 | uploads | 2026-10-22 (0.0.32) |
-| google-adk | pypi | >=2.0 | Workflow, agents, tools | 2026-10-22 (2.12.0) |
-| google-genai | pypi | >=1.0 | Gemini client, token counts | 2026-10-22 (2.32.0) |
-| google-cloud-bigquery | pypi | >=3.25 | loads, views, queries | 2026-10-22 (3.46.2) |
-| python-dotenv | pypi | >=1.0 | ../.env | 2026-10-22 (1.2.4) |
-| pydantic | pypi | >=2.8 | spec and API models | 2026-10-22 (2.14.1) |
-| pyyaml | pypi | >=6.0 | OKF frontmatter | 2026-10-22 (6.0.3) |
-| jsonschema | pypi | >=4.23 | recipe contract | 2026-10-22 (4.26.0) |
-| playwright | pypi | >=1.48 | screenshots | 2026-10-22 (1.64.0) |
-| jsonpatch | pypi | >=1.33 | RFC 6902 spec patches | 2026-10-22 (1.36) |
-| httpx | pypi | >=0.27 | TestClient; dss-agent client | 2026-10-22 (0.28.1) |
-| pytest | pypi | >=8.0 | tests | 2026-10-22 (9.1.1) |
-| pytest-asyncio | pypi | >=0.23 | async tests | 2026-10-22 (1.4.0) |
-| setuptools | pypi | * | build backend (user-approved, 1.1) | 2026-10-22 (84.2.1) |
-| lucide-static | npm | * | icons in render/icons/ (ISC) | 2026-10-22 (1.61.0) |
+| fastapi | pypi | >=0.115 | API | 2026-10-29 (0.162.0) |
+| uvicorn | pypi | >=0.30 | ASGI server | 2026-10-29 (0.54.0) |
+| sse-starlette | pypi | >=2.1 | SSE stream | 2026-10-29 (3.6.0) |
+| python-multipart | pypi | >=0.0.9 | uploads | 2026-10-29 (0.0.32) |
+| google-adk | pypi | >=2.0 | Workflow, agents, tools | 2026-10-29 (2.13.0) |
+| google-genai | pypi | >=1.0 | Gemini client, token counts | 2026-10-29 (2.33.0) |
+| google-cloud-bigquery | pypi | >=3.25 | loads, views, queries | 2026-10-29 (3.46.2) |
+| python-dotenv | pypi | >=1.0 | ../.env | 2026-10-29 (1.2.4) |
+| pydantic | pypi | >=2.8 | spec and API models | 2026-10-29 (2.14.1) |
+| pyyaml | pypi | >=6.0 | OKF frontmatter | 2026-10-29 (6.0.3) |
+| jsonschema | pypi | >=4.23 | recipe contract | 2026-10-29 (4.26.0) |
+| playwright | pypi | >=1.48 | screenshots | 2026-10-29 (1.64.1) |
+| jsonpatch | pypi | >=1.33 | RFC 6902 spec patches | 2026-10-29 (1.38) |
+| httpx | pypi | >=0.27 | TestClient; dss-agent client | 2026-10-29 (0.28.1) |
+| google-auth | pypi | >=2.30 | Google ID-token check for sign-in (27.1; already a transitive dependency) | 2026-10-29 (2.62.0) |
+| pytest | pypi | >=8.0 | tests | 2026-10-29 (9.2.0) |
+| pytest-asyncio | pypi | >=0.23 | async tests | 2026-10-29 (1.4.1) |
+| setuptools | pypi | * | build backend (user-approved, 1.1) | 2026-10-29 (84.2.1) |
+| lucide-static | npm | * | icons in render/icons/ (ISC) | 2026-10-29 (1.63.0) |
 | Natural Earth 110m | data | 5.1.2 | art source (PD) | 2026-10-24 (5.1.2) |

@@ -327,3 +327,14 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: the live API differs from the 3.2/1.3 fixtures -> block naming the route and field; never loosen a guard.
   - Done when: `npm test` and `npm run typecheck` pass; manual (live, backend on 8000 with `DSS_ENGINE_DRY_RUN=1`): new build, recreate reference with samples/ or another non-third-party dashboard image, see the pending analysis, switch one item to Static and one type, add a note, Approve; Confirm design is refused before approval and works after; Blueprint shows "Recreates" on the item rows; Edit split after approval shows the stale warning; a style reference shows no review. screenshots/17.3-{analysis,blueprint}-1280.png. Report the real run in the progress entry.
   - Review focus: real API conformance; no third-party screenshot committed.
+
+## Phase 18: Google sign-in gate (change 2026-10-29)
+- [ ] 18.1 Google sign-in on the access gate
+  - Goal: per ../contracts/api.md 3.3, when `Session.google_client_id` is set the gate shows only a "Sign in with Google" button (Google Identity Services, loaded on the gate only) and posts the credential as `{google_id_token}`; with it null the code form stays as it is; the header shows the signed-in email (`user`).
+  - Files: src/api/types.ts, src/api/client.ts, src/mocks/*.ts, src/features/access/*, src/App.tsx, src/gis.d.ts (new), tests/contract.test.ts, tests/access.test.tsx, screenshots/
+  - Depends on: 17.3
+  - Size: M
+  - If: the GIS script fails to load -> the gate says "Google sign-in couldn't load. Check your connection and retry." with Retry; never fall back to the code field.
+  - If: the header lives outside App.tsx -> edit that component and say so.
+  - Done when: `npm test` and `npm run typecheck` pass with tests (failing before) using a stubbed `window.google.accounts.id`: contract guards accept ../contracts/fixtures/api/session.json and session.google.json exactly and reject a Session without `user`; with `google_client_id` set the gate initializes GIS with that client id, renders the button, shows no code field, posts `{google_id_token}` from the callback once and then loads History; `403 signin_not_allowed` shows "<email> isn't allowed here. Sign in with another Google account." with the button again; `401 access_denied` shows "Sign-in failed. Try again."; a script load error shows the Retry message; with `google_client_id` null the code gate behaves as before (existing access tests unchanged); the header shows `user` when set; nothing is written to localStorage or sessionStorage. The mock serves session.google.json when `VITE_MOCK_GOOGLE=1`. Manual at 1280x800 (mock): screenshots/18.1-{google,not-allowed,code}-1280.png checked against the UI design section; keyboard reaches the button.
+  - Review focus: one gate component; GIS loaded only on the gate; no token retained; code path unchanged.

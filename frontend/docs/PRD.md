@@ -42,7 +42,8 @@ view of the dashboard being built.
   stage, call, run and build (api.md 3.0).
 
 ## Non-goals
-- No auth or accounts (POC, one user): only the shared access code of ../contracts/api.md#Access.
+- No accounts or per-user data (POC): only the gate of ../contracts/api.md#Access (Google sign-in
+  when the backend offers it, else the shared access code; change 2026-10-29).
 - No mobile layout: desktop only, 1280 px wide and up.
 - No rendering of charts in the frontend: the backend renders the prototype HTML.
 - No direct calls to Gemini, BigQuery or the engine: only the backend API.

@@ -22,7 +22,7 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
 - Read docs/implementation-notes.md for API/auth, mocks, iframe geometry, activity, stage
   settings, brief review lock and test rules.
 - Relative /api; Vite proxy locally, backend static hosting on Cloud Run. Gate access with the
-  cookie; never retain the code. Agent mode uses the agent panel instead of local sign-in.
+  cookie; never retain the code or a Google token (Google sign-in when offered, 3.3). Agent mode uses the agent panel instead of local sign-in.
 - Exact runtime contract guards; mocks import shared fixtures. One EventSource per build;
   reconnect refetches state. Build/SSE guards stay exact in API 2.0 (stages, artifacts, notes, artifact.updated).
 - Backend prototype iframe and pin overlay share one scaled 1200px canvas; no injected scripts.
@@ -65,8 +65,8 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
 ## Contracts
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
-| ../contracts/api.md | 3.2 | consumes | `npm test -- contract` (fixtures/api/ and, from 16.1, fixtures/stage-settings/) |
-| ../contracts/conventions.md | 1.4 | consumes | manual: port 5173, `/api` proxy to 8000 |
+| ../contracts/api.md | 3.3 | consumes | `npm test -- contract` (fixtures/api/ and, from 16.1, fixtures/stage-settings/) |
+| ../contracts/conventions.md | 1.5 | consumes | manual: port 5173, `/api` proxy to 8000 |
 | ../contracts/dashboard-intent.md | 1.3 | consumes | `npm test -- contract` |
 | ../contracts/synthetic-data.md | 1.3 | consumes | `npm test -- synthetic` |
 
@@ -89,3 +89,4 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
 | @testing-library/dom | npm | ^10.4.0 | peer of @testing-library/react | 2026-10-20 (10.4.2) |
 | @types/react | npm | ^19.0.0 | strict typecheck | 2026-10-20 (19.3.0) |
 | @types/react-dom | npm | ^19.0.0 | strict typecheck | 2026-10-20 (19.3.0) |
+| Google Identity Services | script | https://accounts.google.com/gsi/client | Google sign-in button on the gate (18.1); not an npm package | 2026-10-29 (user card: Google sign-in) |

@@ -5,6 +5,11 @@
   Cloud Run the backend serves `dist/` (same origin).
 - Gate when `GET /api/session` is `required && !ok` or on `401 access_required`; it posts
   `POST /api/session`; the cookie does the rest. Never store the code.
+- Google sign-in (api.md 3.3, task 18.1): when `Session.google_client_id` is set, the gate loads
+  https://accounts.google.com/gsi/client (only on the gate), calls
+  `google.accounts.id.initialize({client_id, callback})` and `renderButton`, and posts the
+  callback's `credential` as `{google_id_token}`; no code field then. Type the small GIS surface
+  you use in a local .d.ts; tests stub `window.google`. Never store the token.
 - Agent mode: Build shows an agent panel instead of sign-in (`agent_connected`, copyable
   `dss-agent` command with `--server <origin>`); Build off while offline.
 - `VITE_MOCK=1` swaps `client.ts` for `src/mocks/` (same function signatures). Mocks import

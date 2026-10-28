@@ -1,4 +1,6 @@
 {
   "required": true,
-  "ok": true
+  "ok": true,
+  "google_client_id": null,
+  "user": null
 }
