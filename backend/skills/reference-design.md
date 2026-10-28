@@ -22,7 +22,7 @@ Short sentences; no adjectives without a value.
 
 ## Map the reference to the approved slots
 - Each approved component takes the place of the reference element it was approved for: the
-  bindings name the observation (its kind, type and title) or the requirement. Put its slot in
+  reference items name the element (its id, kind, type and label) or the requirement. Put its slot in
   that element's region with that element's proportions.
 - A substitution (an accepted alternative) takes the replaced element's place in the native type
   the decision names. A dropped element and any element with no approved component get no slot:

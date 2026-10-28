@@ -137,15 +137,6 @@ def fallback_label(component):
     return text[:1].upper() + text[1:]
 
 
-def observations(db, build_id, folder):
-    """The recreate observations the rows must fulfil (architecture.md#Blueprint observation coverage),
-    as (meaning, label-free meaning) pairs. Reconciled meaning only; style and data builds have none."""
-    snapshot = req.inputs(db, build_id, folder)
-    found = req.blueprint_observations(snapshot, req.load(folder), Checker(load_registry()))
-    kpis = snapshot.get('confirmed_kpis')
-    return [(req.observation_meaning(*o, kpis=kpis), req.observation_meaning(*o, labels=False, kpis=kpis)) for o in found]
-
-
 def reference_section(folder, snapshot):
     """(compact reference section, ordered image parts) for a recreate set with an approved analysis
     (architecture.md#Reference analysis and approval gate), else (None, []). Every approved item is listed
@@ -186,11 +177,6 @@ async def persist(harness, build, folder, run_id, draft, fingerprints, errors, c
         snapshot['native_dates'] = native_dates
     else:
         snapshot.pop('native_dates', None)
-    # The one SQL repair can make a planner row fulfil what a code-added row did: drop it before the
-    # assessment, so the saved Blueprint is the one assessed (architecture.md#Recreate observation completion).
-    if drop := feasibility.surplus(snapshot, ledger, checker, draft.rows, draft.derived_fields):
-        draft.rows = [r for i, r in enumerate(draft.rows) if i not in drop]
-        snapshot['blueprint'] = draft.model_dump()
     assessment = req.evaluate(snapshot, ledger, checker, check_components=False)
     draft = feasibility.mark(snapshot, ledger, checker, assessment)
     targets = [folder / 'requirements.json', inputs_path(folder), *[folder / 'docs' / name for name in
@@ -252,7 +238,6 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
     kept = [r for r in old.rows if r.question_id in kept_ids or (kept_ids and r.question_id is None)] if old else []
     metadata, summary = source_metadata(connected), catalog_summary()
     facts = join_facts(metadata)
-    observed = observations(harness.db, build_id, folder)
     snapshot_now = req.inputs(harness.db, build_id, folder)
     reference, image_parts = reference_section(folder, snapshot_now)
     items = {i['id']: i for i in reference['items']} if reference else {}
@@ -289,10 +274,8 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
             ids = repair_ids()
             request_questions = {qid: selected[qid] for qid in ids if qid in selected}
             indices = {i for e in state['errors'] if e['repairable'] for i in e['indices'] + e.get('repair_indices', [])}
-            # A page-targeted observation error (feasibility.observation_errors) replaces its page's question rows: show them.
-            targeted = {qid for e in state['errors'] if e['repairable'] for qid in e.get('repair_qids', [])}
             repair = {'kind': 'rows', 'errors': state['errors'],
-                      'rows': [r.model_dump() for i, r in enumerate(state['rows']) if i in indices or r.question_id in targeted]}
+                      'rows': [r.model_dump() for i, r in enumerate(state['rows']) if i in indices]}
             schema = RowRepair
         elif phase == 'sql_repair':
             request_questions = {}
@@ -300,7 +283,7 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                       'view': state['view'].model_dump()}
             schema = ViewDraft
         memory = blueprint_context(context, metadata, list(request_questions.values()), pages, summary, facts,
-            previous_view=state['view'].model_dump(), repair=repair, observations=observed, reference=reference)
+            previous_view=state['view'].model_dump(), repair=repair, reference=reference)
         check_reply(memory, secrets)
         llm_request.config.system_instruction = str(memory)
         llm_request.config.response_mime_type = 'application/json'
@@ -367,8 +350,6 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                     dirty = []
                 snapshot, ledger, checker = drafted_inputs()
                 state['errors'] = feasibility.diagnostics(snapshot, ledger, checker)
-                if state['row_repaired'] or not (dirty or any(e['repairable'] for e in state['errors'])):
-                    complete_rows(snapshot, ledger, checker)
                 if dirty:
                     state['errors'].append(dict(code='label', indices=dirty, qids=[], status='needs_clarification',
                         message='Component label must be one short line without list or quote syntax',
@@ -410,22 +391,9 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         state['rows'] = bp.rows
         state['view'] = ViewDraft(view_sources=bp.view_sources, derived_fields=bp.derived_fields)
 
-    def complete_rows(snapshot, ledger, checker):
-        # architecture.md#Recreate observation completion: after the one row repair, code adds the
-        # rows observations still lack and drops code-added ones nothing needs. No model call.
-        drafted = Blueprint.model_validate(snapshot['blueprint'])
-        rows, derived, added = feasibility.complete(snapshot, ledger, checker, drafted, connected, context)
-        if rows != drafted.rows or derived != drafted.derived_fields:
-            state['rows'] = rows
-            state['view'] = ViewDraft(view_sources=drafted.view_sources, derived_fields=derived)
-            snapshot['blueprint'] = drafted.model_copy(update={'rows': rows, 'derived_fields': derived}).model_dump()
-            state['errors'] = feasibility.diagnostics(snapshot, ledger, checker)
-        if added:
-            trace.spans[-1]['observation_rows'] = [r.note for r in added]
-
     def repair_ids():
         return {qid for e in state['errors'] if e['repairable']
-                for qid in (e['qids'] + e.get('repair_qids', []) + [state['rows'][i].question_id
+                for qid in (e['qids'] + [state['rows'][i].question_id
                                                                      for i in e['indices'] + e.get('repair_indices', [])])
                 if qid is not None}
 
@@ -443,9 +411,6 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                 # recomputed against this repaired expression and current proof.
                 state['rows'] = list(state.get('row_rows', state['rows']))
                 canonicalize()
-                # Completion on the drafted view could build no fields when that view was invalid (live
-                # 24.8 run 20261025-214425): complete again on the repaired one, so its buckets are dry-run.
-                complete_rows(*drafted_inputs())
             sql = view.blueprint_sql(connected, state['view'].view_sources, state['view'].derived_fields,
                                      context_fields=[f.name for f in context.derived_fields])
             service = payload['factory'](config)

@@ -151,8 +151,6 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         candidate.verification = req.verification(snapshot, candidate, checker)
         assessment = req.evaluate(snapshot, candidate, checker, check_components=not payload.get('_intent_only'))
         state['assessment'] = assessment
-        if unused := req.unused_definitions(snapshot, candidate):
-            trace.spans[-1]['unused_definitions'] = unused  # evidence only, never an issue (24.7)
         # An unchanged plan preflight is read-only. The successful candidate
         # publishes its refreshed proof with its spec; failed plans keep the bundle.
         if payload.get('_defer_assessment') and not pending and assessment.state == 'ready':

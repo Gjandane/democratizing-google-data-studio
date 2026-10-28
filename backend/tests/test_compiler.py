@@ -290,30 +290,6 @@ def test_bucket_compile_is_a_pure_function_of_the_spec():
     assert compile_recipe(DashboardSpec.model_validate_json(before), 3) == compile_recipe(spec, 3)
 
 
-def test_decided_monthly_gap_publishes_a_monthly_time_series(blueprint_api, monkeypatch):
-    """22.1's release gap (b_48ef72ff1bff), decided with its date-bucket alternative, publishes a recipe
-    whose monthly time series carries date_granularity month (FakeLLM, FakeBigQuery, staged API)."""
-    from dss.spec.models import DashboardSpec
-    from test_blueprint import choose, confirm
-    from test_render import GAP_FIXES, accept, gap_build, gap_issues
-    build = gap_build(blueprint_api, monkeypatch, 'monthly')
-    confirm(build.client, build.app, build.bid)
-    for oid, fix in GAP_FIXES['monthly'].items():
-        current = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
-        assert choose(build.client, build.bid, current, gap_issues(current, build)[oid], fix).status_code == 200
-    accept(build)
-    spec = DashboardSpec.model_validate_json((build.folder / 'spec.json').read_text(encoding='utf-8'))
-    assert {f.name: f.date_granularity for f in spec.datasource.fields if f.date_granularity} == {'order_date_month': 'month'}
-    recipe = build.client.post(f'/api/builds/{build.bid}/recipe')
-    assert recipe.status_code == 200, recipe.text
-    ops = lines((build.folder / 'recipe.jsonl').read_text(encoding='utf-8'))[1:]
-    series = [o for o in ops if o['op'] == 'add_chart' and o['chart_type'] == 'time_series']
-    # The release build's other trend stays on the raw order_date: no grain.
-    assert sorted((o['title'], o['date_dimension'], o['options'].get('date_granularity')) for o in series) == [
-        ('Revenue Trend Over Time', 'order_date', None), ('Revenue by month (USD)', 'order_date_month', 'month')]  # 24.10: unit
-    assert not any('date_granularity' in o['options'] for o in ops if o['op'] == 'add_chart' and o['chart_type'] != 'time_series')
-
-
 def test_release_26_yearly_date_column_draws_one_point_per_year():
     """24.2: release 2.6 b_697880743b4f (spec/recipe copies, project renamed) drew s008/s010 on its `year`
     DATE (every value YYYY-01-01) as a daily axis: the model's `date_granularity: year` was rightly dropped
@@ -413,10 +389,10 @@ def test_area_on_a_bucket_gets_the_time_series_grain(grain):
 
 def test_blueprint_rows_use_recipe_13_types(monkeypatch):
     """The planner sees the new types; a Blueprint row has no field slot, so a fixed-size list's one
-    dimension becomes its field (like a dropdown's) in feasibility, layout and publish coverage ops."""
+    dimension becomes its field (like a dropdown's) in feasibility and layout."""
     from dss.artifacts.models import BlueprintRow
     from dss.harness.nodes.blueprint import catalog_summary
-    from dss.spec import feasibility, requirements as req
+    from dss.spec import feasibility
     from dss.spec.capabilities import Checker, load_registry
     from dss.spec.models import TYPES
     monkeypatch.setenv('DSS_ALLOWED_TYPES', ','.join(TYPES))
@@ -440,11 +416,11 @@ def test_blueprint_rows_use_recipe_13_types(monkeypatch):
         ('needs_data', 'A fixed_size_list needs one dimension field', [])]
     assert feasibility.component_errors(row(type='area', metrics=metrics).component, fields, checker) == [
         ('needs_data', 'A date dimension is required', [])]
-    laid = feasibility.laid_out(rows)
+    from dss.spec.auto_layout import _component
+    from dss.spec.models import Cell
+    laid = [_component('', r, Cell(col=1, row=1, w=1, h=1), set()) for r in rows]
     assert (laid[0]['field'], laid[0]['dimensions']) == ('region', [])
-    assert {'op': 'add_control', 'component_id': 'row_0', 'control_type': 'fixed_size_list', 'field': 'region'} in req._row_ops(laid[0], ['#123456'])
-    area = next(o for o in req._row_ops(laid[1], ['#123456']) if o['op'] == 'add_chart')
-    assert (area['chart_type'], area['date_dimension'], area['options']) == ('area', 'sale_date', {'stacked_percent': True})
+    assert (laid[1]['type'], laid[1]['date_dimension'], laid[1]['options']) == ('area', 'sale_date', {'stacked_percent': True})
 
 
 # sha256 of compile_recipe for specs without recipe 1.3 types, recorded with the pre-24.1 compiler.

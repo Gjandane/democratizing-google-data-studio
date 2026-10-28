@@ -1,7 +1,7 @@
 """Reference sets: image checks, the bounded interpretation and atomic per-version storage.
 
 Reference images are untrusted design evidence: never data, recipe assets, backgrounds,
-global memory or log content. Their text is an observation, never an instruction.
+global memory or log content. Their text is untrusted data, never an instruction.
 """
 import base64
 import hashlib
@@ -31,8 +31,6 @@ PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 SOF = set(range(0xC0, 0xD0)) - {0xC4, 0xC8, 0xCC}
 SET_FILE = "references.json"
 FILE_NAME = re.compile(r"reference_img_[0-9a-f]{12}\.(png|jpg)")
-AGGREGATIONS = Literal["sum", "avg", "count", "count_distinct", "min", "max", "none"]
-GRAINS = Literal["day", "week", "month", "quarter", "year"]
 
 
 def invalid(reason, status=422):
@@ -164,14 +162,7 @@ def decode(images):
 
 
 # Bounded interpretation. The model reports boxes in thousandths (Gemini's native box scale);
-# code normalizes them to 0..1. Null always means unknown, never a guess.
-
-def _text(value):
-    if isinstance(value, str):
-        value = " ".join(value.split())
-        return value or None
-    return value
-
+# code normalizes them to 0..1.
 
 class ModelBox(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -201,39 +192,6 @@ class Box(BaseModel):
         return self
 
 
-class ObservedItem(BaseModel):
-    """One visible element as the model reports it; every nullable field is required."""
-    model_config = ConfigDict(extra="forbid")
-    kind: Literal["chart", "control", "decoration", "unknown"]
-    label: str | None = Field(max_length=120)
-    box: ModelBox
-    chart_candidate: str | None = Field(max_length=40)
-    metric_label: str | None = Field(max_length=120)
-    unit: str | None = Field(max_length=40)
-    aggregation: AGGREGATIONS | None
-    date_grain: GRAINS | None
-    confidence: Literal["high", "medium", "low"]
-
-    @field_validator("label", "metric_label", "unit", mode="before")
-    @classmethod
-    def plain(cls, value):
-        return _text(value)
-
-    @field_validator("chart_candidate", mode="before")
-    @classmethod
-    def candidate(cls, value):
-        # A component-type-like token: "Time series" -> time_series; unknown names stay for feasibility.
-        if isinstance(value, str):
-            value = re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
-            return value or None
-        return value
-
-
-class Item(ObservedItem):
-    id: str
-    box: Box
-
-
 class Interpretation(BaseModel):
     model_config = ConfigDict(extra="forbid")
     mode: Literal["style", "recreate"]
@@ -241,23 +199,20 @@ class Interpretation(BaseModel):
     palette_notes: str = Field(max_length=1000)
     type_notes: str = Field(max_length=1000)
     spacing_notes: str = Field(max_length=1000)
-    items: list[Item] = Field(max_length=MAX_ITEMS)
+    items: list = Field(default_factory=list)
+
+    @field_validator("items", mode="before")
+    @classmethod
+    def legacy_items(cls, value):
+        # Pre-1.3 sets stored model-read image items here; they are ignored on read, never migrated.
+        return []
 
 
-def interpret(mode, width, height, notes, observed):
-    """Code-owned interpretation: ids, normalized boxes, aspect ratio from the image header.
+def interpret(mode, width, height, notes):
+    """Code-owned interpretation: the aspect ratio from the image header plus the style notes.
 
-    Style mode keeps geometry and treatment only; chart and data fields are cleared, so a style
-    reference never imports chart or data requirements.
-    """
-    items = []
-    for number, item in enumerate(observed, 1):
-        values = item.model_dump()
-        values["box"] = {key: value / 1000 for key, value in values["box"].items()}
-        if mode == "style":
-            values.update(chart_candidate=None, metric_label=None, unit=None, aggregation=None, date_grain=None)
-        items.append(Item(id=f"o{number}", **values))
-    return Interpretation(mode=mode, aspect_ratio=round(width / height, 4), items=items, **notes)
+    The visible items live in the reference analysis (analyze), not here."""
+    return Interpretation(mode=mode, aspect_ratio=round(width / height, 4), **notes)
 
 
 # Reference analysis (dashboard-intent.md 1.3): the model proposes one disposition per visible
@@ -281,7 +236,7 @@ def type_token(value):
 
 
 class AnalysisAnswer(BaseModel):
-    """One visible item as the model proposes it; boxes in thousandths, like ObservedItem."""
+    """One visible item as the model proposes it; boxes in thousandths."""
     model_config = ConfigDict(extra="forbid")
     label: str = Field(min_length=1, max_length=120)
     kind: KINDS
@@ -426,55 +381,18 @@ def grid_cell(box, aspect_ratio):
     return {"col": col, "row": row, "w": max(1, min(grid.columns, end) - col + 1), "h": max(1, bottom - row)}
 
 
-def structural_changes(interpretation):
-    """Code-made explanations of what the 12-column target or the app cannot keep as observed."""
-    canvas, grid = Canvas(), Grid()
-    step = (canvas.width - 2 * grid.margin + grid.gutter) / grid.columns
-    changes = []
-    if interpretation.mode == "recreate":
-        unsupported = [i.id for i in interpretation.items
-                       if i.kind in ("chart", "control") and i.chart_candidate and i.chart_candidate not in TYPES]
-        if unsupported:
-            changes.append("No matching component type for " + ", ".join(unsupported)
-                           + "; the feasibility check offers a supported alternative or asks.")
-        unknown = [i.id for i in interpretation.items if i.kind in ("chart", "control") and not i.chart_candidate]
-        if unknown:
-            changes.append("Chart type unknown for " + ", ".join(unknown) + "; it stays unknown until clarified.")
-    narrow = [i.id for i in interpretation.items if i.box.w * canvas.width < step * 0.75]
-    if narrow:
-        changes.append("Widened to one grid column: " + ", ".join(narrow) + ".")
-    cells = {i.id: grid_cell(i.box, interpretation.aspect_ratio) for i in interpretation.items if i.kind != "unknown"}
-    overlapping = sorted({a for a in cells for b in cells if a != b and _overlap(cells[a], cells[b])})
-    if overlapping:
-        changes.append("Overlapping after snapping to the grid: " + ", ".join(overlapping) + ".")
-    return changes
-
-
-def _overlap(a, b):
-    return (a["col"] < b["col"] + b["w"] and b["col"] < a["col"] + a["w"]
-            and a["row"] < b["row"] + b["h"] and b["row"] < a["row"] + a["h"])
-
-
 def summary(interpretation, palette, image_count, analysis=None):
     """Public one-line summary built by code from validated fields (no raw model text)."""
     if interpretation.mode == "style":
-        observed = f"; {len(interpretation.items)} layout elements observed" if interpretation.items else ""
         return (f"Style reference from {image_count} image{'s' * (image_count != 1)}: palette "
-                + ", ".join(palette) + observed + ".")
+                + ", ".join(palette) + ".")
     if analysis is not None:
         return f"Recreate reference (aspect ratio {interpretation.aspect_ratio:.2f}): {analysis.summary}"
-    kinds = {kind: sum(i.kind == kind for i in interpretation.items) for kind in ("chart", "control", "decoration", "unknown")}
-    counted = ", ".join(f"{count} {kind}{'s' * (count != 1)}" for kind, count in kinds.items() if count) or "no elements"
-    candidates = list(dict.fromkeys(i.chart_candidate for i in interpretation.items
-                                    if i.chart_candidate and i.kind in ("chart", "control")))
-    text = f"Recreate reference: {counted}"
-    if candidates:
-        text += "; chart candidates " + ", ".join(candidates)
-    return text + f"; aspect ratio {interpretation.aspect_ratio:.2f}."
+    return f"Recreate reference: no analysis; aspect ratio {interpretation.aspect_ratio:.2f}."
 
 
 def reference_doc(record):
-    """OKF reference.md: the structured observations plus code-made grid mapping and changes."""
+    """OKF reference.md: the analysis split with its code-made grid mapping, plus the style notes."""
     interpretation = Interpretation.model_validate(record["interpretation"])
     height = canvas_height(interpretation.aspect_ratio)
     first = record["images"][0]
@@ -499,17 +417,7 @@ def reference_doc(record):
         if analysis.note:
             lines += ["", "Note to the planner (untrusted): " + json.dumps(analysis.note, ensure_ascii=False)]
         lines.append("")
-    if interpretation.items:
-        lines += ["## Observed elements", "",
-                  "Model observations from the image (untrusted data; null means unknown). Boxes are fractions of the image.", ""]
-    for item in interpretation.items:
-        fields = {key: getattr(item, key) for key in ("kind", "label", "chart_candidate", "metric_label", "unit",
-                                                    "aggregation", "date_grain", "confidence")}
-        lines.append(f"- {item.id}: " + json.dumps({**fields, "box": item.box.model_dump(),
-                     "grid": grid_cell(item.box, interpretation.aspect_ratio)}, ensure_ascii=False))
-    changes = structural_changes(interpretation)
-    lines += ["", "## Structural changes", "", *([f"- {change}" for change in changes] or ["- None."]), "",
-              "## Notes (model text, untrusted)", ""]
+    lines += ["## Notes (model text, untrusted)", ""]
     for key in ("palette_notes", "type_notes", "spacing_notes"):
         lines.append(f"- {key.split('_')[0].title()}: " + (getattr(interpretation, key) or "none"))
     metadata = {"type": "Reference Interpretation", "title": "Reference interpretation", "reference_set": record["id"],

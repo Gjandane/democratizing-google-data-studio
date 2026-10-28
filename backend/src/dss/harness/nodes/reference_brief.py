@@ -1,8 +1,8 @@
 """Reference brief node: the planner looks at the reference and writes one page's visual brief.
 
 architecture.md#Reference design brief. Code builds the approved-component report from the
-checked candidate and its feasibility ledger (slots, bindings, decisions; never rows or
-observation boxes); the planner sees it with the reference images, instructions and notes and
+checked candidate and its feasibility ledger (slots, bindings, decisions, approved items;
+never rows); the planner sees it with the reference images, instructions and notes and
 returns a brief with one treatment per slot, repaired under the html_brief profile.
 Missing images, stale reports and invalid or unsafe
 briefs refuse the HTML stage. Overflow, cutoff and the page deadline are hard stops. The brief is ephemeral
@@ -55,7 +55,7 @@ class Reference(NamedTuple):
     instructions: str
     images: tuple  # ((MIME type, bytes), ...) in reference order
     described: tuple  # ({image, mime_type, width, height}, ...) in the same order
-    notes: dict  # the summary and the palette, type and spacing notes; no observation items
+    notes: dict  # the summary and the palette, type and spacing notes; no analysis items
 
 
 def damaged():
@@ -104,17 +104,14 @@ def report(snapshot, ledger, checker):
     laid-out spec; revise: the checked candidate), built by code from the real ledger, not from the
     open issues (a ready assessment has none). Each page's report: the saved assessment's id and
     state; its components (id, type, label, field, aggregation, grain and option metadata) with the
-    requirements and recreate observations publish coverage binds to them; and every current
+    requirements publish coverage binds to them; and every current
     explicit decision (accepted substitutions and drops). No rows, boxes or images. Pure."""
     from dss.spec import feasibility
     spec, assessment = snapshot['spec'], ledger.assessment
     identity = {'id': assessment.id, 'state': assessment.state} if assessment else {'id': None, 'state': 'unchecked'}
     requirements = {r.id: r for r in req.active_requirements(snapshot, ledger)}
-    observed = {r.id: (needs, properties) for r, needs, properties in req.blueprint_observations(snapshot, ledger, checker)}
 
     def about(r):
-        if r.source.kind == 'image':
-            return {'observation': req.observation_meaning(r, *observed.get(r.id, (r.needs, r.properties)))}
         return {'source': r.source.kind, 'text': r.text}
 
     bindings = {}

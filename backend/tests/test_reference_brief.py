@@ -26,7 +26,7 @@ from test_blueprint import blueprint_api  # noqa: F401  (fixture)
 from test_context_node import context_api  # noqa: F401  (fixture)
 from test_designer import DesignerLLM, Trace
 from test_references import png
-from test_render import GAP_FIXES, accept, gap_build, gap_issues, three_pages
+from test_render import accept, three_pages
 
 PNG, JPG = png(), (Path(__file__).parent / 'data/reference.jpg').read_bytes()
 PAGE = 'This page (one slot per approved component):'
@@ -155,7 +155,7 @@ async def test_live_comparison_observer_preserves_results_and_nullable_usage(mon
 
 def reference_set(folder, mode='style', count=2):
     """A retained reference set as reference_extract commits it: `count` images (a PNG, then JPEGs)
-    and one observation whose label and box must never reach a brief. Returns (MIME, bytes) in order."""
+    with no image items. Returns (MIME, bytes) in order."""
     folder.mkdir(parents=True, exist_ok=True)
     images = []
     for n in range(count):
@@ -163,11 +163,8 @@ def reference_set(folder, mode='style', count=2):
         images.append({'id': f'img_{n}', 'name': f'shot-{n}.{ext}', 'file': f'reference_img_{n + 1:012x}.{ext}',
                        'mime_type': mime, 'width': 2048, 'height': 1191, 'content': data})
         (folder / images[-1]['file']).write_bytes(data)
-    item = references.ObservedItem(kind='chart', label='Observed slider', box={'x': 40, 'y': 30, 'w': 300, 'h': 120},
-                                   chart_candidate='slider', metric_label=None, unit=None, aggregation=None,
-                                   date_grain=None, confidence='high')
     interpretation = references.interpret(mode, 2048, 1191, {'palette_notes': 'Navy land on a white globe',
-        'type_notes': 'Large light headline', 'spacing_notes': 'Soft white panels, wide gaps'}, [item])
+        'type_notes': 'Large light headline', 'spacing_notes': 'Soft white panels, wide gaps'})
     record = {'id': 'ref_1', 'mode': mode, 'instructions': INSTRUCTIONS,
               'images': [references.image_entry(image) for image in images],
               'summary': references.summary(interpretation, ['#0B1F6B', '#FFFFFF'], count),
@@ -287,17 +284,15 @@ async def run(llm, folder, *, mode='style', count=2, page=1, plan=(), state='rea
 
 # The approved-component report.
 
-def test_ready_recreate_report_lists_real_slots_bindings_and_decisions_with_no_open_issues(blueprint_api, monkeypatch):
-    """A ready assessment has no open issues (the feasibility summary is empty), yet the report the
-    brief sees carries the candidate's slots, their bindings and every accepted substitution and drop."""
-    from test_blueprint import choose, confirm
-    from dss.harness.context import feasibility_sections
+def test_ready_recreate_report_lists_real_slots_and_the_approved_split_with_no_open_issues(blueprint_api, monkeypatch):
+    """A ready assessment has no open issues (the feasibility summary is empty), yet the report the brief sees
+    carries the candidate's slots and the approved split: native items by their slots, static items as art."""
+    from test_blueprint import confirm
+    from test_render import items_build
+    from dss.harness.context import ITEMS_HEADER, feasibility_sections
     from dss.spec.models import DashboardSpec
-    build = gap_build(blueprint_api, monkeypatch, 'table')
+    build = items_build(blueprint_api, monkeypatch)
     confirm(build.client, build.app, build.bid)
-    for oid, fix in GAP_FIXES['table'].items():
-        current = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
-        assert choose(build.client, build.bid, current, gap_issues(current, build)[oid], fix).status_code == 200
     accept(build)
     snapshot, ledger = req.inputs(build.app.state.db, build.bid, build.folder), req.load(build.folder)
     assert ledger.assessment.state == 'ready' and feasibility_sections(build.folder) == []
@@ -305,37 +300,29 @@ def test_ready_recreate_report_lists_real_slots_bindings_and_decisions_with_no_o
     reports = rb.report(snapshot, ledger, Checker(load_registry()))
     spec = DashboardSpec.model_validate_json((build.folder / 'spec.json').read_text(encoding='utf-8'))
     assert sorted(reports) == [p.index for p in spec.pages]
-    [approved] = reports.values()
+    approved = reports[1]
     assert approved['assessment'] == {'id': ledger.assessment.id, 'state': 'ready'}
     components = {c['id']: c for c in approved['components']}
     assert list(components) == [c.id for c in spec.pages[0].components]
     assert all(components[c.id]['type'] == c.type and components[c.id]['label'] == c.label for c in spec.pages[0].components)
-    trend = next(c for c in components.values() if c['label'] == 'Revenue by month (USD)')  # 24.10: the definition's unit
-    assert (trend['type'], trend['date_dimension'], trend['grains']) == ('time_series', 'order_date_month',
-                                                                          {'order_date_month': 'month'})
-    assert trend['metrics'] == [{'field': 'revenue', 'agg': 'sum'}]
-    assert components['p1_sales_channel_filter']['field'] == 'sales_channel'
-    # Observations bind to the charts publish coverage proves; dropped ones bind nowhere.
-    observed = {b['observation']['id']: cid for cid, c in components.items() for b in c.get('bindings', [])}
-    assert observed == {'o2': 'p1_total_revenue', 'o5': trend['id'], 'o6': 'p1_total_revenue_by_product_category',
-                        'o7': 'p1_top_products_by_total_revenue'}
-    assert all(set(b) == {'requirement', 'observation'} and b['requirement'].startswith('req_')
-               for c in components.values() for b in c.get('bindings', []))
-    chosen = {(d.get('observation', {}).get('id'), d['action']): d.get('choice') for d in approved['decisions']}
-    assert chosen[('o5', 'accept_alternative')].startswith('Add order_date_month')
-    assert chosen[('o7', 'accept_alternative')] == 'Use a table for Top products by revenue (USD)'
-    assert {oid for oid, action in chosen if action == 'drop'} >= {'o3', 'o4'}
+    named = {c.reference_item: c.id for c in spec.pages[0].components if c.reference_item}
+    assert sorted(named) == ['r3', 'r6', 'r8']
+    assert {i['id']: i['slots'] for i in approved['reference_items']['native']} == {k: [v] for k, v in named.items()}
+    assert [i['id'] for i in approved['reference_items']['static']] == ['r1', 'r2', 'r4', 'r5', 'r7']
+    assert not any(c.get('bindings') for c in components.values())  # no requirement rows: items are the requirements
     text = json.dumps(reports)
-    assert not any(word in text for word in ('"box"', 'confidence', '"rows"', 'West'))
-    # The brief of that page sees the real report and the retained reference image.
+    assert not any(word in text for word in ('confidence', '"rows"', 'West'))
+    # The brief of that page sees the real report and the retained reference images.
     reference = rb.reference(build.folder)
-    assert reference.mode == 'recreate' and [m for m, _ in reference.images] == ['image/png']
+    assert reference.mode == 'recreate' and [m for m, _ in reference.images] == ['image/png'] * 2
     llm = BriefLLM()
     result = asyncio.run(rb.brief(llm, reference, approved, spec, spec.pages[0], Trace()))
     assert isinstance(result, rb.PageBrief) and [s.id for s in result.slots] == list(components)
-    sent = json.loads(section(str(llm.requests[0].config.system_instruction), COMPONENTS_HEADER))
+    instruction = str(llm.requests[0].config.system_instruction)
+    sent = json.loads(section(instruction, COMPONENTS_HEADER))
     assert [{k: v for k, v in c.items() if k not in ('min_w', 'min_h')} for c in sent['components']] == approved['components']
     assert sent['decisions'] == approved['decisions'] and attached(llm.requests[0])[1] == list(reference.images)
+    assert json.loads(section(instruction, ITEMS_HEADER)) == approved['reference_items']
 
 
 def test_style_report_has_only_the_candidate_components(tmp_path):
@@ -362,7 +349,7 @@ def test_reference_reads_every_image_in_order_with_its_mime_type(tmp_path):
     assert loaded.mode == 'recreate' and loaded.instructions == INSTRUCTIONS
     assert loaded.described == tuple({'image': n, 'mime_type': m, 'width': 2048, 'height': 1191}
                                      for n, (m, _) in enumerate(images, 1))
-    assert loaded.notes == {'summary': 'Recreate reference: 1 chart; chart candidates slider; aspect ratio 1.72.',
+    assert loaded.notes == {'summary': 'Recreate reference: no analysis; aspect ratio 1.72.',
                             'palette': 'Navy land on a white globe', 'type': 'Large light headline',
                             'spacing': 'Soft white panels, wide gaps'}
 
@@ -427,7 +414,7 @@ async def test_every_brief_request_carries_the_ordered_images_instructions_and_n
     approved = json.loads(section(instruction, COMPONENTS_HEADER))
     assert approved['assessment'] == {'id': 'assessment_1', 'state': 'ready'}
     assert all(c['min_w'] > 0 and c['min_h'] > 0 for c in approved['components'])
-    # No observation boxes or labels, rows or other pages; the instructions only as data.
+    # No rows or other pages; the instructions only as data.
     assert not any(t in instruction for t in ('Observed slider', '"box"', '"o1"', 'West', 'p2_bar_4' if page != 2 else 'p1_'))
     # Change 2026-10-26: the brief profile supplies its caps and deadline.
     config = request.config

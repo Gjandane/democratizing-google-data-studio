@@ -210,9 +210,8 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         if repairs and (call := stages.session_for('reference_extract').last_call) and call.value['outcome'] == 'invalid':
             call.value['outcome'] = 'ok'  # the provider-schema verdict covered style values repaired above
         first = images[0]
-        # Downstream observation readers see an empty list until 26.4/26.5 (never synthesized from items).
         interpretation = references.interpret(mode, first['width'], first['height'],
-            output.model_dump(include={'palette_notes', 'type_notes', 'spacing_notes'}), [])
+            output.model_dump(include={'palette_notes', 'type_notes', 'spacing_notes'}))
         analysis = references.analyze(output.items, allowed) if mode == 'recreate' else None
         record = {'id': reference_id, 'mode': mode, 'instructions': instructions,
                   'images': [references.image_entry(image) for image in images],

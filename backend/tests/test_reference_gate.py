@@ -28,7 +28,7 @@ def reference_set(folder, mode="recreate", analysis=True):
     reply = FIXTURE["reply"]
     image = {"id": "img_0123456789ab", "name": "electricity.png", "file": "reference_img_0123456789ab.png",
              "mime_type": "image/png", "width": 160, "height": 100, "content": png(160, 100)}
-    interpretation = references.interpret(mode, 160, 100, {k: reply[k] for k in ("palette_notes", "type_notes", "spacing_notes")}, [])
+    interpretation = references.interpret(mode, 160, 100, {k: reply[k] for k in ("palette_notes", "type_notes", "spacing_notes")})
     answers = [references.AnalysisAnswer.model_validate(item) for item in reply["items"]]
     result = references.analyze(answers, list(references.TYPES)) if mode == "recreate" and analysis else None
     record = {"id": "ref_0123456789ab", "mode": mode, "instructions": FIXTURE["instructions"] if mode == "recreate" else "",

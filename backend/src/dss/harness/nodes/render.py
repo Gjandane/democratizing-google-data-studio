@@ -155,19 +155,6 @@ async def accept(harness, build_id, run_id, payload, trace):
                           allowed=allowed_types() & catalog().keys(), sources=connected)
         except LayoutError as exc:
             raise RunError('invalid_request', 'The Blueprint could not be laid out', 422, {'errors': exc.errors[:20]}) from None
-        from dss.spec import requirements as req
-        from dss.spec.capabilities import Checker, load_registry
-        from dss.spec.validate import validate_spec
-        # A recreate observation's chart carries the title its screenshot shows (before the designer
-        # lays its cards out), when nothing else that chart fulfils depends on the planner's title.
-        snapshot = {**req.inputs(harness.db, build_id, folder), 'spec': spec.model_dump(mode='json')}
-        if labels := req.observed_labels(snapshot, req.load(folder), Checker(load_registry())):
-            titled = spec.model_copy(deep=True)
-            for component in (c for page in titled.pages for c in page.components):
-                component.label = labels.get(component.id, component.label)
-            if not validate_spec(titled, allowed=allowed_types() & catalog().keys()):
-                spec = titled
-                trace.spans[-1]['observed_titles'] = len(labels)
         reply = await complete_accept(harness, build_id, run_id, payload, trace, spec)
     except RunError:
         raise

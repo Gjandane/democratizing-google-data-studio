@@ -128,7 +128,7 @@ def test_reference_branches_prefill_outline_and_design(outline_api, monkeypatch)
         llm.replies.append(json.dumps(proposal()))
         accepted(client.post(f'/api/builds/{bid}/outline/propose'))
         wait(app)
-        assert ('Recreate observations' in str(llm.seen[-1].config.system_instruction)) == observed
+        assert ('Recreate reference' in str(llm.seen[-1].config.system_instruction)) == observed
     confirmed = client.post(f'/api/builds/{bid}/outline/confirm')
     assert confirmed.status_code == 200, confirmed.text
     design = client.get(f'/api/builds/{bid}/design').json()

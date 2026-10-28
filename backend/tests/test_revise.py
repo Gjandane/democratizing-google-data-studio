@@ -1292,23 +1292,21 @@ def test_mixed_batch_designs_each_page_once(setup, designed, client, monkeypatch
     assert 'p3_bar_5' not in revised.pages[2].design.html and 'Sales overview' in revised.pages[0].design.html
 
 
-def test_recreate_revision_coverage_counts_observations_only_on_their_page(blueprint_api, monkeypatch):
-    """24.10: revision's coverage gate is the one page-aware predicate. Removing the published page-1 urban/rural
-    area, or moving it to page 3, fails it, although the planner's page-3 area still matches the observations."""
-    from test_render import COUNTRIES, accept, bound_components, placement_build
+def test_recreate_revision_coverage_counts_approved_items_only_on_page_one(blueprint_api, monkeypatch):
+    """Revision's coverage gate is the item -> row -> component chain on page 1: removing the published page-1
+    area, or moving it to page 3, fails it."""
+    from test_blueprint import confirm
+    from test_render import accept, items_build, items_state
     from dss.spec import requirements as req
-    from dss.spec.capabilities import Checker, load_registry
-    build = placement_build(blueprint_api, monkeypatch)
+    build = items_build(blueprint_api, monkeypatch)
+    confirm(build.client, build.app, build.bid)
     accept(build)
-    snapshot, ledger = req.inputs(build.app.state.db, build.bid, build.folder), req.load(build.folder)
-    checker = Checker(load_registry())
+    snapshot, ledger, checker = items_state(build)
     assert req.coverage_errors(snapshot, ledger, checker) == []
-    [area] = {cid for item in COUNTRIES['recorded'] for cid in bound_components(build)[item]}
-    countries = {'requirements.' + r.id for r in ledger.requirements if r.source.item_id in COUNTRIES['recorded']}
     spec = deepcopy(snapshot['spec'])
-    moved = next(c for c in spec['pages'][0]['components'] if c['id'] == area)
+    moved = next(c for c in spec['pages'][0]['components'] if c.get('reference_item') == 'r6')
     spec['pages'][0]['components'].remove(moved)
-    assert countries <= {e['path'] for e in req.coverage_errors({**snapshot, 'spec': spec}, ledger, checker)}
+    assert {e['path'] for e in req.coverage_errors({**snapshot, 'spec': spec}, ledger, checker)} == {'reference_items.r6'}
     spec['pages'][2]['components'].append({**moved, 'id': 'p3_moved_area'})
     errors = req.coverage_errors({**snapshot, 'spec': spec}, ledger, checker)
-    assert {e['path'] for e in errors} == countries, errors
+    assert {e['path'] for e in errors} == {'reference_items.r6'}, errors

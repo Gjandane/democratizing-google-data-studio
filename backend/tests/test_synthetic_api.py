@@ -622,11 +622,11 @@ def test_screenshot_only_flow_reaches_context_outline_and_design(setup, monkeypa
     assert client.get(f"/api/builds/{bid}/context").json()["issues"] == []
     drafted = str(llm.seen[0].config.system_instruction)
     assert f"source_id={source['id']}" in drafted and "unit_price" in drafted
-    # 26.2: a recreate upload commits analysis items, no observations (26.4 feeds the approved items).
+    # 26.2: a recreate upload commits analysis items; the interpretation carries no image items.
     assert "Observed labels" not in drafted
     assert client.post(f"/api/builds/{bid}/context/confirm").status_code == 202
     wait(app)
-    assert "Recreate observations" in str(llm.seen[1].config.system_instruction)
+    assert "Recreate reference" in str(llm.seen[1].config.system_instruction)
     confirmed = client.post(f"/api/builds/{bid}/outline/confirm")
     assert confirmed.status_code == 200, confirmed.text
     design = client.get(f"/api/builds/{bid}/design").json()

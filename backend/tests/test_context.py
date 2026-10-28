@@ -418,22 +418,7 @@ async def test_reference_brief_drops_nothing_and_refuses_over_budget():
     assert context.dropped == {'past': 0, 'history': 0, 'semantic': 0}
 
 
-def observation_inputs(title=None):
-    """24 reconciled recreate observations (the interpretation maximum) from the 21.1 fixture shapes."""
-    from dss.spec import requirements as req
-    data = json.loads((Path(__file__).parent / 'data/recreate_designed.json').read_text(encoding='utf-8'))
-    pairs = []
-    for n in range(24):
-        item = {**data['items'][1 + n % 5], 'id': f'o{n + 1}', 'label': title or f'Chart {n}'}
-        record = data['extraction'][f'o{2 + n % 5}']
-        r = req.Requirement(id=f'r{n}', text=record['text'], needs=record['needs'], mappings=record['mappings'],
-            properties=[{'path': 'label', 'value': item['label']}], source=req.Source(id=f'ref:o{n + 1}', kind='image',
-            text=json.dumps(item), reference_id='ref', image_id='img', item_id=f'o{n + 1}'))
-        pairs.append((req.observation_meaning(r, r.needs, r.properties), req.observation_meaning(r, r.needs, r.properties, labels=False)))
-    return pairs
-
-
-def blueprint_memory(observations):
+def blueprint_memory(**kwargs):
     from dss.artifacts.models import Context
     from dss.harness.context import blueprint_context
     from dss.harness.nodes import blueprint as node
@@ -441,38 +426,16 @@ def blueprint_memory(observations):
     fields = [{'source_id': 's', 'fields': [{'name': n, 'type': t, 'role': r} for n, t, r in (
         ('order_id', 'STRING', 'dimension'), ('order_date', 'DATE', 'dimension'), ('region', 'STRING', 'dimension'),
         ('revenue', 'FLOAT64', 'metric'), ('quantity', 'INT64', 'metric'))]}]
-    return blueprint_context(context, fields, [], {'s1': 1}, node.catalog_summary(), [], observations=observations)
+    return blueprint_context(context, fields, [], {'s1': 1}, node.catalog_summary(), [], **kwargs)
 
 
-def test_blueprint_observations_section_fits_without_boxes_bytes_or_rows():
-    """The planner sees each recreate observation's reconciled meaning within its stage input cap."""
-    memory = blueprint_memory(observation_inputs())
-    from dss.harness.nodes import blueprint
+def test_blueprint_context_fits_native_planning_caps_and_has_no_reference_section_without_a_reference():
     # Change 2026-10-26: input/output caps come from native_planning.
+    from dss.harness.nodes import blueprint
+    memory = blueprint_memory()
     assert BUDGETS['blueprint'] == 131072 and blueprint.MAX_OUTPUT_TOKENS == 32768
-    [section] = [s for s in memory.sections if s.name == 'observations']
-    observed = json.loads(section.body)
-    assert section.kind == 'reference' and len(observed) == 24 and memory.dropped == {'past': 0, 'history': 0, 'semantic': 0}
-    assert observed[3] == {'id': 'o4', 'kind': 'chart', 'type': 'time_series', 'date_field': 'order_date', 'title': 'Chart 3',
-                           'metrics': [{'label': 'Revenue', 'field': 'revenue', 'unit': 'USD', 'aggregation': 'sum', 'date_grain': 'month'}]}
-    assert not any(word in section.body for word in ('box', 'confidence', 'image', 'img', 'rows', 'chart_candidate'))
-    assert tokens(str(memory)) <= BUDGETS['blueprint']
-    # Over budget, the observation labels go first; the observed fields stay.
-    # Change 2026-10-26: a reduced profile cap exercises the existing drop order.
-    from dss.config import Config
-    from dss.harness import stages
-    config = Config()
-    config.stages['native_planning']['input_tokens'] = 12000  # old 14k context minus its 2k reserve
-    with stages.Execution(config, SimpleNamespace(spans=[])).activate():
-        memory = blueprint_memory(observation_inputs(title='T' * 1600))
-    [section] = [s for s in memory.sections if s.name == 'observations']
-    assert 'TTT' not in section.body and 'Revenue' not in section.body and memory.dropped['profile'] == 1
-    assert [o['metrics'][0]['field'] for o in json.loads(section.body)] == ['revenue', 'order_id', 'quantity', 'revenue', 'revenue'] * 4 + ['revenue', 'order_id', 'quantity', 'revenue']
-
-
-def test_blueprint_context_without_observations_is_unchanged():
-    memory = blueprint_memory(())
-    assert 'observations' not in names(memory) and 'Recreate observations:' not in str(memory)
+    assert memory.dropped == {'past': 0, 'history': 0, 'semantic': 0} and tokens(str(memory)) <= BUDGETS['blueprint']
+    assert 'reference' not in names(memory) and 'Recreate reference' not in str(memory)
 
 
 def test_capability_context_trims_only_a_comment_batch_and_outline_other_keeps_the_ledger():

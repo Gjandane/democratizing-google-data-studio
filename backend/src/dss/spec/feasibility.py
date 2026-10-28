@@ -6,13 +6,12 @@ the ledger keeps the code-built effects and the evidence binding each explicit c
 import re
 from collections import Counter
 from copy import deepcopy
-from types import SimpleNamespace
 
 from dss.artifacts.models import Blueprint, BlueprintRow, BlueprintComponent, Context, DerivedField, Outline, ViewSources
 from dss.harness.nodes import view
 from dss.spec import requirements as req
 from dss.spec.models import CONTROL_TYPES, DATE_AXIS_TYPES, FIELD_CONTROLS
-from dss.spec.validate import allowed_types, catalog, label_text
+from dss.spec.validate import catalog, label_text
 
 
 def binding(snapshot, checker, target):
@@ -101,7 +100,7 @@ def component_errors(component, fields, checker, rules=None):
     return errors
 
 
-def diagnostics(snapshot, ledger, checker, *, observations=None):
+def diagnostics(snapshot, ledger, checker):
     """Return full, internal row diagnostics, including repair eligibility and effects."""
     if not snapshot.get('blueprint'):
         return []
@@ -242,9 +241,7 @@ def diagnostics(snapshot, ledger, checker, *, observations=None):
         indices = [i for i, r in enumerate(bp.rows) if r.page == page]
         if not 1 <= page <= 5:
             add('page', indices, [], 'Blueprint needs 1-5 pages')
-        # A code-added chart is no supporting control; a code-added control still counts.
-        controls = [i for i in indices if bp.rows[i].question_id is None and bp.rows[i].reference_item not in items
-                    and not (added(bp.rows[i]) and bp.rows[i].component.type not in CONTROL_TYPES)]
+        controls = [i for i in indices if bp.rows[i].question_id is None and bp.rows[i].reference_item not in items]
         if len(controls) > 2 or any(bp.rows[i].component.type not in CONTROL_TYPES for i in controls):
             add('controls', controls, [], 'At most two supporting controls are allowed per page')
         if count > 12:
@@ -266,7 +263,6 @@ def diagnostics(snapshot, ledger, checker, *, observations=None):
         if error.get('question_id') is None:
             add('sql', list(range(len(bp.rows))), [], error['message'], 'needs_data', False)
     if not source_invalid:
-        result.extend(observation_errors(snapshot, ledger, checker, bp, fields, connected, context, rules, observations))
         result.extend(item_errors(snapshot, ledger, checker, bp, fields, rules, items))
     return result
 
@@ -319,9 +315,6 @@ def item_errors(snapshot, ledger, checker, bp, fields, rules, items):
     return errors
 
 
-AGGS = {'sum': 'SUM', 'avg': 'AVG', 'count': 'COUNT', 'count_distinct': 'COUNT DISTINCT', 'min': 'MIN', 'max': 'MAX'}
-TRUNC = {'DATE': ('DATE_TRUNC', 'date'), 'DATETIME': ('DATETIME_TRUNC', 'datetime'), 'TIMESTAMP': ('TIMESTAMP_TRUNC', 'datetime')}
-
 # Complete bounded planner artifacts, not SQL equivalence rules. In particular DATE * 1
 # is invalid, and interval subtraction may change type: reconstruct the intended binding.
 YEAR_BINDING = re.compile(r'DATE_TRUNC\s*\(\s*(?:`([a-z_][a-z0-9_]*)`|([a-z_][a-z0-9_]*))\s*,\s*YEAR\s*\)'
@@ -356,7 +349,7 @@ def canonical_dates(snapshot, ledger, checker, bp, protected=()):
     """Recreate-only, proof-backed reconstruction of planner date grouping bindings.
 
     All uses must qualify before an extra can disappear. No metric or SQL text is
-    rewritten, and an undeclared *_year needs explicit reconciled field/grain intent.
+    rewritten, and only a declared year bucket on a selected native date axis is replaced.
     """
     if (snapshot.get('reference') or {}).get('mode') != 'recreate':
         return bp
@@ -375,25 +368,6 @@ def canonical_dates(snapshot, ledger, checker, bp, protected=()):
     protected |= {t['field'] for t in context.get('thresholds', [])}
     selected = {q['id'] for s in (snapshot.get('outline') or {}).get('sections', [])
                 for q in s['questions'] if q['selected']}
-    # Completion omits observations with their own unresolved issue. Their absence
-    # must not authorize native-axis reconstruction: conflicting/currently stale
-    # evidence still governs the date intent. Inspect active records before that
-    # filter, including conflicts recorded before reconciliation could set `using`.
-    reference_id = snapshot['reference'].get('id')
-    intents = {}
-    for r in req.active_requirements(snapshot, ledger):
-        if r.source.kind not in ('image', 'reference') or r.source.reference_id != reference_id:
-            continue
-        covered = req._covered(r, snapshot, ledger, checker)
-        if covered is None:
-            continue
-        if r.mapping_conflicts or req.observation_stale(snapshot, r):
-            return bp
-        needs, props = covered
-        meaning = req.observation_meaning(r, needs, props)
-        if source := meaning.get('date_field'):
-            intents.setdefault(source, set()).update(req.grain_name(m['date_grain'])
-                for m in meaning.get('metrics', []) if m.get('date_grain'))
     # Inspect identifiers, not substrings or literal values, in other derivations.
     def references(sql, name):
         # Match the view builder's escaped literals; a quoted apostrophe must
@@ -411,12 +385,7 @@ def canonical_dates(snapshot, ledger, checker, bp, protected=()):
         if (match and field.type in ('date', 'datetime') and base in proven and
                 field.name not in real | protected and not any(
                     other.name != field.name and references(other.expression, field.name) for other in bp.derived_fields)):
-            candidates[field.name] = (base, True)
-    for base in proven:
-        alias = base + '_year'
-        if alias not in real | protected | definitions.keys() and not any(
-                references(f.expression, alias) for f in bp.derived_fields):
-            candidates[alias] = (base, False)
+            candidates[field.name] = base
     replacements = {}
     def option_uses(value, alias):
         if isinstance(value, dict):
@@ -425,10 +394,7 @@ def canonical_dates(snapshot, ledger, checker, bp, protected=()):
             return any(option_uses(v, alias) for v in value)
         return value == alias
 
-    for alias, (base, declared) in candidates.items():
-        explicit = intents.get(base) == {'year'}
-        if intents.get(base, set()) - {'year'}:
-            continue
+    for alias, base in candidates.items():
         used, eligible = False, True
         for row in bp.rows:
             c = row.component
@@ -442,12 +408,12 @@ def canonical_dates(snapshot, ledger, checker, bp, protected=()):
             if not grouping:
                 continue
             used = True
-            native = (declared and row.question_id in selected and c.type in DATE_AXIS_TYPES
+            native = (row.question_id in selected and c.type in DATE_AXIS_TYPES
                       and c.date_dimension == alias)
-            if not explicit and not native:
+            if not native:
                 eligible = False
                 break
-        if eligible and (used or explicit) and (declared or explicit):
+        if eligible and used:
             replacements[alias] = base
     if not replacements:
         return bp
@@ -463,301 +429,15 @@ def canonical_dates(snapshot, ledger, checker, bp, protected=()):
     return bp.model_copy(update={'rows': rows, 'derived_fields': [f for f in bp.derived_fields if f.name not in replacements]}, deep=True)
 
 
-def laid_out(rows):
-    """{row index: component} as code lays each Blueprint row out (auto_layout), before placement."""
-    from dss.spec.auto_layout import _component
-    from dss.spec.models import Cell
-    return {i: {**_component('', row, Cell(col=1, row=1, w=1, h=1), set()), 'id': f'row_{i}'} for i, row in enumerate(rows)}
-
-
-def coverage(snapshot, ledger, checker, rows, derived_fields, observations=None):
-    return req.observation_coverage(snapshot, ledger, checker, laid_out(rows), pages={i: r.page for i, r in enumerate(rows)},
-        observations=observations, derived={f.name: f.expression for f in derived_fields},
-        palette=(snapshot.get('design') or {}).get('palette'))
-
-
 def dropped_questions(approved):
     """Question ids the user's Blueprint decisions dropped."""
     return {q for d in approved if d['action'] == 'drop' or d.get('effect', {}).get('drop_questions')
             for q in d.get('effect', {}).get('drop_questions', d['target']['qids'])}
 
 
-def page_questions(snapshot, ledger, checker, page):
-    """The selected, undropped questions whose sections map to `page` (blueprint.page_plan's rule)."""
-    sections = [s for s in snapshot['outline']['sections'] if any(q['selected'] for q in s['questions'])]
-    per_section = (snapshot.get('design') or {}).get('page_structure') == 'per_section'
-    dropped = dropped_questions(choices(snapshot, ledger, checker))
-    return [q['id'] for n, s in enumerate(sections, 1) if (n if per_section else 1) == page
-            for q in s['questions'] if q['selected'] and q['id'] not in dropped]
-
-
-def observation_errors(snapshot, ledger, checker, bp, fields, connected, context, rules, observations=None):
-    """architecture.md#Blueprint observation coverage: an observation no row fulfils is an issue on
-    its nearest row (repairable once, with code-built alternatives) or, with no such row, on none.
-    A recreate observation counts only on its reference page (#Recreate page placement and truthful
-    observed titles): its nearest row is a row there, and with none the one row repair targets the
-    selected questions of that page (`repair_qids`)."""
-    observed = req.blueprint_observations(snapshot, ledger, checker) if observations is None else observations
-    if not observed:
-        return []
-    verdicts = coverage(snapshot, ledger, checker, bp.rows, bp.derived_fields, observed)
-    fulfilled = {r.id for r, _, _, indices, _ in verdicts if indices}
-    components = laid_out(bp.rows)
-    checked = {}  # candidate Blueprint digest -> observations it fulfils; gaps on one row share candidates
-    errors = []
-    for r, needs, properties, indices, unchecked in verdicts:
-        if indices:
-            continue
-        meaning = req.observation_meaning(r, needs, properties, kpis=snapshot.get('confirmed_kpis'))
-        # Never the extraction text (it may echo boxes); an untitled record is named by its code-built meaning.
-        name = repr(meaning['title']) if meaning.get('title') else f"{meaning['id']} ({_describe(meaning)})"
-        error = dict(code='observation', indices=[], qids=[], status='needs_clarification', repairable=False, offers=[],
-                     evidence=[r.source.id], requirement=f'Observation {name}', requirement_id=r.id, meaning=req.meaning(r))
-        if unchecked:
-            errors.append({**error, 'message': f'Observation {name} cannot be checked against Blueprint rows: {unchecked}; '
-                           'clarify it or drop it'})
-            continue
-        page = req.reference_page(snapshot, r)
-        where = f' on page {page}' if page else ''
-        nearest = _nearest(meaning, {i: c for i, c in components.items() if page in (None, bp.rows[i].page)})
-        if nearest is None:
-            missing = ({m['field'] for m in meaning.get('metrics', [])} | set(meaning.get('dimensions', []))) - fields.keys()
-            qids = page_questions(snapshot, ledger, checker, page) if page and not missing else []
-            errors.append({**error, 'status': 'needs_data' if missing else 'needs_clarification', 'repairable': bool(qids),
-                           **({'repair_qids': qids} if qids else {}),
-                           'message': f'Observation {name} has no Blueprint row{where}: add a row{where} for {_describe(meaning)}'})
-            continue
-        row = bp.rows[nearest]
-        offers = _observation_offers(snapshot, ledger, checker, bp, fields, connected, context, rules, r, meaning, nearest, fulfilled, observed, checked)
-        errors.append({**error, 'indices': [nearest], 'qids': [row.question_id] if row.question_id else [], 'repairable': True,
-                       'offers': offers, 'message': f'Observation {name}' + f' ({_describe(meaning)})' * bool(meaning.get('title'))
-                       + f' has no matching Blueprint row{where}: '
-                       f'row {row.component.label!r} ' + '; '.join(_gaps(meaning, components[nearest], bp.derived_fields))})
-    return errors
-
-
-def _describe(meaning):
-    metrics = ' and '.join(f"{AGGS.get(m.get('aggregation'), '')}({m['field']})" for m in meaning.get('metrics', []) if m.get('field'))
-    text = f"a {meaning.get('type', 'chart')}" + (f' of {metrics}' if metrics else '')
-    grains = {m['date_grain'] for m in meaning.get('metrics', []) if m.get('date_grain')}
-    if grains and meaning.get('type') != 'scorecard':
-        text += f" by {'/'.join(sorted(grains))} of {meaning.get('date_field', 'its date')}"
-    return text + ''.join(f' by {d}' for d in meaning.get('dimensions', []))
-
-
-def _bound(component):
-    return set(component['dimensions']) | {m['field'] for m in component['metrics']} | {
-        component.get(k) for k in ('date_dimension', 'field', 'breakdown')} - {None}
-
-
-def _nearest(meaning, components):
-    """The row closest to an observation: most of its metrics, then its type, then its dimensions;
-    none shares a metric (or, for a metric-less observation, a dimension)."""
-    best, key = None, None
-    for i, c in components.items():
-        metrics = sum(any(m['field'] == want.get('field') and m['agg'] == want.get('aggregation') for m in c['metrics'])
-                      for want in meaning.get('metrics', []))
-        dimensions = len(set(meaning.get('dimensions', [])) & _bound(c))
-        score = (metrics, c['type'] == meaning.get('type'), dimensions)
-        if (metrics or (not meaning.get('metrics') and dimensions)) and (key is None or score > key):
-            best, key = i, score
-    return best
-
-
-def _gaps(meaning, component, derived_fields):
-    derived = {f.name: f.expression for f in derived_fields}
-    gaps = []
-    if meaning.get('type') and component['type'] != meaning['type']:
-        gaps.append(f"is a {component['type']}, the observation is a {meaning['type']}")
-    for want in meaning.get('metrics', []):
-        if not any(m['field'] == want.get('field') and m['agg'] == want.get('aggregation') for m in component['metrics']):
-            gaps.append(f"lacks {AGGS.get(want.get('aggregation'), '')}({want.get('field')})")
-        if want.get('date_grain') and meaning.get('type') != 'scorecard' and not req._date_bucket(
-                {}, component.get('date_dimension'), want['date_grain'], derived=derived):
-            gaps.append(f"has no {req.grain_name(want['date_grain'])} bucket of {meaning.get('date_field') or 'its date'}"
-                        + (f" (it uses {component['date_dimension']})" if component.get('date_dimension') else ''))
-    gaps += [f'lacks the {d} dimension' for d in meaning.get('dimensions', []) if d not in _bound(component)]
-    return gaps or ['does not carry its title: another observation claims the matching row']
-
-
-def _bucket(meaning, component, fields, bp):
-    """A code-built derived field at the observed grain of the observed date field (the view builder
-    builds it; accept dry-runs it), with the row rebound to it, or None."""
-    grains = {req.grain_name(m['date_grain']) for m in meaning.get('metrics', []) if m.get('date_grain')}
-    source = meaning.get('date_field') or component.get('date_dimension')
-    if len(grains) != 1 or not grains <= set(req.GRAINS) or source not in fields or fields[source]['type'] not in TRUNC:
-        return None
-    grain = grains.pop()
-    function, kind = TRUNC[fields[source]['type']]
-    field = DerivedField(name=f'{source}_{grain}', expression=f'{function}({source}, {grain.upper()})', type=kind,
-                         description=f'{grain.capitalize()} of {source}')
-    existing = next((f for f in bp.derived_fields if f.name == field.name), None)
-    if (existing and existing != field) or (not existing and field.name in fields):
-        return None
-    return field, existing is None
-
-
-def _observation_offers(snapshot, ledger, checker, bp, fields, connected, context, rules, r, meaning, nearest, fulfilled, observed, checked):
-    """Observed type and date-bucket alternatives for the nearest row, offered only when the changed
-    Blueprint fulfils this observation and keeps every observation it already fulfilled."""
-    row, component = bp.rows[nearest], laid_out(bp.rows)[nearest]
-    kind = meaning.get('type')
-    bucket = _bucket(meaning, component, fields, bp)
-    candidates = []
-    if kind and kind != row.component.type:
-        candidates.append(('observed_type', f'Use a {kind} for {meaning.get("title") or _describe(meaning)}', kind, None))
-    if bucket:
-        candidates.append(('date_bucket', f'Add {bucket[0].name} ({bucket[0].description.lower()}) to the view for '
-                           f'{meaning.get("title") or _describe(meaning)}', None, bucket))
-        if kind and kind != row.component.type:
-            candidates.append(('observed_type_date_bucket', f'Use a {kind} by {bucket[0].description.lower()} for '
-                               f'{meaning.get("title") or _describe(meaning)}', kind, bucket))
-    offers = []
-    for oid, label, new_type, new_field in candidates:
-        update = {'type': new_type, 'options': {}} if new_type else {}
-        derived = list(bp.derived_fields)
-        if new_field:
-            field, added = new_field
-            derived += [field] if added else []
-            old = component.get('date_dimension') or meaning.get('date_field')
-            update['date_dimension'] = field.name if (row.component.date_dimension or (new_type or row.component.type) in DATE_AXIS_TYPES) else None
-            update['dimensions'] = [field.name if d == old else d for d in row.component.dimensions]
-            if row.component.sort and row.component.sort.field == old:
-                update['sort'] = row.component.sort.model_copy(update={'field': field.name})
-        replacement = row.model_copy(update={'component': row.component.model_copy(update=update)}, deep=True)
-        try:
-            view_fields = {f['name']: f for f in view.blueprint_fields(connected, bp.view_sources, derived)}
-            view.blueprint_sql(connected, bp.view_sources, derived, context_fields=[f.name for f in context.derived_fields])
-        except ValueError:
-            continue
-        if component_errors(replacement.component, view_fields, checker, rules):
-            continue
-        rows = [replacement if i == nearest else other for i, other in enumerate(bp.rows)]
-        key = req.digest([[r.model_dump() for r in rows], [f.model_dump() for f in derived]])
-        if key not in checked:
-            checked[key] = {v[0].id for v in coverage(snapshot, ledger, checker, rows, derived, observed) if v[3]}
-        after = checked[key]
-        if r.id in after and fulfilled <= after:
-            offers.append({'id': oid, 'label': label, 'replace': [{'index': nearest, 'row': replacement.model_dump()}],
-                           **({'derived_fields': [new_field[0].model_dump()]} if new_field and new_field[1] else {})})
-    return offers
-
-
-# architecture.md#Recreate observation completion: rows code adds for observations the planner left out.
-ADDED = re.compile(r'observation (\S+:\S+)')
-
-
-def added(row):
-    """A code-added observation row: no question, and its note is the observation's provenance."""
-    return row.question_id is None and bool(ADDED.fullmatch(row.note))
-
-
-def surplus(snapshot, ledger, checker, rows, derived_fields, observed=None):
-    """Indices of code-added rows that fulfil no current observation which other rows leave unfulfilled:
-    rows already fulfilling it win, and a removed instruction or reference leaves them nothing."""
-    extra = {i for i, row in enumerate(rows) if added(row)}
-    if not extra:
-        return set()
-    observed = req.blueprint_observations(snapshot, ledger, checker) if observed is None else observed
-    verdicts = coverage(snapshot, ledger, checker, rows, derived_fields, observed) if observed else []
-    return extra - {i for _, _, _, indices, _ in verdicts if indices and set(indices) <= extra for i in indices}
-
-
-def _observed_row(meaning, r, needs, fields, derived, rules, section, snapshot=None):
-    """(the code-built row on the observation's reference page, page 1 (requirements.reference_page), its new
-    date bucket field or None) for an observation whose reconciled meaning is complete (catalog type, metric
-    fields and aggregations, dimension or date field), else None. Its label is the meaning's observed title."""
-    kind = meaning.get('type')
-    if kind not in rules or kind not in allowed_types():
-        return None
-    metrics = meaning.get('metrics', [])
-    if any(not m.get('field') or m.get('aggregation') in (None, 'none') for m in metrics):
-        return None
-    dimensions, date_dimension, field = list(meaning.get('dimensions', [])), None, None
-    grains = {req.grain_name(m['date_grain']) for m in metrics if m.get('date_grain')} if kind != 'scorecard' else set()
-    if len(grains) > 1:
-        return None
-    if grains:
-        grain, source = next(iter(grains)), meaning.get('date_field')
-        if source and req._bucket_of(snapshot or {}, source, grain, source, {f.name: f.expression for f in derived}):
-            name = source  # the date field already is the bucket
-        else:
-            bucket = _bucket(meaning, {}, fields, SimpleNamespace(derived_fields=derived))
-            if bucket is None:
-                return None
-            name, field = bucket[0].name, bucket[0] if bucket[1] else None
-        if kind in DATE_AXIS_TYPES:
-            date_dimension = name
-        else:
-            dimensions.insert(0, name)
-    elif kind in DATE_AXIS_TYPES:
-        date_dimension = meaning.get('date_field')
-    options = {n.capability.rsplit('.', 1)[1]: n.value for n in needs
-               if n.capability.startswith(f'option.{kind}.') and n.value is not None}
-    words = ' and '.join(m['field'].replace('_', ' ') for m in metrics[:2]) or kind.replace('_', ' ')
-    text = label_text(meaning['title']) if meaning.get('title') else None
-    if text is None:
-        text = label_text(words + (f' by {next(iter(grains))}' if grains else '')) or kind.replace('_', ' ')
-        text = text[:1].upper() + text[1:]
-    component = BlueprintComponent(type=kind, label=text, dimensions=dimensions, date_dimension=date_dimension,
-        metrics=[{'field': m['field'], 'agg': m['aggregation']} for m in metrics], breakdown=None, sort=None, options=options)
-    return BlueprintRow(question_id=None, section_id=section, page=1, component=component, note=f'observation {r.source.id}',
-                        status='ok', issue_ids=[]), field
-
-
-def complete(snapshot, ledger, checker, bp, connected, context):
-    """After the one row repair: drop surplus code-added rows, then add one page-1 row per observation still
-    unfulfilled whose reconciled meaning is complete. Each is validated like any row, its date bucket is a
-    view-built derived field, and it must fulfil its observation and keep every fulfilled one. With no
-    capacity left (12 rows) or an incomplete meaning the observation stays an Issue. No model call.
-    Returns (rows, derived fields, the added rows)."""
-    observed = req.blueprint_observations(snapshot, ledger, checker)
-    drop = surplus(snapshot, ledger, checker, bp.rows, bp.derived_fields, observed)
-    rows, derived, new = [r for i, r in enumerate(bp.rows) if i not in drop], list(bp.derived_fields), []
-    section = next((s.id for s in Outline.model_validate(snapshot['outline']).sections if any(q.selected for q in s.questions)), None)
-    if not observed or section is None:
-        return rows, derived, new
-    rules, context_fields = catalog(), [f.name for f in context.derived_fields]
-    try:
-        fields = {f['name']: f for f in view.blueprint_fields(connected, bp.view_sources, derived)}
-    except ValueError:
-        return rows, derived, new
-    # Only the observation Issues the Blueprint check raises with no code-built alternative: an offered
-    # alternative stays the user's decision (#Blueprint observation coverage).
-    gaps = {e['requirement_id'] for e in observation_errors(snapshot, ledger, checker, bp.model_copy(update={'rows': rows}),
-                                                           fields, connected, context, rules) if not e['offers']}
-    verdicts = coverage(snapshot, ledger, checker, rows, derived, observed)
-    fulfilled = {v[0].id for v in verdicts if v[3]}
-    for r, needs, properties, _, unchecked in verdicts:
-        if r.id in fulfilled or r.id not in gaps or unchecked or sum(row.page == 1 for row in rows) >= 12:
-            continue
-        try:
-            fields = {f['name']: f for f in view.blueprint_fields(connected, bp.view_sources, derived)}
-        except ValueError:
-            break
-        built = _observed_row(req.observation_meaning(r, needs, properties, kpis=snapshot.get('confirmed_kpis')),
-                              r, needs, fields, derived, rules, section, snapshot)
-        if built is None:
-            continue
-        row, field = built
-        trial = derived + ([field] if field else [])
-        try:
-            fields = {f['name']: f for f in view.blueprint_fields(connected, bp.view_sources, trial)}
-            view.blueprint_sql(connected, bp.view_sources, trial, context_fields=context_fields)
-        except ValueError:
-            continue
-        if component_errors(row.component, fields, checker, rules):
-            continue
-        after = {v[0].id for v in coverage(snapshot, ledger, checker, rows + [row], trial, observed) if v[3]}
-        if r.id in after and fulfilled <= after:
-            rows, derived, fulfilled = rows + [row], trial, after
-            new.append(row)
-    return rows, derived, new
-
-
-def issue_rows(snapshot, ledger, checker, *, observations=None):
+def issue_rows(snapshot, ledger, checker):
     rows = []
-    for error in diagnostics(snapshot, ledger, checker, observations=observations):
+    for error in diagnostics(snapshot, ledger, checker):
         iid = 'bp_' + req.digest(error)[:24]
         issue = req.Issue(id=iid, requirement=error.get('requirement') or ', '.join(error['qids']) or 'Blueprint view',
             status=error['status'], reason=error['message'], evidence=error['evidence'],
@@ -787,8 +467,6 @@ def mark(snapshot, ledger, checker, assessment):
                 bp.rows[i].status = 'blocked'
                 bp.rows[i].issue_ids.append(issue.id)
     bp.assessment_id = assessment.id
-    if drop := surplus(snapshot, ledger, checker, bp.rows, bp.derived_fields):
-        bp.rows = [r for i, r in enumerate(bp.rows) if i not in drop]
     return bp
 
 
@@ -819,15 +497,7 @@ def decide(snapshot, ledger, checker, body):
         if target['code'] == 'row':
             drop_questions = [qid for qid in drop_questions if all(
                 r.question_id != qid or i in target['indices'] for i, r in enumerate(bp.rows))]
-        if target['code'] == 'observation':
-            # Dropping an observation is the user's explicit choice; its rows stay (a drop of rows is another issue's).
-            # No drop_questions: the nearest row's question keeps every question check.
-            effect = offer or {'drop_observation': target['requirement_id'], 'drop_questions': []}
-            if item.action == 'drop':
-                updated.decisions = [d for d in updated.decisions if d.get('requirement_id') != target['requirement_id']]
-                updated.decisions.append(req.observation_drop(snapshot, ledger, target['requirement_id'], issue.id))
-        else:
-            effect = offer or {'drop_questions': drop_questions}
+        effect = offer or {'drop_questions': drop_questions}
         if target['code'] == 'reference_item':
             # Keep ordinary question rows, but remove item-only rows: the dropped item is now art.
             effect = offer or {'drop_item': target['item_id'], 'drop_questions': []}
@@ -838,7 +508,7 @@ def decide(snapshot, ledger, checker, body):
                             remove_indices.add(i)
                         else:
                             row.reference_item = None
-        if item.action == 'drop' and target['code'] not in ('observation', 'reference_item'):
+        if item.action == 'drop' and target['code'] != 'reference_item':
             remove_indices.update(target['indices'])
             if target['code'] == 'sql':
                 fresh['blueprint_errors'] = []

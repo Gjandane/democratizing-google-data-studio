@@ -18,7 +18,7 @@ from dss.db import new_id
 from dss.harness.guardrails import RunError
 from dss.data.bigquery import snake_names
 from dss.spec import capabilities, references
-from dss.spec.models import CHART_TYPES, CONTROL_TYPES, DATE_AXIS_TYPES, FIELD_CONTROLS
+from dss.spec.models import DATE_AXIS_TYPES
 
 MAX_REQUIREMENTS = 40
 MAX_ISSUES = 20
@@ -253,7 +253,7 @@ def inputs(db, build_id, folder):
                 messages.append(Source(id=r["id"], kind="message", text=r["text"]).model_dump())
     reference = references.load(folder)
     if reference and reference['mode'] == 'recreate':
-        # Pre-1.3 sets have no analysis. Read them as unapproved; never revive their observations.
+        # Pre-1.3 sets have no analysis. Read them as unapproved; never revive their image items.
         reference = {'analysis': None, **reference}
     incoming = list(messages)
     if reference:
@@ -272,14 +272,6 @@ def inputs(db, build_id, folder):
     from dss.artifacts.okf import read_artifact
     from dss.artifacts.models import Blueprint, Context, Outline, Design
     if reference and reference["mode"] == "recreate":
-        # Recreate reconciliation reads confirmed Context with or without a Blueprint;
-        # a draft edit authorizes nothing. Other builds keep their earlier digests.
-        from dss.artifacts import state as stages
-        with db.connect() as conn:
-            row = conn.execute("SELECT artifacts_json FROM builds WHERE id=?", (build_id,)).fetchone()
-        path = folder / "docs/context.md"
-        confirmed = row is not None and stages.states({"artifacts_json": row[0]})["context"] == "confirmed"
-        snapshot["confirmed_kpis"] = [k.model_dump() for k in read_artifact(path, Context).kpis] if confirmed and path.is_file() else []
         with db.connect() as conn:
             profiled = {r['id']: json.loads(r['columns_json']) for r in conn.execute(
                 "SELECT id, columns_json FROM sources WHERE build_id=? ORDER BY rowid", (build_id,))}
@@ -312,8 +304,8 @@ def input_digest(snapshot, ledger, checker):
 
 
 def active_requirements(snapshot, ledger):
-    """An analysis supersedes legacy image/instruction records without migrating their bindings.
-    Keep the old helpers until 26.5; their records cannot influence an analysis-based build."""
+    """A recreate set with an analysis ignores the image/instruction records an older ledger may still
+    hold: they are never migrated and cannot influence the build."""
     reference = snapshot.get('reference') or {}
     if reference.get('mode') == 'recreate' and 'analysis' in reference:
         return [r for r in ledger.requirements if r.source.kind not in ('image', 'reference')]
@@ -356,11 +348,6 @@ def new_sources(snapshot, ledger):
         for i, comment in enumerate(batch.comments):
             s = Source(id=f"{batch.id}:{i}", kind="comment", batch_id=batch.id, **comment.model_dump()).model_dump()
             incoming[s["id"]] = s
-    # Recreate instructions that are wholly definitions are evidence code reads itself
-    # (architecture.md#Recreate observation completion): never extraction input.
-    reference = snapshot.get("reference") or {}
-    if reference.get("mode") == "recreate" and _wholly_definitions(reference.get("instructions") or ""):
-        incoming.pop(reference["id"] + ":instructions", None)
     return [s for s in incoming.values() if s["id"] not in ledger.retired_sources
             and ledger.processed_sources.get(s["id"]) != digest(s)]
 
@@ -449,9 +436,7 @@ def merge(ledger, snapshot, extraction):
             if mapping_verdict(mapping, proposed, schema(snapshot)) or not _assignment(source.text, mapping):
                 continue
             for previous in updated.requirements:
-                # Observations take definitions from evidence (_reconcile_observations),
-                # never from another source's model-proposed mapping.
-                if previous.source.id == source.id or previous.source.kind == 'image':
+                if previous.source.id == source.id:
                     continue
                 for i, old in enumerate(previous.mappings):
                     if _normal(old.label) != _normal(mapping.label):
@@ -482,7 +467,7 @@ def merge(ledger, snapshot, extraction):
             # duplicate that would demand a different chart binding.
             updated.requirements = [r for r in updated.requirements if r.id != rid]
             absorbed.setdefault(source.id, []).extend(merged.mappings)
-    # Fail closed when extraction omits an entire message or observed chart, or
+    # Fail closed when extraction omits an entire message, or
     # keeps only audience context and absorbed definitions of a message whose
     # other clauses would then have no ledger row.
     for sid, source in sources.items():
@@ -493,13 +478,10 @@ def merge(ledger, snapshot, extraction):
         omitted = sid not in covered and (source["kind"] != "message" or bool(_remainder(source["text"])))
         if omitted or uncovered:
             updated.requirements.append(Requirement(id="req_" + digest(source)[:24], source=Source.model_validate(source), text=source["text"]))
-    _definition_rows(updated, snapshot)
     if len(updated.requirements) > MAX_REQUIREMENTS:
         raise ValueError("Requirement scope exceeded")
     updated.processed_sources.update({sid: digest(s) for sid, s in sources.items()})
     _reconcile_definitions(updated, snapshot)
-    for r in updated.requirements:
-        _reconcile_observation(r, snapshot)
     _reconcile_grains(updated, snapshot)
     _absorb_definitions(updated)
     _normalize_presentation(updated, snapshot)
@@ -824,115 +806,8 @@ def _absorb_definitions(ledger):
     ledger.requirements = [r for r in ledger.requirements if r.id not in absorbed]
 
 
-# architecture.md#Recreate observation completion: the definition surface of reference instructions.
-_SURFACE_AGGREGATIONS = {'sum': 'sum', 'avg': 'avg', 'average': 'avg', 'count': 'count', 'min': 'min', 'max': 'max'}
-_SURFACE_METRIC = re.compile(r'(sum|avg|average|count|min|max)\s*\(\s*(distinct\s+)?([a-z_][a-z0-9_]*)\s*\)', re.I)
-_SURFACE_OPTION = re.compile(r'unit\s+(?P<unit>\S(?:.*\S)?)|date\s+grain\s+(?P<grain>day|week|month|quarter|year)'
-                             r'(?:\s+using\s+(?P<using>[a-z_][a-z0-9_]*))?|chart\s+(?P<chart>[a-z_]+)', re.I)
-_DATE_TYPES = ('DATE', 'DATETIME', 'TIMESTAMP')
-_NUMBER_TYPES = ('INT64', 'INTEGER', 'FLOAT', 'FLOAT64', 'NUMERIC', 'BIGNUMERIC', 'DECIMAL', 'BIGDECIMAL')
-
-
-@lru_cache(maxsize=4096)
-def _surface(clause):
-    """One instruction clause as a definition, else None: `<Label> = <metric>[ and <metric>...][, unit <u>]
-    [, date grain <g>[ using <date field>]][, chart <type>]` with `<metric>` `AGG(field)`, or
-    `<Label> = <field>[, chart <type>]`. Read-only: callers share the cached value."""
-    match = re.fullmatch(r'([^=,]+?)\s*=\s*([^=]+)', _affirmative(clause).strip(' .'))
-    if not match:
-        return None
-    head, *options = (part.strip() for part in match[2].split(','))
-    metrics = []
-    for part in re.split(r'\s+and\s+', head, flags=re.I):
-        found = _SURFACE_METRIC.fullmatch(part)
-        if found is None or (found[2] and found[1].lower() != 'count'):
-            metrics = None  # DISTINCT only qualifies COUNT; an unknown aggregation is no definition
-            break
-        metrics.append((found[3].lower(), 'count_distinct' if found[2] else _SURFACE_AGGREGATIONS[found[1].lower()]))
-    field = None
-    if metrics is None:
-        if not re.fullmatch(r'[a-z_][a-z0-9_]*', head, re.I):
-            return None
-        field, metrics = head.lower(), []
-    # A list heading ("Definitions: Revenue = SUM(revenue)") is not part of the label.
-    label = re.sub(r'^(?:(?:metric|kpi)\s+)?definitions?\s*:\s*', '', match[1].strip(), flags=re.I)
-    definition = {'label': label, 'metrics': tuple(metrics), 'field': field,
-                  'unit': None, 'grain': None, 'using': None, 'chart': None}
-    for option in options:
-        found = _SURFACE_OPTION.fullmatch(option)
-        if found is None:
-            return None
-        for key, value in found.groupdict().items():
-            if value is not None:
-                if definition[key] is not None:
-                    return None  # each option once
-                definition[key] = value if key == 'unit' else value.lower()
-    if field and any(definition[k] for k in ('unit', 'grain')):
-        return None  # a field definition takes only a chart type
-    return definition
-
-
-@lru_cache(maxsize=256)
-def _surface_clauses(text):
-    """(surface definitions, other clauses) of reference instructions, one clause each."""
-    definitions, other = [], []
-    for clause in _clauses(text):
-        definition = _surface(clause)
-        (definitions if definition else other).append(definition or clause)
-    return tuple(definitions), tuple(other)
-
-
-def _surface_labels(text):
-    """{normalized label: [its definitions]} of reference instructions."""
-    labels = {}
-    for definition in _surface_clauses(text)[0]:
-        labels.setdefault(_normal(definition['label']), []).append(definition)
-    return labels
-
-
-def _surface_key(definition):
-    return tuple(definition[k] for k in ('metrics', 'field', 'unit', 'grain', 'using', 'chart'))
-
-
-def _wholly_definitions(text):
-    definitions, other = _surface_clauses(text)
-    return bool(definitions) and not other
-
-
-def _definition_rows(ledger, snapshot):
-    """A recreate reference's instruction clause that is wholly a definition is evidence only, never a
-    requirement row (architecture.md#Recreate observation completion); any other sentence stays one."""
-    reference = snapshot.get('reference') or {}
-    if reference.get('mode') != 'recreate':
-        return
-    whole = _wholly_definitions(reference.get('instructions') or '')
-    ledger.requirements = [r for r in ledger.requirements if not (
-        r.source.kind == 'reference' and r.source.reference_id == reference['id'] and (whole or _wholly_definitions(r.text)))]
-
-
-def unused_definitions(snapshot, ledger):
-    """Labels of the recreate reference's definition clauses that name no observation. They raise no
-    issue; the reconciliation span lists them."""
-    reference = snapshot.get('reference') or {}
-    if reference.get('mode') != 'recreate' or not reference.get('instructions'):
-        return []
-    used = set()
-    for r in ledger.requirements:
-        if r.source.kind == 'image' and r.source.reference_id == reference['id']:
-            if not _unlabeled_control(r, snapshot):
-                item = json.loads(r.source.text)
-                used |= {_normal(v) for v in (item.get('label'), item.get('metric_label')) if v} | {_normal(m.label) for m in r.mappings}
-    return list(dict.fromkeys(d['label'] for d in _surface_clauses(reference['instructions'])[0] if _normal(d['label']) not in used))
-
-
 @lru_cache(maxsize=1)
-def _surface_registry():
-    # Capability ids and data prerequisites only: static registry facts, read once.
-    return capabilities.Checker(capabilities.load_registry(), allowed=_surface_catalog().keys())
-
-
-@lru_cache(maxsize=1)
-def _surface_catalog():
+def _seed_catalog():
     # The seed catalog's slot rules, read once: recomputation must stay within its 100 ms.
     from dss.spec.validate import catalog
     return catalog()
@@ -945,334 +820,8 @@ def _effective_types():
     import os
     from dss.spec import validate
     configured = {**validate.dotenv_values(validate.BACKEND_DIR.parent / '.env'), **os.environ}.get('DSS_ALLOWED_TYPES')
-    allowed = _surface_catalog().keys() if configured is None else {s.strip() for s in configured.split(',') if s.strip()}
+    allowed = _seed_catalog().keys() if configured is None else {s.strip() for s in configured.split(',') if s.strip()}
     return frozenset(allowed)
-
-
-def _offered_types():
-    """Catalog field/chart offers narrowed by the operation's effective allowlist."""
-    return _effective_types() & _surface_catalog().keys() & {*CHART_TYPES, *CONTROL_TYPES}
-
-
-def _takes_date(capability):
-    checker = _surface_registry()
-    return checker.registry.get(capability) is not None and any(p.name == 'date_field' for p in checker._prerequisites(capability))
-
-
-def _catalog_problem(kind, metrics, dimensions, date_field, grain, fields):
-    """Why the catalog does not accept these bound fields for `kind`, else None."""
-    rule = _surface_catalog()[kind]
-    if kind in FIELD_CONTROLS:
-        return None if len(dimensions) == 1 and not metrics else f'a {kind} takes one field and no metrics'
-    if not rule['min_metrics'] <= len(metrics) <= rule['max_metrics']:
-        return f"it takes {rule['min_metrics']}..{rule['max_metrics']} metrics"
-    # A date bucket at the grain is the dimension of a chart without a date axis (a yearly bar).
-    counted = len(dimensions) + bool(grain and date_field and kind not in DATE_AXIS_TYPES and kind != 'scorecard')
-    if not rule['min_dimensions'] <= counted <= rule['max_dimensions']:
-        return f"it takes {rule['min_dimensions']}..{rule['max_dimensions']} dimensions"
-    if rule['requires_date_dimension'] and not date_field:
-        return 'it needs a date field (date grain <grain> using <date field>)'
-    for field, aggregation in metrics:
-        if aggregation in ('sum', 'avg') and field in fields and fields[field].upper() not in _NUMBER_TYPES:
-            return f'{aggregation.upper()}({field}) needs a numeric field'
-    return None
-
-
-def _restore_surface(r):
-    """Undo an earlier pass's surface binding: every pass restarts from the observation's extraction."""
-    saved = r.mapping_origins.get('surface')
-    if saved is not None:
-        saved = json.loads(saved)
-        r.needs = [capabilities.Need.model_validate(n) for n in saved['needs']]
-        r.mappings = [Mapping.model_validate(m) for m in saved['mappings']]
-        r.superseded, r.mapping_origins = saved['superseded'], saved['origins']
-
-
-def _observe_surface(r, item, instructions, fields, kpis):
-    """Bind an image observation to the surface definition of its label, else of its metric label
-    (architecture.md#Recreate observation completion): metrics, unit, grain, date field, chart type
-    and control field. The user's instruction outranks the extractor's guess; what the definition
-    cannot mean blocks it. False when no surface definition applies (the clause rule reads plain ones)."""
-    definitions = _surface_labels(instructions.text)
-    found = next((definitions[_normal(name)] for name in (item.get('label'), item.get('metric_label'))
-                  if name and _normal(name) in definitions), None)
-    if not found or any(f'definition:{i}' in r.mapping_origins or str(i) in r.mapping_conflicts for i in range(len(r.mappings))) or any(
-            s.kind == 'message' and _candidates(s.text, m, fields) for s in r.clarifications for m in r.mappings):
-        return False  # No surface definition, or a conversational definition (or its conflict) governs.
-    requested = [Mapping.model_validate_json(r.mapping_origins.setdefault(f'requested:{i}', m.model_dump_json()))
-                 for i, m in enumerate(r.mappings)]
-    d, label = found[0], found[0]['label']
-    plain = d['field'] is None and len(d['metrics']) == 1 and not any(d[k] for k in ('unit', 'grain', 'using', 'chart'))
-    if len({_surface_key(x) for x in found}) == 1 and plain and any(_normal(m.label) == _normal(label) for m in requested):
-        return False  # The clause rule already reads a plain `Label = AGG(field)` of a metric label.
-    for i, base in enumerate(requested):
-        r.mappings[i] = base
-        r.mapping_origins.pop(f'observed:{i}', None)
-
-    def block(reason):
-        r.mapping_conflicts['definition'] = reason
-        return True
-    if len({_surface_key(x) for x in found}) > 1:
-        return block(f'Conflicting definitions for {label}; provide an explicit correction')
-    needs = [n.model_copy(deep=True) for n in r.needs]
-    typed = next((i for i, n in enumerate(needs) if n.capability.startswith(('chart.', 'control.'))), None)
-    kind = needs[typed].capability.split('.', 1)[1] if typed is not None else None
-    metric_maps = [m for m in requested if m.aggregation not in (None, 'none')]
-    dimension_maps = [m for m in requested if m.aggregation in (None, 'none') and m.field]
-    observed = grain_name(item['date_grain']) if item.get('date_grain') else None
-    grain = d['grain'] or (observed if d['metrics'] else None)
-    if d['grain'] and observed and observed != d['grain']:
-        return block(f'Clarify the date grain for {label}: {observed} or {d["grain"]}')
-    date_field = next((n.fields['date_field'] for n in needs if n.fields.get('date_field')), None)
-    if d['using']:
-        kinds = {f: t.upper() for f, t in fields.items()}
-        # The date field itself, or the code-built bucket of one at that grain (`year_year`).
-        source = d['using'] if kinds.get(d['using']) in _DATE_TYPES else next(
-            (f for f, t in kinds.items() if t in _DATE_TYPES and f'{f}_{grain}' == d['using']), None)
-        if source is None:
-            return block(f'Date grain {grain} for {label} uses {d["using"]}; name a DATE, DATETIME or TIMESTAMP field')
-        date_field = source
-        needs = [n.model_copy(update={'fields': {**n.fields, 'date_field': source}}) if _takes_date(n.capability) else n for n in needs]
-    if d['chart']:
-        offered = _offered_types()
-        new = f'{"control" if d["chart"] in CONTROL_TYPES else "chart"}.{d["chart"]}'
-        if d['chart'] not in offered or _surface_registry().registry.get(new) is None:
-            return block(f'Chart {d["chart"]} is not a catalog type; use one of {", ".join(sorted(offered))}')
-        metrics = d['metrics'] or tuple((m.field, m.aggregation) for m in metric_maps)
-        dimensions = [d['field']] if d['field'] else [m.field for m in dimension_maps]
-        if problem := _catalog_problem(d['chart'], metrics, dimensions, date_field, grain, fields):
-            return block(f'Chart {d["chart"]} cannot show {label} as defined: {problem}')
-        names = {p.name for p in _surface_registry()._prerequisites(new)}
-        retyped = []
-        for i, n in enumerate(needs):
-            if i == typed:
-                n = capabilities.Need(capability=new, fields={k: v for k, v in n.fields.items() if k in names})
-            elif kind and n.capability.startswith(f'option.{kind}.'):
-                option = f'option.{d["chart"]}.' + n.capability.split('.', 2)[2]
-                if _surface_registry().registry.get(option) is None:
-                    return block(f'Chart {d["chart"]} has no {option.rsplit(".", 1)[1]} option for {label}')
-                n = n.model_copy(update={'capability': option})
-            retyped.append(n)
-        needs = retyped if typed is not None else [capabilities.Need(capability=new), *retyped]
-        typed, kind = typed or 0, d['chart']
-    evidence = []
-    if d['field']:
-        if kind not in CONTROL_TYPES:
-            return False  # `Label = field` names a control field here; a chart's dimension is its own mapping's label
-        if 'control_field' in {p.name for p in _surface_registry()._prerequisites(needs[typed].capability)}:
-            needs[typed] = needs[typed].model_copy(update={'fields': {**needs[typed].fields, 'control_field': d['field']}})
-        mappings, defined = [Mapping(label=label, field=d['field'])], {0}
-    else:
-        shown = next((m.unit for m in metric_maps if m.unit), None)
-        if d['unit'] and shown and _unit(d['unit']) != _unit(shown):
-            return block(f'Clarify the unit for {label}: {shown} or {d["unit"]}')
-        unit = d['unit'] or shown
-        matches = _kpi_matches(label, kpis)
-        if matches:
-            if len({json.dumps([k['measure'], _unit(k.get('unit'))], sort_keys=True) if k.get('measure') else k['id'] for k in matches}) > 1:
-                return block(f'Clarify which confirmed KPI defines {label}: ' + ', '.join(sorted(k['name'] for k in matches)))
-            kpi = matches[0]
-            if not kpi.get('measure') or len(d['metrics']) > 1:
-                return block(f'Confirmed KPI {kpi["name"]} is ' + ('a ratio' if not kpi.get('measure') else 'one metric')
-                             + f', but the reference instructions define {label} as ' + ('one metric' if len(d['metrics']) == 1 else 'several'))
-            measure = {'field': kpi['measure']['field'], 'aggregation': kpi['measure']['agg'], 'unit': kpi.get('unit')}
-            stated = {'field': d['metrics'][0][0], 'aggregation': d['metrics'][0][1], 'unit': d['unit']}
-            differing = [k for k, v in measure.items() if v and stated[k] and not _same(k, v, stated[k])]
-            if differing:
-                return block(f'Confirmed KPI {kpi["name"]} and the reference instructions define {label} differently '
-                             f'({", ".join(differing)}); change one of them')
-            unit, evidence = d['unit'] or kpi.get('unit') or unit, ['kpi:' + kpi['id']]
-        mappings = [Mapping(label=label, field=f, aggregation=a, unit=unit, date_grain=grain) for f, a in d['metrics']]
-        defined = set(range(len(mappings)))
-        mappings += dimension_maps
-    r.mapping_origins['surface'] = json.dumps({'needs': [n.model_dump() for n in r.needs], 'mappings': [m.model_dump() for m in requested],
-                                               'superseded': r.superseded, 'origins': r.mapping_origins})
-    r.needs, r.mappings = needs, mappings
-    if d['using']:
-        r.mapping_origins['using'] = d['using']
-    if len(d['metrics']) > 1:
-        # The user's explicit substitution: checked against its meaning, not the replaced chart's title.
-        r.superseded = {**r.superseded, **{f'property:{i}': instructions.id for i, p in enumerate(r.properties) if p.path == 'label'}}
-    for i in defined:
-        if mappings[i].field in fields:
-            r.mapping_origins[f'observed:{i}'] = json.dumps({'evidence': evidence + [instructions.id], 'key': _observed_key(mappings[i])})
-    r.clarifications.append(instructions)
-    return True
-
-
-def _field_definition(label, instructions):
-    """The field a surface `<Label> = <field>` clause names for this label, if exactly one."""
-    fields = {d['field'] for d in _surface_labels(instructions.text).get(_normal(label), []) if d['field']}
-    return fields.pop() if len(fields) == 1 else None
-
-
-_CURRENCIES ={'$': 'usd', 'us$': 'usd', 'dollar': 'usd', 'dollars': 'usd', '€': 'eur', 'euro': 'eur', 'euros': 'eur', '£': 'gbp'}
-
-
-def _unit(value):
-    text = ' '.join(str(value).lower().split()) if value else ''
-    return _CURRENCIES.get(text, text) or None
-
-
-def _same(key, a, b):
-    return _unit(a) == _unit(b) if key == 'unit' else a == b
-
-
-def _tokens(text):
-    return frozenset(re.findall(r'[a-z0-9]+', (text or '').lower()))
-
-
-def _kpi_matches(label, kpis):
-    """Confirmed KPIs whose name or id names this label: the same words first, else every label
-    word in the name ("Revenue" -> "Net revenue"); a qualified label ("Average revenue") is another metric."""
-    words = _tokens(label)
-    if not words:
-        return []
-    named = [(k, (_tokens(k.get('name')), _tokens(k.get('id')))) for k in kpis]
-    exact = [k for k, names in named if words in names]
-    return exact or [k for k, names in named if any(words <= n for n in names)]
-
-
-def _observed_key(mapping):
-    return digest(mapping.model_dump())
-
-
-@_type_scope
-def _reconcile_observation(r, snapshot, *, candidates=_candidates):
-    """Bind a recreate observation's metric to definition evidence, never to an image/model guess.
-
-    Evidence is a confirmed Context KPI that unambiguously names the label and the current
-    reference's user instructions. Each pass restarts from the original extraction, so a changed
-    KPI or removed instruction cannot leave its authorization behind. Pure: no model call.
-    """
-    reference = snapshot.get('reference') or {}
-    if reference.get('mode') != 'recreate' or not r.source.reference_id or r.source.reference_id != reference.get('id'):
-        return
-    fields, kpis = schema(snapshot), snapshot.get('confirmed_kpis') or []
-    instructions = next((Source.model_validate(s) for s in snapshot['incoming'] if s['id'] == reference['id'] + ':instructions'), None)
-    item = json.loads(r.source.text) if r.source.kind == 'image' else {}
-    _restore_surface(r)
-    r.mapping_conflicts.pop('definition', None)
-    r.clarifications = [s for s in r.clarifications if instructions is None or s.id != instructions.id]
-    if item.get('kind') == 'control' and any(p.path == 'label' for p in r.properties):
-        # A control has no title op: its observed title is its label property (extraction normalized).
-        r.needs = [n for n in r.needs if n.capability != 'argument.title']
-    if candidate := _unlabeled_control(r, snapshot):
-        # A worker's proposed label, metric_label, mapping or saved surface is not
-        # binding evidence. Only the decision substitution path may supply a field.
-        # Keep the original slot so clean 25.8 decision meanings/proofs do not change.
-        typed = False
-        for i, need in enumerate(r.needs):
-            if (need.capability.startswith(('chart.', 'control.')) and not typed
-                    or need.capability in {f'control.{kind}' for kind in FIELD_CONTROLS}):
-                r.needs[i] = capabilities.Need(capability=f'control.{candidate}')
-                r.superseded.pop(f'need:{i}', None)
-                typed = True
-        if not typed:
-            r.needs.append(capabilities.Need(capability=f'control.{candidate}'))
-        r.mappings = []
-        r.mapping_origins = {k: v for k, v in r.mapping_origins.items() if not (
-            k.isdigit() or k in ('surface', 'using') or k.startswith(('requested:', 'observed:', 'definition:', 'kpi:')))}
-        r.mapping_conflicts = {k: v for k, v in r.mapping_conflicts.items() if not (k.isdigit() or k == 'definition')}
-        return
-    if instructions and item and _observe_surface(r, item, instructions, fields, kpis):
-        return
-    used = False
-    for i, m in enumerate(r.mappings):
-        if f'definition:{i}' in r.mapping_origins or str(i) in r.mapping_conflicts or any(
-                s.kind == 'message' and candidates(s.text, m, fields) for s in r.clarifications):
-            continue  # A conversational definition, or its conflict, governs (_reconcile_definitions).
-        base = Mapping.model_validate_json(r.mapping_origins.setdefault(f'requested:{i}', m.model_dump_json()))
-        r.mappings[i] = base
-        r.mapping_origins.pop(f'observed:{i}', None)
-        r.mapping_conflicts.pop(str(i), None)
-        label = base.label
-        requested = {'aggregation': base.aggregation, 'unit': base.unit, 'date_grain': base.date_grain}
-        observed = r.source.kind == 'image' and _normal(label) == _normal(item.get('metric_label') or '')
-        if observed:
-            requested = {k: v or item.get(k) for k, v in requested.items()}
-        requested['aggregation'] = None if requested['aggregation'] == 'none' else requested['aggregation']
-        if not (observed or requested['aggregation'] is not None):
-            # A dimension keeps its own binding; a KPI never redefines it. A `Label = field` clause does.
-            if instructions and (field := _field_definition(label, instructions)):
-                r.mappings[i] = base.model_copy(update={'field': field})
-                r.mapping_origins[f'observed:{i}'] = json.dumps({'evidence': [instructions.id], 'key': _observed_key(r.mappings[i])})
-                used = True
-            continue
-        matches = _kpi_matches(label, kpis)
-        stated = candidates(instructions.text, base, fields) if instructions else []
-
-        def conflict(reason):
-            r.mapping_conflicts[str(i)] = reason
-        if not matches and not stated:
-            if r.source.kind == 'image':
-                # A matching field name alone does not define a metric.
-                conflict(f'Define {label}: confirm a matching Context KPI or add a reference instruction such as {label} = SUM(<field>)')
-            continue
-        if len({json.dumps([k['measure'], _unit(k.get('unit'))], sort_keys=True) if k.get('measure') else k['id'] for k in matches}) > 1:
-            conflict(f'Clarify which confirmed KPI defines {label}: ' + ', '.join(sorted(k['name'] for k in matches)))
-            continue
-        kpi = matches[0] if matches else None
-        if kpi and not kpi.get('measure'):
-            if stated:
-                conflict(f'Confirmed KPI {kpi["name"]} is a ratio, but the reference instructions define {label} as one metric')
-            continue  # A ratio keeps its existing refusal and alternatives.
-        if _conflicting(stated):
-            conflict(f'Conflicting definitions for {label}; provide an explicit correction')
-            continue
-        definition = {}
-        if stated:
-            definition = {'field': stated[0][0], **{k: next((d[k] for _, d in stated if d.get(k)), None)
-                                                   for k in ('aggregation', 'unit', 'date_grain', 'date_field')}}
-        if kpi:
-            measure = {'field': kpi['measure']['field'], 'aggregation': kpi['measure']['agg'], 'unit': kpi.get('unit')}
-            differing = [k for k, v in measure.items() if v and definition.get(k) and not _same(k, v, definition[k])]
-            if differing:
-                conflict(f'Confirmed KPI {kpi["name"]} and the reference instructions define {label} differently '
-                         f'({", ".join(differing)}); change one of them')
-                continue
-            if not stated:
-                # A KPI alone must still match what the screenshot shows; explicit instructions clarify it.
-                differing = [k for k in ('aggregation', 'unit') if requested[k] and measure[k] and not _same(k, requested[k], measure[k])]
-                if differing:
-                    conflict(f'Clarify {label}: the screenshot shows ' + ', '.join(str(requested[k]) for k in differing)
-                             + f' but confirmed KPI {kpi["name"]} is ' + ', '.join(str(measure[k]) for k in differing)
-                             + '; add a reference instruction or change the KPI')
-                    continue
-            definition = {**measure, **{k: v for k, v in definition.items() if v}}
-        if not definition.get('aggregation'):
-            conflict(f'Define the aggregation for {label}, for example {label} = SUM({definition["field"]})')
-            continue
-        grain = requested['date_grain']
-        if definition.get('date_grain') and grain and definition['date_grain'] != grain:
-            conflict(f'Clarify the date grain for {label}: {grain} or {definition["date_grain"]}')
-            continue
-        if not grain and any(n.capability == 'chart.time_series' for n in r.needs):
-            grain = definition.get('date_grain')
-        dates = {n.fields.get('date_field') for n in r.needs if n.fields.get('date_field')}
-        if definition.get('date_field') and dates and definition['date_field'] not in dates:
-            conflict(f'Clarify incompatible date fields for {label}')
-            continue
-        proposed = Mapping(label=label, field=definition['field'], aggregation=definition.get('aggregation'),
-                           unit=definition.get('unit'), date_grain=grain)
-        r.mappings[i] = proposed
-        r.mapping_origins[f'observed:{i}'] = json.dumps({'evidence': (['kpi:' + kpi['id']] if kpi else []) + (
-            [instructions.id] if stated else []), 'key': _observed_key(proposed)})
-        used |= bool(stated)
-    if used and r.source != instructions:
-        r.clarifications.append(instructions)  # Provenance of the clarified image item.
-
-
-@_type_scope
-def observation_stale(snapshot, r, *, candidates=_candidates):
-    """The stored reconciliation no longer follows from the current KPIs, instructions and schema."""
-    reference = snapshot.get('reference') or {}
-    if (reference.get('mode') != 'recreate' or 'analysis' in reference
-            or not r.source.reference_id or r.source.reference_id != reference.get('id')):
-        return False
-    fresh = r.model_copy(deep=True)
-    _reconcile_observation(fresh, snapshot, candidates=candidates)
-    return fresh != r
 
 
 def _reconcile_grains(ledger, snapshot):
@@ -1280,8 +829,8 @@ def _reconcile_grains(ledger, snapshot):
     fields = schema(snapshot)
     for r in ledger.requirements:
         dates = {n.fields.get('date_field') for n in r.needs if n.capability == 'chart.time_series'}
-        if not dates or r.source.kind == 'image':
-            continue  # An observed chart keeps its own grain (_reconcile_observation).
+        if not dates:
+            continue
         for i, m in enumerate(r.mappings):
             if m.date_grain:
                 continue
@@ -1304,8 +853,8 @@ def _normalize_presentation(ledger, snapshot):
              for c in (*p.get('components', []), *p.get('decorations', []))}
     for r in ledger.requirements:
         if r.source.kind != 'comment':
-            # Only a real spec item is a binding; a cited requirement or observation id
-            # (an image item's `o2`) is not one and would make it unfulfillable by any candidate.
+            # Only a real spec item is a binding; a cited requirement id is not one and would make
+            # it unfulfillable by any candidate.
             r.component_ids = [cid for cid in r.component_ids if cid in known]
         if removal(r):
             continue  # Normalized once, while its component still existed.
@@ -1420,17 +969,6 @@ def removal(requirement):
     return requirement.mapping_origins.get('remove')
 
 
-def _flattened_chart(requirement):
-    """An observed chart extracted as background/style/element needs only: flattening cannot recreate it.
-
-    Unsupported behavior (geo points, animation, extensions) keeps its own refusal and alternatives.
-    """
-    if requirement.source.kind != 'image' or not requirement.needs:
-        return False
-    return (json.loads(requirement.source.text).get('kind') == 'chart'
-            and all(n.capability.startswith(('layout.', 'style.', 'element.')) for n in requirement.needs))
-
-
 def _preserves_comment(component, requirement, snapshot):
     if not re.search(r'preserve\s+its\s+position\s+and\s+data', requirement.source.text, re.I):
         return True
@@ -1458,10 +996,6 @@ def mapping_verdict(mapping, requirement, fields, *, candidates=_candidates):
     # aggregation and unit; the source text only restates it.
     kpi = requirement.mapping_origins.get('kpi:' + label, '')
     if kpi.partition(':')[2] == _kpi_key(mapping):
-        return None
-    # A recreate observation reconciled to a confirmed KPI and/or the reference instructions.
-    if any(k.startswith('observed:') and json.loads(v)['key'] == _observed_key(mapping)
-           for k, v in requirement.mapping_origins.items()):
         return None
     explicit = _assignment(text, mapping)
     if label != _normal(field) and not explicit:
@@ -1510,101 +1044,11 @@ def _prerequisites(snapshot, needs, mappings):
     return digest({"fields": {n: fields.get(n) for n in sorted(names)}, "origins": origins, "derived": derived})
 
 
-def _unlabeled_control(requirement, snapshot):
-    """The chart_candidate of an active recreate image observation of kind `control` with a blank label
-    whose candidate is a field control, else None (architecture.md#Unlabeled reference control binding)."""
-    reference = snapshot.get('reference') or {}
-    if (reference.get('mode') != 'recreate' or requirement.source.kind != 'image'
-            or requirement.source.reference_id != reference.get('id')):
-        return None
-    item = json.loads(requirement.source.text)
-    blank = not (item.get('label') or '').strip()
-    return item.get('chart_candidate') if item.get('kind') == 'control' and blank and item.get('chart_candidate') in FIELD_CONTROLS else None
-
-
-def _matched_labels(snapshot, ledger):
-    """Normalized labels the recreate reference's observations match by name (unused_definitions)."""
-    rid, used = (snapshot.get('reference') or {}).get('id'), set()
-    for r in ledger.requirements:
-        if r.source.kind == 'image' and r.source.reference_id == rid and not _unlabeled_control(r, snapshot):
-            item = json.loads(r.source.text)
-            used |= {_normal(v) for v in (item.get('label'), item.get('metric_label')) if v} | {_normal(m.label) for m in r.mappings}
-    return used
-
-
-def _control_clause(label, snapshot, candidate, *, labels=None):
-    """(type, field) of the instructions' `<Label> = <field>[, chart <type>]` clause with this label when
-    it is a field control (its chart type, else the observation's `candidate`), else None."""
-    reference = snapshot.get('reference') or {}
-    labels = _surface_labels(reference.get('instructions') or '') if labels is None else labels
-    found = labels.get(_normal(label), [])
-    if len({_surface_key(d) for d in found}) != 1 or found[0]['field'] is None:
-        return None  # absent, or conflicting definitions (a block of their own)
-    kind = found[0]['chart'] or candidate
-    return (kind, found[0]['field']) if kind in FIELD_CONTROLS else None
-
-
-def _bound_clauses(requirement, snapshot, ledger, checker):
-    """Normalized clause labels another observation's applying accepted decision binds."""
-    rows, bound = {r.id: r for r in ledger.requirements}, set()
-    for d in ledger.decisions:
-        clause = (d.get('alternative') or {}).get('clause')
-        other = rows.get(d.get('requirement_id'))
-        if clause and other is not None and other.id != requirement.id and _choice(other, d['slot'], snapshot, ledger, checker) is d:
-            bound.add(_normal(clause))
-    return bound
-
-
-@_type_scope
-def _binding_offers(requirement, slot, candidate, snapshot, ledger, checker):
-    """Need substitutions for an unlabeled field control's control_field issue: unused instruction control
-    clauses, then catalog-valid fields. Offered, never applied: silence or a sole candidate stays unresolved."""
-    fields, offered, types = schema(snapshot), [], _offered_types()
-    registry = _surface_registry().registry
-    requested_meaning = meaning(requirement)
-    instructions = snapshot['reference'].get('instructions') or ''
-    labels = _surface_labels(instructions)
-
-    def offer(label, kind, field, clause):
-        needs = [capabilities.Need(capability=f'control.{kind}', fields={'control_field': field})]
-        if (kind not in types or registry.get(needs[0].capability) is None
-                or _catalog_problem(kind, (), [field], None, None, fields) or not checker.need(needs[0], fields).ok):
-            return
-        payload = [n.model_dump() for n in needs]
-        if clause is None and any(o['needs'] == payload for o in offered):
-            return  # the instruction offer already carries these needs
-        aid = 'alt_' + digest([requirement.id, requested_meaning, slot, payload, clause])[:24]
-        offered.append({'id': aid, 'label': label, 'needs': payload, 'clause': clause})
-    used = _matched_labels(snapshot, ledger) | _bound_clauses(requirement, snapshot, ledger, checker)
-    for definition in _surface_clauses(instructions)[0]:
-        label = definition['label']
-        clause = _control_clause(label, snapshot, candidate, labels=labels)
-        if clause and _normal(label) not in used and not any(o['clause'] == label for o in offered):
-            offer(f'{label}: {clause[0]} on {clause[1]} (from your instructions)', *clause, label)
-    for field in sorted(fields):
-        offer(f'{candidate} on {field}', candidate, field, None)
-    return offered
-
-
-def _clause_current(requirement, clause, needs, snapshot, ledger):
-    """A clause decision applies only while its clause is in the current instructions with the same field
-    and type, and no observation's label has matched it since."""
-    candidate = _unlabeled_control(requirement, snapshot)
-    found = _control_clause(clause, snapshot, candidate) if candidate else None
-    if found is None or _normal(clause) in _matched_labels(snapshot, ledger) or len(needs) != 1:
-        return False
-    return needs[0].capability == f'control.{found[0]}' and needs[0].fields == {'control_field': found[1]}
-
-
-def _offers(requirement, slot, snapshot, checker, ledger=None):
+def _offers(requirement, slot, snapshot, checker):
     """Small curated substitutions. Every field binding is named in the explicit choice."""
     if not slot.startswith("need:"):
         return []  # Undefined metrics need data/text through the interview, never an inferred definition.
     need = requirement.needs[int(slot.split(":")[1])]
-    candidate = _unlabeled_control(requirement, snapshot)
-    if (ledger is not None and candidate and need.capability.startswith('control.')
-            and 'control_field' not in need.fields and need.capability.split('.', 1)[1] in FIELD_CONTROLS):
-        return _binding_offers(requirement, slot, candidate, snapshot, ledger, checker)
     if need.capability not in {"animation.temporal_playback", "geo.lat_long_points", "refresh.realtime_streaming"}:
         return []
     fields, candidates = schema(snapshot), []
@@ -1672,18 +1116,12 @@ def revalidate_decisions(snapshot, ledger, checker):
         if not r or d["action"] != "accept_alternative" or d.get("applied") or d["meaning"] != meaning(r):
             continue
         needs = [capabilities.Need.model_validate(n) for n in d["alternative"]["needs"]]
-        clause = d["alternative"].get("clause")
-        if (clause is None or _clause_current(r, clause, needs, snapshot, updated)) and _matches(snapshot, r, needs, checker):
+        if d["alternative"].get("clause") is None and _matches(snapshot, r, needs, checker):
             d["applied"] = True
     return updated
 
 
 def _choice(requirement, slot, snapshot, ledger, checker):
-    if _unlabeled_control(requirement, snapshot) and observation_stale(snapshot, requirement):
-        # A pre-enforcement decision may match the persisted guessed mapping, but
-        # that mapping is no longer its authorized meaning. It cannot own a clause
-        # on pure reads while waiting for explicit reconciliation. Never re-sign it.
-        return None
     for d in reversed(ledger.decisions):
         if d.get("requirement_id") != requirement.id or d.get("meaning") != meaning(requirement):
             continue
@@ -1694,9 +1132,8 @@ def _choice(requirement, slot, snapshot, ledger, checker):
         needs = [capabilities.Need.model_validate(n) for n in d["alternative"]["needs"]]
         if not all(checker.need(n, schema(snapshot)).ok for n in needs):
             return None
-        clause = d["alternative"].get("clause")
-        if clause is not None and not _clause_current(requirement, clause, needs, snapshot, ledger):
-            return None
+        if d["alternative"].get("clause") is not None:
+            return None  # An instruction-clause binding belonged to the retired reference-control path.
         if d["prerequisites"] != _prerequisites(snapshot, needs, requirement.mappings):
             return None
         # A fresh choice authorizes repairing exactly its old prototype, without
@@ -1724,9 +1161,6 @@ def _requirement_issues(snapshot, ledger, checker, *, candidates=_candidates):
                         for slot, v in verdicts]
         if not r.needs and not context and not removal(r):
             verdicts.append(("unknown", capabilities.Verdict("unknown", "No registered capability covers this requirement")))
-        elif _flattened_chart(r):
-            verdicts.append(('unknown', capabilities.Verdict('needs_clarification',
-                'An observed chart needs a real bound component; decoration flattening cannot recreate it')))
         verdicts += [(f"mapping:{i}", v) for i, m in enumerate(r.mappings) if (v := mapping_verdict(m, r, fields, candidates=candidates))]
         verdicts += [(f'mapping:{i}', capabilities.Verdict('needs_clarification', reason))
                      for i, reason in r.mapping_conflicts.items()]
@@ -1745,7 +1179,7 @@ def _requirement_issues(snapshot, ledger, checker, *, candidates=_candidates):
             iid = "issue_" + digest([r.id, meaning(r), slot, v.capability, v.status, reason])[:24]
             choice = _choice(r, slot, snapshot, ledger, checker)
             resolution = ("dropped" if choice["action"] == "drop" else "accepted_alternative") if choice else "unresolved"
-            offers = _offers(r, slot, snapshot, checker, ledger)
+            offers = _offers(r, slot, snapshot, checker)
             rows.append((Issue(id=iid, requirement=r.text, status=v.status, reason=reason,
                 evidence=list(v.evidence), alternatives=[Alternative(id=o["id"], label=o["label"]) for o in offers],
                 resolution=resolution), r, slot, offers))
@@ -1758,8 +1192,7 @@ def _requirement_issues(snapshot, ledger, checker, *, candidates=_candidates):
 def evaluate(snapshot, ledger, checker, *, check_components=True):
     """Pure bounded recomputation; does not call a model, write SQL or publish artifacts."""
     # Only literal definition parsing is shared: full text, mapping and ordered schema
-    # identify it. Nothing (especially decisions or reconciled observations) survives
-    # this call, and every observation still rechecks its current evidence.
+    # identify it. Nothing (especially decisions) survives this call.
     definitions = {}
 
     def candidates(text, mapping, fields):
@@ -1773,16 +1206,10 @@ def evaluate(snapshot, ledger, checker, *, check_components=True):
     found = [row[0] for row in requirement_issues]
     if snapshot.get('blueprint'):
         from dss.spec.feasibility import issue_rows
-        observations = blueprint_observations(snapshot, ledger, checker, requirement_issues=requirement_issues)
-        found.extend(issue for issue, _ in issue_rows(snapshot, ledger, checker, observations=observations))
+        found.extend(issue for issue, _ in issue_rows(snapshot, ledger, checker))
         for source in new_sources(snapshot, ledger):
             found.append(Issue(id='bp_intent_' + digest(source)[:20], requirement=source['text'], status='unknown',
                 reason='New intent has not been assessed; run Check feasibility before accepting the Blueprint'))
-    for r in ledger.requirements:
-        # Not a decision target: only an explicit check re-reconciles changed definitions.
-        if observation_stale(snapshot, r, candidates=candidates):
-            found.append(Issue(id='obs_stale_' + digest([r.id, meaning(r)])[:20], requirement=r.text, status='needs_clarification',
-                reason='Confirmed KPIs, reference instructions or the schema changed for this observation; run Check feasibility'))
     def add(rid, text, verdict):
         if verdict.ok:
             return
@@ -1806,19 +1233,7 @@ def evaluate(snapshot, ledger, checker, *, check_components=True):
         add("scope", "Assessment scope", capabilities.Verdict("needs_clarification", ledger.scope_error))
     # Dropped or decided issues don't count: only active issues and their alternatives.
     active = [i for i in found if i.resolution == "unresolved"]
-    # An unlabeled control's instruction offers never trigger issue_scope; its field offers stay only when
-    # all of them fit the shared limit (architecture.md#Unlabeled reference control binding).
-    offered_by = {issue.id: offers for issue, _, _, offers in requirement_issues if issue.resolution == 'unresolved'}
-    clauses = {o['id'] for offers in offered_by.values() for o in offers if o.get('clause')}
-    by_field = {iid: {o['id'] for o in offers if 'clause' in o and o['clause'] is None} for iid, offers in offered_by.items()}
-    count = sum(len(i.alternatives) for i in active) - sum(len(ids) for ids in by_field.values())
-    for issue in active:
-        ids = by_field.get(issue.id)
-        if ids and count + len(ids) <= MAX_ISSUES:
-            count += len(ids)
-        elif ids:
-            issue.alternatives = [a for a in issue.alternatives if a.id not in ids]
-    offered = sum(a.id not in clauses for i in active for a in i.alternatives)
+    offered = sum(len(i.alternatives) for i in active)
     if len(active) > MAX_ISSUES or offered > MAX_ISSUES:
         # No silent truncation: one scope issue represents the entire refusal; full ledger retained.
         reason = (f"{len(active)} active issues, over the {MAX_ISSUES}-issue limit" if len(active) > MAX_ISSUES else
@@ -1887,146 +1302,6 @@ def copy_version(db, build_id, folder, destination):
     save(destination, updated)
 
 
-# architecture.md#Recreate page placement and truthful observed titles.
-_YEAR = r'(?:19|20)\d{2}'
-_MONTH = (r'(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?'
-          r'|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?')
-# A year range, quarter-year or month-year stands alone; a single year needs its preposition ("Vision 2030" is a name).
-_SPAN = (rf'{_YEAR}\s*(?:[-–—/]|to)\s*(?:{_YEAR}|\d{{2}})|q[1-4][\s-]*{_YEAR}|{_YEAR}[\s-]*q[1-4]'
-         rf'|{_MONTH}\s+{_YEAR}')
-_PHRASE = rf'(?:(?:in|for|during|as\s+of|since)\s+(?:{_SPAN}|{_YEAR})|{_SPAN})'
-_PERIOD = re.compile(rf'(?:\s*[,:;|–—-]\s*|\s+)(?:\(\s*{_PHRASE}\s*\)|{_PHRASE})\s*$', re.I)
-_PERCENT = {'percent': '%', 'percentage': '%', 'pct': '%', 'per cent': '%'}
-
-
-@lru_cache(maxsize=1024)
-def _period_free(label):
-    """`label` without a trailing fixed-period phrase. The POC has no per-chart filter (PRD Later), so no
-    binding enforces one. A label that is only such a phrase keeps it; a phrase mid-label stays, and so
-    does the end of a comparison ("Sales 2023 vs March 2024"), which would otherwise dangle."""
-    match = _PERIOD.search(label)
-    if not match:
-        return label
-    base = label[:match.start()].rstrip(' ,:;|–—-')
-    if not re.search(r'\w', base) or re.search(r'\b(?:vs|versus|and|to|from|through|than|with)\.?$', base, re.I):
-        return label
-    return base
-
-
-def _shown_unit(value):
-    """`_unit` with percent words as `%`: how a title can show a unit."""
-    unit = _unit(value)
-    return _PERCENT.get(unit, unit)
-
-
-def _shows(label, unit):
-    """`label` already shows `unit`, compared through `_unit`'s aliases (`$`/USD) and percent words."""
-    want, text = _shown_unit(unit), ' '.join(label.lower().split())
-    tokens = re.findall(r'[^\W\d_]+|[^\w\s]', text)
-    return want in {_shown_unit(t) for t in tokens} or re.search(
-        rf'(?<![^\W_]){re.escape(want)}(?![^\W_])', text) is not None
-
-
-def _defined_units(r, kpis):
-    """Each metric mapping's unit when definition evidence states it (a reference instruction or a
-    confirmed Context KPI, never only the extractor's reading of image text), else None for it."""
-    surface = 'surface' in r.mapping_origins
-    stated = None
-    instructions = next((s for s in r.clarifications if s.kind == 'reference'), None)
-    if surface and instructions:
-        # The definition _observe_surface bound: of the item's label, else of its metric label.
-        item, definitions = json.loads(r.source.text), _surface_labels(instructions.text)
-        found = next((definitions[_normal(n)] for n in (item.get('label'), item.get('metric_label'))
-                      if n and _normal(n) in definitions), None)
-        stated = found[0]['unit'] if found else None
-    by_id = {k['id']: k for k in kpis or []}
-    units = []
-    for i, m in enumerate(r.mappings):
-        if m.aggregation in (None, 'none'):
-            continue
-        origin = r.mapping_origins.get(f'observed:{i}')
-        unit = None
-        if m.unit and origin:
-            if not surface:
-                unit = m.unit  # the clause rule binds a unit only from a definition or a confirmed KPI
-            else:
-                defined = [stated] + [by_id.get(e[4:], {}).get('unit') for e in json.loads(origin)['evidence'] if e.startswith('kpi:')]
-                unit = m.unit if _shown_unit(m.unit) in {_shown_unit(u) for u in defined if u} else None
-        units.append(unit)
-    return units
-
-
-def _one_line(label):
-    """validate_spec's label rule: one line without list or quote syntax."""
-    from dss.spec.validate import label_text
-    return '\n' not in label and '\r' not in label and label_text(label) == ' '.join(label.split())
-
-
-def observed_title(label, r, kpis=None):
-    """The screenshot title `label` of image observation `r` as code assigns it: without a trailing
-    fixed-period phrase, plus ` (<unit>)` when definition evidence gives every metric the same unit and
-    the label doesn't show it. `kpis`: the confirmed Context KPIs (without them a KPI-only unit is
-    unproven). A suffix that fails the label rule is dropped for this title only. Pure."""
-    base = _period_free(label)
-    units = _defined_units(r, kpis)
-    if units and None not in units and len({_shown_unit(u) for u in units}) == 1 and not _shows(base, units[0]):
-        titled = f"{base} ({' '.join(units[0].split())})"
-        if _one_line(titled):
-            return titled
-    return base
-
-
-def _observed_properties(r, properties, snapshot):
-    """`properties` of `r` with its screenshot title as code assigns it (observed_title)."""
-    if r.source.kind != 'image':
-        return properties
-    kpis = (snapshot or {}).get('confirmed_kpis')
-    return [p.model_copy(update={'value': observed_title(p.value, r, kpis)}) if p.path == 'label' and isinstance(p.value, str)
-            else p for p in properties]
-
-
-def reference_page(snapshot, r):
-    """The page a recreate image observation counts on: its screenshot's. Recreate reads one screenshot
-    and its interpretation items name no page, so it is page 1, where completion adds rows. None: any page."""
-    reference = snapshot.get('reference') or {}
-    if reference.get('mode') == 'recreate' and r.source.kind == 'image' and r.source.reference_id == reference.get('id'):
-        return 1
-    return None
-
-
-def placed_fulfills(component, page, requirement, needs, checker, snapshot, **options):
-    """The one page-aware observation predicate: `component` (on `page`: a Blueprint row's page or the spec
-    page index) fulfils `requirement` and sits on its reference page. The Blueprint check, completion,
-    accept, publish and revision coverage all decide with it."""
-    return reference_page(snapshot, requirement) in (None, page) and _component_fulfills(
-        component, requirement, needs, checker, snapshot, **options)
-
-
-@_type_scope
-def observed_labels(snapshot, ledger, checker):
-    """{component id: label} titling recreate observations' charts with the label the screenshot
-    shows (architecture.md#Recreate definition reconciliation). A Blueprint may name the observed
-    "Revenue" scorecard "Total Revenue"; code gives the title to the first chart that fulfils the
-    observation in every other respect and that no other observation's title claims. Empty unless
-    the titled candidate breaks no requirement the untitled one fulfils. Pure: no model call."""
-    titles, bindings = {}, {}
-    before = {e['path'] for e in coverage_errors(snapshot, ledger, checker, bindings=bindings, titles=titles)}
-    titled = {r.id for r in ledger.requirements if r.source.kind == 'image' and any(p.path == 'label' for p in r.properties)}
-    claimed = {cid for rid, ids in bindings.items() if rid in titled for cid in ids}
-    labels = {}
-    for rid, (label, ids) in titles.items():
-        if free := [cid for cid in ids if cid not in claimed]:
-            claimed.add(free[0])
-            labels[free[0]] = label
-    if not labels:
-        return {}
-    spec = json.loads(json.dumps(snapshot['spec']))
-    for c in (c for p in spec.get('pages', []) for c in p.get('components', [])):
-        c['label'] = labels.get(c['id'], c.get('label'))
-    after = {e['path'] for e in coverage_errors({**snapshot, 'spec': spec}, ledger, checker)}
-    return labels if after < before else {}
-
-
 def _covered(r, snapshot, ledger, checker):
     """(needs, properties) coverage proves for `r` after its explicit choices; None once a drop retires it."""
     choice = _choice(r, 'unknown', snapshot, ledger, checker)
@@ -2045,10 +1320,9 @@ def _covered(r, snapshot, ledger, checker):
 
 
 @_type_scope
-def coverage_errors(snapshot, ledger, checker, *, bindings=None, titles=None):
+def coverage_errors(snapshot, ledger, checker, *, bindings=None):
     """Verify original intent against the candidate, never against a reduced model ledger.
-    `bindings` collects {requirement id: fulfilling component ids}; `titles` {requirement id:
-    (label, component ids)} for image observations those charts fulfil all but their title."""
+    `bindings` collects {requirement id: fulfilling component ids}."""
     errors = []
     assessment = evaluate(snapshot, ledger, checker)
     for issue in assessment.issues:
@@ -2056,7 +1330,6 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None, titles=None):
             errors.append({"path": "requirements", "message": issue.reason})
     pages = (snapshot["spec"] or {}).get("pages", [])
     components = [c for p in pages for c in p.get("components", [])]
-    page_of = {c["id"]: p.get("index") for p in pages for c in p.get("components", [])}
     from dss.recipe.compiler import compile_recipe
     from dss.spec.models import DashboardSpec
     ops = [json.loads(line) for line in compile_recipe(DashboardSpec.model_validate(snapshot['spec']), 1).split('\n')[1:-1]]
@@ -2084,7 +1357,6 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None, titles=None):
         needs, properties = covered
         if not needs and not properties and r.superseded and not r.mappings:
             continue
-        properties = _observed_properties(r, properties, snapshot)
         active = r.model_copy(update={'properties': properties})
         candidates = [c for c in components if not r.component_ids or c["id"] in r.component_ids]
         def compiled_need(need, component):
@@ -2102,17 +1374,9 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None, titles=None):
                             return override
             return need
         def fulfills(c, row):
-            return placed_fulfills(c, page_of[c['id']], row, needs, checker, snapshot) and all(_recipe_fulfills(
+            return _component_fulfills(c, row, needs, checker, snapshot) and all(_recipe_fulfills(
                 compiled_need(n, c), checker, [op for op in ops if op.get('component_id') in (None, c['id'])]) for n in needs)
         matches = [c for c in candidates if fulfills(c, active)]
-        title = [p for p in properties if p.path == 'label']
-        if (titles is not None and not matches and not r.component_ids and r.source.kind == 'image'
-                and len(title) == 1 and isinstance(title[0].value, str)):
-            # The screenshot's chart title is the only proof left to the label: name the charts that
-            # fulfil everything else (observed_labels decides which one carries it).
-            rest = active.model_copy(update={'properties': [p for p in properties if p.path != 'label']})
-            if ids := [c['id'] for c in candidates if fulfills(c, rest)]:
-                titles[r.id] = (title[0].value, ids)
         decoration_proven = (r.component_ids and set(r.component_ids) <= decorations.keys() and properties
                              and all(_in_design(designs[cid], properties) if cid in designs else
                                      _properties_match(decorations[cid], properties) for cid in r.component_ids))
@@ -2139,134 +1403,6 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None, titles=None):
             errors.append({'path': 'reference_items.' + item_id, 'message': f"Candidate spec does not fulfill reference "
                            f"item {item_id} {item['label']!r}: it needs a {item['type']} on page 1 from its Blueprint row"})
     return errors
-
-
-@_type_scope
-def blueprint_observations(snapshot, ledger, checker, *, requirement_issues=None):
-    """The recreate reference's records publish coverage proves on a component, as (requirement,
-    needs, properties) after their choices (architecture.md#Blueprint observation coverage). Image
-    observations and instruction records alike, since coverage checks both. Left out: dropped,
-    retired and layout-only records, and those with an unresolved issue of their own (that verdict
-    stands). A stale one stays in: evaluate blocks it with its own obs_stale issue. Every other
-    build: none."""
-    reference = snapshot.get('reference') or {}
-    if reference.get('mode') != 'recreate' or 'analysis' in reference:
-        return []
-    issues = _requirement_issues(snapshot, ledger, checker) if requirement_issues is None else requirement_issues
-    own = {r.id for issue, r, _, _ in issues if issue.resolution == 'unresolved'}
-    removed = {cid for r in ledger.requirements if (cid := removal(r))}
-    result = []
-    for r in ledger.requirements:
-        if (r.source.kind not in ('image', 'reference') or r.source.reference_id != reference['id'] or r.id in own
-                or audience_requirement(r, ledger) or removal(r) or r.mapping_origins.get('origin') == 'outline_other'
-                or (_unlabeled_control(r, snapshot) and observation_stale(snapshot, r))
-                or (r.component_ids and set(r.component_ids) <= removed)):
-            continue
-        covered = _covered(r, snapshot, ledger, checker)
-        if covered is None:
-            continue
-        needs, properties = covered
-        if not needs and not properties and r.superseded and not r.mappings:
-            continue
-        if not r.component_ids and not r.mappings and needs and all(n.capability.startswith('layout.') for n in needs):
-            continue  # Every recipe sets the canvas and the page background.
-        result.append((r, needs, properties))
-    return result
-
-
-def observation_meaning(r, needs, properties, *, labels=True, kpis=None):
-    """One observation's reconciled meaning for the blueprint planner: kind, chart type, metrics,
-    dimensions, date field and title (observed_title; `kpis`: the confirmed Context KPIs). No boxes,
-    image bytes, rows or source text."""
-    properties = _observed_properties(r, properties, {'confirmed_kpis': kpis})
-    item = json.loads(r.source.text) if r.source.kind == 'image' else {}
-    metrics = [{k: v for k, v in m.model_dump().items() if v is not None and (labels or k != 'label')}
-               for m in r.mappings if m.aggregation not in (None, 'none')]
-    value = {'id': r.source.item_id or 'instructions', 'kind': item.get('kind', 'instruction'),
-             'type': next((n.capability.split('.', 1)[1] for n in needs if n.capability.startswith(('chart.', 'control.'))), None),
-             'metrics': metrics, 'dimensions': [m.field for m in r.mappings if m.aggregation in (None, 'none') and m.field],
-             'date_field': next((n.fields['date_field'] for n in needs if n.fields.get('date_field')), r.mapping_origins.get('using')),
-             'title': next((p.value for p in properties if p.path == 'label'), None) if labels else None}
-    if not value['dimensions'] and value['type'] in FIELD_CONTROLS and item.get('kind') == 'control' and not (item.get('label') or '').strip():
-        # An unlabeled control bound by an explicit decision shows its field like a label-matched one.
-        value['dimensions'] = [n.fields['control_field'] for n in needs if n.fields.get('control_field')]
-    return {k: v for k, v in value.items() if v not in (None, [])}
-
-
-def _row_ops(component, palette):
-    """The ops the compiler emits for one laid-out Blueprint row, plus the page ops every recipe has."""
-    ops = [{'op': name} for name in ('open_report', 'rename_page', 'set_canvas', 'set_background_image', 'save_report', 'get_link')]
-    c, cid = component, component['id']
-    if c['type'] in CONTROL_TYPES:
-        ops.append({'op': 'add_control', 'component_id': cid, 'control_type': c['type'], **({'field': c['field']} if c.get('field') else {})})
-    elif c['type'] == 'text':
-        ops.append({'op': 'add_text', 'component_id': cid, 'text': c.get('text') or c['label']})
-    else:
-        optional = {k: c[k] for k in ('date_dimension', 'breakdown', 'sort') if c.get(k) is not None}
-        ops.append({'op': 'add_chart', 'component_id': cid, 'chart_type': c['type'], 'dimensions': c['dimensions'],
-                    'metrics': c['metrics'], 'title': c['label'], 'options': c['options'], **optional})
-        if c['type'] != 'scorecard':
-            ops.append({'op': 'set_style', 'component_id': cid, 'style': {'colors': c.get('colors') or palette}})
-    return ops
-
-
-def observation_coverage(snapshot, ledger, checker, components, *, pages, derived, palette, observations=None):
-    """Publish coverage of each observation (blueprint_observations) on Blueprint rows, before layout.
-    `components`: {row index: the row as code lays it out}; `pages`: {row index: its page} (placed_fulfills);
-    `derived`: {name: sql} of the Blueprint's
-    derived fields; `palette`: the design palette layout applies. A row fulfils an observation as
-    coverage_errors checks a component, accept's code titling included (observed_labels: a chart that
-    fulfils all but the screenshot title takes it unless another titled observation claims it).
-    `observations`: blueprint_observations, when already computed for these inputs. Returns
-    [(requirement, needs, properties, fulfilling row indices, reason the rows cannot prove it or None)].
-    Pure: no model call."""
-    from dss.spec.validate import label_text
-    view = {**snapshot, 'spec': {'theme': {'palette': palette}}}
-    ops = {i: _row_ops(c, palette) for i, c in components.items()}
-    valid = {i for i, c in components.items() if not checker.component(c)}  # once per row, not per observation
-
-    def fulfils(i, row, needs):
-        return i in valid and placed_fulfills(components[i], pages[i], row, needs, checker, view, derived=derived,
-                                              checked=True) and all(_recipe_fulfills(n, checker, ops[i]) for n in needs)
-    results, titles = [], {}
-    for r, needs, properties in (blueprint_observations(snapshot, ledger, checker) if observations is None else observations):
-        if r.component_ids or any(p.path != 'label' for p in properties):
-            results.append([r, needs, properties, [], 'it names laid-out items or properties only the accepted spec can prove'])
-            continue
-        active = r.model_copy(update={'properties': _observed_properties(r, properties, snapshot)})
-        matches = [i for i in components if fulfils(i, active, needs)]
-        title = [p.value for p in active.properties if p.path == 'label']
-        if not matches and r.source.kind == 'image' and len(title) == 1 and isinstance(title[0], str):
-            rest = active.model_copy(update={'properties': []})
-            titles[r.id] = (title[0], [i for i in components if fulfils(i, rest, needs)])
-        if not matches and any(removal(row) and 'removed_item' in row.mapping_origins and _component_fulfills(
-                json.loads(row.mapping_origins['removed_item']), active, needs, checker, snapshot) for row in ledger.requirements):
-            continue  # The user explicitly removed the chart that fulfilled it.
-        results.append([r, needs, properties, matches, None])
-    # observed_labels, step by step: the first free chart per title, all titles or none (validate_spec's label rule).
-    titled = {r.id for r in ledger.requirements if r.source.kind == 'image' and any(p.path == 'label' for p in r.properties)}
-    claimed = {i for r, _, _, matches, _ in results if r.id in titled for i in matches}
-    labels = {}
-    for label, ids in titles.values():
-        if free := [i for i in ids if i not in claimed]:
-            claimed.add(free[0])
-            labels[free[0]] = label
-    if any('\n' in v or '\r' in v or label_text(v) != ' '.join(v.split()) for v in labels.values()):
-        labels = {}
-    for result in results:
-        if result[0].id in titles:
-            label, ids = titles[result[0].id]
-            result[3] = [i for i in ids if labels.get(i) == label]
-    return [tuple(result) for result in results]
-
-
-def observation_drop(snapshot, ledger, requirement_id, issue_id):
-    """A user's drop of a Blueprint observation issue, recorded as that requirement's own drop
-    decision (publish coverage skips it like any dropped requirement), with its provenance."""
-    r = next(r for r in ledger.requirements if r.id == requirement_id)
-    return {"requirement_id": r.id, "meaning": meaning(r), "slot": "unknown", "action": "drop", "alternative": None,
-            "prerequisites": _prerequisites(snapshot, [], r.mappings), "evidence": [], "issue_id": issue_id,
-            "source_id": r.source.id, "baseline": _bindings(snapshot, r), "applied": False}
 
 
 def reference_items(snapshot):
@@ -2395,9 +1531,7 @@ def _component_fulfills(component, requirement, needs, checker, snapshot, *, der
         metrics = [m for m in component.get("metrics", []) if m["field"] == mapping.field]
         if mapping.aggregation and (not metrics or any(m["agg"] != mapping.aggregation for m in metrics)):
             return False
-        # A scorecard observation shows one value: it has no time axis, so no grain to prove (24.7).
-        if mapping.date_grain and not (component['type'] == 'scorecard' and requirement.source.kind == 'image'
-                                       and any(n.capability == 'chart.scorecard' for n in needs)):
+        if mapping.date_grain:
             # Recipe 1.0 exposes no bucketing option: prove it in the selected
             # derived date dimension, never by a chart label or planner prose.
             # A definition's `using` field must be the bucket's source.
@@ -2516,8 +1650,6 @@ def verification(snapshot, ledger, checker):
             rows.append({"mapping": mapping.model_dump(), "status": verdict.status if verdict else "supported",
                          "reason": verdict.reason if verdict else "Original source defines this binding",
                          "source_id": r.source.id, "definition_sources": [s.id for s in (r.source, *r.clarifications) if _assignment(s.text, mapping)],
-                         "definition_evidence": next((json.loads(v)['evidence'] for k, v in r.mapping_origins.items()
-                             if k.startswith('observed:') and json.loads(v)['key'] == _observed_key(mapping)), []),
                          "schema_type": fields.get(mapping.field), "component_ids": r.component_ids})
         if r.properties or r.superseded:
             rows.append({'properties': [p.model_dump() for p in r.properties], 'superseded': r.superseded})
@@ -2535,12 +1667,6 @@ def get(snapshot, ledger, checker):
     changed = assessment.input_digest is not None and assessment.input_digest != input_digest(snapshot, ledger, checker)
     if changed or ledger.invalidated:
         assessment.state, assessment.id = "stale", None
-    if assessment.state == 'ready' and any(_unlabeled_control(r, snapshot) and observation_stale(snapshot, r)
-                                         for r in ledger.requirements):
-        # Old ready assessments may predate binding enforcement. Project the stale
-        # observation refusal without saving or repairing any persisted evidence.
-        assessment = evaluate(snapshot, ledger, checker)
-        assessment.id = None
     assessment.prototype_stale = artifact_stale(snapshot, ledger, checker) or bool(ledger.pending_comments)
     assessment.pending_comments = ledger.pending_comments
     return assessment
@@ -2573,9 +1699,6 @@ def decide(snapshot, ledger, checker, body):
         alternative = next((o for o in offers if o["id"] == item.alternative_id and o["id"] in visible[item.issue_id]), None)
         if item.action == "accept_alternative" and alternative is None:
             raise RunError("invalid_request", "Choose an offered alternative from this assessment", 422)
-        clause = (alternative or {}).get("clause")
-        if clause and any(_normal((other[3] or {}).get("clause") or "") == _normal(clause) for other in selected):
-            raise RunError("invalid_request", f"Bind the instruction clause {clause} to one observation", 422)
         # Two issues of one requirement cannot simultaneously drop and substitute its intent.
         if any(other[1].id == r.id and other[0].action != item.action and
                "drop" in (other[0].action, item.action) for other in selected):
@@ -2592,9 +1715,7 @@ def decide(snapshot, ledger, checker, body):
             "prerequisites": _prerequisites(snapshot, needs, r.mappings),
             "evidence": [e for n in needs for e in checker.need(n, schema(snapshot)).evidence],
             "issue_id": item.issue_id, "baseline": _bindings(snapshot, r),
-            "applied": _matches(snapshot, r, needs, checker) if alternative else False,
-            # A control binding's provenance names its observation (architecture.md#Unlabeled reference control binding).
-            **({"observation": r.source.item_id} if alternative and "clause" in alternative else {})})
+            "applied": _matches(snapshot, r, needs, checker) if alternative else False})
         batch_owned = updated.pending_comments and r.source.batch_id == updated.pending_comments.id
         if alternative and not _matches(snapshot, r, needs, checker) and snapshot["spec"] and not batch_owned:
             updated.prototype_stale = True
@@ -2665,13 +1786,8 @@ def save(folder, ledger, assessment=None):
         body = "# Feasibility\n\nState: " + a.state + "\n\n## Requirements and mappings\n\n"
         body += "\n".join("- " + json.dumps(r.model_dump(), ensure_ascii=False) for r in ledger.requirements)
         body += "\n\n## Issues\n\n" + "\n".join("- " + i.reason for i in a.issues) + "\n"
-        accepted = {i.id for i in a.issues if i.resolution == "accepted_alternative"}
-        # A control binding's decision record is its provenance (architecture.md#Unlabeled reference control binding).
-        bindings = [f"- {d['observation']} bound by clause {d['alternative']['clause']}" if d['alternative']['clause'] else
-                    f"- {d['observation']} bound to field {d['alternative']['needs'][0]['fields']['control_field']}"
-                    for d in ledger.decisions if d.get("observation") and d.get("issue_id") in accepted]
         # A dropped reference item stays static art by the user's choice (#Reference analysis and approval gate).
-        bindings += [f"- {d['target']['item_id']} {d['target']['label']!r} kept as static art (dropped)"
+        bindings = [f"- {d['target']['item_id']} {d['target']['label']!r} kept as static art (dropped)"
                      for d in ledger.blueprint_decisions if d['target'].get('code') == 'reference_item' and d['action'] == 'drop']
         if bindings:
             body += "\n## Decisions\n\n" + "\n".join(bindings) + "\n"

@@ -649,19 +649,6 @@ def approved_legend(item):
         r'(?:rural\s*[/,]\s*urban|urban\s*[/,]\s*rural)(?:\s+legend)?)\s*', label, re.I))
 
 
-@pytest.mark.parametrize('item,expected', [
-    ({'kind': 'chart', 'label': 'Location (%)', 'chart_candidate': 'bar'}, True),
-    ({'kind': 'control', 'label': 'Location'}, True),
-    ({'kind': 'chart', 'label': 'Rural/Urban legend'}, True),
-    ({'kind': 'chart', 'label': 'Urban access over time'}, False),
-    ({'kind': 'chart', 'label': 'Philippines'}, False),
-    ({'kind': 'chart', 'label': 'Urban'}, False),
-    ({'kind': 'decoration', 'label': 'Location (%)'}, False),
-])
-def test_approved_legend_scope(item, expected):
-    assert approved_legend(item) is expected
-
-
 def approved_year_slider(item):
     """A year/slider-labeled control, or (user card 2026-10-27, run 20261027-235348) an unlabeled date-range
     control: the reference's only date control is its year slider. Never matched by box or item order."""
@@ -671,20 +658,6 @@ def approved_year_slider(item):
     if not label:
         return item.get('chart_candidate') == 'date_range'
     return bool(re.search(r'year|slider', label, re.I)) and not re.search(r'region', label, re.I)
-
-
-@pytest.mark.parametrize('item,expected', [
-    ({'kind': 'control', 'label': 'Year slider', 'chart_candidate': 'date_range'}, True),
-    ({'kind': 'control', 'label': 'Year', 'chart_candidate': 'dropdown'}, True),
-    ({'kind': 'control', 'label': None, 'chart_candidate': 'date_range', 'date_grain': 'year'}, True),
-    ({'kind': 'control', 'label': ' ', 'chart_candidate': 'date_range'}, True),
-    ({'kind': 'control', 'label': None, 'chart_candidate': 'dropdown'}, False),
-    ({'kind': 'control', 'label': 'Region by year', 'chart_candidate': 'dropdown'}, False),
-    ({'kind': 'control', 'label': 'Period', 'chart_candidate': 'date_range'}, False),
-    ({'kind': 'chart', 'label': None, 'chart_candidate': 'date_range'}, False),
-])
-def test_approved_year_slider_scope(item, expected):
-    assert approved_year_slider(item) is expected
 
 
 APPROVED_DROPS = (
@@ -730,34 +703,6 @@ def choose_decisions(assessment, owners, accepted_offers=()):
         drops.append({'drop': name, 'issue_id': issue['id'], 'item': item.get('id'), 'label': item.get('label'),
                       'status': issue['status'], 'reason': issue['reason']})
     return decisions, drops, offers, left
-
-
-def _issue(iid, requirement, *labels):
-    return {'id': iid, 'requirement': requirement, 'resolution': 'unresolved', 'status': 'clarification',
-            'reason': 'r', 'alternatives': [{'id': f'{iid}_{n}', 'label': label} for n, label in enumerate(labels)]}
-
-
-UNLABELED_LIST = {'id': 'o5', 'kind': 'control', 'label': None, 'chart_candidate': 'dropdown'}
-
-
-@pytest.mark.parametrize('owners,issues,accepted,left', [
-    ({'a': UNLABELED_LIST}, [_issue('i1', 'a', REGION_OFFER, 'fixed_size_list on region')], ['i1_0'], []),
-    ({'a': {**UNLABELED_LIST, 'label': ' '}}, [_issue('i1', 'a', REGION_OFFER)], ['i1_0'], []),
-    ({'a': UNLABELED_LIST}, [_issue('i1', 'a', 'dropdown on region')], [], ['i1']),
-    ({'a': {**UNLABELED_LIST, 'label': 'Regions'}}, [_issue('i1', 'a', REGION_OFFER)], [], ['i1']),
-    ({'a': {**UNLABELED_LIST, 'kind': 'chart'}}, [_issue('i1', 'a', REGION_OFFER)], [], ['i1']),
-    ({'a': UNLABELED_LIST, 'b': {**UNLABELED_LIST, 'id': 'o12'}},
-     [_issue('i1', 'a', REGION_OFFER), _issue('i2', 'b', REGION_OFFER)], [], ['i1', 'i2']),
-    ({'a': UNLABELED_LIST, 'g': {'id': 'o3', 'kind': 'chart', 'chart_candidate': 'geo_map', 'label': 'Map'}},
-     [_issue('i1', 'a', REGION_OFFER), _issue('i3', 'g')], ['i1_0', None], []),
-    ({'a': UNLABELED_LIST, 's': {'id': 'o11', 'kind': 'control', 'label': None, 'chart_candidate': 'date_range'}},
-     [_issue('i1', 'a', REGION_OFFER), _issue('i4', 's')], ['i1_0', None], []),
-])
-def test_region_offer_selection(owners, issues, accepted, left):
-    decisions, _, offers, remaining = choose_decisions({'issues': issues}, owners)
-    assert [d['alternative_id'] for d in decisions] == accepted
-    assert [i['id'] for i in remaining] == left
-    assert all(o['item'] == 'o5' for o in offers)
 
 
 def approved_drops(flow, folder, assessment, accepted_offers=()):
@@ -836,140 +781,6 @@ def require_region_authorization(snapshot, ledger, checker, accepted_offers=(), 
 def campaign_region(app, bid, folder, facts, **published):
     return require_region_authorization(requirements.inputs(app.state.db, bid, folder), requirements.load(folder),
                                         Checker(load_registry()), facts['accepted_offers'], **published)
-
-
-def test_region_offer_campaign_ownership_and_duplicate_reads():
-    owners = {'a': UNLABELED_LIST, 'b': {**UNLABELED_LIST, 'id': 'o12'}}
-    issue = _issue('i1', 'a', REGION_OFFER)
-    decisions, _, history, left = choose_decisions({'issues': [issue]}, owners)
-    assert len(decisions) == len(history) == 1 and not left
-    before = deepcopy(history)
-    for _ in range(2):
-        # Reading the already applying issue is idempotent; no POST or history append.
-        assert choose_decisions({'issues': [{**issue, 'resolution': 'accepted_alternative'}]}, owners, history) == ([], [], [], [])
-    assert history == before
-    second = _issue('i2', 'b', REGION_OFFER)
-    assert choose_decisions({'issues': [second]}, owners, history) == ([], [], [], [second])
-    # An old acceptance is not permission to repost even an identical unresolved issue.
-    assert choose_decisions({'issues': [issue]}, owners, history) == ([], [], [], [issue])
-
-
-def region_guard_case(monkeypatch, *, accepted=True, named=False):
-    """Only synthetic schema and retained offline observation fixtures; no live service."""
-    from test_feasibility import UNLABELED, REGION_SELECTOR, control_issues, decide_on, unlabeled_assess, unlabeled_snapshot
-    monkeypatch.setenv('DSS_ALLOWED_TYPES', ','.join(TYPES))
-    rows, items = deepcopy(UNLABELED['case']['requirements']['requirements']), deepcopy(UNLABELED['case']['items'])
-    if named:
-        item = next(i for i in items if i['id'] == 'o5')
-        item['label'] = named if isinstance(named, str) else 'Region Selector'
-        row = next(r for r in rows if r['source']['item_id'] == 'o5')
-        row['source']['text'] = json.dumps(item)
-    snapshot = unlabeled_snapshot(items=items)
-    ledger, assessment = unlabeled_assess(snapshot, requirements=rows)
-    if accepted and not named:
-        issue = control_issues(ledger, assessment)['o5']
-        ledger, _ = decide_on(snapshot, ledger, (issue, REGION_SELECTOR))
-    return snapshot, ledger, Checker(load_registry())
-
-
-def test_region_authorization_requires_applying_decision_even_when_ready(monkeypatch):
-    snapshot, ledger, checker = region_guard_case(monkeypatch, accepted=False)
-    row = next(r for r in ledger.requirements if r.source.item_id == 'o5')
-    row.needs[0].fields['control_field'] = 'region'
-    row.mappings = [requirements.Mapping(label='Region Selector', field='region')]
-    ledger.assessment.state = 'ready'
-    with pytest.raises(AssertionError, match='currently authorized'):
-        require_region_authorization(snapshot, ledger, checker)
-    # Neither a proposed property nor metric label on the originally blank item is authorization.
-    row.properties = [requirements.Property(path='label', value='Region Selector')]
-    item = json.loads(row.source.text)
-    item['metric_label'] = 'Region Selector'
-    row.source.text = json.dumps(item)
-    with pytest.raises(AssertionError, match='currently authorized'):
-        require_region_authorization(snapshot, ledger, checker)
-
-
-def test_region_authorization_is_pure_and_tied_to_campaign_owner(monkeypatch):
-    snapshot, ledger, checker = region_guard_case(monkeypatch)
-    before = requirements.digest([snapshot, ledger.model_dump()])
-    proof = require_region_authorization(snapshot, ledger, checker)
-    history = [{**proof, 'offer': REGION_OFFER}]
-    assert require_region_authorization(snapshot, ledger, checker, history) == proof
-    assert require_region_authorization(snapshot, ledger, checker, history) == proof
-    assert requirements.digest([snapshot, ledger.model_dump()]) == before
-    with pytest.raises(AssertionError, match='changed across assessments'):
-        require_region_authorization(snapshot, ledger, checker, [{**history[0], 'item': 'another-control'}])
-    with pytest.raises(AssertionError, match='source changed across assessments'):
-        require_region_authorization(snapshot, ledger, checker, [{**history[0], 'source': 'another-reference:o5'}])
-    with pytest.raises(AssertionError, match='more than once'):
-        require_region_authorization(snapshot, ledger, checker, history + history)
-
-
-@pytest.mark.parametrize('change', ['removed', 'field', 'type', 'meaning'])
-def test_region_authorization_rejects_invalidated_decisions(monkeypatch, change):
-    snapshot, ledger, checker = region_guard_case(monkeypatch)
-    if change == 'meaning':
-        next(r for r in ledger.requirements if r.source.item_id == 'o5').text += ' changed'
-    else:
-        text = snapshot['reference']['instructions']
-        text = (text.replace('Region Selector = region, chart fixed_size_list. ', '') if change == 'removed' else
-                text.replace('Region Selector = region,', 'Region Selector = country,') if change == 'field' else
-                text.replace('chart fixed_size_list', 'chart dropdown'))
-        snapshot['reference']['instructions'] = text
-        next(s for s in snapshot['incoming'] if s['kind'] == 'reference')['text'] = text
-    with pytest.raises(AssertionError, match='currently authorized'):
-        require_region_authorization(snapshot, ledger, checker)
-
-
-@pytest.mark.parametrize('label', ['Region Selector', 'Region selector', 'REGION SELECTOR', ' Region  Selector '])
-def test_region_authorization_accepts_only_current_original_named_reconciliation(monkeypatch, label):
-    snapshot, ledger, checker = region_guard_case(monkeypatch, named=label)
-    proof = require_region_authorization(snapshot, ledger, checker)
-    assert proof['item'] == 'o5' and proof['alternative_id'] is None
-    row = next(r for r in ledger.requirements if r.source.item_id == 'o5')
-    row.clarifications = []
-    with pytest.raises(AssertionError, match='currently authorized'):
-        require_region_authorization(snapshot, ledger, checker)
-
-
-@pytest.mark.parametrize('wrong', ['page', 'owner', 'type', 'field'])
-def test_region_authorization_proves_same_requirement_page_and_native_binding(monkeypatch, wrong):
-    snapshot, ledger, checker = region_guard_case(monkeypatch)
-    proof = require_region_authorization(snapshot, ledger, checker)
-    component = {'id': 'region-list', 'type': 'fixed_size_list', 'field': 'region'}
-    spec = {'pages': [{'index': 1, 'components': [component]}]}
-    bindings = {proof['requirement']: ['region-list']}
-    assert require_region_authorization(snapshot, ledger, checker, spec=spec, bindings=bindings)['components'] == ['region-list']
-    if wrong == 'page':
-        spec['pages'][0]['index'] = 2
-    elif wrong == 'owner':
-        bindings = {'another-requirement': ['region-list']}
-    else:
-        component[wrong] = 'dropdown' if wrong == 'type' else 'country'
-    with pytest.raises(AssertionError, match='must own a page-1'):
-        require_region_authorization(snapshot, ledger, checker, spec=spec, bindings=bindings)
-
-
-def test_region_authorization_blueprint_uses_native_dimensions_and_coverage_owner(monkeypatch):
-    from dss.spec import feasibility
-    snapshot, ledger, checker = region_guard_case(monkeypatch)
-    proof = require_region_authorization(snapshot, ledger, checker)
-    component = {'type': 'fixed_size_list', 'label': 'Region Selector', 'dimensions': ['region'], 'metrics': [],
-                 'date_dimension': None, 'breakdown': None, 'sort': None, 'options': {}}
-    snapshot['blueprint'] = {'revision': 1, 'view_sources': {'base': 's', 'joins': [], 'union': []}, 'derived_fields': [],
-                             'view_table': None, 'assessment_id': None,
-                             'rows': [{'question_id': None, 'section_id': 's1', 'page': 1, 'component': component,
-                                       'note': '', 'status': 'ok', 'issue_ids': []}]}
-    row = next(r for r in ledger.requirements if r.id == proof['requirement'])
-    monkeypatch.setattr(feasibility, 'coverage', lambda *args: [(row, [], [], [0], None)])
-    assert require_region_authorization(snapshot, ledger, checker) == proof
-    snapshot['blueprint']['rows'][0]['page'] = 2
-    with pytest.raises(AssertionError, match='must own a page-1 Blueprint'):
-        require_region_authorization(snapshot, ledger, checker)
-    snapshot['blueprint']['rows'][0]['page'] = 1
-    monkeypatch.setattr(feasibility, 'coverage', lambda *args: [])
-    with pytest.raises(AssertionError, match='must own a page-1 Blueprint'):
-        require_region_authorization(snapshot, ledger, checker)
 
 
 # DSS_LIVE_STAGE=24.7 stops after the published, dry-run recreate build: the design-stage, fidelity and

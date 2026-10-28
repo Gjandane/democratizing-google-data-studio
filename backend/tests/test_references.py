@@ -1,4 +1,4 @@
-"""Reference sets (task 11.2): both modes, image checks in order, bounded observations, atomic
+"""Reference sets (task 11.2): both modes, image checks in order, the bounded analysis, atomic
 replacement, previews, removal, reload, version copy and the legacy style-images alias."""
 import asyncio
 import json
@@ -186,7 +186,7 @@ def test_recreate_upload_returns_a_pending_analysis_in_reading_order(ref):
     assert [i["proposed"] for i in analysis["items"]] == [{k: i[k] for k in ("disposition", "type")} for i in analysis["items"]]
     assert analysis["allowed_types"] == [t for t in references.TYPES if t in validate.allowed_types()]
     record = json.loads((folder / "references.json").read_text(encoding="utf-8"))
-    # Downstream observation readers see an empty list (items never become observations).
+    # The interpretation carries no image items (the analysis holds them).
     assert record["interpretation"]["items"] == [] and record["interpretation"]["aspect_ratio"] == 1.6
     assert record["analysis"] == analysis and record["images"][0]["width"] == 160
     reference_md = (folder / "docs/reference.md").read_text(encoding="utf-8")
@@ -277,8 +277,8 @@ def test_style_mode_commits_a_null_analysis_and_keeps_the_style_profile(ref, mon
 
 
 @pytest.mark.parametrize("mode", ["style", "recreate"])
-def test_reference_images_add_no_observation_requirements(ref, mode):
-    """Items never become observations: 26.4 builds requirements from approved native items."""
+def test_reference_images_add_no_image_requirements(ref, mode):
+    """Items never become image requirements: 26.4 builds requirements from approved native items."""
     from dss.spec import requirements as req
     client, app, bid, folder, model, _ = ref
     upload(client, app, bid, [("files", ("a.png", png(), "image/png"))], mode=mode, instructions="Revenue = SUM(revenue) in USD")
@@ -1006,7 +1006,7 @@ def test_electricity_fixture_analyzes_to_the_agreed_split(ref, monkeypatch):
 def test_analysis_edits_and_approval_are_code_only_and_reread_allowed_types():
     """26.3: PUT/approve rules on the contract's pending set; issues follow the allowed types of each read."""
     fixture = json.loads((CONTRACT / "reference_set.pending.json").read_text(encoding="utf-8"))
-    interpretation = references.interpret("recreate", 160, 100, {"palette_notes": "", "type_notes": "", "spacing_notes": ""}, [])
+    interpretation = references.interpret("recreate", 160, 100, {"palette_notes": "", "type_notes": "", "spacing_notes": ""})
     record = {**fixture, "style": {"palette": ["#0B1F6B"]}, "interpretation": interpretation.model_dump()}
     allowed = fixture["analysis"]["allowed_types"]
     narrowed = [t for t in allowed if t != "geo_map"]

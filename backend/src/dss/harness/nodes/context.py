@@ -21,7 +21,6 @@ from dss.harness.guardrails import RunError, check_reply
 from dss.harness import stages as execution_stages
 from dss.harness.nodes.style_extract import provider_schema
 from dss.harness.nodes.view import expression
-from dss.spec import references
 
 MAX_OUTPUT_TOKENS = 3000
 # Hide literals and quoted identifiers before testing function names.
@@ -139,7 +138,7 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
     config, folder, build = payload['config'], payload['folder'], payload['build']
     connected = sources(harness.db, build_id)
     secret = config.google_api_key.get_secret_value()
-    initial = context_draft_context(config, connected, build.get('notes'), build['archetype'], references.load(folder))
+    initial = context_draft_context(config, connected, build.get('notes'), build['archetype'])
     check_reply(initial, (secret, config.access_code.get_secret_value(), config.agent_token.get_secret_value()))
     state = {'raw': '', 'draft': None, 'issues': [], 'repair': False, 'failure': None}
 
