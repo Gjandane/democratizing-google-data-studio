@@ -775,8 +775,12 @@ export interface EngineStatus {
 export interface Session {
   /** DSS_ACCESS_CODE is set. */
   required: boolean;
-  /** This request carries a valid code. */
+  /** This request carries a valid code or session cookie. */
   ok: boolean;
+  /** Set when Google sign-in is on: the gate shows the Google button instead of the code form. */
+  google_client_id: string | null;
+  /** The signed-in Google email, or null (no Google session). */
+  user: string | null;
 }
 
 /** A queued build for the build agent (Agent endpoints; the frontend only checks the fixture). */
@@ -1365,7 +1369,7 @@ export const isEngineStatus = shape<EngineStatus>({
   agent_connected: isBoolean,
   agent_last_seen: nullable(isString),
 });
-export const isSession = shape<Session>({ required: isBoolean, ok: isBoolean });
+export const isSession = shape<Session>({ required: isBoolean, ok: isBoolean, google_client_id: nullable(isString), user: nullable(isString) });
 export const isJob = shape<Job>({
   run_id: isString,
   build_id: isString,

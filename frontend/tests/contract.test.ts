@@ -79,6 +79,7 @@ const stageJson = (name: string): unknown => JSON.parse(stageFixture[name] ?? 'n
 
 const jsonGuards: Record<string, Guard<unknown>> = {
   'build.json': isBuild,
+  'session.google.json': isSession,
   'build.done.json': isBuild,
   'builds.json': arrayOf(isBuildSummary),
   'agent_job.json': isJob,
@@ -115,6 +116,10 @@ describe('shared fixtures match the contract', () => {
   it('has a check for every fixture file', () => {
     const checked = [...Object.keys(jsonGuards), 'settings.json', 'events.sse', 'events.usage.sse', 'prototype.sample.html', 'prototype.multipage.html'];
     expect(Object.keys(fixture).sort()).toEqual(checked.sort());
+  });
+
+  it('isSession rejects a Session without user', () => {
+    expect(problemsOf(isSession, { required: true, ok: true, google_client_id: null })).toEqual(['$.user: missing']);
   });
 
   it('has a check for every stage-settings fixture file', () => {
@@ -269,7 +274,7 @@ describe('the guards reject what the contract forbids', () => {
   });
 
   it('session and job: wrong JSON types fail', () => {
-    expect(problemsOf(isSession, { required: 'yes', ok: true })).toEqual(['$.required: expected a boolean']);
+    expect(problemsOf(isSession, { required: 'yes', ok: true, google_client_id: null, user: null })).toEqual(['$.required: expected a boolean']);
     const job = json('agent_job.json') as Record<string, unknown>;
     expect(problemsOf(isJob, { ...job, files: 'recipe.jsonl' })).toEqual(['$.files: expected an array']);
     expect(problemsOf(isJob, { ...job, token: 'x' })).toEqual(['$.token: not in the contract']);

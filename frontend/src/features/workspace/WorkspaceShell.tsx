@@ -1,4 +1,4 @@
-import { Activity, ArrowLeft, ChartColumn, Hammer, Settings } from 'lucide-react';
+import { Activity, ArrowLeft, ChartColumn, CircleUserRound, Hammer, Settings } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
@@ -6,6 +6,7 @@ import { ApiError, ARTIFACTS, type ArtifactName, type Assessment, type Build, ty
 import { Button, buttonClass } from '../../components/Button';
 import { ErrorState } from '../../components/ErrorState';
 import { focusRing } from '../../components/focus';
+import { useSessionUser } from '../access/sessionUser';
 import { LoadingState } from '../../components/Spinner';
 import { ActivityColumn } from '../activity/ActivityColumn';
 import { useBuildStream, type BuildStream } from '../activity/useBuildStream';
@@ -46,6 +47,7 @@ interface WorkspaceShellProps {
 }
 
 function TopBar({ build, viewing, onSelect, onOpenTrace, onOpenSettings }: { build: Build | null; viewing: Stage | null; onSelect: (stage: Stage) => void } & WorkspaceShellProps) {
+  const user = useSessionUser();
   return (
     <header className="grid h-(--layout-topbar) grid-cols-[var(--layout-chat)_minmax(0,1fr)_auto] items-center border-b border-border bg-surface">
       <div className="flex h-full min-w-0 items-center gap-3 border-r border-border px-4">
@@ -65,6 +67,13 @@ function TopBar({ build, viewing, onSelect, onOpenTrace, onOpenSettings }: { bui
       <div className="min-w-0 px-4">{build && <Stepper build={build} viewing={viewing ?? build.stage} onSelect={onSelect} />}</div>
       {/* Below 1440 px the eight-step stepper needs the room: Trace and Settings keep their names for screen readers only. */}
       <div className="flex items-center gap-1 px-3">
+        {user && (
+          // Icon only at every width: the stepper needs the room; History shows the email in full.
+          <span className="flex items-center px-1.5 text-text-muted" title={user}>
+            <CircleUserRound aria-hidden="true" className="size-4 shrink-0" />
+            <span className="sr-only">Signed in as {user}</span>
+          </span>
+        )}
         <Button variant="ghost" size="sm" icon={<Activity aria-hidden="true" />} disabled={!onOpenTrace} onClick={() => onOpenTrace?.()} title="Trace" className="max-[1439px]:gap-0 max-[1439px]:px-1.5">
           <span className="max-[1439px]:sr-only">Trace</span>
         </Button>

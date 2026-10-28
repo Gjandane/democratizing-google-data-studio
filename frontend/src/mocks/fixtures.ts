@@ -31,6 +31,7 @@ import prototypeMultipageHtml from '../../../contracts/fixtures/api/prototype.mu
 import prototypeHtml from '../../../contracts/fixtures/api/prototype.sample.html?raw';
 import recipeJson from '../../../contracts/fixtures/api/recipe.json';
 import runAcceptedJson from '../../../contracts/fixtures/api/run_accepted.json';
+import sessionGoogleJson from '../../../contracts/fixtures/api/session.google.json';
 import sessionJson from '../../../contracts/fixtures/api/session.json';
 // api.md 3.0: the Settings come from stage-settings/ (api/settings.json is the 2.0 shape, kept by the contract until removal).
 import buildCostJson from '../../../contracts/fixtures/stage-settings/build_cost.json';
@@ -136,6 +137,8 @@ export const fixtures = /* @__PURE__ */ (() => ({
   recipe: checked(isRecipe, recipeJson, 'recipe.json'),
   runAccepted: checked(isRunAccepted, runAcceptedJson, 'run_accepted.json'),
   session: checked(isSession, sessionJson, 'session.json'),
+  /** Google sign-in on, a user signed in. */
+  sessionGoogle: checked(isSession, sessionGoogleJson, 'session.google.json'),
   settings: checked(isSettings, settingsJson, 'stage-settings/settings.json'),
   traces: checked(arrayOf(isTrace), tracesJson, 'traces.json'),
   // contracts/fixtures/stage-settings/ (api.md 3.0)

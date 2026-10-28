@@ -83,6 +83,11 @@ interface Artifacts {
 /** The access code the mock accepts when the gate is on (setMockSession). */
 export const MOCK_ACCESS_CODE = 'mock-access-code';
 
+/** The Google ID token the mock accepts, one it refuses as not allowed, and the email in that refusal. */
+export const MOCK_GOOGLE_TOKEN = 'mock-google-id-token';
+export const MOCK_GOOGLE_TOKEN_NOT_ALLOWED = 'mock-google-not-allowed';
+export const MOCK_GOOGLE_NOT_ALLOWED_EMAIL = 'someone@example.org';
+
 interface MockState {
   assessments: Map<string, Assessment>;
   assessmentBusy: Set<string>;
@@ -133,7 +138,7 @@ function seed(): MockState {
     generations: new Map(),
     datasets: new Map(),
     syntheticBusy: new Set(),
-    session: { required: false, ok: true },
+    session: clone(import.meta.env.VITE_MOCK_GOOGLE === '1' ? fixtures.sessionGoogle : fixtures.session),
     builds,
     // Both fixture builds have all four artifacts confirmed.
     artifacts: new Map([fixtures.build, fixtures.buildDone].map((build) => [build.id, {
@@ -176,8 +181,8 @@ export function setMockEngine(status: Partial<EngineStatus>): void {
 }
 
 /** Turns the access-code gate on or off; `{required: true, ok: false}` also ends a session. For tests and the dev server. */
-export function setMockSession(session: Session): void {
-  state.session = { ...session };
+export function setMockSession(session: Pick<Session, 'required' | 'ok'> & Partial<Session>): void {
+  state.session = { google_client_id: null, user: null, ...session };
 }
 
 /** Sets how the next build run ends. For tests and the dev server. */
@@ -496,7 +501,7 @@ const agentMode = () => state.engine.mode === 'agent';
 const UNLOCKED_SETTINGS = new Set(['stages', 'fallback_model', 'review_briefs']);
 
 /** Calls that work without the access code (contracts/api.md, Access), plus the URL builders. */
-const UNGATED = new Set(['health', 'getSession', 'createSession', 'prototypeUrl', 'fileUrl', 'syntheticCsvUrl']);
+const UNGATED = new Set(['health', 'getSession', 'createSession', 'createGoogleSession', 'prototypeUrl', 'fileUrl', 'syntheticCsvUrl']);
 
 /** Every other call answers `401 access_required` while the gate is on and the session isn't valid. */
 function gated(client: ApiClient): ApiClient {
@@ -956,7 +961,18 @@ export function createMockApi(): ApiClient {
       respond(() => {
         if (!state.session.required) return state.session;
         if (code !== MOCK_ACCESS_CODE) throw new ApiError(401, 'access_denied', 'The access code is wrong.');
-        state.session = { required: true, ok: true };
+        state.session = { required: true, ok: true, google_client_id: state.session.google_client_id, user: null };
+        return state.session;
+      }),
+
+    createGoogleSession: (idToken) =>
+      respond(() => {
+        if (!state.session.google_client_id) throw new ApiError(400, 'google_signin_off', 'Google sign-in is off. Use the access code.');
+        if (idToken === MOCK_GOOGLE_TOKEN_NOT_ALLOWED) {
+          throw new ApiError(403, 'signin_not_allowed', 'This Google account is not allowed.', { email: MOCK_GOOGLE_NOT_ALLOWED_EMAIL });
+        }
+        if (idToken !== MOCK_GOOGLE_TOKEN) throw new ApiError(401, 'access_denied', 'The Google sign-in is not valid.');
+        state.session = { required: true, ok: true, google_client_id: state.session.google_client_id, user: fixtures.sessionGoogle.user };
         return state.session;
       }),
 

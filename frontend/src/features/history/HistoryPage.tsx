@@ -1,4 +1,4 @@
-import { ExternalLink, LayoutDashboard, Plus } from 'lucide-react';
+import { CircleUserRound, ExternalLink, LayoutDashboard, Plus } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
@@ -9,6 +9,7 @@ import { ErrorState } from '../../components/ErrorState';
 import { focusRing } from '../../components/focus';
 import { Panel } from '../../components/Panel';
 import { LoadingState } from '../../components/Spinner';
+import { useSessionUser } from '../access/sessionUser';
 import { NewBuildDialog } from './NewBuildDialog';
 
 type Load =
@@ -81,6 +82,7 @@ export function HistoryPage() {
   const heading = useRef<HTMLHeadingElement>(null);
   const retried = useRef(false);
   const [creating, setCreating] = useState(false);
+  const user = useSessionUser();
 
   useEffect(() => {
     let active = true;
@@ -122,9 +124,17 @@ export function HistoryPage() {
           </h1>
           <p className="mt-1 text-body text-text-muted">Every build you started, most recently updated first.</p>
         </div>
-        <Button variant="primary" icon={<Plus aria-hidden="true" />} onClick={() => setCreating(true)}>
-          New build
-        </Button>
+        <div className="flex min-w-0 items-center gap-4">
+          {user && (
+            <span className="flex min-w-0 items-center gap-1.5 text-label text-text-muted" title={user}>
+              <CircleUserRound aria-hidden="true" className="size-4 shrink-0" />
+              <span className="truncate">{user}</span>
+            </span>
+          )}
+          <Button variant="primary" icon={<Plus aria-hidden="true" />} onClick={() => setCreating(true)}>
+            New build
+          </Button>
+        </div>
       </header>
       {/* Mounted only while open, so each new build starts from a blank form. */}
       {creating && <NewBuildDialog open onClose={() => setCreating(false)} />}

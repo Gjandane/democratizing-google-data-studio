@@ -329,7 +329,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: real API conformance; no third-party screenshot committed.
 
 ## Phase 18: Google sign-in gate (change 2026-10-29)
-- [ ] 18.1 Google sign-in on the access gate
+- [x] 18.1 Google sign-in on the access gate
   - Goal: per ../contracts/api.md 3.3, when `Session.google_client_id` is set the gate shows only a "Sign in with Google" button (Google Identity Services, loaded on the gate only) and posts the credential as `{google_id_token}`; with it null the code form stays as it is; the header shows the signed-in email (`user`).
   - Files: src/api/types.ts, src/api/client.ts, src/mocks/*.ts, src/features/access/*, src/App.tsx, src/gis.d.ts (new), tests/contract.test.ts, tests/access.test.tsx, screenshots/
   - Depends on: 17.3

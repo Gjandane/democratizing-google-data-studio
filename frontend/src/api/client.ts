@@ -82,6 +82,8 @@ export interface ApiClient {
   getSession(): Promise<Session>;
   /** Sends the access code once; the backend answers with the session cookie. The code is never kept. */
   createSession(code: string): Promise<Session>;
+  /** Signs in with a Google ID token (api.md 3.3). The token is sent once and never kept. */
+  createGoogleSession(idToken: string): Promise<Session>;
   getSettings(): Promise<Settings>;
   /** Any validation issue answers `422 invalid_settings` (`detail.issues`, read with `artifactIssues`) and saves nothing. */
   updateSettings(update: SettingsUpdate): Promise<Settings>;
@@ -270,6 +272,7 @@ export const httpApi: ApiClient = {
   health: () => json('GET', '/health'),
   getSession: () => json('GET', '/session'),
   createSession: (code) => json('POST', '/session', { code }),
+  createGoogleSession: (idToken) => json('POST', '/session', { google_id_token: idToken }),
   getSettings: () => checkedJson('GET', '/settings', isSettings, UNREADABLE.settings),
   updateSettings: (update) => checkedJson('PUT', '/settings', isSettings, UNREADABLE.settings, update),
   getSettingsCapabilities: () => checkedJson('GET', '/settings/capabilities', isSettingsCapabilities, UNREADABLE.capabilities),
