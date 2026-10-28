@@ -577,3 +577,15 @@ context. Task status lives in docs/plan.md, not here.
 - Question: Add the analysis-approval step to the synthetic case (and fix the Done-when's dry-run wording) as part of 2.7?
 - Options: A widen 2.7 Files/Done-when: driver approves the analysis before design/confirm, Done-when uses `--live` and restores the bench / B open a separate task for the approval step, keep 2.7 as the label flip only / Recommend: A, same file, small.
 - Next: Task 2.7 after the architect's ruling.
+
+## 2026-10-29: Task 3.1 README: pitch, features and simplified architecture
+- Status: done
+- Plan check: off
+- What changed: README.md (new: tagline, pitch, Features, Capabilities, 3-part architecture with d5/d4/d8, screenshots, Links, run locally, demo per source, folder map, Process, License). d5 redrawn from backend Graph (11 action rows, feasibility gates, repair edges); d4/d8 updated, PNGs rerendered.
+- Checks: `render_diagrams.py` PASS 8/8, exit 0; README link check PASS `[]`; no planned/stretch in d4/d5, d8 only on the deploy; word counts pitch 65, arch 61/56/59; Test (all) `check_contracts.py` PASS 13/13.
+- Decisions: built by a Sonnet worker from build notes (node rows from backend graph.py, facts from acceptance.md and bench files). Catalog stated as 12 bound types (9 charts + 3 controls) plus text and image. Style mode cited to the 2026-10-23 reference bench (row 5 is recreate only). Alternative actions joined by "or", not arrows. Hosted agent command left to 4.4 (no full-app deploy yet). AGENTS.md: 1 gotcha.
+- Digest: README.md sections: Features, Capabilities, Simplified architecture (d5, d4, d8), Screenshots, Links, Run it locally, Demo walk-through, Folder map, Process, License. Hosted lines say preview/in progress until 4.4; d8 deploy tagged planned.
+- Tried and failed: none
+- Gotchas: in AGENTS.md.
+- Left open: none (review: 0 P0/P1; 2 P2 + 5 P3 fixed).
+- Next: Task 2.8 / 3.2 per `status` (2.7 blocked for the architect).

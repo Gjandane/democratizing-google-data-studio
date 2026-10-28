@@ -5,101 +5,171 @@
 <title>d5 ADK graph</title>
 <link rel="stylesheet" href="_base.css">
 <style>
-  .node { height: 60px; padding: 6px 10px; gap: 3px; }
-  .node .tags { flex-wrap: nowrap; }
-  .node h3 { font-size: 19px; }
-  .act { position: absolute; left: 318px; width: 120px; height: 40px; border-radius: 20px;
-    border: 2px solid #4285F4; background: #E8F0FE; font-size: 16px; font-weight: 700;
+  .node { padding: 3px 8px; gap: 2px; align-items: center; text-align: center; border-width: 2px; border-radius: 9px; }
+  .node h3 { font-family: Consolas, "Courier New", monospace; font-size: 14px; line-height: 1.15; white-space: nowrap; }
+  .node .tags { flex-wrap: nowrap; gap: 4px; }
+  .node .tag { font-size: 10px; line-height: 12px; padding: 0 6px; }
+  .node.gate { border-color: #EA4335; border-width: 3px; background: #FCE8E6; }
+  .node.gate h3 { font-family: Arial, Helvetica, sans-serif; color: #c5221f; font-size: 13px; }
+  .act { position: absolute; left: 300px; width: 118px; height: 40px; border-radius: 20px;
+    border: 2px solid #4285F4; background: #E8F0FE; font-size: 11px; font-weight: 700;
     display: flex; align-items: center; justify-content: center;
     font-family: Consolas, "Courier New", monospace; }
-  .term { position: absolute; border-radius: 30px; background: #202124; color: #fff;
-    font-size: 18px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
-  .guard { position: absolute; left: 1690px; top: 112px; width: 110px; height: 630px;
+  .term { position: absolute; border-radius: 26px; background: #202124; color: #fff;
+    font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .router { position: absolute; left: 150px; top: 80px; width: 112px; height: 686px; border: 2.5px solid #4285F4; background: #E8F0FE; border-radius: 12px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; font-weight: 700; font-size: 18px; gap: 6px; }
+  .router span { font-size: 13px; font-weight: 400; }
+  .guard { position: absolute; left: 1690px; top: 80px; width: 120px; height: 686px;
     border: 2.5px solid #EA4335; background: #FCE8E6; border-radius: 12px;
     display: flex; align-items: center; justify-content: center; }
-  .guard div { transform: rotate(-90deg); white-space: nowrap; font-size: 21px; font-weight: 700; text-align: center; line-height: 1.35; }
-  .guard span { font-size: 16px; font-weight: 400; }
+  .guard div { transform: rotate(-90deg); white-space: nowrap; font-size: 20px; font-weight: 700; text-align: center; line-height: 1.35; }
+  .guard span { font-size: 15px; font-weight: 400; }
 </style>
 </head>
 <body>
 <div class="canvas">
-  <div class="title">The ADK 2.0 Workflow: one router, one branch per action</div>
-  <div class="legend">
+  <div class="title" style="top:18px;font-size:28px">The ADK 2.0 Workflow: one router, one branch per action</div>
+  <div class="legend" style="top:22px;gap:16px;font-size:14px">
     <span><span class="tag llm">LLM</span> LLM node</span>
     <span><span class="tag code">code</span> function node</span>
     <span><span class="tag planner">planner</span> planner model (else worker)</span>
-    <span><span class="tag planned">planned</span> not built yet</span>
+    <span><span class="sw" style="border-color:#EA4335;background:#FCE8E6;border-width:3px"></span>feasibility gate</span>
+    <span style="color:#c5221f;font-weight:700">- - repair, once</span>
   </div>
-
   <svg class="wires" viewBox="0 0 1840 800">
     <defs>
       <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#202124"/></marker>
       <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#EA4335"/></marker>
     </defs>
-    <path class="w" d="M120,427 H148" marker-end="url(#a)"/>
-    <path class="w" d="M290,427 L316,142" marker-end="url(#a)"/>
-    <path class="w" d="M438,142 H458" marker-end="url(#a)"/>
-    <path class="w" d="M680,142 H1688" marker-end="url(#a)"/>
-    <path class="w" d="M290,427 L316,237" marker-end="url(#a)"/>
-    <path class="w" d="M438,237 H458" marker-end="url(#a)"/>
-    <path class="w" d="M680,237 H1688" marker-end="url(#a)"/>
-    <path class="w" d="M290,427 L316,332" marker-end="url(#a)"/>
-    <path class="w" d="M438,332 H458" marker-end="url(#a)"/>
-    <path class="w" d="M680,332 H702" marker-end="url(#a)"/>
-    <path class="w" d="M924,332 H946" marker-end="url(#a)"/>
-    <path class="w" d="M1168,332 H1190" marker-end="url(#a)"/>
-    <path class="w" d="M1412,332 H1434" marker-end="url(#a)"/>
-    <path class="w" d="M1656,332 H1688" marker-end="url(#a)"/>
-    <path class="w" d="M290,427 L316,427" marker-end="url(#a)"/>
-    <path class="w" d="M438,427 H458" marker-end="url(#a)"/>
-    <path class="w" d="M680,427 H702" marker-end="url(#a)"/>
-    <path class="w" d="M924,427 H946" marker-end="url(#a)"/>
-    <path class="w" d="M1168,427 H1688" marker-end="url(#a)"/>
-    <path class="w" d="M290,427 L316,522" marker-end="url(#a)"/>
-    <path class="w" d="M438,522 H458" marker-end="url(#a)"/>
-    <path class="w" d="M680,522 H702" marker-end="url(#a)"/>
-    <path class="w" d="M924,522 H946" marker-end="url(#a)"/>
-    <path class="w" d="M1168,522 H1688" marker-end="url(#a)"/>
-    <path class="w" d="M290,427 L316,617" marker-end="url(#a)"/>
-    <path class="w" d="M438,617 H458" marker-end="url(#a)"/>
-    <path class="w" d="M680,617 H1688" marker-end="url(#a)"/>
-    <path class="w" d="M290,427 L316,712" marker-end="url(#a)"/>
-    <path class="w" d="M438,712 H458" marker-end="url(#a)"/>
-    <path class="w" d="M924,712 H1688" marker-end="url(#a)"/>
-    <!-- repair loops: validate back to spec / revise, at most 2 -->
-    <path class="w r d" d="M1302,302 V284 H1058 V300" marker-end="url(#ar)"/>
-    <path class="w r d" d="M814,457 V476 H570 V459" marker-end="url(#ar)"/>
+    <path class="w" d="M112,423 H148" marker-end="url(#a)"/>
+    <path class="w" d="M262,103 H300" marker-end="url(#a)"/>
+<path class="w" d="M418,103 H410" marker-end="url(#a)"/>
+<path class="w" d="M508,103 H528" marker-end="url(#a)"/>
+<path class="w" d="M821,103 H841" marker-end="url(#a)"/>
+<path class="w" d="M1021,103 H1686" marker-end="url(#a)"/>
+<path class="w" d="M262,167 H300" marker-end="url(#a)"/>
+<path class="w" d="M418,167 H410" marker-end="url(#a)"/>
+<path class="w" d="M508,167 H528" marker-end="url(#a)"/>
+<path class="w" d="M624,167 H1686" marker-end="url(#a)"/>
+<path class="w d r" d="M576,144 V135 H460 V143" marker-end="url(#ar)"/>
+<path class="w" d="M262,231 H300" marker-end="url(#a)"/>
+<path class="w" d="M418,231 H410" marker-end="url(#a)"/>
+<path class="w" d="M899,231 H919" marker-end="url(#a)"/>
+<path class="w" d="M1065,231 H1686" marker-end="url(#a)"/>
+<path class="w" d="M262,295 H300" marker-end="url(#a)"/>
+<path class="w" d="M418,295 H410" marker-end="url(#a)"/>
+<path class="w" d="M584,295 H604" marker-end="url(#a)"/>
+<path class="w" d="M700,295 H1686" marker-end="url(#a)"/>
+<path class="w" d="M262,359 H300" marker-end="url(#a)"/>
+<path class="w" d="M418,359 H410" marker-end="url(#a)"/>
+<path class="w" d="M575,359 H595" marker-end="url(#a)"/>
+<path class="w" d="M925,359 H1686" marker-end="url(#a)"/>
+<path class="w" d="M262,423 H300" marker-end="url(#a)"/>
+<path class="w" d="M418,423 H410" marker-end="url(#a)"/>
+<path class="w" d="M515,423 H535" marker-end="url(#a)"/>
+<path class="w" d="M698,423 H718" marker-end="url(#a)"/>
+<path class="w" d="M847,423 H1686" marker-end="url(#a)"/>
+<path class="w d r" d="M782,400 V391 H463 V399" marker-end="url(#ar)"/>
+<path class="w" d="M262,487 H300" marker-end="url(#a)"/>
+<path class="w" d="M418,487 H410" marker-end="url(#a)"/>
+<path class="w" d="M552,487 H572" marker-end="url(#a)"/>
+<path class="w" d="M668,487 H688" marker-end="url(#a)"/>
+<path class="w" d="M784,487 H804" marker-end="url(#a)"/>
+<path class="w" d="M1075,487 H1095" marker-end="url(#a)"/>
+<path class="w" d="M1241,487 H1261" marker-end="url(#a)"/>
+<path class="w" d="M1357,487 H1377" marker-end="url(#a)"/>
+<path class="w" d="M1473,487 H1493" marker-end="url(#a)"/>
+<path class="w" d="M1589,487 H1686" marker-end="url(#a)"/>
+<path class="w d r" d="M1309,464 V455 H852 V463" marker-end="url(#ar)"/>
+<path class="w" d="M262,551 H300" marker-end="url(#a)"/>
+<path class="w" d="M418,551 H410" marker-end="url(#a)"/>
+<path class="w" d="M575,551 H595" marker-end="url(#a)"/>
+<path class="w" d="M735,551 H755" marker-end="url(#a)"/>
+<path class="w" d="M851,551 H871" marker-end="url(#a)"/>
+<path class="w" d="M967,551 H987" marker-end="url(#a)"/>
+<path class="w" d="M1083,551 H1686" marker-end="url(#a)"/>
+<path class="w d r" d="M919,528 V519 H803 V527" marker-end="url(#ar)"/>
+<path class="w" d="M262,615 H300" marker-end="url(#a)"/>
+<path class="w" d="M418,615 H410" marker-end="url(#a)"/>
+<path class="w" d="M508,615 H528" marker-end="url(#a)"/>
+<path class="w" d="M668,615 H688" marker-end="url(#a)"/>
+<path class="w" d="M784,615 H804" marker-end="url(#a)"/>
+<path class="w" d="M900,615 H1686" marker-end="url(#a)"/>
+<path class="w" d="M262,679 H300" marker-end="url(#a)"/>
+<path class="w" d="M418,679 H410" marker-end="url(#a)"/>
+<path class="w" d="M508,679 H1686" marker-end="url(#a)"/>
+<path class="w" d="M262,743 H300" marker-end="url(#a)"/>
+<path class="w" d="M418,743 H410" marker-end="url(#a)"/>
+<path class="w" d="M805,743 H1686" marker-end="url(#a)"/>
   </svg>
-
-  <div class="term" style="left:30px;top:397px;width:90px;height:60px">START</div>
-  <div class="box gray center" style="left:150px;top:387px;width:140px;height:80px"><h3>router</h3><p class="mono">(action)</p></div>
-
-  <div class="act" style="top:122px">connect</div>
-  <div class="box node gray" style="left:460px;top:112px;width:220px"><h3>intake</h3><div class="tags"><span class="tag code">code</span></div></div>
-  <div class="act" style="top:217px">chat</div>
-  <div class="box node yellow" style="left:460px;top:207px;width:220px"><h3>interview</h3><div class="tags"><span class="tag llm">LLM</span></div></div>
-  <div class="act" style="top:312px">plan</div>
-  <div class="box node yellow" style="left:460px;top:302px;width:220px"><h3>plan</h3><div class="tags"><span class="tag llm">LLM</span><span class="tag planner">planner</span></div></div>
-  <div class="box node gray" style="left:704px;top:302px;width:220px"><h3>view</h3><div class="tags"><span class="tag code">code</span></div></div>
-  <div class="box node yellow plan" style="left:948px;top:302px;width:220px"><h3>spec</h3><div class="tags"><span class="tag llm">LLM</span><span class="tag planner">planner</span><span class="tag planned">planned</span></div></div>
-  <div class="box node gray plan" style="left:1192px;top:302px;width:220px"><h3>validate</h3><div class="tags"><span class="tag code">code</span><span class="tag planned">planned</span></div></div>
-  <div class="box node gray" style="left:1436px;top:302px;width:220px"><h3>render</h3><div class="tags"><span class="tag code">code</span></div></div>
-  <div class="act" style="top:407px">comment</div>
-  <div class="box node yellow plan" style="left:460px;top:397px;width:220px"><h3>revise</h3><div class="tags"><span class="tag llm">LLM</span><span class="tag planned">planned</span></div></div>
-  <div class="box node gray plan" style="left:704px;top:397px;width:220px"><h3>validate</h3><div class="tags"><span class="tag code">code</span><span class="tag planned">planned</span></div></div>
-  <div class="box node gray" style="left:948px;top:397px;width:220px"><h3>render</h3><div class="tags"><span class="tag code">code</span></div></div>
-  <div class="act" style="top:502px">build</div>
-  <div class="box node gray" style="left:460px;top:492px;width:220px"><h3>compile</h3><div class="tags"><span class="tag code">code</span><span class="tag planned">full: planned</span></div></div>
-  <div class="box node gray" style="left:704px;top:492px;width:220px"><h3>execute</h3><div class="tags"><span class="tag code">code</span><span class="tag planned">real run: planned</span></div></div>
-  <div class="box node gray plan" style="left:948px;top:492px;width:220px"><h3>publish</h3><div class="tags"><span class="tag code">code</span><span class="tag planned">planned</span></div></div>
-  <div class="act" style="top:597px">consolidate</div>
-  <div class="box node yellow plan" style="left:460px;top:587px;width:220px"><h3>consolidate</h3><div class="tags"><span class="tag llm">LLM</span><span class="tag planned">planned</span></div></div>
-  <div class="act" style="top:692px">stretch</div>
-  <div class="box node yellow plan" style="left:460px;top:682px;width:464px"><h3>ux_audit &middot; style_extract &middot; research</h3><div class="tags"><span class="tag llm">LLM</span><span class="tag planned">stretch</span></div></div>
-
-  <div class="lbl b red c" style="left:1180px;top:274px;font-size:14px;padding:0 6px">repair loop, at most 2</div>
-  <div class="lbl b red c" style="left:692px;top:466px;font-size:14px;padding:0 6px">repair loop, at most 2</div>
-
+  <div class="term" style="left:28px;top:399px;width:84px;height:48px">START</div>
+  <div class="router">router<span>(action)</span></div>
+  <div class="act" style="top:83px;line-height:13px;text-align:center">connect<br>synthetic</div>
+<div class="box node gray" style="left:412px;top:80px;width:96px;height:46px"><h3>intake</h3><div class="tags"><span class="tag code">code</span></div></div>
+<div class="box node gray" style="left:528px;top:80px;width:96px;height:46px"><h3>profile</h3><div class="tags"><span class="tag code">code</span></div></div>
+<div class="box node yellow" style="left:658px;top:80px;width:163px;height:46px"><h3>synthetic_schema</h3><div class="tags"><span class="tag llm">LLM</span></div></div>
+<div class="box node gray" style="left:841px;top:80px;width:180px;height:46px"><h3>synthetic_generate</h3><div class="tags"><span class="tag code">code</span></div></div>
+<div class="lbl b c" style="left:631px;top:94px;width:20px;font-size:13px;padding:0;z-index:5">or</div>
+<div class="act" style="top:147px">context</div>
+<div class="box node yellow" style="left:412px;top:144px;width:96px;height:46px"><h3>context</h3><div class="tags"><span class="tag llm">LLM</span></div></div>
+<div class="box node gray" style="left:528px;top:144px;width:96px;height:46px"><h3>validate</h3><div class="tags"><span class="tag code">code</span></div></div>
+<div class="lbl red b" style="left:482px;top:124px;font-size:11px;padding:0 3px;line-height:11px">repair, once</div>
+<div class="act" style="top:211px">outline</div>
+<div class="box node yellow" style="left:412px;top:208px;width:155px;height:46px"><h3>outline_propose</h3><div class="tags"><span class="tag llm">LLM</span></div></div>
+<div class="box node yellow" style="left:587px;top:208px;width:155px;height:46px"><h3>outline_suggest</h3><div class="tags"><span class="tag llm">LLM</span></div></div>
+<div class="box node yellow" style="left:762px;top:208px;width:137px;height:46px"><h3>outline_other</h3><div class="tags"><span class="tag llm">LLM</span></div></div>
+<div class="box node gray" style="left:919px;top:208px;width:146px;height:46px"><h3>artifact write</h3><div class="tags"><span class="tag code">code</span></div></div>
+<div class="lbl b c" style="left:567px;top:222px;width:20px;font-size:13px;padding:0">or</div>
+<div class="lbl b c" style="left:742px;top:222px;width:20px;font-size:13px;padding:0">or</div>
+<div class="act" style="top:275px">reference</div>
+<div class="box node yellow" style="left:412px;top:272px;width:172px;height:46px"><h3>reference_extract</h3><div class="tags"><span class="tag llm">LLM</span></div></div>
+<div class="box node gray" style="left:604px;top:272px;width:96px;height:46px"><h3>write</h3><div class="tags"><span class="tag code">code</span></div></div>
+<div class="act" style="top:339px">feasibility/check</div>
+<div class="box node yellow" style="left:412px;top:336px;width:163px;height:46px"><h3>capability_check</h3><div class="tags"><span class="tag llm">LLM</span></div></div>
+<div class="box node gate" style="left:595px;top:336px;width:330px;height:46px"><h3>feasibility gate: refuses unsupported requests</h3><div class="tags"><span class="tag code">code</span></div></div>
+<div class="lbl" style="left:939px;top:332px;font-size:13px;padding:0 4px;font-weight:700">blocked: refusal reply</div>
+<div class="act" style="top:403px">blueprint</div>
+<div class="box node yellow" style="left:412px;top:400px;width:103px;height:46px"><h3>blueprint</h3><div class="tags"><span class="tag llm">LLM</span></div></div>
+<div class="box node gray" style="left:535px;top:400px;width:163px;height:46px"><h3>feasibility rows</h3><div class="tags"><span class="tag code">code</span></div></div>
+<div class="box node gray" style="left:718px;top:400px;width:129px;height:46px"><h3>view dry run</h3><div class="tags"><span class="tag code">code</span></div></div>
+<div class="lbl red b" style="left:586px;top:380px;font-size:11px;padding:0 3px;line-height:11px">repair, once</div>
+<div class="act" style="top:467px">prototype</div>
+<div class="box node gate" style="left:412px;top:464px;width:140px;height:46px"><h3>feasibility gate</h3><div class="tags"><span class="tag code">code</span></div></div>
+<div class="box node gray" style="left:572px;top:464px;width:96px;height:46px"><h3>view</h3><div class="tags"><span class="tag code">code</span></div></div>
+<div class="box node gray" style="left:688px;top:464px;width:96px;height:46px"><h3>layout</h3><div class="tags"><span class="tag code">code</span></div></div>
+<div class="box node yellow" style="left:804px;top:464px;width:96px;height:46px"><h3>designer</h3><div class="tags"><span class="tag llm">LLM</span><span class="tag planner">planner</span></div></div>
+<div class="box node yellow" style="left:920px;top:464px;width:155px;height:46px"><h3>reference_brief</h3><div class="tags"><span class="tag llm">LLM</span><span class="tag planner">planner</span></div></div>
+<div class="box node yellow" style="left:1095px;top:464px;width:146px;height:46px"><h3>reference_html</h3><div class="tags"><span class="tag llm">LLM</span><span class="tag">worker</span></div></div>
+<div class="box node gray" style="left:1261px;top:464px;width:96px;height:46px"><h3>validate</h3><div class="tags"><span class="tag code">code</span></div></div>
+<div class="box node gray" style="left:1377px;top:464px;width:96px;height:46px"><h3>render</h3><div class="tags"><span class="tag code">code</span></div></div>
+<div class="box node gray" style="left:1493px;top:464px;width:96px;height:46px"><h3>publish</h3><div class="tags"><span class="tag code">code</span></div></div>
+<div class="lbl b" style="left:940px;top:511px;font-size:11px;padding:0;line-height:13px">designer, or with a reference: reference_brief &rarr; reference_html</div>
+<div class="lbl red b" style="left:1044px;top:444px;font-size:11px;padding:0 3px;line-height:11px">repair, once per page</div>
+<div class="act" style="top:531px">revise</div>
+<div class="box node yellow" style="left:412px;top:528px;width:163px;height:46px"><h3>capability_check</h3><div class="tags"><span class="tag llm">LLM</span></div></div>
+<div class="box node gate" style="left:595px;top:528px;width:140px;height:46px"><h3>feasibility gate</h3><div class="tags"><span class="tag code">code</span></div></div>
+<div class="box node yellow" style="left:755px;top:528px;width:96px;height:46px"><h3>revise</h3><div class="tags"><span class="tag llm">LLM</span></div></div>
+<div class="box node gray" style="left:871px;top:528px;width:96px;height:46px"><h3>validate</h3><div class="tags"><span class="tag code">code</span></div></div>
+<div class="box node gray" style="left:987px;top:528px;width:96px;height:46px"><h3>render</h3><div class="tags"><span class="tag code">code</span></div></div>
+<div class="lbl red b" style="left:825px;top:508px;font-size:11px;padding:0 3px;line-height:11px">repair, once</div>
+<div class="act" style="top:595px">build</div>
+<div class="box node gray" style="left:412px;top:592px;width:96px;height:46px"><h3>compile</h3><div class="tags"><span class="tag code">code</span></div></div>
+<div class="box node gate" style="left:528px;top:592px;width:140px;height:46px"><h3>feasibility gate</h3><div class="tags"><span class="tag code">code</span></div></div>
+<div class="box node gray" style="left:688px;top:592px;width:96px;height:46px"><h3>execute</h3><div class="tags"><span class="tag code">code</span></div></div>
+<div class="box node gray" style="left:804px;top:592px;width:96px;height:46px"><h3>publish</h3><div class="tags"><span class="tag code">code</span></div></div>
+<div class="lbl" style="left:914px;top:588px;font-size:13px;padding:0 4px;font-weight:700">execute: engine or agent job</div>
+<div class="act" style="top:659px">research</div>
+<div class="box node yellow" style="left:412px;top:656px;width:96px;height:46px"><h3>research</h3><div class="tags"><span class="tag llm">LLM</span></div></div>
+<div class="lbl" style="left:522px;top:652px;font-size:13px;padding:0 4px;font-weight:700">discover -> fetch -> select</div>
+<div class="act" style="top:723px">extras</div>
+<div class="box node yellow" style="left:412px;top:720px;width:96px;height:46px"><h3>ux_audit</h3><div class="tags"><span class="tag llm">LLM</span></div></div>
+<div class="box node yellow" style="left:528px;top:720px;width:137px;height:46px"><h3>style_extract</h3><div class="tags"><span class="tag llm">LLM</span></div></div>
+<div class="box node yellow" style="left:685px;top:720px;width:120px;height:46px"><h3>consolidate</h3><div class="tags"><span class="tag llm">LLM</span></div></div>
+<div class="lbl b c" style="left:903px;top:466px;width:16px;font-size:13px;padding:0;z-index:5">or</div>
+<div class="lbl b c" style="left:508px;top:734px;width:20px;font-size:13px;padding:0">or</div>
+<div class="lbl b c" style="left:665px;top:734px;width:20px;font-size:13px;padding:0">or</div>
+<div class="lbl" style="left:819px;top:716px;font-size:13px;padding:0 4px;font-weight:700">consolidate: own Workflow and trace</div>
   <div class="guard"><div>Guardrails at every exit<br><span>then reply, trace, END</span></div></div>
 </div>
 </body>

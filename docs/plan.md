@@ -117,7 +117,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: no other assertion changes; waits derive from Settings, never a hardcoded larger constant.
 
 ## Phase 3: GitHub
-- [ ] 3.1 README: pitch, features and simplified architecture
+- [x] 3.1 README: pitch, features and simplified architecture
   - Goal: the root README for judges and for the user's demo: a short pitch, the features, the capabilities and a simplified architecture in three diagrams, then how to run it.
   - Files: README.md, deck/diagrams/d4-harness-memory.html, deck/diagrams/d5-adk-graph.html, deck/diagrams/d8-cloud-run.html, deck/img/d4-harness-memory.png, deck/img/d5-adk-graph.png, deck/img/d8-cloud-run.png
   - Depends on: 2.4; 2.6
