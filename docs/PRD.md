@@ -120,3 +120,9 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
 - Slider control (Data Studio sliders take number fields only; the year slider also needs a numeric year), per-chart filters (one chart per country) and a single highlighted bar (2011): release 2.6 change requests, deferred (change 2026-10-24).
 - A user-set designer output cap with a warning when a page design is cut off: declined on the card (change 2026-10-24); the designer used 769-3,002 of its 16k output.
 - Frontend dead end after Remove references with every issue dropped (Regenerate disabled, no Check feasibility): release 2.6 gotcha, not yet planned (change 2026-10-24).
+- Release 2.6 Known weaknesses W1-W7 (docs/acceptance.md, build b_236ae4aa34ee): the user accepted
+  the screenshot recreation as PASS with findings and put GitHub and Cloud Run first; each fix goes
+  to its owner part in a later version (change 2026-10-29): engine W1-W3 (engine/docs/PRD.md
+  Later), backend W5-W7 (backend/docs/PRD.md Later), and W4, a contract change at the program
+  root: recipe 1.4 `date_granularity` on `bar` with a DATE dimension (engine applies it first,
+  backend emits it after).

@@ -541,3 +541,8 @@ context. Task status lives in docs/plan.md, not here.
 
 ## 2026-10-26: Change configurable model stages (program root)
 - What changed: essentials contract row conventions.md 1.3 -> 1.4 (model settings move to per-stage Settings; nothing the engine reads). No task change.
+
+## 2026-10-29: Change acceptance with findings (release 2.6, program root)
+- Class: Product (deferred work only): PRD Later gains release 2.6's engine weaknesses W1-W3 and W4's engine half (recipe 1.4 `date_granularity` on `bar`).
+- Why: user, 2026-10-29: log the weaknesses for a later version; GitHub upload and Cloud Run deployment come first.
+- Tasks affected: none; no task added.

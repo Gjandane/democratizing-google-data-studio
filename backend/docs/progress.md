@@ -2342,3 +2342,8 @@ assert min(timings) < .1
 - Gotchas: none beyond AGENTS.md
 - Left open: P2 style run 4 would have been a readiness block (q8 KPI repair left AVG(urban_pct)/AVG(rural_pct) missing); planner variance, accepted by the user. P3 GLOBE regex statics any non-target label with map/earth/globe. Visible: overlapping axis labels, full-date x labels, small headline card, two non-reference charts on page 1.
 - Next: release part (engine/report integration); backend plan complete.
+
+## 2026-10-29: Change acceptance with findings (release 2.6, program root)
+- Class: Product (deferred work only): PRD Later gains release 2.6's backend weaknesses W5-W7 and W4's backend half (emit `date_granularity` on `bar`, after the engine).
+- Why: user, 2026-10-29: log the weaknesses for a later version; GitHub upload and Cloud Run deployment come first.
+- Tasks affected: none; no task added.

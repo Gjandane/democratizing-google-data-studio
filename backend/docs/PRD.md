@@ -416,3 +416,10 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
   disagree with accept; the fallback gap text names a title claim when an op, option or label
   failed; a gap with no nearest row marks no row blocked (accept still blocks) (P3; re-audit
   2026-10-23).
+- Release 2.6 weaknesses (change 2026-10-29, deferred; ../docs/acceptance.md, build
+  b_236ae4aa34ee): W5 static legends from the approved split (rural/urban, map scale) missing
+  from background_p1; W6 page-1 reference HTML failed validation 3x on the first prototype run
+  (trace r_2051c7758120; retry passed); W7 the KPI caption is missing and two scorecards not in
+  the reference are added on page 1. W4 (contract, recipe 1.4): emit `date_granularity` on a
+  `bar` over a DATE bucket column once the engine applies it (yearly bar s015 labels
+  "Jan 1, 2000" and folds groups past 10 into "Others").

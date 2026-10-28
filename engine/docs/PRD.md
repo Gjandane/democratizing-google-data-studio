@@ -81,3 +81,11 @@ engine replays a compiled recipe of UI ops deterministically, with no LLM in the
   skipped event pairs for remaining ops while suppressing their UI execution, as task 2.1
   decided and current tests require; the contract says remaining ops are not started
   (audit 2026-10-19).
+- Release 2.6 weaknesses (change 2026-10-29, deferred; ../docs/acceptance.md, build
+  b_236ae4aa34ee, report 67390721-...): W1 a new `area` chart on a source Data Studio pre-fills
+  (breakdown `region`, metric Record Count) keeps those fields ("Data Studio does not expose a
+  field removal control"), so its set_style fails (s008 s013 s017 s020 s029); W2 boxes miss the
+  requested position/size for a 100% stacked bar (s005, 1 of 6 rows shown), date_range (s019)
+  and tables (s038, s044); W3 `area` with a breakdown: "field year not in data source" (s033).
+  Oracle for the fix: replay those ops from that build's recipe live with failed 0. Also W4
+  (contract): applying recipe 1.4 `date_granularity` on `bar`, before the backend emits it.

@@ -544,3 +544,10 @@ context. Task status lives in docs/plan.md, not here.
 - Question: Change 2.6's Done when to accept failed ops as recorded weaknesses and mark it done?
 - Options: A apply the change request and mark 2.6 done (user's choice) / B keep failed 0 and fix the engine first / Recommend: A, the user accepted.
 - Next: architect at program root applies the change request; then 2.7.
+
+## 2026-10-29: Change acceptance with findings (release 2.6 block, program root)
+- Class: Task (2.6 Done when, 3.1 and 4.3 `If:` lines); W1-W7 deferred (Product: owner parts' Later lists).
+- What changed: plan.md 2.6 Goal/Files/Done when/STOP/If (failed ops recorded as Known weaknesses, not a block; area charts carry the yearly grain; check_contracts' ReferenceSet follows dashboard-intent 1.3; STOP met 2026-10-29), reopened `[ ]`; 3.1 If (PASS with findings: claim the feature with a Known weaknesses link); 4.3 If (hosted `partial` passes only on failures matching W1-W7). PRD Later: W1-W7 pointer; engine/docs/PRD.md and backend/docs/PRD.md Later: their weaknesses; program.md roadmap line and decision row.
+- Why: user, 2026-10-29: accept 2.6 with findings; "All current weaknesses gets logged for future versions, and for future architect tasks. Most important now is to finish the github upload and cloud deployment".
+- Change requests (2.6 entry 2026-10-29): accept 2.6 with engine `partial` -> planned: 2.6 reopened with the amended Done when. `date_granularity` on `bar` (W4) -> deferred: PRD Later (contract recipe 1.4; engine and backend Later). Fixes for W1-W3 / W5-W7 -> deferred: engine and backend PRD Later (W6 too). check_contracts' ReferenceSet schema for api 3.2 -> planned: 2.6 (Files + Done when). Earlier 2.6 requests (2026-10-24, 2026-10-28) were settled by the 2026-10-24 and 2026-10-28 Changes.
+- Next: release 2.6 (check_contracts fix, then done), 2.7, 2.8, 3.1, 3.2, 4.1-4.4. No part tasks added; no gate added.
