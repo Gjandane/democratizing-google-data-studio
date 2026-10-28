@@ -303,16 +303,70 @@ def check_driver_waits():
         profile["timeout_s"] = 30
     if set(flow1.action_waits(short).values()) != {600}:
         errors.append(f"30 s clocks wait {flow1.action_waits(short)}, not the 600 s floor")
-    larger = copy.deepcopy(settings)
-    larger["stages"]["reference_html"]["timeout_s"] = 300
-    larger["stages"]["html_no_reference"]["timeout_s"] = 1500
-    if flow1.action_waits(larger)["/blueprint/accept"] != 2 * (600 + 1500) + 300:
-        errors.append("blueprint accept does not take the larger HTML profile's timeout_s")
+    for bigger, smaller in (("html_no_reference", "reference_html"), ("reference_html", "html_no_reference")):
+        larger = copy.deepcopy(settings)
+        larger["stages"][smaller]["timeout_s"] = 300
+        larger["stages"][bigger]["timeout_s"] = 1500
+        if flow1.action_waits(larger)["/blueprint/accept"] != 2 * (600 + 1500) + 300:
+            errors.append(f"blueprint accept does not take the larger HTML profile's timeout_s ({bigger})")
+    errors += _poll_deadline_errors(settings)
     if errors:
         raise CheckFailed("; ".join(errors))
     return (f"waits for {rel(STAGE_FIXTURES / 'settings.json')}: blueprint accept and comments "
             f"{waits['/blueprint/accept']:,} s, design confirm {waits['/design/confirm']:,} s, "
-            f"reference upload {waits['/reference-images']:,} s; 600 s floor; larger HTML profile")
+            f"reference upload {waits['/reference-images']:,} s; 600 s floor; larger HTML profile; "
+            "both drivers' polls time out at these waits")
+
+
+class _StubResponse:
+    def __init__(self, status, body):
+        self.status_code, self.is_success, self._body = status, status < 400, body
+        self.text, self.headers = json.dumps(body), {"content-type": "application/json"}
+
+    def json(self):
+        return self._body
+
+
+class _StubClient:
+    """A backend that accepts every action and never finishes one."""
+    def request(self, method, path, **kwargs):
+        if method == "POST":
+            return _StubResponse(202, {"run_id": "r_000000000001"})
+        return _StubResponse(200, [] if path == "/api/traces" else {"stage": "prototype"})
+
+
+def _poll_deadline_errors(settings):
+    """Flow.run and Case.act time out at the action's wait from Settings (a clock that jumps
+    100 s per read, no sleeping)."""
+    flow1, refs = _drivers()
+    clock = {"t": 0.0}
+
+    def monotonic():
+        clock["t"] += 100
+        return clock["t"]
+
+    fake_time = type("FakeTime", (), {"monotonic": staticmethod(monotonic), "sleep": staticmethod(lambda s: None)})
+    real = flow1.time, refs.time
+    flow1.time = refs.time = fake_time
+    errors = []
+    try:
+        flow, case = flow1.Flow(_StubClient(), []), refs.Case(_StubClient(), [], False, "stub")
+        for driver in (flow, case):
+            driver.build_id, driver.waits = "b_000000000001", flow1.action_waits(settings)
+        polls = [("e2e_flow1 /blueprint/accept", lambda: flow.run("/blueprint/accept"), 3900),
+                 ("e2e_flow1 /context", lambda: flow.run("/context"), 600),
+                 ("e2e_references /design/confirm", lambda: case.act("POST", "/design/confirm"), 1500),
+                 ("e2e_references /reference-images", lambda: case.act("POST", "/reference-images"), 900)]
+        for name, poll, wait in polls:
+            try:
+                poll()
+                errors.append(f"{name}: the poll returned without a trace")
+            except RuntimeError as e:
+                if f"timed out after {wait} s" not in str(e):
+                    errors.append(f"{name}: expected a timeout after {wait} s, got {e}")
+    finally:
+        flow1.time, refs.time = real
+    return errors
 
 
 def check_bench_server_url():
