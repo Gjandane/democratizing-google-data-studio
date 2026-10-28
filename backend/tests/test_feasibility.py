@@ -2976,6 +2976,8 @@ def test_old_polluted_rows_block_read_recipe_and_run_until_explicit_check(thin, 
                  'summary': 'Saved reference', 'interpretation': {'items': UNLABELED['polluted']['items'], 'aspect_ratio': 1.7196}}
     (folder / 'references.json').write_text(json.dumps(reference), encoding='utf-8')
     (folder / 'reference_img_000000000000.png').write_bytes(png())
+    from test_render import legacy_observation_inputs
+    legacy_observation_inputs(monkeypatch, folder)
     snapshot = req.inputs(app.state.db, bid, folder)
     ledger = req.Ledger(requirements=[polluted_row()])
     ledger.processed_sources = {s['id']: req.digest(s) for s in snapshot['incoming']}

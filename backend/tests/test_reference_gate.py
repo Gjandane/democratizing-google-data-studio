@@ -51,6 +51,15 @@ def choices(analysis, **changes):
             for i in analysis["items"]]
 
 
+def static_split(client, bid, note=""):
+    """Edit every item to static art: since 26.4 approved native items need Blueprint rows, which these
+    gate tests' fakes and staged builds don't plan (fulfilment is tested in test_render)."""
+    analysis = client.get(f"/api/builds/{bid}/reference-images").json()["analysis"]
+    items = [{"id": i["id"], "disposition": "static", "type": None} for i in analysis["items"]]
+    response = client.put(url(bid), json={"revision": analysis["revision"], "items": items, "note": note})
+    assert response.status_code == 200, response.text
+
+
 def approve(client, bid):
     analysis = client.get(f"/api/builds/{bid}/reference-images").json()["analysis"]
     response = client.post(url(bid, "/approve"), json={"revision": analysis["revision"]})
@@ -95,14 +104,12 @@ def test_design_and_blueprint_routes_refuse_until_approved(blueprint_api, allowe
     # Code only and first: no model call, no view SQL, no file or stage change, lock released.
     assert llm.calls == 0 and bq.sql == sql and files(folder) == before
     assert client.get(f"/api/builds/{bid}").json()["stage"] == "design" and not app.state.harness.active_builds
+    static_split(client, bid)
     approve(client, bid)
     confirm(client, app, bid)
     assert client.get(f"/api/builds/{bid}").json()["stage"] == "blueprint" and llm.calls >= 1
     # An edit after approval re-gates and marks the saved Blueprint stale.
-    analysis = client.get(f"/api/builds/{bid}/reference-images").json()["analysis"]
-    edited = client.put(url(bid), json={"revision": analysis["revision"], "items": choices(
-        analysis, **{"Region Selector": ("static", None)}), "note": "Keep the selector as art."})
-    assert edited.status_code == 200, edited.text
+    static_split(client, bid, note="Keep the selector as art.")
     assert client.get(f"/api/builds/{bid}").json()["artifacts"]["blueprint"] == "stale"
     calls, before = llm.calls, files(folder)
     for route in ("blueprint/regenerate", "blueprint/accept"):
@@ -143,11 +150,13 @@ def test_recipe_and_run_refuse_until_approved(staged, monkeypatch, analysis):
         response = client.post(url(bid, "/approve"), json={"revision": 1})
         assert response.status_code == 404 and response.json()["error"]["code"] == "not_found"
         return
+    static_split(client, bid)
     approve(client, bid)
     model = use_model(monkeypatch, app)
     _, assessment = check(client, app, bid)
     assert assessment["state"] == "ready" and not assessment["prototype_stale"], assessment
-    assert client.post(f"/api/builds/{bid}/recipe").status_code == 200
+    recipe = client.post(f"/api/builds/{bid}/recipe")
+    assert recipe.status_code == 200, recipe.text
     assert client.post(f"/api/builds/{bid}/run").status_code == 202
     client.portal.call(drain, app)
     assert client.get(f"/api/builds/{bid}").json()["stage"] == "done" and model.calls == 0

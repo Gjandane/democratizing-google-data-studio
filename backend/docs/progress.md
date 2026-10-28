@@ -2306,3 +2306,15 @@ assert min(timings) < .1
 - Gotchas: Normal process access required; see AGENTS.md.
 - Left open: Required checks/reviewer; task remains in progress.
 - Next: Resume 26.4: status/diff, Done-when, full pytest, reviewer, progress, done, final commit. Stop before 26.5.
+
+## 2026-10-28: Task 26.4 Argon planning and brief from the image and approved items
+- Status: done
+- Plan check: off
+- What changed: Resumed checkpoint 48a295c (planner images/items/note, item repair/issue/drop, item -> row -> component coverage, brief native slots/static boxes). Adapted two old-premise tests: test_feasibility legacy polluted-rows test uses legacy_observation_inputs; test_reference_gate approves an all-static split (static_split).
+- Checks: `uv run pytest tests/test_blueprint.py tests/test_feasibility.py tests/test_render.py tests/test_reference_brief.py` 501 passed, 1 failed (legacy test) -> fixed, passes; Test (all) `uv run pytest` 2451 passed, 17 deselected (.blueprint/qa/task-26.4-full2.log). Warm recompute 17-18 ms.
+- Decisions: test_reference_gate.py edited outside Files (26.4 broke its premise). AGENTS.md gotcha added. Earlier: Component.reference_item/auto_layout provenance retained.
+- Digest: requirements.reference_items(snapshot), item_components(snapshot,ledger,checker); feasibility.item_errors/item_fulfils/dropped_items; planner image parts + reference section; brief reference_items={native,static}; legacy_observation_inputs test-only until 26.5.
+- Tried and failed: none this session.
+- Gotchas: none beyond AGENTS.md
+- Left open: P2 approved-item requirement records/evidence not persisted in requirements.json or feasibility.md - src/dss/spec/requirements.py:2272; P3 prompts/v1/blueprint.md and skills/blueprint.md, reference-design.md still state pre-item row/observation rules - prompts/, skills/; P3 accepted item alternative keeps a wrong-type row naming the item (replace_indices []) - src/dss/spec/feasibility.py:313; P3 stale reference_item drops still listed in feasibility.md - src/dss/spec/requirements.py:2674; P3 electricity e2e runs designed=False, brief split tested only via context builders - tests/test_render.py:899.
+- Next: Task 26.5 Retire the observation path. Start by `status --task 26.5`.
