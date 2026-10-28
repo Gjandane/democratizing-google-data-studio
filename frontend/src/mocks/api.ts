@@ -31,6 +31,8 @@ import {
   type Proposal,
   referenceValidation,
   type ReferenceSet,
+  type ReferenceAnalysis,
+  type ReferenceItem,
   isArchetype,
   isComment,
   isMode,
@@ -560,6 +562,53 @@ function requireNoReview(build: Build): void {
   if (review) throw new ApiError(409, 'brief_review_pending', 'Approve or cancel the brief review first.', { review_id: review.review_id });
 }
 
+/** dashboard-intent.md 1.3 gate: a recreate set whose analysis isn't approved (pending, or null before 1.3) blocks design/confirm, blueprint, recipe and run. */
+function requireReferenceApproved(build: Build): void {
+  const reference = state.references.get(`${build.id}:${build.current_version}`);
+  if (reference?.mode === 'recreate' && reference.analysis?.state !== 'approved') {
+    throw new ApiError(409, 'reference_unapproved', 'Review and approve the reference analysis first.', { reference_set_id: reference.id });
+  }
+}
+
+/** The code-written analysis summary, e.g. "3 charts and 1 control can be native Data Studio components; 2 items stay static art." */
+function analysisSummary(items: ReferenceItem[]): string {
+  const native = items.filter((item) => item.disposition === 'native');
+  const controls = native.filter((item) => item.kind === 'control').length;
+  const charts = native.length - controls;
+  const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  const parts = [charts && count(charts, 'chart', 'charts'), controls && count(controls, 'control', 'controls')].filter(Boolean);
+  const head = parts.length > 0 ? `${parts.join(' and ')} can be native Data Studio components` : 'No item can be a native Data Studio component';
+  const statics = items.length - native.length;
+  return statics > 0 ? `${head}; ${count(statics, 'item stays', 'items stay')} static art.` : `${head}.`;
+}
+
+/** Code checks of a saved split: a native item needs a type from `allowed_types`; the note is at most 1000 chars. */
+function analysisIssues(analysis: ReferenceAnalysis): ValidationIssue[] {
+  const issues: ValidationIssue[] = analysis.items.flatMap((item, i) =>
+    item.disposition === 'native' && (item.type === null || !analysis.allowed_types.includes(item.type))
+      ? [{ path: `/items/${i}/type`, message: 'Choose a Data Studio component type, or keep this item as static art.' }]
+      : [],
+  );
+  if (analysis.note.length > 1000) issues.push({ path: '/note', message: 'Keep the note to at most 1000 characters.' });
+  return issues;
+}
+
+/** The current recreate set and its analysis, for an analysis edit or approval. */
+function requireAnalysis(build: Build): ReferenceSet & { analysis: ReferenceAnalysis } {
+  requireNoReview(build);
+  requireStage(build, BEFORE_BUILD, 'Start a new version to change references.');
+  if (state.referenceBusy.has(build.id) || state.stagedBusy.has(build.id)) throw new ApiError(409, 'action_in_progress', 'Wait for the current action to finish.');
+  const reference = state.references.get(`${build.id}:${build.current_version}`);
+  if (!reference?.analysis) throw new ApiError(404, 'reference_not_found', 'Upload a dashboard screenshot to recreate first.');
+  return reference as ReferenceSet & { analysis: ReferenceAnalysis };
+}
+
+function requireAnalysisRevision(analysis: ReferenceAnalysis, revision: number, verb: string): void {
+  if (revision !== analysis.revision) {
+    throw new ApiError(409, 'reference_analysis_conflict', `The analysis changed. Reload it, then ${verb} again.`, { revision: analysis.revision });
+  }
+}
+
 /** The prototype run's result: the plan docs, the next spec version and the Prototype stage (api.md 2.0). */
 function publishPrototype(build: Build): void {
   const id = build.id;
@@ -689,11 +738,12 @@ function settingsUpdateIssues(current: Settings, next: Settings, update: Setting
   return newIssues(validateSettings(next.stages, next.fallback_model, capabilities), validateSettings(current.stages, current.fallback_model, capabilities));
 }
 
-/** `recipe` and `run` need all four artifacts confirmed; a build made before 2.0 (all missing, with a spec) is exempt. */
+/** A build made before 2.0: all artifacts missing, with a spec. */
+const isLegacy = (build: Build) => ARTIFACTS.every((name) => build.artifacts[name] === 'missing') && build.spec_version !== null;
+
+/** `recipe` and `run` need all four artifacts confirmed; a pre-2.0 build is exempt. */
 function requireConfirmed(build: Build): void {
-  const states = ARTIFACTS.map((name) => build.artifacts[name]);
-  const legacy = states.every((s) => s === 'missing') && build.spec_version !== null;
-  if (!legacy && states.some((s) => s !== 'confirmed')) {
+  if (!isLegacy(build) && ARTIFACTS.some((name) => build.artifacts[name] !== 'confirmed')) {
     throw new ApiError(409, 'wrong_stage', 'Confirm every step, then build.', { stage: build.stage });
   }
 }
@@ -1103,7 +1153,9 @@ export function createMockApi(): ApiClient {
       });
       state.referenceBusy.add(id);
       return startRun(build, 'reference_extract', () => [() => {
-        state.references.set(key, { ...clone(fixtures.referenceSet), id: nextId('s'), mode, instructions, images });
+        // A recreate upload commits a pending analysis (revision 1); a style set has none (dashboard-intent.md 1.3).
+        const base = mode === 'recreate' ? clone(fixtures.referenceSetPending) : { ...clone(fixtures.referenceSet), analysis: null };
+        state.references.set(key, { ...base, id: nextId('s'), mode, instructions, images });
         state.referenceBusy.delete(id);
         emit(id, { name: 'docs.updated', data: { docs: clone(build.docs) } });
       }]);
@@ -1114,6 +1166,39 @@ export function createMockApi(): ApiClient {
       requireStage(build, BEFORE_BUILD, 'Start a new version to change references.');
       if (state.referenceBusy.has(id)) throw new ApiError(409, 'build_busy', 'Wait for the current reference upload.');
       state.references.delete(`${id}:${build.current_version}`);
+    }),
+    updateReferenceAnalysis: (id, body) => respond(() => {
+      const build = findBuild(id);
+      const reference = requireAnalysis(build);
+      const current = reference.analysis;
+      requireAnalysisRevision(current, body.revision, 'save');
+      const byId = new Map(body.items.map((item) => [item.id, item]));
+      if (byId.size !== body.items.length || body.items.length !== current.items.length || current.items.some((item) => !byId.has(item.id))) {
+        throw new ApiError(422, 'invalid_request', 'Send every analysis item exactly once.');
+      }
+      const items = current.items.map((item) => {
+        const { disposition, type } = byId.get(item.id)!;
+        return { ...item, disposition, type: disposition === 'static' ? null : type };
+      });
+      const analysis: ReferenceAnalysis = { ...current, revision: current.revision + 1, state: 'pending', items, note: body.note, summary: analysisSummary(items), issues: [] };
+      analysis.issues = analysisIssues(analysis);
+      if (current.state === 'approved') {
+        // Editing an approved analysis is a reference change: assessment, a saved blueprint and the prototype go stale.
+        const assessment = currentAssessment(id);
+        if (assessment.id) state.assessments.set(id, { ...assessment, state: 'stale', prototype_stale: assessment.prototype_stale || build.spec_version !== null });
+        if (build.artifacts.blueprint !== 'missing') { build.artifacts.blueprint = 'stale'; announce(build); }
+      }
+      reference.analysis = analysis;
+      return reference;
+    }),
+    approveReferenceAnalysis: (id, revision) => respond(() => {
+      const reference = requireAnalysis(findBuild(id));
+      const current = reference.analysis;
+      requireAnalysisRevision(current, revision, 'approve');
+      if (current.state === 'approved') return reference;
+      if (current.issues.length > 0) throw artifactInvalid(current.issues);
+      current.state = 'approved';
+      return reference;
     }),
     proposeSyntheticSchema: (id, referenceSetId) => respond(() => {
       const build = findBuild(id);
@@ -1458,6 +1543,7 @@ export function createMockApi(): ApiClient {
       respond(() => {
         const build = findBuild(id);
         requireStage(build, ['design'], 'Open the Design step to confirm it.');
+        requireReferenceApproved(build);
         const design = requireArtifact(build, 'design');
         if (design.issues.length > 0) throw artifactInvalid(design.issues);
         requireIdle(build);
@@ -1477,6 +1563,7 @@ export function createMockApi(): ApiClient {
       respond(() => {
         const build = findBuild(id);
         requireStage(build, ['blueprint', 'prototype'], 'Regenerate the blueprint from Blueprint or Prototype.');
+        requireReferenceApproved(build);
         requireIdle(build);
         requireModel();
         if (build.stage !== 'blueprint') setStage(build, 'blueprint');
@@ -1487,6 +1574,7 @@ export function createMockApi(): ApiClient {
       respond(() => {
         const build = findBuild(id);
         requireStage(build, ['blueprint'], 'Open the Blueprint step to accept it.');
+        requireReferenceApproved(build);
         const blueprint = requireArtifact(build, 'blueprint');
         const assessment = currentAssessment(id);
         if (assessment.state !== 'ready') {
@@ -1631,6 +1719,8 @@ export function createMockApi(): ApiClient {
         const build = findBuild(id);
         if (build.spec_version === null) throw new ApiError(409, 'wrong_stage', 'Accept the blueprint before the recipe.', { stage: build.stage });
         requireConfirmed(build);
+        // dashboard-intent.md 1.3: a pre-2.0 build's recipe and run are not gated.
+        if (!isLegacy(build)) requireReferenceApproved(build);
         return fixtures.recipe;
       }),
 
@@ -1647,6 +1737,8 @@ export function createMockApi(): ApiClient {
         }
         requireStage(build, ['prototype'], 'Build from the Prototype stage.');
         requireConfirmed(build);
+        // dashboard-intent.md 1.3: a pre-2.0 build's recipe and run are not gated.
+        if (!isLegacy(build)) requireReferenceApproved(build);
         const version = build.versions.find((v) => v.n === build.current_version);
         state.engineBusy = true;
         setStage(build, 'build');

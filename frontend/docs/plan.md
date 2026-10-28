@@ -303,7 +303,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Done when: `npm test` and `npm run typecheck` pass; manual (live, backend on 8000 with `DSS_ENGINE_DRY_RUN=1`): change and save one stage field, reload and see it kept, Reset to defaults and save; turn on brief review, run the sample CSV to a 2-page prototype, see the review panel for page 1, edit one treatment, approve, review page 2, approve, then open both briefs and download one .md; open Trace, see the build and run cost estimates with the prices-checked date, and expand the prototype runs; turn brief review off again. screenshots/16.6-{settings,review,brief,trace}-1280.png checked against docs/stage-settings-ui.md. Report the real run in the progress entry.
   - Review focus: real API conformance; Settings back at their values from before the walkthrough.
 ## Phase 17: Reference analysis gate (change 2026-10-28)
-- [ ] 17.1 Contract 3.2 and dashboard-intent 1.3 types, guards, client and mocks
+- [x] 17.1 Contract 3.2 and dashboard-intent 1.3 types, guards, client and mocks
   - Goal: the app speaks api.md 3.2 / dashboard-intent.md 1.3: `ReferenceSet.analysis` (ReferenceAnalysis, ReferenceItem), `BlueprintRow.reference_item`, PUT analysis and approve, errors `reference_unapproved` and `reference_analysis_conflict`; the mock answers a recreate upload with reference_set.pending.json's analysis and gates design/confirm, blueprint and recipe/run like the backend.
   - Files: src/api/types.ts, src/api/client.ts, src/mocks/*.ts, tests/contract.test.ts, tests/references.test.tsx
   - Depends on: 16.6

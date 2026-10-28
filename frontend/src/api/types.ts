@@ -120,6 +120,51 @@ export interface ReferenceSet {
   instructions: string;
   images: { id: string; name: string; file: string }[];
   summary: string;
+  /** dashboard-intent.md 1.3: recreate only; null in style mode and for a recreate set saved before 1.3. */
+  analysis: ReferenceAnalysis | null;
+}
+
+export const REFERENCE_ITEM_KINDS = ['chart', 'control', 'kpi', 'text', 'image', 'legend', 'other'] as const;
+export type ReferenceItemKind = (typeof REFERENCE_ITEM_KINDS)[number];
+export type ReferenceDisposition = 'native' | 'static';
+
+/** One visible item of a recreate screenshot (dashboard-intent.md 1.3). */
+export interface ReferenceItem {
+  /** r1, r2 ... stable for this analysis. */
+  id: string;
+  label: string;
+  kind: ReferenceItemKind;
+  /** 0..1 of the image. */
+  box: { x: number; y: number; w: number; h: number };
+  disposition: ReferenceDisposition;
+  /** An `allowed_types` entry when native, null when static. */
+  type: string | null;
+  /** Display text read from the image, never a field binding. */
+  shows: string;
+  reason: string;
+  /** The analysis' own choice, read-only. */
+  proposed: { disposition: ReferenceDisposition; type: string | null };
+}
+
+export interface ReferenceAnalysis {
+  /** 1 = as analyzed; +1 on every saved edit. */
+  revision: number;
+  state: 'pending' | 'approved';
+  summary: string;
+  /** 1-24, in reading order. */
+  items: ReferenceItem[];
+  /** The user's note to the planner, 0-1000 chars. */
+  note: string;
+  allowed_types: string[];
+  /** Paths into the analysis (`/items/<i>/type`); approve needs []. */
+  issues: ValidationIssue[];
+}
+
+/** Body of PUT /api/builds/{id}/reference-images/analysis (api.md 3.2): every item id exactly once. */
+export interface ReferenceAnalysisUpdate {
+  revision: number;
+  items: { id: string; disposition: ReferenceDisposition; type: string | null }[];
+  note: string;
 }
 
 /** User-facing reference constraints; backend also validates signatures and decoded images. */
@@ -632,6 +677,8 @@ export interface BlueprintRow {
   note: string;
   status: 'ok' | 'blocked';
   issue_ids: string[];
+  /** api.md 3.2: the approved native ReferenceItem id this row recreates; null otherwise. */
+  reference_item: string | null;
 }
 
 export interface ViewSources {
@@ -839,14 +886,6 @@ export const isSource = shape<Source>({
   columns: arrayOf(isColumn),
 });
 
-export const isReferenceSet = shape<ReferenceSet>({
-  id: isString,
-  mode: oneOf(['style', 'recreate']),
-  instructions: isString,
-  images: arrayOf(shape<ReferenceSet['images'][number]>({ id: isString, name: isString, file: isString })),
-  summary: isString,
-});
-
 export const isDocRef = shape<DocRef>({ path: isString, title: isString, type: isString });
 
 export const isVersion = shape<Version>({
@@ -1008,6 +1047,36 @@ export const isTrace = shape<Trace>({
 });
 
 export const isValidationIssue = shape<ValidationIssue>({ path: isString, message: isString });
+
+const isDisposition = oneOf(['native', 'static']);
+export const isReferenceItem = shape<ReferenceItem>({
+  id: isString,
+  label: isString,
+  kind: oneOf(REFERENCE_ITEM_KINDS),
+  box: shape<ReferenceItem['box']>({ x: isNumber, y: isNumber, w: isNumber, h: isNumber }),
+  disposition: isDisposition,
+  type: nullable(isString),
+  shows: isString,
+  reason: isString,
+  proposed: shape<ReferenceItem['proposed']>({ disposition: isDisposition, type: nullable(isString) }),
+});
+export const isReferenceAnalysis = shape<ReferenceAnalysis>({
+  revision: isInt,
+  state: oneOf(['pending', 'approved']),
+  summary: isString,
+  items: arrayOf(isReferenceItem),
+  note: isString,
+  allowed_types: arrayOf(isString),
+  issues: arrayOf(isValidationIssue),
+});
+export const isReferenceSet = shape<ReferenceSet>({
+  id: isString,
+  mode: oneOf(['style', 'recreate']),
+  instructions: isString,
+  images: arrayOf(shape<ReferenceSet['images'][number]>({ id: isString, name: isString, file: isString })),
+  summary: isString,
+  analysis: nullable(isReferenceAnalysis),
+});
 
 // ---------- Stage settings and design briefs (api.md 3.0) ----------
 
@@ -1267,6 +1336,7 @@ export const isBlueprintRow = shape<BlueprintRow>({
   note: isString,
   status: oneOf(['ok', 'blocked']),
   issue_ids: arrayOf(isString),
+  reference_item: nullable(isString),
 });
 export const isBlueprint = shape<Blueprint>({
   revision: isInt,

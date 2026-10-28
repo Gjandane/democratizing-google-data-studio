@@ -604,3 +604,15 @@ context. Task status lives in docs/plan.md, not here.
 - What changed: plan.md Phase 17: 17.1 types/guards/mocks (S), 17.2 Reference analysis review (M, Spec docs/reference-ui.md#Reference analysis review), 17.3 live walkthrough (S, `Needs: backend 26.4`). reference-ui.md gains the review section; essentials Contracts table at 3.2/1.3/1.3.
 - Why: the user replaced the backend's observation extraction with a Flash analysis that proposes native vs static per item and a user approval before any blueprint work (user request and cards 2026-10-28).
 - Next: 17.1, then 17.2 against the fixtures; 17.3 once backend 26.4 is done.
+
+## 2026-10-28: Task 17.1 Contract 3.2 and dashboard-intent 1.3 types, guards, client and mocks
+- Status: done
+- Plan check: off
+- What changed: types.ts ReferenceAnalysis/ReferenceItem/ReferenceAnalysisUpdate + exact guards, ReferenceSet.analysis, BlueprintRow.reference_item; client PUT analysis/approve; mock pending analysis on recreate upload, analysis save/approve, reference_unapproved gate. Tests updated for 3.2 stage-settings fixtures (settings, trace: outside Files, failed on an untouched tree).
+- Checks: `npm run typecheck` PASS; `npm test` PASS 24 files, 526 tests (contract + references new cases).
+- Decisions: mock errors the contract leaves open: no analysis -> 404 reference_not_found; wrong item set -> 422 invalid_request; note >1000 -> issue `/note`. Static item's type saved as null. Editing an approved analysis: assessment stale, blueprint 'stale'. Pre-2.0 builds ungated for recipe/run. isReferenceSet moved below isValidationIssue (const order).
+- Digest: types.ts ReferenceSet.analysis: ReferenceAnalysis|null {revision,state,summary,items:ReferenceItem[],note,allowed_types,issues}; ReferenceAnalysisUpdate; api.updateReferenceAnalysis(id, body)/approveReferenceAnalysis(id, rev) -> ReferenceSet; fixtures.referenceSetPending
+- Tried and failed: none
+- Gotchas: architect contract commits can change shared stage-settings fixtures and break older tests; run the full suite before building.
+- Left open: P3 mock nulls a static item's non-null type (test sends it) - src/mocks/api.ts; P3 note >1000 is an issue, not 422 - src/mocks/api.ts
+- Next: Task 17.2 Reference analysis review (Spec docs/reference-ui.md#Reference analysis review).

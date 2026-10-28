@@ -19,6 +19,7 @@ import {
   isProposal,
   referenceValidation,
   type ReferenceSet,
+  type ReferenceAnalysisUpdate,
   type ReferenceMode,
   isApiErrorBody,
   type Build,
@@ -99,6 +100,10 @@ export interface ApiClient {
   getReferences(buildId: string): Promise<ReferenceSet | null>;
   uploadReferences(buildId: string, files: File[], mode: ReferenceMode, instructions: string): Promise<RunAccepted>;
   deleteReferences(buildId: string): Promise<void>;
+  /** Saves the native/static split of a recreate analysis (code only): `revision` + 1, state pending. */
+  updateReferenceAnalysis(buildId: string, body: ReferenceAnalysisUpdate): Promise<ReferenceSet>;
+  /** Approves the current analysis revision; needs no open issues. */
+  approveReferenceAnalysis(buildId: string, revision: number): Promise<ReferenceSet>;
   /** Proposes sample-data columns from the current recreate reference set (no data source needed). */
   proposeSyntheticSchema(buildId: string, referenceSetId: string): Promise<RunAccepted>;
   getSyntheticProposal(buildId: string): Promise<Proposal | null>;
@@ -251,6 +256,7 @@ const UNREADABLE = {
   capabilities: "Couldn't read the model list. Try again.",
   designPages: "Couldn't read the page designs. Try again.",
   review: "Couldn't read the brief review. Try again.",
+  references: "Couldn't read the saved references. Try again.",
   calls: "Couldn't read this run's model calls. Try again.",
   cost: "Couldn't read the cost estimate. Try again.",
   build: "Couldn't read this build: the backend may predate API 2.0. Update it, then try again.",
@@ -278,7 +284,7 @@ export const httpApi: ApiClient = {
   discardComments: (id, assessmentId) => assessment('DELETE', buildPath(id, `/feasibility/pending-comments?assessment_id=${seg(assessmentId)}`)),
   getReferences: async (id) => {
     const value: unknown = await json('GET', buildPath(id, '/reference-images'));
-    if (value !== null && !isReferenceSet(value)) throw new ApiError(502, 'invalid_response', "Couldn't read the saved references. Try again.");
+    if (value !== null && !isReferenceSet(value)) throw new ApiError(502, 'invalid_response', UNREADABLE.references);
     return value;
   },
   uploadReferences: async (id, files, mode, instructions) => {
@@ -296,6 +302,8 @@ export const httpApi: ApiClient = {
     }
   },
   deleteReferences: async (id) => { await send('DELETE', buildPath(id, '/reference-images')); },
+  updateReferenceAnalysis: (id, body) => checkedJson('PUT', buildPath(id, '/reference-images/analysis'), isReferenceSet, UNREADABLE.references, body),
+  approveReferenceAnalysis: (id, revision) => checkedJson('POST', buildPath(id, '/reference-images/analysis/approve'), isReferenceSet, UNREADABLE.references, { revision }),
   proposeSyntheticSchema: (id, referenceSetId) => json('POST', buildPath(id, '/synthetic-data/proposal'), { reference_set_id: referenceSetId }),
   getSyntheticProposal: async (id) => {
     const value: unknown = await json('GET', buildPath(id, '/synthetic-data/proposal'));

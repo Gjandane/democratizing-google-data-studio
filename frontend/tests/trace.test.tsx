@@ -81,7 +81,7 @@ describe('Trace stage calls', () => {
     expect(terms).toEqual([...STAGE_ORDER.map((stage) => STAGE_META[stage].name), 'Fallback model', 'Brief review']);
     const lines = Array.from(used.querySelectorAll('dd')).map((dd) => dd.textContent);
     expect(lines[STAGE_ORDER.indexOf('reference_html')]).toBe('gemini-3.8-flash High thinking, input 131,072, output 65,536, 1,200 s, 2 retries, 2 repairs');
-    expect(lines[STAGE_ORDER.indexOf('reference_interpretation')]).toBe('gemini-4-argon High thinking, input 131,072, output 32,768, 600 s, 1 retry, 0 repairs');
+    expect(lines[STAGE_ORDER.indexOf('reference_interpretation')]).toBe('gemini-3.8-flash High thinking, input 131,072, output 32,768, 600 s, 1 retry, 1 repair');
     expect(lines[STAGE_ORDER.indexOf('interview')]).toBe('gemini-3.8-flash Low thinking, 30 s');
     expect(lines.slice(-2)).toEqual(['gemini-3.8-flash', 'Off']);
 

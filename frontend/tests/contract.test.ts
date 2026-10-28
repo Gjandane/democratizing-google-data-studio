@@ -56,6 +56,7 @@ import feasibilityAlternatives from '../../contracts/fixtures/dashboard-intent/f
 import feasibilityPending from '../../contracts/fixtures/dashboard-intent/feasibility.pending.json';
 import feasibilityStale from '../../contracts/fixtures/dashboard-intent/feasibility.stale.json';
 import referenceFixture from '../../contracts/fixtures/dashboard-intent/reference_set.json';
+import referencePendingFixture from '../../contracts/fixtures/dashboard-intent/reference_set.pending.json';
 import syntheticDatasetFixture from '../../contracts/fixtures/synthetic-data/dataset.json';
 import syntheticJobFailedFixture from '../../contracts/fixtures/synthetic-data/job.failed.json';
 import syntheticJobSucceededFixture from '../../contracts/fixtures/synthetic-data/job.succeeded.json';
@@ -236,6 +237,15 @@ describe('the guards reject what the contract forbids', () => {
     const row = blueprint.rows[1]!;
     expect(isBlueprint({ ...blueprint, rows: [{ ...row, status: 'warning' }] })).toBe(false);
     expect(isBlueprint({ ...blueprint, rows: [{ ...row, page: 1.5 }] })).toBe(false);
+    // api.md 3.2: every row names its approved native ReferenceItem, or null.
+    for (const name of ['blueprint.json', 'blueprint.blocked.json']) {
+      const rows = (json(name) as { rows: Array<Record<string, unknown>> }).rows;
+      expect(rows.every((r) => Object.hasOwn(r, 'reference_item'))).toBe(true);
+    }
+    const { reference_item: _item, ...unlinked } = row;
+    expect(problemsOf(isBlueprint, { ...blueprint, rows: [unlinked] })).toEqual(['$.rows[0].reference_item: missing']);
+    expect(isBlueprint({ ...blueprint, rows: [{ ...row, reference_item: 'r2' }] })).toBe(true);
+    expect(isBlueprint({ ...blueprint, rows: [{ ...row, reference_item: 2 }] })).toBe(false);
     expect(toBuildEvent('artifact.updated', { artifact: 'outline', revision: 3 })).toEqual({ name: 'artifact.updated', data: { artifact: 'outline', revision: 3 } });
     expect(toBuildEvent('artifact.updated', { artifact: 'spec', revision: 3 })).toBeNull();
   });
@@ -288,6 +298,34 @@ describe('references and synthetic sources match the contract', () => {
     expect(isReferenceSet({ ...referenceFixture, images: [{ ...referenceFixture.images[0], name: 12 }] })).toBe(false);
     expect(isReferenceSet({ ...referenceFixture, images: [{ ...referenceFixture.images[0], extra: true }] })).toBe(false);
     expect(isReferenceSet({ ...referenceFixture, images: [{ id: 'image', name: 'dashboard.png' }] })).toBe(false);
+  });
+
+  it('accepts the approved and pending reference analyses (dashboard-intent.md 1.3) with exact guards', () => {
+    expect(problemsOf(isReferenceSet, referencePendingFixture)).toEqual([]);
+    expect(referenceFixture.analysis.state).toBe('approved');
+    expect(referencePendingFixture.analysis.state).toBe('pending');
+    // Style sets and recreate sets saved before 1.3 carry analysis null; the key itself is required.
+    expect(problemsOf(isReferenceSet, { ...referenceFixture, mode: 'style', analysis: null })).toEqual([]);
+    const { analysis: _analysis, ...noAnalysis } = referenceFixture;
+    expect(problemsOf(isReferenceSet, noAnalysis)).toEqual(['$.analysis: missing']);
+
+    const analysis = referencePendingFixture.analysis;
+    const withItem = (item: Record<string, unknown>) => ({ ...referencePendingFixture, analysis: { ...analysis, items: [item] } });
+    const native = analysis.items.find((item) => item.disposition === 'native')!;
+    expect(problemsOf(isReferenceSet, withItem({ ...native, disposition: 'maybe' }))).toEqual(['$.analysis.items[0].disposition: expected one of native | static, got "maybe"']);
+    const { type: _type, ...untyped } = native;
+    expect(problemsOf(isReferenceSet, withItem(untyped))).toEqual(['$.analysis.items[0].type: missing']);
+    expect(isReferenceSet(withItem({ ...native, type: null }))).toBe(true);
+    expect(isReferenceSet(withItem({ ...native, kind: 'map' }))).toBe(false);
+    expect(isReferenceSet(withItem({ ...native, box: { x: 0, y: 0, w: 1 } }))).toBe(false);
+    expect(isReferenceSet(withItem({ ...native, box: { ...native.box, h: '0.5' } }))).toBe(false);
+    expect(isReferenceSet(withItem({ ...native, proposed: { disposition: 'native' } }))).toBe(false);
+    expect(isReferenceSet(withItem({ ...native, field: 'revenue' }))).toBe(false);
+    expect(problemsOf(isReferenceSet, { ...referencePendingFixture, analysis: { ...analysis, state: 'draft' } })).toEqual(['$.analysis.state: expected one of pending | approved, got "draft"']);
+    expect(isReferenceSet({ ...referencePendingFixture, analysis: { ...analysis, revision: 1.5 } })).toBe(false);
+    expect(isReferenceSet({ ...referencePendingFixture, analysis: { ...analysis, issues: [{ path: '/items/0/type' }] } })).toBe(false);
+    const { allowed_types: _allowed, ...noAllowed } = analysis;
+    expect(isReferenceSet({ ...referencePendingFixture, analysis: noAllowed })).toBe(false);
   });
 
   it('accepts the synthetic source inside a Build and rejects an unknown source kind', () => {
@@ -500,6 +538,31 @@ describe('the HTTP client speaks the contract' , () => {
     vi.stubGlobal('fetch', fetchMock);
     await expect(httpApi.deleteReferences('b_3f9a0c12d4e5')).resolves.toBeUndefined();
     expect(fetchMock).toHaveBeenCalledExactlyOnceWith('/api/builds/b_3f9a0c12d4e5/reference-images', expect.objectContaining({ method: 'DELETE' }));
+  });
+
+  it('saves and approves the reference analysis with the exact 3.2 paths and bodies', async () => {
+    const headers = { 'Content-Type': 'application/json' };
+    const fetchMock = stubFetch(200, JSON.stringify(referenceFixture));
+    const update = { revision: 1, items: [{ id: 'r1', disposition: 'static' as const, type: null }, { id: 'r6', disposition: 'native' as const, type: 'geo_map' }], note: 'Keep the map static.' };
+    await expect(httpApi.updateReferenceAnalysis('b/one', update)).resolves.toEqual(referenceFixture);
+    await expect(httpApi.approveReferenceAnalysis('b/one', 2)).resolves.toEqual(referenceFixture);
+    expect(fetchMock.mock.calls).toEqual([
+      ['/api/builds/b%2Fone/reference-images/analysis', { method: 'PUT', headers, body: JSON.stringify(update) }],
+      ['/api/builds/b%2Fone/reference-images/analysis/approve', { method: 'POST', headers, body: JSON.stringify({ revision: 2 }) }],
+    ]);
+  });
+
+  it('fails closed on a malformed analysis answer and passes the 3.2 errors through', async () => {
+    stubFetch(200, JSON.stringify({ ...referenceFixture, analysis: { ...referenceFixture.analysis, state: 'draft' } }));
+    await expect(httpApi.updateReferenceAnalysis('b', { revision: 2, items: [], note: '' })).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+    await expect(httpApi.approveReferenceAnalysis('b', 2)).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+    const { analysis: _analysis, ...preContract } = referenceFixture;
+    stubFetch(200, JSON.stringify(preContract));
+    await expect(httpApi.getReferences('b')).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+    stubFetch(409, JSON.stringify({ error: { code: 'reference_analysis_conflict', message: 'The analysis changed.', detail: { revision: 3 } } }));
+    await expect(httpApi.approveReferenceAnalysis('b', 2)).rejects.toMatchObject({ status: 409, code: 'reference_analysis_conflict', detail: { revision: 3 } });
+    stubFetch(409, JSON.stringify({ error: { code: 'reference_unapproved', message: 'Approve the reference analysis first.', detail: { reference_set_id: 'ref_example' } } }));
+    await expect(httpApi.confirmDesign('b')).rejects.toMatchObject({ status: 409, code: 'reference_unapproved', detail: { reference_set_id: 'ref_example' } });
   });
 
   it('rejects a saved reference response outside the contract', async () => {

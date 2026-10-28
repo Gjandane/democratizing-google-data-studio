@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../src/api/client';
-import { ApiError, type Build, type BuildEvent } from '../src/api/types';
+import { ApiError, type Build, type BuildEvent, type ReferenceItem } from '../src/api/types';
 import { ActivityStrip } from '../src/features/activity/ActivityStrip';
 import { reduceActivity } from '../src/features/activity/activity';
 import { GENERIC, presetFor } from '../src/features/activity/presets';
@@ -14,7 +14,7 @@ import { ActivityColumn } from '../src/features/activity/ActivityColumn';
 import { useBuildStream } from '../src/features/activity/useBuildStream';
 import { ConnectStage } from '../src/features/workspace/connect/ConnectStage';
 import { openReferencePanel, publishWorkspace } from '../src/features/workspace/stretch';
-import { resetMockState } from '../src/mocks/api';
+import { patchMockBuild, resetMockState, setMockArtifact } from '../src/mocks/api';
 import { fixtures } from '../src/mocks/fixtures';
 
 beforeEach(resetMockState);
@@ -313,5 +313,75 @@ describe('Activity strip', () => {
     render(<ActivityStrip activity={activity} />);
     expect(screen.getByText(phrase)).toBeTruthy();
     expect(screen.getByRole('status').textContent).toBe(`${phrase}…`);
+  });
+});
+
+describe('Reference analysis gate in the mock (dashboard-intent.md 1.3)', () => {
+  async function uploaded(mode: 'recreate' | 'style', id = buildId) {
+    await api.uploadReferences(id, [png()], mode, '');
+    let set = await api.getReferences(id);
+    await waitFor(async () => { set = await api.getReferences(id); expect(set).not.toBeNull(); });
+    return set!;
+  }
+  const rejection = (promise: Promise<unknown>) => promise.then(() => null, (error: unknown) => error as ApiError);
+
+  it('answers a recreate upload with the pending analysis and gates design/confirm, blueprint, recipe and run until approved', async () => {
+    const set = await uploaded('recreate');
+    expect(set.analysis).toEqual(fixtures.referenceSetPending.analysis);
+    const gated = { status: 409, code: 'reference_unapproved', detail: { reference_set_id: set.id } };
+    expect(await rejection(api.compileRecipe(buildId))).toMatchObject(gated);
+    expect(await rejection(api.runBuild(buildId))).toMatchObject(gated);
+    expect(await rejection(api.regenerateBlueprint(buildId))).toMatchObject(gated);
+    patchMockBuild(buildId, { stage: 'blueprint', artifacts: { ...fixtures.build.artifacts, blueprint: 'draft' } });
+    expect(await rejection(api.acceptBlueprint(buildId))).toMatchObject(gated);
+    patchMockBuild(buildId, { stage: 'design', artifacts: { ...fixtures.build.artifacts, design: 'draft', blueprint: 'stale' } });
+    setMockArtifact(buildId, 'design', fixtures.design);
+    expect(await rejection(api.confirmDesign(buildId))).toMatchObject(gated);
+
+    // A stale revision conflicts; a native item without a type is an issue that blocks approval.
+    const items = set.analysis!.items.map(({ id, disposition, type }) => ({ id, disposition, type }));
+    expect(await rejection(api.updateReferenceAnalysis(buildId, { revision: 7, items, note: '' }))).toMatchObject({ status: 409, code: 'reference_analysis_conflict', detail: { revision: 1 } });
+    expect(await rejection(api.updateReferenceAnalysis(buildId, { revision: 1, items: items.slice(1), note: '' }))).toMatchObject({ status: 422 });
+    const untyped = await api.updateReferenceAnalysis(buildId, { revision: 1, items: items.map((item) => (item.id === 'r6' ? { ...item, type: null } : item)), note: '' });
+    expect(untyped.analysis).toMatchObject({ revision: 2, state: 'pending', issues: [{ path: '/items/5/type' }] });
+    expect(await rejection(api.approveReferenceAnalysis(buildId, 2))).toMatchObject({ status: 409, code: 'artifact_invalid' });
+
+    // r6 as static art: the split of reference_set.json, with its code-written summary.
+    const saved = await api.updateReferenceAnalysis(buildId, { revision: 2, items: items.map((item) => (item.id === 'r6' ? { id: 'r6', disposition: 'static', type: 'geo_map' } : item)), note: 'Draw the map as art.' });
+    expect(saved.analysis).toMatchObject({ revision: 3, state: 'pending', issues: [], note: 'Draw the map as art.', summary: fixtures.referenceSet.analysis!.summary });
+    // The PUT carries no reason, so the mock keeps the analysis' own; everything else matches the approved fixture.
+    const split = (list: ReferenceItem[]) => list.map(({ reason: _reason, ...item }) => item);
+    expect(split(saved.analysis!.items)).toEqual(split(fixtures.referenceSet.analysis!.items));
+    expect(await rejection(api.approveReferenceAnalysis(buildId, 2))).toMatchObject({ status: 409, code: 'reference_analysis_conflict', detail: { revision: 3 } });
+    const approved = await api.approveReferenceAnalysis(buildId, 3);
+    expect(approved.analysis).toMatchObject({ revision: 3, state: 'approved' });
+    expect(await api.approveReferenceAnalysis(buildId, 3)).toEqual(approved);
+    expect(await api.getReferences(buildId)).toEqual(approved);
+    await expect(api.confirmDesign(buildId)).resolves.toMatchObject({ run_id: expect.any(String) });
+  });
+
+  it('returns an approved analysis to pending when it is edited again, and never gates a style set', async () => {
+    const set = await uploaded('recreate');
+    const items = set.analysis!.items.map(({ id, disposition, type }) => ({ id, disposition, type }));
+    await api.approveReferenceAnalysis(buildId, 1);
+    await expect(api.compileRecipe(buildId)).resolves.toBeTruthy();
+    const edited = await api.updateReferenceAnalysis(buildId, { revision: 1, items, note: 'Same split.' });
+    expect(edited.analysis).toMatchObject({ revision: 2, state: 'pending' });
+    // A reference change: the saved blueprint goes stale, and blueprint work is gated again.
+    expect((await api.getBuild(buildId)).artifacts.blueprint).toBe('stale');
+    expect(await rejection(api.regenerateBlueprint(buildId))).toMatchObject({ code: 'reference_unapproved' });
+
+    const style = await uploaded('style');
+    expect(style.mode).toBe('style');
+    expect(style.analysis).toBeNull();
+    expect(await rejection(api.approveReferenceAnalysis(buildId, 1))).toMatchObject({ status: 404 });
+    await expect(api.regenerateBlueprint(buildId)).resolves.toMatchObject({ run_id: expect.any(String) });
+  });
+
+  it('leaves a pre-2.0 build (no artifacts, a spec) ungated for recipe and run', async () => {
+    await uploaded('recreate');
+    patchMockBuild(buildId, { artifacts: { context: 'missing', outline: 'missing', design: 'missing', blueprint: 'missing' } });
+    await expect(api.compileRecipe(buildId)).resolves.toBeTruthy();
+    await expect(api.runBuild(buildId)).resolves.toMatchObject({ run_id: expect.any(String) });
   });
 });

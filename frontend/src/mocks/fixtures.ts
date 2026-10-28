@@ -11,6 +11,7 @@ import syntheticSourceJson from '../../../contracts/fixtures/synthetic-data/sour
 // The shared API fixtures, imported in place from ../contracts/fixtures/api/ (never copied)
 // and checked against the contract guards once, so the mock can only serve conforming data.
 import referenceSetJson from '../../../contracts/fixtures/dashboard-intent/reference_set.json';
+import referenceSetPendingJson from '../../../contracts/fixtures/dashboard-intent/reference_set.pending.json';
 import blueprintBlockedJson from '../../../contracts/fixtures/api/blueprint.blocked.json';
 import blueprintJson from '../../../contracts/fixtures/api/blueprint.json';
 import buildDoneJson from '../../../contracts/fixtures/api/build.done.json';
@@ -97,7 +98,10 @@ export const fixtures = /* @__PURE__ */ (() => ({
   feasibilityAlternatives: checked(isAssessment, feasibilityAlternativesJson, 'feasibility.alternatives.json'),
   feasibilityPending: checked(isAssessment, feasibilityPendingJson, 'feasibility.pending.json'),
   feasibilityStale: checked(isAssessment, feasibilityStaleJson, 'feasibility.stale.json'),
+  /** A recreate set with its analysis approved (revision 2). */
   referenceSet: checked(isReferenceSet, referenceSetJson, 'reference_set.json'),
+  /** The analysis as a recreate upload commits it: pending, revision 1. */
+  referenceSetPending: checked(isReferenceSet, referenceSetPendingJson, 'reference_set.pending.json'),
   // contracts/fixtures/synthetic-data/
   syntheticDataset: checked(isSyntheticDataset, syntheticDatasetJson, 'synthetic-data/dataset.json'),
   syntheticJobFailed: checked(isGenerationStatus, syntheticJobFailedJson, 'synthetic-data/job.failed.json'),

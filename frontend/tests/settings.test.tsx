@@ -259,11 +259,12 @@ describe('settings models tab', () => {
     expect(saveButton().disabled).toBe(false);
   });
 
-  it('bounds Validation repairs per stage: reference interpretation read-only at 0, native planning 0 to 1', async () => {
+  it('bounds Validation repairs per stage: read-only at [0, 0], reference interpretation and native planning 0 to 1 (api.md 3.2)', async () => {
     await openModels();
     const interpretation = expand('reference_interpretation');
-    expect(within(interpretation).getByText('0 (this stage has no repair step)')).toBeTruthy();
-    expect(within(interpretation).queryByRole('textbox', { name: 'Validation repairs' })).toBeNull();
+    expect(within(interpretation).getByRole('textbox', { name: 'Validation repairs' })).toBeTruthy();
+    expect(within(interpretation).getByText('0 to 1.')).toBeTruthy();
+    expect(within(interpretation).queryByText(/no repair step/)).toBeNull();
     const planning = expand('native_planning');
     const repairs = within(planning).getByRole('textbox', { name: 'Validation repairs' }) as HTMLInputElement;
     expect(within(planning).getByText('0 to 1.')).toBeTruthy();
@@ -426,6 +427,10 @@ describe('settings models tab', () => {
 
   it('read-only Validation repairs shows the stored value, and an issue on it takes focus', async () => {
     const message = 'Reference interpretation has no repair step. Reset it to 0.';
+    // No 3.2 stage has a [0, 0] bound any more; a deployment's capabilities still may.
+    const noRepairs = clone(caps);
+    noRepairs.limits.validation_repairs.reference_interpretation = [0, 0];
+    vi.spyOn(api, 'getSettingsCapabilities').mockResolvedValue(noRepairs);
     setMockSettings({ stages: withStage('reference_interpretation', { validation_repairs: 1 }), issues: [{ path: '/stages/reference_interpretation/validation_repairs', message }] });
     await openModels();
     const region = screen.getByRole('region', { name: 'Reference interpretation' });
