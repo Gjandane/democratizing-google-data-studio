@@ -589,3 +589,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: in AGENTS.md.
 - Left open: none (review: 0 P0/P1; 2 P2 + 5 P3 fixed).
 - Next: Task 2.8 / 3.2 per `status` (2.7 blocked for the architect).
+
+## 2026-10-29: Task 3.2 Repo ready and first push
+- Status: done
+- Plan check: off
+- What changed: new integration/check_repo.py (remote, .gitattributes, .env.example values, tracked/history paths, blob sizes, key patterns and .env secret values in `git log -p --all` incl. messages, nested repos, origin/main ancestor); new .gitattributes (`samples/*.csv -text`, `*.sh text eol=lf`).
+- Checks: after `git fetch origin`, `uv run --project integration python integration/check_repo.py` PASS 9/9 (DSS_ACCESS_CODE, DSS_AGENT_TOKEN skipped (empty)); Test (all) check_contracts.py PASS 13/13. Fresh-clone make_sample --check, clean status, push and ls-remote run right after this commit (session report).
+- Decisions: STOP card: user approved commit, kept all tracked images (212 frontend/screenshots, mock UI, no account shown), shipped deck with TBDs, accepted public author email, push `git push origin main`. Plan's own quoted `GOCSPX-`/`"refresh_token"` (backticked in .md) reported as doc mentions, not failures; only those two labels. `.git` files (worktree, uv cache) reported, not failed. Pattern literals split so the script never matches itself. Review fixes: commit messages scanned, core.quotePath=false, .env read utf-8-sig, remote userinfo stripped.
+- Digest: `integration/check_repo.py` (no args, run after `git fetch origin`) -> exit 0/1, one PASS/FAIL line per check, never prints values; `.gitattributes` has `samples/*.csv -text`, `*.sh text eol=lf`; main pushed to origin.
+- Tried and failed: first run failed on docs/plan.md quoting the patterns (fixed by the doc-mention rule).
+- Gotchas: none
+- Left open: P3 a `.git` file's gitdir target isn't read - integration/check_repo.py; P3 diff header split on " b/" can misname a path (fails safe) - integration/check_repo.py; P3 inline `# comment` after an unquoted .env value defeats the value match - integration/check_repo.py; manual GitHub README render check for the user.
+- Next: Task 4.1 Dockerfile and deploy to `dss-frontend`.
