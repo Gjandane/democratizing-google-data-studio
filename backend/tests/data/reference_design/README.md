@@ -1,4 +1,4 @@
-# Electricity reference acceptance fixture (task 25.10; retained from 24.11/25.7/25.8)
+# Electricity reference acceptance fixture (task 26.6; retained from 24.11/25.7-25.11)
 
 The image is the existing user-supplied electricity dashboard reference, retained by
 the earlier backend live run. It is a visual reference, not a data source.
@@ -24,48 +24,46 @@ needed to reproduce it. Full hashes for every fixture are also saved per run.
 Run from backend: `uv run pytest -m live tests/live/test_reference_design.py`.
 Real configured models and BigQuery are required. The test sets dry engine and the
 current native type catalog explicitly, and PUTs the contract default stage Settings
-(`GET /api/settings/capabilities` defaults) so no stored or `.env`-migrated profile
+(`GET /api/settings/capabilities` defaults, api.md 3.2) so no stored or `.env`-migrated profile
 applies. The `none` case also turns `review_briefs` on before its accept: it edits
 one treatment of page 1's brief, approves each page and checks that the published
 `brief_p1.json` hashes to the edited brief. Outputs, spans, StageCalls, cost
-estimates and screenshots go to `.blueprint/qa/task-25.10/<mode>/` (`task-24.7/` with
+estimates and screenshots go to `.blueprint/qa/task-26.6/<mode>/` (`task-24.7/` with
 `DSS_LIVE_STAGE=24.7`, readiness-only `task-24.9/` with `DSS_LIVE_STAGE=24.9`);
 created BigQuery tables/views are cleaned after each case. Earlier task evidence
 (including `task-24.11/`) is preserved unchanged.
 
-The user approved these substitutions on 2026-10-25:
+Since task 26.6 (api.md 3.2, change 2026-10-28) a recreate upload gets a Flash
+reference analysis: every visible item is proposed as a native catalog component or
+static art, and nothing downstream runs until the split is approved. The harness
+plays the user at that gate on the split the user agreed (by position):
 
-- Drop geo_map; the real-geography globe remains static artwork.
-- Drop the Rural/Urban legend whether extracted as a dropdown, control or chart
-  (including `Location (%)`, user card 2026-10-27), and any extracted year slider
-  (a year/slider-labeled control, or an unlabeled `date_range` control, user card
-  2026-10-27 after 25.10 run 1; never matched by box or item order).
-- Replace four per-country small multiples with one native urban/rural area chart,
-  expressed through the test's INSTRUCTIONS.
-- Use a native fixed_size_list for the region selector.
+- the yearly bar (bottom) native `bar`, the urban/rural panel (right) native
+  `area` and the region list (left) native `fixed_size_list`, each found by kind,
+  type candidates and box region (`play_gate`), never by item order or id;
+- when the analysis splits the right panel into several charts (26.6 run 1: four
+  country panels), every right-hand chart is native `area` (user card 2026-10-28);
+- the globe and every legend static;
+- every other native or static choice Flash makes is kept and named at the STOP.
 
-For recreate, INSTRUCTIONS contain only definition clauses, with no periods inside
-their labels. The four country definitions specify the same two metrics and area
-chart. RECREATE_NOTES hold the approved alias/substitution and composition prose
-(user ruling 2026-10-26). The additional recreate interview notes
-group the reference observations on the first Outline section/page and reserve
-a later section/page for extra analysis. The public workflow still chooses its
-Outline and Blueprint; the test never edits rows or moves generated components.
-Style and no-reference interview inputs are unchanged.
+It PUTs only those changes and approves; `analysis-proposed.json`,
+`analysis-approved.json` and `runs.json` (`analysis`, `gate`) record the proposal,
+the changes and the approved split. If the yearly bar or the region list can't be
+identified (none, or more than one candidate), or no right-hand chart exists, the
+case blocks with the analysis. No feasibility drop or alternative is played; an issue
+after planning blocks. The earlier observation drops, Region Selector offer and
+year-slider rules (25.10/25.11) are retired.
 
-The test records each applied drop by observation and issue id. Any other
-unsupported item blocks the check; it never selects an arbitrary alternative.
+INSTRUCTIONS and RECREATE_NOTES are unchanged from the earlier campaigns; since
+1.3 they reach the analysis and the planner as untrusted text, not as definition
+clauses. Style and no-reference interview inputs are unchanged; style mode has no
+analysis and no gate. The public workflow still chooses its Outline and Blueprint;
+the test never edits rows or moves generated components.
+
 Each run retains full fixture and INSTRUCTIONS/effective notes SHA256 hashes,
-the exact workflow inputs, native slot ids/bindings, compiled recipes, coverage,
-per-stage model/image/token/time evidence and sanitized failed drafts when available.
-`runs.json` distinguishes a failed check from an actually published prototype.
-Passing technical checks does not constitute the user's visual acceptance.
-
-Task 25.9 repairs the offline binding and recomputation checks before this live
-acceptance. No live acceptance is claimed by that repair. The 25.10 harness checks
-Region Selector authorization before planning, before accept and against the same
-observation's published page-1 native control. Its one approved clause acceptance
-is scoped to the complete campaign, including later assessments; duplicate reads
-do not submit or record another acceptance. Originally blank image labels still
-require a currently applying explicit decision, even if a worker filled the field.
-All earlier evidence, including `.blueprint/qa/task-25.9/`, stays unchanged.
+the exact workflow inputs, each native item's Blueprint rows and component ids,
+publish coverage, compiled recipes, per-stage model/image/token/time evidence
+(StageCalls) and sanitized failed drafts when available. `runs.json`
+distinguishes a failed check from an actually published prototype. Passing
+technical checks does not constitute the user's visual acceptance. All earlier
+evidence (`.blueprint/qa/task-24.x` through `task-25.11/`) stays unchanged.

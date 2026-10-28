@@ -2330,3 +2330,15 @@ assert min(timings) < .1
 - Gotchas: none beyond AGENTS.md
 - Left open: P2 truthful-title/unit rule (`_period_free`, observed_title, accept titling) removed with no replacement though architecture.md#Recreate page placement still applies it to item rows - architect to mark Retired or add a task; P3 tests/live/test_reference_design.py live body still calls removed campaign helpers (26.6 rewrites); P3 recompute tests run on an empty ledger; P3 old persisted code-added rows count as supporting controls; P3 dead `using` origin, `derived/checked` kwargs, unused canonical_dates args; saved ready assessments of recreate builds read stale once (input digest changed).
 - Next: Task 26.6 Live reference analysis acceptance. Start by `status --task 26.6`.
+
+## 2026-10-28: Task 26.6 Live reference analysis acceptance
+- Status: done
+- Plan check: off
+- What changed: tests/live/test_reference_design.py now runs the 3.2 gate path. play_gate/gate_body/gate find the agreed split by kind, type and box, PUT only the changes and approve. The observation drops, Region Selector and reconcile code are gone. Item-chain coverage plus fidelity/headline oracles. README updated; evidence in .blueprint/qa/task-26.6/.
+- Checks: offline Done-when suite 463 passed (330 s). Live: recreate PASSED (run 3, 761 s, $0.72); style + none PASSED (run 5, 1002 s, $0.55 + $0.23). Runs 1, 2 and 4 are recorded in the evidence README. `uv run pytest`: 2272 passed (1095 s). User visual STOP: approved run 3.
+- Decisions: User cards: every right-hand area chart is native `area` (Flash returned four country panels). The run-2 layout was accepted: bar below the region list and areas at x >= 50% are recorded deviations, bounded. Style run 5 accepted. Harness fixes: a revision is checked by validate_revision+render (it has no publish span); native_planning outcome may be ok|invalid; a legend or globe is never a gate target; headline-left check added. AGENTS.md: 2 gotchas.
+- Digest: tests/live/test_reference_design.py: play_gate(analysis)->(changes,{target:[ids]}), gate(flow,analysis,evidence,facts), require_items/fidelity_errors/ACCEPTED_DEVIATIONS; evidence .blueprint/qa/task-26.6/README.md (run 3 recreate approved).
+- Tried and failed: run 1 gate block (4 right panels); run 2 failed the fidelity oracle plus the revision-span bug; style runs 3/4 failed on the harness planning-call check.
+- Gotchas: none beyond AGENTS.md
+- Left open: P2 style run 4 would have been a readiness block (q8 KPI repair left AVG(urban_pct)/AVG(rural_pct) missing); planner variance, accepted by the user. P3 GLOBE regex statics any non-target label with map/earth/globe. Visible: overlapping axis labels, full-date x labels, small headline card, two non-reference charts on page 1.
+- Next: release part (engine/report integration); backend plan complete.

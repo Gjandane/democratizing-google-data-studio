@@ -914,7 +914,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: an AGENTS.md Known gotcha describes only the deleted observation path -> remove it and list it in the entry.
   - Done when: `uv run pytest` passes, and the Grep tool finds no match for `observation|_unlabeled_control|ObservedItem|observation_errors` in src/dss/ and prompts/ (case-insensitive), except a pre-1.3 reader that ignores old references.json observations, named in the entry with its line.
   - Review focus: behavior-preserving for data mode, style mode, comments and outline Other; no test deleted that guards a still-live rule.
-- [ ] 26.6 Live reference analysis acceptance
+- [x] 26.6 Live reference analysis acceptance
   - Goal: (replaces the blocked 25.11) with the api.md 3.2 default Settings, demonstrate the electricity reference through analysis -> gate -> Argon planning -> prototype on real models, plus the style, no-reference, later-page, revision and review paths; then the user's visual acceptance.
   - Spec: docs/architecture.md#Reference live acceptance
   - Files: tests/live/test_reference_design.py, tests/data/reference_design/README.md, docs/progress.md, .blueprint/qa/task-26.6/

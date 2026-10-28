@@ -1,7 +1,9 @@
-"""Task 25.10: real reference fidelity at the contract default stage Settings, with retained synthetic inputs.
+"""Task 26.6: live reference analysis acceptance at the api.md 3.2 default stage Settings, with retained
+synthetic inputs (architecture.md#Reference live acceptance).
 
 Run explicitly with -m live. Every run retains evidence, including failures; no
 fallback or unresolved feasibility decision is accepted as a successful check.
+The harness plays the user at the analysis gate only on the agreed split (play_gate).
 The separate user visual STOP is never inferred from pytest success.
 """
 import hashlib
@@ -61,9 +63,8 @@ RECREATE_NOTES = (
     'globe centre, yearly people-without-access chart at the bottom, shared urban/rural area chart in '
     'the right panel.'
 )
-# architecture.md#Recreate observation completion surface, one definition per clause. The region
-# list is a native fixed-size list; the per-country small multiples (no per-chart filter) become
-# one urban/rural area chart, the user's explicit substitution.
+# Unchanged since 25.10 (same inputs as the earlier campaigns). Since 1.3 they reach the analysis and the
+# planner as untrusted text, not as definition clauses; the split itself is settled at the gate.
 INSTRUCTIONS = (
     'Region Selector = region, chart fixed_size_list. Region = region. Country = country. '
     'Access to electricity = AVG(access_pct), unit %, date grain year using year. '
@@ -489,7 +490,11 @@ def assert_design_stages(spans, spec, mode, settings, design_pages, pages=None, 
     for i in expected:
         assert rows[i]['layout'] == 'designed' and rows[i]['brief'] is not None, rows[i]
         assert spec['pages'][i - 1]['design']['model'] == actual[i] == rows[i]['html_model'], (i, rows[i])
-    assert any(s['node'] == 'publish' and not s.get('coverage_errors') for s in spans), spans
+    if pages is None:
+        assert any(s['node'] == 'publish' and not s.get('coverage_errors') for s in spans), spans
+    else:
+        # A revision publishes through validate_revision (coverage raises there) and render: no publish span.
+        assert {'validate_revision', 'render'} <= {s['node'] for s in spans}, spans
 
 
 @pytest.mark.parametrize('page_count', [1, 2])
@@ -567,7 +572,9 @@ def coverage(app, bid, folder):
     errors = requirements.coverage_errors(snapshot, ledger, checker, bindings=bindings)
     return {'errors': errors, 'bindings': bindings,
             'approved': reference_brief.report(snapshot, ledger, checker),
-            'image_requirements': [r.id for r in ledger.requirements if r.source.kind == 'image']}
+            'reference_items': requirements.reference_items(snapshot),
+            'item_components': requirements.item_components(snapshot, ledger, checker),
+            'split': reference_brief.reference_items(snapshot, ledger, checker)}
 
 
 def all_issues(app, bid, folder, monkeypatch):
@@ -634,153 +641,153 @@ def comparison(evidence, prototype, mode):
             browser.close()
 
 
-# The user-approved drop classes (change 2026-10-25), each selected by its observation's kind, candidate, label
-# and status, never "first alternative": the geo map (the data has no GEO field), the misread
-# Rural/Urban legend (control or chart, user card 2026-10-27), and an extracted year slider.
-# Exact chart labels keep the actual urban/rural analysis outside this approved legend drop.
-def approved_legend(item):
-    if item.get('kind') not in ('chart', 'control'):
-        return False
-    label = item.get('label') or ''
-    if item['kind'] == 'control':
-        return bool(re.search(r'rural|urban|location', label, re.I))
-    return bool(re.fullmatch(
-        r'\s*(?:location(?:\s*\(%\))?(?:\s*:\s*rural\s*[,/]\s*urban)?|'
-        r'(?:rural\s*[/,]\s*urban|urban\s*[/,]\s*rural)(?:\s+legend)?)\s*', label, re.I))
+def centre(box):
+    return box['x'] + box['w'] / 2, box['y'] + box['h'] / 2
 
 
-def approved_year_slider(item):
-    """A year/slider-labeled control, or (user card 2026-10-27, run 20261027-235348) an unlabeled date-range
-    control: the reference's only date control is its year slider. Never matched by box or item order."""
-    if item.get('kind') != 'control':
-        return False
-    label = (item.get('label') or '').strip()
-    if not label:
-        return item.get('chart_candidate') == 'date_range'
-    return bool(re.search(r'year|slider', label, re.I)) and not re.search(r'region', label, re.I)
-
-
-APPROVED_DROPS = (
-    # Approval drops this observation as a whole, including a separate aggregation clarification
-    # on its country binding; one observation can produce more than one issue.
-    ('geo map without a GEO field', lambda item, status: item.get('chart_candidate') == 'geo_map'),
-    ('Rural/Urban legend', lambda item, status: approved_legend(item)),
-    ('year slider', lambda item, status: approved_year_slider(item)),
+SERIES = {'bar', 'time_series', 'area'}  # catalog charts that can draw a value per year
+# The agreed split (user cards, change 2026-10-28; architecture.md#Reference live acceptance): items made
+# native, each found by kind, type candidates (the proposed type, or none when Flash kept it static) and box
+# region on the 0..1 image, never by item order or id. Exactly one yearly bar and one region list. The
+# right-hand urban/rural panel is one or more charts: when the analysis splits it per country, every one
+# is native area (user card 2026-10-28, after 26.6 run 1 proposed four country panels).
+GATE_TARGETS = (
+    ('yearly bar (bottom)', 'bar', lambda i, x, y: i['kind'] == 'chart' and y >= .6 and x < .65,
+     SERIES, False),
+    ('urban/rural panel (right)', 'area', lambda i, x, y: i['kind'] == 'chart' and x >= .65,
+     SERIES, True),
+    ('region list (left)', 'fixed_size_list', lambda i, x, y: i['kind'] == 'control' and x < .35 and y < .6,
+     set(FIELD_CONTROLS), False),
 )
+GLOBE = re.compile(r'\bglobe\b|\bmap\b|\bearth\b', re.I)
+LEGEND = re.compile(r'\blegend\b', re.I)
 
 
-# The one approved binding (user card 2026-10-27): the instruction clause offer for an unlabeled control
-# (architecture.md#Unlabeled reference control binding). Never a field offer, never a labeled observation.
-REGION_OFFER = 'Region Selector: fixed_size_list on region (from your instructions)'
+def art(item):
+    """A legend or the globe: static whatever kind Flash gave it (a legend was read as a chart before)."""
+    return (item['kind'] == 'legend' or bool(LEGEND.search(item['label'])) or bool(GLOBE.search(item['label']))
+            or item['proposed']['type'] == 'geo_map')
 
 
-def choose_decisions(assessment, owners, accepted_offers=()):
-    """Pure selection over unresolved issues: (decisions, drops, offers, left). The Region Selector offer is
-    accepted only on one unlabeled control observation's issue; anywhere else, or twice, it is left (a block)."""
-    decisions, drops, offers, left = [], [], [], []
-    unresolved = [i for i in assessment['issues'] if i['resolution'] == 'unresolved']
-    offered = [i for i in unresolved if any(a['label'] == REGION_OFFER for a in i.get('alternatives', []))]
-    for issue in unresolved:
-        item = owners.get(issue['requirement'])
-        alternative = next((a for a in issue.get('alternatives', []) if a['label'] == REGION_OFFER), None)
-        if alternative is not None:
-            if (not accepted_offers and len(offered) == 1 and item and item.get('kind') == 'control'
-                    and not (item.get('label') or '').strip()):
-                decisions.append({'issue_id': issue['id'], 'action': 'accept_alternative',
-                                  'alternative_id': alternative['id']})
-                offers.append({'offer': REGION_OFFER, 'alternative_id': alternative['id'], 'issue_id': issue['id'],
-                               'item': item.get('id'), 'chart_candidate': item.get('chart_candidate'),
-                               **({'source': item['_source']} if '_source' in item else {}),
-                               'status': issue['status'], 'reason': issue['reason']})
-            else:
-                left.append(issue)
-            continue
-        name = next((n for n, accepts in APPROVED_DROPS if item and accepts(item, issue['status'])), None)
-        if name is None:
-            left.append(issue)
-            continue
-        decisions.append({'issue_id': issue['id'], 'action': 'drop', 'alternative_id': None})
-        drops.append({'drop': name, 'issue_id': issue['id'], 'item': item.get('id'), 'label': item.get('label'),
-                      'status': issue['status'], 'reason': issue['reason']})
-    return decisions, drops, offers, left
+class GateBlock(AssertionError):
+    """The agreed split cannot be played on this analysis: a block for the architect, never a guess."""
 
 
-def approved_drops(flow, folder, assessment, accepted_offers=()):
-    """Drop exactly the approved observation issues and accept the approved binding offer; returns the
-    recorded substitutions and offers, or the issues left (nothing is submitted then)."""
-    owners = {r.text: {**json.loads(r.source.text), '_source': r.source.id}
-              for r in requirements.load(folder).requirements if r.source.kind == 'image'}
-    decisions, drops, offers, left = choose_decisions(assessment, owners, accepted_offers)
-    if decisions and not left:
-        flow.call('decisions', 'post', '/feasibility/decisions', json={'assessment_id': assessment['id'], 'decisions': decisions})
-    return (drops, offers, left) if not left else ([], [], left)
+def play_gate(analysis):
+    """Pure: (changes, targets) for the agreed split on a pending analysis. Every other choice Flash made is
+    kept. The globe (a static-art name, or a proposed geo_map) and every legend stay static."""
+    items = analysis['items']
+    targets, chosen = {}, {}
+    for name, kind_type, where, candidates, many in GATE_TARGETS:
+        found = [i for i in items if where(i, *centre(i['box'])) and not art(i)
+                 and i['proposed']['type'] in (candidates | {None})]
+        if not found or (len(found) > 1 and not many):
+            raise GateBlock(f'{name}: {len(found)} candidate items {[i["id"] for i in found]}')
+        for item in found:
+            if item['id'] in chosen:
+                raise GateBlock(f'{name}: item {item["id"]} already matched {chosen[item["id"]]}')
+            chosen[item['id']] = name
+        targets[name] = [i['id'] for i in found]
+    wanted = {}
+    for item in items:
+        if item['id'] in chosen:
+            rule = chosen[item['id']]
+            wanted[item['id']] = ('native', next(t[1] for t in GATE_TARGETS if t[0] == rule), rule)
+        elif art(item):
+            legend = item['kind'] == 'legend' or LEGEND.search(item['label'])
+            wanted[item['id']] = ('static', None, 'legend static' if legend else 'globe static')
+    changes = [{'id': i['id'], 'label': i['label'], 'kind': i['kind'], 'box': i['box'], 'rule': wanted[i['id']][2],
+                'from': {'disposition': i['disposition'], 'type': i['type']},
+                'to': {'disposition': wanted[i['id']][0], 'type': wanted[i['id']][1]}}
+               for i in items if i['id'] in wanted and (i['disposition'], i['type']) != wanted[i['id']][:2]]
+    return changes, targets
 
 
-def require_region_authorization(snapshot, ledger, checker, accepted_offers=(), *, spec=None, bindings=None):
-    """Pure campaign proof: the original observation owns the approved region binding.
-
-    A ready assessment or a model-filled field is insufficient. This guard reads the
-    applying decision (or an exact original label's current instruction reconciliation),
-    then ties that same requirement to the Blueprint/published page-1 native control.
-    """
-    expected = [{'capability': 'control.fixed_size_list', 'value': None, 'fields': {'control_field': 'region'}}]
-    authorized = []
-    reference = snapshot.get('reference') or {}
-    assert reference.get('mode') == 'recreate', 'region authorization requires a recreate reference'
-    for row in ledger.requirements:
-        if row.source.kind != 'image' or row.source.reference_id != reference['id']:
-            continue
-        item = json.loads(row.source.text)
-        if item.get('kind') != 'control' or item.get('chart_candidate') not in FIELD_CONTROLS:
-            continue
-        if requirements.observation_stale(snapshot, row):
-            continue
-        if requirements._unlabeled_control(row, snapshot):
-            for index, need in enumerate(row.needs):
-                if not need.capability.startswith('control.'):
-                    continue
-                choice = requirements._choice(row, f'need:{index}', snapshot, ledger, checker)
-                if (choice and choice['action'] == 'accept_alternative'
-                        and choice['alternative'].get('clause') == 'Region Selector'
-                        and choice['alternative']['needs'] == expected):
-                    authorized.append({'requirement': row.id, 'source': row.source.id, 'item': row.source.item_id,
-                                       'issue_id': choice['issue_id'], 'alternative_id': choice['alternative']['id']})
-        elif requirements._normal(item.get('label') or '') == requirements._normal('Region Selector'):
-            covered = requirements._covered(row, snapshot, ledger, checker)
-            instruction = reference['id'] + ':instructions'
-            if (covered and [n.model_dump() for n in covered[0] if n.capability.startswith('control.')] == expected
-                    and requirements._control_clause('Region Selector', snapshot, item['chart_candidate']) == ('fixed_size_list', 'region')
-                    and any(s.id == instruction for s in row.clarifications)
-                    and 'surface' in row.mapping_origins):
-                authorized.append({'requirement': row.id, 'source': row.source.id, 'item': row.source.item_id,
-                                   'issue_id': None, 'alternative_id': None})
-    assert len(authorized) == 1, 'Region Selector needs exactly one currently authorized observation'
-    proof = authorized[0]
-    assert len(accepted_offers) <= 1, 'Region Selector was accepted more than once in this campaign'
-    if accepted_offers:
-        [accepted] = accepted_offers
-        assert all(accepted.get(k) == proof[k] for k in ('item', 'issue_id', 'alternative_id')), 'Region Selector authorization changed across assessments'
-        assert accepted.get('source', proof['source']) == proof['source'], 'Region Selector source changed across assessments'
-    if spec is not None:
-        owned = (bindings or {}).get(proof['requirement'], [])
-        first = {c['id']: c for p in spec['pages'] if p['index'] == 1 for c in p['components']}
-        assert owned and all(cid in first and first[cid]['type'] == 'fixed_size_list'
-                             and first[cid].get('field') == 'region' for cid in owned), 'Authorized Region Selector must own a page-1 fixed_size_list on region'
-        proof = {**proof, 'components': list(owned)}
-    elif snapshot.get('blueprint'):
-        from dss.artifacts.models import Blueprint
-        from dss.spec import feasibility
-        blueprint = Blueprint.model_validate(snapshot['blueprint'])
-        coverage = feasibility.coverage(snapshot, ledger, checker, blueprint.rows, blueprint.derived_fields)
-        indices = next((indices for row, _, _, indices, _ in coverage if row.id == proof['requirement']), [])
-        assert indices and all(blueprint.rows[i].page == 1 and blueprint.rows[i].component.type == 'fixed_size_list'
-                               and blueprint.rows[i].component.dimensions == ['region'] for i in indices), 'Authorized Region Selector must own a page-1 Blueprint fixed_size_list on region'
-    return proof
+def gate_body(analysis, changes):
+    """The PUT body: every id exactly once, only the changed items differ, the note unchanged."""
+    to = {c['id']: c['to'] for c in changes}
+    return {'revision': analysis['revision'], 'note': analysis['note'],
+            'items': [{'id': i['id'], **to.get(i['id'], {'disposition': i['disposition'], 'type': i['type']})}
+                      for i in analysis['items']]}
 
 
-def campaign_region(app, bid, folder, facts, **published):
-    return require_region_authorization(requirements.inputs(app.state.db, bid, folder), requirements.load(folder),
-                                        Checker(load_registry()), facts['accepted_offers'], **published)
+def split_record(analysis):
+    return [{k: i[k] for k in ('id', 'label', 'kind', 'box', 'disposition', 'type', 'shows', 'proposed')}
+            for i in analysis['items']]
+
+
+def gate(flow, analysis, evidence, facts):
+    """Play the user at the gate on the agreed split only: PUT only those changes (none -> no PUT), approve,
+    and record proposal, changes and the approved split. Returns {target name: [item ids]}."""
+    dump(evidence / 'analysis-proposed.json', analysis)
+    facts['analysis'] = {'summary': analysis['summary'], 'proposal': split_record(analysis),
+                         'issues': analysis['issues'], 'note': analysis['note']}
+    facts['active_check'] = 'gate'
+    assert analysis['state'] == 'pending' and analysis['revision'] == 1, (analysis['state'], analysis['revision'])
+    changes, targets = play_gate(analysis)
+    facts['gate'] = {'targets': targets, 'changes': changes}
+    current = analysis
+    if changes:
+        current = flow.call('gate', 'put', '/reference-images/analysis', json=gate_body(analysis, changes))['analysis']
+    assert current['issues'] == [], current['issues']
+    approved = flow.call('gate', 'post', '/reference-images/analysis/approve',
+                         json={'revision': current['revision']})['analysis']
+    assert approved['state'] == 'approved', approved['state']
+    dump(evidence / 'analysis-approved.json', approved)
+    changed = {c['id'] for c in changes}
+    facts['gate'].update(approved_summary=approved['summary'], approved_revision=approved['revision'],
+                         approved_split=split_record(approved),
+                         kept_flash_choices=[{k: i[k] for k in ('id', 'label', 'kind', 'disposition', 'type')}
+                                             for i in approved['items'] if i['id'] not in changed])
+    facts.pop('active_check')
+    return targets
+
+
+def test_play_gate_finds_the_agreed_split_by_kind_type_and_region():
+    """Offline: the electricity fixture (boxes in thousandths) with the gate's targets moved to static."""
+    fixture = json.loads((DATA.parent / 'reference_analysis_electricity.json').read_text(encoding='utf-8'))
+    raw = sorted(fixture['reply']['items'], key=lambda i: (i['box']['y'], i['box']['x']))
+    items = [{**i, 'id': f'r{n}', 'box': {k: v / 1000 for k, v in i['box'].items()},
+              'proposed': {'disposition': i['disposition'], 'type': i['type']}} for n, i in enumerate(raw, 1)]
+    by_label = {i['label']: i for i in items}
+    for label in ('People without access to electricity', 'Region Selector'):
+        by_label[label].update(disposition='static', type=None, proposed={'disposition': 'static', 'type': None})
+    by_label['Rural and urban access by country'].update(type='time_series', proposed={'disposition': 'native', 'type': 'time_series'})
+    by_label['Globe of access to electricity'].update(disposition='native', type='geo_map',
+                                                     proposed={'disposition': 'native', 'type': 'geo_map'})
+    analysis = {'revision': 1, 'note': '', 'items': items}
+    changes, targets = play_gate(analysis)
+    assert targets == {'yearly bar (bottom)': [by_label['People without access to electricity']['id']],
+                       'urban/rural panel (right)': [by_label['Rural and urban access by country']['id']],
+                       'region list (left)': [by_label['Region Selector']['id']]}
+    assert {c['label']: c['to'] for c in changes} == {
+        'People without access to electricity': {'disposition': 'native', 'type': 'bar'},
+        'Rural and urban access by country': {'disposition': 'native', 'type': 'area'},
+        'Region Selector': {'disposition': 'native', 'type': 'fixed_size_list'},
+        'Globe of access to electricity': {'disposition': 'static', 'type': None}}
+    body = gate_body(analysis, changes)
+    assert [i['id'] for i in body['items']] == [i['id'] for i in items]
+    assert {i['id']: i['type'] for i in body['items']}[by_label['Share with access in 2011']['id']] is None
+    # Four right-hand country panels (26.6 run 1): every one native area (user card), whatever Flash proposed.
+    panel = by_label['Rural and urban access by country']
+    split = [{**panel, 'id': f'r{20 + n}', 'box': {**panel['box'], 'y': .11 + n * .19, 'h': .17},
+              'type': None if n else 'area', 'disposition': 'static' if n else 'native'} for n in range(4)]
+    changes, targets = play_gate({**analysis, 'items': [i for i in items if i is not panel] + split})
+    assert targets['urban/rural panel (right)'] == ['r20', 'r21', 'r22', 'r23']
+    assert {c['id'] for c in changes if c['rule'] == 'urban/rural panel (right)'} == {'r21', 'r22', 'r23'}
+    # A right-hand legend read as a chart (earlier extractions) stays static, never a native area.
+    legend = by_label['Location Rural Urban legend']
+    as_chart = {**legend, 'kind': 'chart', 'disposition': 'native', 'type': 'bar',
+                'proposed': {'disposition': 'native', 'type': 'bar'}}
+    changes, targets = play_gate({**analysis, 'items': [as_chart if i is legend else i for i in items]})
+    assert legend['id'] not in targets['urban/rural panel (right)']
+    assert {c['id']: c['to'] for c in changes}[legend['id']] == {'disposition': 'static', 'type': None}
+    # Two bottom bars, or a missing region list, block: never a guess.
+    bar = by_label['People without access to electricity']
+    with pytest.raises(GateBlock, match='yearly bar'):
+        play_gate({**analysis, 'items': items + [{**bar, 'id': 'r30'}]})
+    with pytest.raises(GateBlock, match='region list'):
+        play_gate({**analysis, 'items': [i for i in items if i['label'] != 'Region Selector']})
 
 
 # DSS_LIVE_STAGE=24.7 stops after the published, dry-run recreate build: the design-stage, fidelity and
@@ -789,55 +796,83 @@ STAGE = os.environ.get('DSS_LIVE_STAGE')
 FIDELITY = STAGE not in ('24.7', '24.9')
 
 
-def require_reference_regressions(spec, proof):
-    """A page-placement/title regression must stop before spending on a revision."""
+def require_items(spec, proof, targets):
+    """Every approved native item fulfilled by its own page-1 component of its type (publish coverage chain)."""
     first = {c['id']: c for c in spec['pages'][0]['components']}
-    for requirement, bound in proof['bindings'].items():
-        if requirement in proof['image_requirements']:
-            assert set(bound) & first.keys(), f'24.10 regression: {requirement} fulfilled only on later pages: {bound}'
-    access = [c for cid, c in first.items() if c['type'] == 'scorecard'
-              and any(m['field'] == 'access_pct' for m in c.get('metrics', []))
-              and any(cid in bound for bound in proof['bindings'].values())]
-    assert access, '24.10 regression: no bound access scorecard on page 1'
-    for component in access:
-        title = component['label']
-        assert '2011' not in title and title.endswith('worldwide (%)'), f'24.10 regression: access title {title!r}'
+    types = {i['id']: i['type'] for i in proof['reference_items']}
+    assert set(proof['item_components']) == set(types), ('items without components', types, proof['item_components'])
+    for item, owned in proof['item_components'].items():
+        assert owned and all(cid in first and first[cid]['type'] == types[item] for cid in owned), (item, owned)
+    for name, ids in targets.items():
+        for item in ids:
+            assert item in proof['item_components'], f'{name} ({item}) has no page-1 component'
 
 
-def require_fidelity(spec):
-    """Minimum structural oracle; the screenshot and native slot semantics still need human review."""
-    page = spec['pages'][0]
-    assert 'data-art="globe-' in page['design']['html'], 'missing real-geography globe artwork'
-    controls = [c for c in page['components'] if c['type'] == 'fixed_size_list' and c.get('field') == 'region']
-    assert controls and controls[0]['box']['x'] < spec['canvas']['width'] * .4, 'native region list must be left'
-    yearly = [c for c in page['components'] if c['type'] in ('bar', 'area', 'time_series')
-              and any(m['field'] == 'people_without_access' for m in c.get('metrics', []))]
-    assert yearly and any(c['box']['y'] > page['height'] * .5 for c in yearly), 'yearly chart must be at bottom'
-    combined = [c for c in page['components'] if c['type'] == 'area'
-                and {(m['field'], m['agg']) for m in c.get('metrics', [])}
-                == {('urban_pct', 'avg'), ('rural_pct', 'avg')}]
-    assert len(combined) == 1, 'page 1 requires one native combined urban/rural area chart'
-    assert combined[0]['box']['x'] > spec['canvas']['width'] * .6, 'combined area must be in right panel'
+def target_slots(spec, proof, targets, name):
+    first = {c['id']: c for c in spec['pages'][0]['components']}
+    return [first[cid] for item in targets[name] for cid in proof['item_components'].get(item, []) if cid in first]
 
 
-def fidelity_inventory(spec, proof, evidence):
+# Deviations the user accepted at the visual STOP (user card 2026-10-28, 26.6 run 2: the bar mid-left below the
+# region list, the area charts from x 612 of 1200): recorded and named, not raised, only within that layout.
+# Every other structural check still fails the case.
+ACCEPTED_DEVIATIONS = {
+    'yearly bar must be at bottom': lambda spec, slots: slots['bar'] and slots['list'] and all(
+        c['box']['y'] >= max(l['box']['y'] + l['box']['h'] for l in slots['list']) for c in slots['bar']),
+    'urban/rural areas must be in right panel': lambda spec, slots: slots['area'] and all(
+        c['box']['x'] >= spec['canvas']['width'] * .5 for c in slots['area']),
+}
+
+
+def fidelity_errors(spec, proof, targets):
+    """Minimum structural oracle, every failing check; the screenshot and slot semantics still need human review."""
+    page, width, errors = spec['pages'][0], spec['canvas']['width'], []
+    if 'data-art="globe-' not in page['design']['html']:
+        errors.append('missing real-geography globe artwork')
+    controls = [c for c in target_slots(spec, proof, targets, 'region list (left)') if c.get('field') == 'region']
+    if not (controls and controls[0]['box']['x'] < width * .4):
+        errors.append('native region list must be left')
+    yearly = [c for c in target_slots(spec, proof, targets, 'yearly bar (bottom)')
+              if any(m['field'] == 'people_without_access' for m in c.get('metrics', []))]
+    if not yearly:
+        errors.append('no native yearly people_without_access bar')
+    elif not any(c['box']['y'] > page['height'] * .5 for c in yearly):
+        errors.append('yearly bar must be at bottom')
+    panels = target_slots(spec, proof, targets, 'urban/rural panel (right)')
+    if not (panels and all(c['type'] == 'area' for c in panels)):
+        errors.append('page 1 requires native urban/rural area charts')
+    elif not any({m['field'] for m in c.get('metrics', [])} >= {'urban_pct', 'rural_pct'} for c in panels):
+        errors.append('no right-hand area chart shows urban and rural access')
+    elif not all(c['box']['x'] > width * .6 for c in panels):
+        errors.append('urban/rural areas must be in right panel')
+    return errors
+
+
+def require_fidelity(spec, proof, targets, facts=None):
+    errors = fidelity_errors(spec, proof, targets)
+    slots = {key: target_slots(spec, proof, targets, name) for key, name in (
+        ('bar', 'yearly bar (bottom)'), ('list', 'region list (left)'), ('area', 'urban/rural panel (right)'))}
+    accepted = [e for e in errors if e in ACCEPTED_DEVIATIONS and ACCEPTED_DEVIATIONS[e](spec, slots)]
+    if facts is not None:
+        facts['accepted_deviations'] = accepted
+    assert errors == accepted, [e for e in errors if e not in accepted]
+
+
+def fidelity_inventory(spec, proof, targets, evidence):
     """Read-only diagnostics before a known assertion can stop revision/engine checks."""
     from playwright.sync_api import sync_playwright
     first = spec['pages'][0]
-    result = {'structural_errors': [], 'titles': [], 'area_slots': [],
-              'later_only_observations': [], 'visual_approval': 'pending'}
-    for oracle in (lambda: require_reference_regressions(spec, proof), lambda: require_fidelity(spec)):
-        try:
-            oracle()
-        except AssertionError as exc:
-            result['structural_errors'].append(str(exc))
-    ids = {c['id'] for c in first['components']}
-    result['later_only_observations'] = [rid for rid, bound in proof['bindings'].items()
-        if rid in proof['image_requirements'] and not (set(bound) & ids)]
-    result['titles'] = [{'id': c['id'], 'label': c['label']} for c in first['components'] if c['type'] == 'scorecard']
-    result['area_slots'] = [{'id': c['id'], 'metrics': c.get('metrics'), 'box': c['box'],
-                             'right_panel': c['box']['x'] > spec['canvas']['width'] * .6}
-        for c in first['components'] if c['type'] == 'area']
+    result = {'structural_errors': [], 'native_slots': [], 'static_items': (proof['split'] or {}).get('static', []),
+              'visual_approval': 'pending'}
+    try:
+        require_items(spec, proof, targets)
+    except AssertionError as exc:
+        result['structural_errors'].append(str(exc))
+    result['structural_errors'] += fidelity_errors(spec, proof, targets)
+    owner = {cid: item for item, owned in proof['item_components'].items() for cid in owned}
+    result['native_slots'] = [{'id': c['id'], 'type': c['type'], 'label': c.get('label'), 'box': c['box'],
+                               'reference_item': owner.get(c['id'])}
+                              for c in first['components'] if c['type'] in (*CHART_TYPES, *CONTROL_TYPES)]
     yearly = {'chart_' + c['id'] for c in first['components']
               if any(m['field'] == 'people_without_access' for m in c.get('metrics', []))}
     # DOM reads only: geometry of rendered values, labels and artwork; no source rows or provider replies.
@@ -888,13 +923,18 @@ def fidelity_inventory(spec, proof, evidence):
     result['visible_issues'] = {
         'scorecards_clipped': [s['id'] for s in rendered.get('scorecards', []) if s.get('clipped')],
         'yearly_labels': [c for c in rendered.get('charts', []) if c['id'] in yearly],
-        'access_title': [t['label'] for t in result['titles'] if 'worldwide' in t['label'] or '%' in t['label']],
-        'right_panel_area': [a['id'] for a in result['area_slots'] if a['right_panel']],
+        'headline_left': [h for h in rendered.get('headings', []) if h['left'] < .35],
     }
     globes = [a for a in rendered.get('art', []) if a['art'].startswith('globe-')]
     result['layout_errors'] = (['page-1 render diagnostics unavailable'] if 'rendered' not in result else
         ['real-geography globe artwork not rendered on page 1'] if not globes else
         [] if any(.3 <= g['center_x'] <= .7 for g in globes) else ['globe artwork must be centre'])
+    width, height = spec['canvas']['width'], first['height']
+    texts = [c for c in first['components'] if c['type'] == 'text' and c['id'] in owner]
+    result['headline_text_slots'] = [{'id': c['id'], 'box': c['box']} for c in texts]
+    if 'rendered' in result and not result['visible_issues']['headline_left'] and not any(
+            c['box']['x'] < width * .35 and c['box']['y'] < height * .25 for c in texts):
+        result['layout_errors'].append('headline must be left')
     dump(evidence / 'fidelity-inventory.json', result)
     return result
 
@@ -909,7 +949,7 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
     assert all(fixtures[name] == digest for name, digest in HASHES.items())
     generation = json.loads((DATA / 'generation.json').read_text(encoding='utf-8-sig'))
     app, config, project = live_app(tmp_path)
-    evidence = evidence_dir('24.9' if STAGE == '24.9' else '25.10' if FIDELITY else '24.7', mode)
+    evidence = evidence_dir('24.9' if STAGE == '24.9' else '26.6' if FIDELITY else '24.7', mode)
     (evidence / 'test-source.py').write_bytes(Path(__file__).read_bytes())
     print(f'{evidence.parents[1].name} {mode} evidence: {evidence}', flush=True)
     calls, tables = [], set()
@@ -920,21 +960,19 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
     facts = {'mode': mode, 'fixture_sha256': fixtures,
              'input_sha256': {name: hashlib.sha256(value.encode('utf-8')).hexdigest() for name, value in inputs.items()},
              'generation_calls': calls,
-             'settings_basis': 'contract default stage Settings (api.md 3.1), PUT from GET /api/settings/capabilities '
+             'settings_basis': 'contract default stage Settings (api.md 3.2), PUT from GET /api/settings/capabilities '
                                'defaults; the none case turns review_briefs on before its accept',
              'runtime_sha256': {name: hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()
                                 for name, module in [('reference_brief', reference_brief), ('designer', designer),
                                                      ('reference_extract', reference_extract), ('tracing', tracing),
                                                      ('stages', execution_stages),
                                                      ('design_page', designer.design_page)]},
-             'visual_approval': 'pending', 'accepted_substitutions': [], 'accepted_offers': [], 'dry_engine': True,
+             'visual_approval': 'pending', 'dry_engine': True,
              'check_status': 'running', 'fixture_provenance': str(DATA / 'README.md'),
-             'approved_fixture_substitutions': [
-                 'geo_map omitted; globe remains static real-geography art',
-                 'Rural/Urban legend omitted whether extracted as control or chart (including Location (%))',
-                 'extracted year slider omitted (year/slider-labeled control or unlabeled date_range control)',
-                 'four per-country small multiples become native urban/rural area chart',
-                 'region selector uses native fixed_size_list',
+             'gate_rule': [
+                 'yearly bar (bottom) native bar', 'urban/rural panel (right) native area',
+                 'region list (left) native fixed_size_list', 'globe and every legend static',
+                 'every other Flash choice kept',
              ] if mode == 'recreate' else []}
     secrets = tuple(s.get_secret_value() for s in (config.google_api_key, config.access_code, config.agent_token))
     observe_generation(monkeypatch, calls, evidence=evidence / 'failed-drafts', secrets=secrets)
@@ -971,10 +1009,19 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
             assert source['kind'] == 'synthetic' and source['row_count'] == 2000
             downloaded = client.get(flow.url + f"/synthetic-data/{source['id']}/csv")
             assert downloaded.status_code == 200 and downloaded.content == (DATA / 'sample.csv').read_bytes()
+            targets = {}
             if mode != 'none':
-                flow.act('reference', 'post', '/reference-images', seconds=700,
-                         data={'mode': mode, 'instructions': inputs['instructions']},
-                         files=[('files', ('electricity-access.jpg', (DATA / 'electricity-access.jpg').read_bytes(), 'image/jpeg'))])
+                run = flow.act('reference', 'post', '/reference-images', seconds=700,
+                               data={'mode': mode, 'instructions': inputs['instructions']},
+                               files=[('files', ('electricity-access.jpg', (DATA / 'electricity-access.jpg').read_bytes(), 'image/jpeg'))])
+                profile = defaults['stages']['reference_interpretation']
+                assert [(c['stage'], c['model'], c['outcome']) for c in run['calls']][-1:] == [
+                    ('reference_interpretation', profile['model'], 'ok')], run['calls']
+                record = flow.get('/reference-images')
+                if mode == 'style':
+                    assert record['analysis'] is None, 'style mode has no analysis and no gate'
+                else:
+                    targets = gate(flow, record['analysis'], evidence, facts)
             flow.act('context', 'post', '/context', seconds=150,
                      json={'notes': inputs['notes']})
             flow.act('outline', 'post', '/context/confirm', seconds=150)
@@ -985,41 +1032,31 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
             design = flow.get('/design')
             flow.call('design', 'put', '/design', json={
                 **{k: v for k, v in design.items() if k not in ('revision', 'issues')}, 'page_structure': 'per_section'})
-            if mode == 'recreate':
-                # Reconcile the reference before drafting (as the offline 24.7 fixture does), so the planner and
-                # code completion see the observations; only the approved classes are dropped.
-                flow.act('reconcile', 'post', '/feasibility/check', seconds=150)
-                early = flow.get('/feasibility')
-                dump(evidence / 'assessment-before-blueprint.json', early)
-                if early['state'] != 'ready':
-                    drops, offers, left = approved_drops(flow, folder, early, facts['accepted_offers'])
-                    facts['accepted_substitutions'] += drops
-                    facts['accepted_offers'] += offers
-                    assert not left, f'Issues outside the approved drops (a block for the architect): {left}'
-                facts['region_authorization_before_blueprint'] = campaign_region(app, bid, folder, facts)
-            flow.act('blueprint', 'post', '/design/confirm', seconds=1300)
+            run = flow.act('blueprint', 'post', '/design/confirm', seconds=1300)
+            planning = [c for c in run['calls'] if c['stage'] == 'native_planning']
+            profile = defaults['stages']['native_planning']
+            # The stage's one row repair may follow an invalid answer; rows still invalid after it become
+            # feasibility issues (the readiness assertion below), so `invalid` is not a stage stop.
+            assert planning and all(c['model'] == profile['model'] and c['thinking'] == profile['thinking']
+                                    and c['outcome'] in ('ok', 'invalid') for c in planning), planning
+            assert sum(c['duration_ms'] or 0 for c in planning) <= profile['timeout_s'] * 1000, planning
             assessment = flow.get('/feasibility')
             if any(i['id'].startswith('bp_intent_') for i in assessment['issues']):
                 flow.act('feasibility', 'post', '/feasibility/check', seconds=150)
                 assessment = flow.get('/feasibility')
             dump(evidence / 'assessment.json', assessment)
-            if assessment['state'] != 'ready' and mode == 'recreate':
-                # There is intentionally no "first alternative or drop" loop: only the approved classes.
-                drops, offers, left = approved_drops(flow, folder, assessment, facts['accepted_offers'])
-                facts['accepted_substitutions'] += drops
-                facts['accepted_offers'] += offers
-                assert not left, f'Issues outside the approved drops (a block for the architect): {left}'
-                assessment = flow.get('/feasibility')
-                dump(evidence / 'assessment-after-drops.json', assessment)
+            # No drop or alternative is played: the gate is the only user decision this harness makes.
             if assessment['state'] != 'ready':
                 dump(evidence / 'issues-uncapped.json', all_issues(app, bid, folder, monkeypatch))
             assert assessment['state'] == 'ready', (
                 f'Explicit feasibility decisions required; inspect {evidence / "assessment.json"}')
             blueprint = flow.get('/blueprint')
             dump(evidence / 'blueprint.json', blueprint)
-            facts['code_added_rows'] = [r['note'] for r in blueprint['rows'] if r['note'].startswith('observation ')]
+            facts['item_rows'] = [{k: r.get(k) for k in ('id', 'reference_item', 'page', 'question_id', 'note')}
+                                  | {'type': r['component']['type']} for r in blueprint['rows'] if r.get('reference_item')]
             if mode == 'recreate':
-                facts['region_authorization_before_accept'] = campaign_region(app, bid, folder, facts)
+                assert {r['reference_item'] for r in facts['item_rows'] if r['page'] == 1} >= {
+                    i for ids in targets.values() for i in ids}, facts['item_rows']
             if STAGE == '24.9':
                 facts['stage_limit'] = ('Stopped after real-model/BigQuery /design/confirm readiness; '
                                         'no reference HTML, prototype, engine run or visual approval claimed.')
@@ -1036,11 +1073,9 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
                 assert flow.get()['stage'] == 'blueprint', 'a brief review must leave the stage unchanged'
                 design_runs += review_pages(flow, facts)
             spec, proof = capture(flow, folder, evidence, 'prototype')
-            if mode == 'recreate':
-                facts['region_authorization_published'] = campaign_region(app, bid, folder, facts, spec=spec, bindings=proof['bindings'])
             pages = design_artifacts(flow, folder, evidence, 'prototype')
             if mode == 'recreate' and FIDELITY:
-                facts['fidelity_inventory'] = fidelity_inventory(spec, proof, evidence)
+                facts['fidelity_inventory'] = fidelity_inventory(spec, proof, targets, evidence)
             if FIDELITY:
                 assert_design_stages(run_spans(app, design_runs), spec, mode, design_runs[-1]['settings'], pages, facts=facts)
                 assert len(spec['pages']) >= 2, 'later-page route not exercised'
@@ -1054,17 +1089,12 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
                 assert hashlib.sha256((folder / 'brief_p1.json').read_bytes()).hexdigest() == edited
                 assert flow.get()['stage'] == 'prototype'
             if mode == 'recreate':
-                assert proof['image_requirements'], 'recreate did not import observations'
-                dropped = {d['item'] for d in facts['accepted_substitutions']}
-                assert set(proof['bindings']) >= {r.id for r in requirements.load(folder).requirements
-                                                  if r.source.kind == 'image' and r.source.item_id not in dropped
-                                                  and json.loads(r.source.text).get('kind') in ('chart', 'control')}, proof
-                if FIDELITY:
-                    facts['active_check'] = '24.10_regressions'
-                    require_reference_regressions(spec, proof)
-                    facts.pop('active_check')
+                facts['item_components'] = proof['item_components']
+                facts['active_check'] = 'item_coverage'
+                require_items(spec, proof, targets)
+                facts.pop('active_check')
             if mode == 'recreate' and FIDELITY:
-                target = next(c for c in spec['pages'][0]['components'] if c['type'] == 'fixed_size_list')
+                target = target_slots(spec, proof, targets, 'region list (left)')[0]
                 old_html = spec['pages'][0]['design']['html']
                 run = flow.act('revision', 'post', '/comments', seconds=1900, json={'comments': [{
                     'component_id': target['id'],
@@ -1081,7 +1111,7 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
                 for before, after in zip(spec['pages'][1:], revised['pages'][1:]):
                     assert after['design'] == before['design']
             elif mode == 'style':
-                assert proof['image_requirements'] == [], 'style mode imported chart/control observations'
+                assert proof['reference_items'] == [] and proof['split'] is None, 'style mode imported charts/controls'
             for call in calls:
                 if not call['generation_started']:
                     continue  # Count-before-generation refusals have no provider usage.
@@ -1104,7 +1134,7 @@ def test_electricity_reference_design(tmp_path, monkeypatch, mode):
                 # Retain revision/dry-engine evidence even when the original published layout
                 # fails fidelity. The same structural acceptance oracle still must pass.
                 facts['active_check'] = 'fidelity'
-                require_fidelity(spec)
+                require_fidelity(spec, proof, targets, facts)
                 assert not facts['fidelity_inventory']['layout_errors'], facts['fidelity_inventory']['layout_errors']
                 facts.pop('active_check')
             facts['check_status'] = 'passed'
