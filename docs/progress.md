@@ -510,3 +510,20 @@ context. Task status lives in docs/plan.md, not here.
 - What changed: backend Phase 26 (26.1-26.6; 26.6 replaces the blocked 25.11), frontend Phase 17 (17.1-17.3); release 2.6 `Needs:` now backend 26.6 and frontend 17.3 (backend 25.8 dropped: superseded) and its Done when approves the reference analysis in the UI and builds the capability matrix from the approved split.
 - Why: backend 25.11 block; user request and cards 2026-10-28 (Flash analysis, human approval of native vs static, Argon gets the image plus the approved items).
 - Next: release 2.6 waits on backend 26.6 and frontend 17.3; 2.7 and 2.8 unchanged.
+
+## 2026-10-28: Task 2.6 Manual acceptance: screenshot recreation with synthetic data
+- Status: blocked
+- Plan check: off
+- What changed: .env.example `DSS_ALLOWED_TYPES` = conventions 1.4 default (adds area, fixed_size_list); root .env line edited the same way at the user's request (backend restarted). No acceptance row, no docs/img shot. AGENTS.md: 1 gotcha.
+- Checks: build b_236ae4aa34ee (recreate). Flash split rev 1: native r2 headline text, r3 rural/urban bar, r4/r7/r9/r13 country area, r5 fixed_size_list, r6 globe geo_map, r8 KPI scorecard, r12 yearly bar; static r1/r10 legends, r11 card title, r14 slider. User changes: r2, r6 -> static (r8 stays native). Approved: 8 native, 6 static. Schema proposed, edited to country, region, year (DATE, Jan 1 2000-2019), access_pct, urban_pct, rural_pct, people_without_access; 2,000 rows, seed 42, CSV download sha256 eb6e5770... (103,406 B). Outline/design prefilled. Prototype: run 1 failed (page 1 HTML invalid x3), retry ok; reference_html spans `images: 1`, background_p1 has globe art (`globe-europe-africa`), one "Synthetic sample data" strip per page; legends r1/r10 absent from background. Recipe 49 ops: 4 country `area` with `date_granularity: year`, s007 `fixed_size_list`, s005 bar `stacked_percent`; yearly bar s015 is `bar` on DATE year (recipe 1.3 allows no granularity on bar). Live run: `run_finished` partial, ok 33, failed 16, report https://datastudio.google.com/reporting/67390721-34a6-443f-96de-2f2428bcd1c9. Failed:
+  every `area` add_chart (s008 s013 s017 s020 s029): "Data Studio does not expose a field removal control" (+ their set_style: not created); s033 area: "field year not in data source"; box mismatch: s005 bar, s019 date_range, s038/s044 table.
+  Screencast rerun (s001,s003,s005,s008): same 2 failures (2/2). Last frame s008: Area chart properties, Data Studio auto-filled Breakdown dimension `region` + metric `Record Count`; chart drawn by region. s005: 100 % stacked horizontal bar correct but box smaller/elsewhere, one row (Africa) visible.
+  Test (all) `check_contracts.py`: FAIL 1 of 13 (contracts/fixtures/dashboard-intent/reference_set.json: 'analysis' not allowed; pre-existing since the 2026-10-28 contract change, file outside 2.6's Files).
+- Decisions: design kept as prefilled (3 pages per section). No STOP card (no finished report).
+- Tried and failed: prototype run 1 (validator, live-model flake; retry passed).
+- Gotchas: in AGENTS.md.
+- Left open: screencast diagnosis made another report (report_url null); check_contracts schema lags api 3.2 / dashboard-intent 1.3.
+- Blocked because: (a) the fix is in engine (add_chart area: clear Data Studio's auto breakdown/metric; box placement for bar, date_range, table); release never edits engine/.
+- Question: Plan engine tasks for area auto-fields and box placement (plus a release fix for check_contracts' ReferenceSet schema), then rerun 2.6?
+- Options: A engine task(s) + release check fix, then 2.6 reruns from a new build (same CSV spec) / B accept 2.6 with failed 16 as findings (Done when change) / Recommend: A, area is the core of the recreation and Done when needs failed 0.
+- Next: architect at program root plans the engine fixes; rerun 2.6 with this split (r2, r6 static).
