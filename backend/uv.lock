@@ -221,6 +221,7 @@ source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "google-adk" },
+    { name = "google-auth", extra = ["requests"] },
     { name = "google-cloud-bigquery" },
     { name = "google-genai" },
     { name = "httpx" },
@@ -241,6 +242,7 @@ dependencies = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "google-adk", specifier = ">=2.0,<3" },
+    { name = "google-auth", extras = ["requests"], specifier = ">=2.30" },
     { name = "google-cloud-bigquery", specifier = ">=3.25" },
     { name = "google-genai", specifier = ">=1.0" },
     { name = "httpx", specifier = ">=0.27" },

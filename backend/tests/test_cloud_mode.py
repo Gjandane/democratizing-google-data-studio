@@ -33,7 +33,8 @@ def test_access_header_cookie_rotation_and_no_secrets(tmp_path, caplog):
     app = cloud_app(tmp_path, access_code=CODE, agent_token="private-agent-token")
     with TestClient(app) as client:
         assert client.get("/api/health").status_code == 200
-        assert client.get("/api/session").json() == {"required": True, "ok": False}
+        assert client.get("/api/session").json() == {"required": True, "ok": False,
+                                                      "google_client_id": None, "user": None}
         assert client.get("/api/builds").json()["error"]["code"] == "access_required"
         assert client.get("/api/builds", headers={"X-DSS-Access-Code": CODE}).status_code == 200
         assert client.get("/api/session", headers={"X-DSS-Access-Code": CODE}).json()["ok"]
@@ -45,7 +46,8 @@ def test_access_header_cookie_rotation_and_no_secrets(tmp_path, caplog):
         cookie = response.headers["set-cookie"]
         assert "HttpOnly" in cookie and "SameSite=strict" in cookie and "Secure" not in cookie
         assert CODE not in cookie
-        assert client.get("/api/session").json() == {"required": True, "ok": True}
+        assert client.get("/api/session").json() == {"required": True, "ok": True,
+                                                      "google_client_id": None, "user": None}
         assert client.get("/api/builds").status_code == 200
         assert CODE not in client.get("/api/settings").text
         assert "private-agent-token" not in client.get("/api/settings").text
@@ -125,9 +127,10 @@ def test_every_registered_api_route_is_gated(tmp_path, monkeypatch):
 
 def test_no_code_preserves_local_access(tmp_path):
     with TestClient(cloud_app(tmp_path)) as client:
-        assert client.get("/api/session").json() == {"required": False, "ok": True}
+        local = {"required": False, "ok": True, "google_client_id": None, "user": None}
+        assert client.get("/api/session").json() == local
         assert client.get("/api/builds").status_code == 200
-        assert client.post("/api/session", json={"code": ""}).json() == {"required": False, "ok": True}
+        assert client.post("/api/session", json={"code": ""}).json() == local
         assert client.get("/api/nope").status_code == 404
 
 
@@ -140,6 +143,15 @@ def test_no_code_preserves_local_access(tmp_path):
 def test_fail_closed(tmp_path, code, mode, token, error):
     app = cloud_app(tmp_path, cloud_service="dss", access_code=code, engine_mode=mode, agent_token=token)
     with pytest.raises(RuntimeError, match=error):
+        with TestClient(app):
+            pass
+    assert not (tmp_path / "data").exists()
+
+
+@pytest.mark.parametrize("cloud", ["", "dss"])
+def test_google_signin_needs_access_code(tmp_path, cloud):
+    app = cloud_app(tmp_path, cloud_service=cloud, google_client_id="1-x.apps.googleusercontent.com")
+    with pytest.raises(RuntimeError, match="GOOGLE_OAUTH_CLIENT_ID requires DSS_ACCESS_CODE"):
         with TestClient(app):
             pass
     assert not (tmp_path / "data").exists()
@@ -184,7 +196,9 @@ def test_env_config(tmp_path, monkeypatch):
     monkeypatch.setattr(config_module, "dotenv_values", lambda path: {})
     values = {"DSS_ACCESS_CODE": CODE, "DSS_AGENT_TOKEN": "t" * 24, "DSS_ENGINE_MODE": "agent",
               "DSS_DATA_DIR": str(tmp_path / "data"), "DSS_DB_PATH": str(tmp_path / "local.sqlite"),
-              "DSS_STATIC_DIR": str(tmp_path / "static"), "K_SERVICE": "dss"}
+              "DSS_STATIC_DIR": str(tmp_path / "static"), "K_SERVICE": "dss",
+              "GOOGLE_OAUTH_CLIENT_ID": " 1-x.apps.googleusercontent.com ",
+              "DSS_SIGNIN_ALLOW": " @Example.com, ,Judge@Example.com,* "}
     for key, value in values.items():
         monkeypatch.setenv(key, value)
     config = Config.from_env()
@@ -192,6 +206,8 @@ def test_env_config(tmp_path, monkeypatch):
     assert config.agent_token.get_secret_value() == "t" * 24
     assert config.engine_mode == "agent" and config.cloud_service == "dss"
     assert config.db_path == tmp_path / "local.sqlite" and config.static_dir == tmp_path / "static"
+    assert config.google_client_id == "1-x.apps.googleusercontent.com"
+    assert config.signin_allow == ("@example.com", "judge@example.com", "*")
     assert CODE not in repr(config) and CODE not in json.dumps(config.public())
 
 
