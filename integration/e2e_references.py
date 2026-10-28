@@ -196,6 +196,22 @@ class Case(Flow):
         self.check(ref and ref["mode"] == mode and len(ref["images"]) == 1, f"reference set in {mode} mode",
                    {"mode": ref and ref["mode"], "summary": ref and ref["summary"][:200]})
         self.out["reference"] = {"mode": mode, "summary": ref["summary"]}
+        if mode == "recreate":
+            ref = self.approve(ref)
+        return ref
+
+    def approve(self, ref: dict) -> dict:
+        """A recreate analysis gates design/confirm (dashboard-intent 1.3): approve it as analyzed.
+        Its issues fail the case; the driver never edits the analysis to clear them."""
+        analysis = ref["analysis"]
+        self.check(analysis and analysis["state"] == "pending" and not analysis["issues"],
+                   "recreate analysis pending without issues",
+                   analysis and {"state": analysis["state"], "issues": analysis["issues"]})
+        ref = self.api("POST", "/reference-images/analysis/approve", json={"revision": analysis["revision"]})
+        self.check(ref["analysis"]["state"] == "approved" and ref["analysis"]["revision"] == analysis["revision"],
+                   "recreate analysis approved", {k: ref["analysis"][k] for k in ("state", "revision")})
+        self.out["reference"]["analysis"] = {"revision": analysis["revision"], "summary": analysis["summary"],
+                                             "items": len(analysis["items"])}
         return ref
 
     def context(self, notes: str | None) -> dict:
@@ -586,11 +602,13 @@ def case_recreate(c: Case, args) -> None:
     used = [comp["type"] for _, comp in spec_components(c.api("GET", "/spec")) if comp["type"] in CHART_TYPES]
     drop = min(sorted(set(used) - {"scorecard"} or set(used)), key=used.count)
     # The allowlist is part of the assessment digest: a change expires the proof until it matches again.
+    # It also re-gates an approved native item of that type (dashboard-intent 1.3: reference_unapproved).
+    narrowed = {"feasibility_blocked", "reference_unapproved"}
     with narrowed_allowlist(args.server, drop):
         a = c.assessment(f"allowlist without {drop}")
         c.check(a["state"] != "ready" or a["id"] != ready_id, "allowlist change expires the assessment", a["state"])
-        c.refused("POST", "/recipe", 409, {"feasibility_blocked"}, f"recipe refused once {drop} leaves the allowlist")
-        c.refused("POST", "/run", 409, {"feasibility_blocked"}, f"run refused once {drop} leaves the allowlist")
+        c.refused("POST", "/recipe", 409, narrowed, f"recipe refused once {drop} leaves the allowlist")
+        c.refused("POST", "/run", 409, narrowed, f"run refused once {drop} leaves the allowlist")
     a = c.assessment("allowlist restored")
     c.check(a["state"] == "ready" and a["id"] == ready_id, "restored allowlist matches the ready proof again", a["state"])
     recipe = c.request("POST", f"/api/builds/{c.build_id}/recipe").json()
