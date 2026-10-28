@@ -21,6 +21,13 @@ recipe. Each part below is its own project, with its own AGENTS.md, docs/ and pl
   contracts its AGENTS.md names and never edits them; only the architect, at this root, changes
   one.
 - docs/program.md holds the parts, their order and the gates between them (the `Needs:` fields).
+- Cloud sessions (claude.ai/code) open at the repo root: the prompt names the part and task; `cd` into
+  that part's folder, follow only its AGENTS.md plus this program block, and run the builder's script
+  from the repo copy: `python .claude/skills/blueprint-solution-builder/scripts/blueprint.py --root <part> ...`.
+  There is no `.env`, Chrome or Google sign-in there: only tasks whose checks run offline. The repo
+  copies in .claude/ are refreshed from ~/.claude by the user.
+- The repo is public: the hosted URL and the project number live only in `.env` (`DSS_AGENT_SERVER`,
+  `GCP_PROJECT_NUMBER`), never in a tracked file (change 2026-10-29).
 - Deadline no longer binding (user, 2026-10-23): still no gold-plating; the cut order is in docs/program.md.
 
 ## Known gotchas

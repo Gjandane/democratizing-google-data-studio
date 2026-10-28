@@ -50,15 +50,15 @@ docs/img/                README screenshots from 2.4/2.6, cropped (no email, ava
 - Diagrams: one HTML page per diagram on a 1840x800 canvas, white background, black text, Google
   accents (#4285F4, #EA4335, #FBBC04, #34A853), the vendored font, no network requests.
 - Numbers in README come only from deck/data/bench-*.json (e2e runs), with the run date.
-- Links, exactly: GitHub https://github.com/Gjandane/democratizing-google-data-studio ; hosted app
-  https://dss-frontend-872000338860.asia-southeast1.run.app (Google sign-in; builds need
-  the owner's `dss-agent` online).
+- Links, exactly: GitHub https://github.com/Gjandane/democratizing-google-data-studio ; hosted app: never in
+  a tracked file (`DSS_AGENT_SERVER` in .env; shared privately with the judges; Google sign-in;
+  builds need the owner's `dss-agent` online).
 - README diagrams: deck/img d5 (node graph), d4 (harness, OKF not RAG), d8 (Google Cloud).
 - README claims a feature on a target only after its acceptance passed there (local 2.4-2.6, hosted 4.2-4.3).
 
 ## Never do
 - Never edit engine/, backend/, frontend/ or contracts/; a fix there blocks the task.
-- Never commit `.env`, `data/`, `.chrome-profile/`, keys, the access code, or screenshots showing
+- Never commit `.env`, `data/`, `.chrome-profile/`, keys, the access code, the hosted URL or the project number (change 2026-10-29), or screenshots showing
   account emails or avatars.
 - Never push before the user confirms on a card (tasks 3.2 and 4.4); never force-push or rewrite
   history. Never deploy before the user confirms (task 4.1 STOP).

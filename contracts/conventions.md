@@ -6,15 +6,16 @@ Version 1.5 · Change log: 1.0 (2026-10-18) first version, revised by the plan a
 DSS_DB_PATH, GCP_REGION; sections Cloud deployment and Build agent), revised the same day by the
 delta audit before any build (DSS_AGENT_TOKEN, DSS_DEV, agent paths and `--dry-run`, roles,
 fail-closed start, backup cadence).
-1.2 (2026-10-20) Cloud Run service renamed `dss` -> `dss-frontend` (keeps the submitted URL
-https://dss-frontend-872000338860.asia-southeast1.run.app; the full image replaces the earlier
+1.2 (2026-10-20) Cloud Run service renamed `dss` -> `dss-frontend` (keeps the submitted URL, kept out of the repo since 1.5; the full image replaces the earlier
 static-frontend revision of that service). No other name, path or behaviour changed.
 1.3 (2026-10-24, change reference fidelity) `DSS_ALLOWED_TYPES` default adds `area` and
 `fixed_size_list` (recipe 1.3); no name added.
 1.4 (2026-10-26, change configurable model stages) model choice moves to per-stage Settings
 (contracts/api.md 3.0): `DSS_PLANNER_MODEL`/`DSS_WORKER_MODEL` only seed the one-time migration;
 the agent-mode lock fixes the key and GCP values, not model settings. No name added or removed.
-1.5 (2026-10-29, change Google sign-in) added `GOOGLE_OAUTH_CLIENT_ID` and `DSS_SIGNIN_ALLOW`:
+1.5 (2026-10-29, change Google sign-in) added `GOOGLE_OAUTH_CLIENT_ID`, `DSS_SIGNIN_ALLOW` and
+`GCP_PROJECT_NUMBER`; the hosted URL and the project number live only in `.env`, never in a
+tracked file (the repo is public; the link is shared privately);
 the browser signs in with Google at the gate (contracts/api.md 3.3); the access code stays for
 scripts. Cloud deployment: Access bullet, fail-closed rule, shared-history wording.
 Only the architect at the program root edits this file. Parts read it; they never edit it.
@@ -60,7 +61,8 @@ values. Names:
 | `DSS_SIGNIN_ALLOW` | (empty = any Google account) | backend | 1.5: who may sign in with Google: empty or `*` = any verified Google account; otherwise a comma list of `@domain` (the token's Workspace `hd` claim) and exact emails. Cloud Run: a plain env var, changed by editing `.env` and rerunning `bash deploy/deploy.sh` |
 | `DSS_AGENT_TOKEN` | (empty) | backend, agent | secret token for `/api/agent/*` (header `X-DSS-Agent-Token`), at least 24 characters; never shown in the UI. Cloud Run: from Secret Manager |
 | `DSS_ENGINE_MODE` | `local` | backend | `local` = the backend runs `DSS_ENGINE_CMD` itself; `agent` = builds are queued for a build agent (Cloud Run) |
-| `DSS_AGENT_SERVER` | (empty) | agent | base URL of the hosted app the agent pulls jobs from (`https://<service>-<hash>.<region>.run.app`) |
+| `DSS_AGENT_SERVER` | (empty) | agent, release (deploy) | base URL of the hosted app the agent pulls jobs from (`https://<service>-<hash>.<region>.run.app`); 1.5: also the deploy's URL guard and the e2e `--server`; only in `.env`, never in a tracked file |
+| `GCP_PROJECT_NUMBER` | (empty) | release (deploy) | 1.5: the project number the deploy guard expects from `gcloud projects describe`; only in `.env`, never in a tracked file |
 | `DSS_DB_PATH` | (empty = `<DSS_DATA_DIR>/dss.sqlite`) | backend | live SQLite file; when it is outside `DSS_DATA_DIR`, the backend keeps a backup at `<DSS_DATA_DIR>/dss.sqlite` (Cloud deployment) |
 | `GCP_REGION` | `asia-southeast1` | release (deploy) | Cloud Run region, Artifact Registry and the state bucket |
 

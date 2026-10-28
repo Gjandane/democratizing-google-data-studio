@@ -31,7 +31,7 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
 6. Cloud Run (change 2026-10-19), last (change 2026-10-20 final phases): a root Dockerfile and
    `deploy/deploy.sh` deploy the app as service `dss-frontend` per
    contracts/conventions.md#Cloud deployment, so the submitted URL
-   https://dss-frontend-872000338860.asia-southeast1.run.app serves the full app; flow 1 passes
+   (`DSS_AGENT_SERVER` in .env, shared privately, never in the repo) serves the full app; flow 1 passes
    against it with the local build agent.
 
 7. Required: reference-image recreation/style and unsupported-request refusal pass task 2.5
@@ -85,7 +85,7 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
 - docs/acceptance.md has a user-confirmed PASS row with a Data Studio link for each of the five
   sources.
 - `git ls-remote origin main` equals local `HEAD` after the final push.
-- `curl -s https://dss-frontend-872000338860.asia-southeast1.run.app/api/health` returns ok (today
+- `curl -s "$DSS_AGENT_SERVER/api/health"` returns ok (today
   it returns the frontend's index.html).
 
 ## Decided by default

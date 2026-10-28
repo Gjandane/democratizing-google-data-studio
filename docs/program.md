@@ -99,7 +99,7 @@ Written 2026-10-18.
 - Targets: one GitHub repo, https://github.com/Gjandane/democratizing-google-data-studio (this
   folder, branch `main`; the release builder pushes only after the user confirms on a card, change
   2026-10-20 final phases), and one Cloud Run service `dss-frontend` in the user's GCP project,
-  region asia-southeast1, URL https://dss-frontend-872000338860.asia-southeast1.run.app (the URL
+  region asia-southeast1, URL in .env as `DSS_AGENT_SERVER`, never in the repo (the URL
   already submitted; `bash deploy/deploy.sh`, after the user confirms; the user owns the billing).
 - Final order (change 2026-10-20 final phases): local integration and the user's manual acceptance
   of five dashboard sources (CSV upload, research mode, screenshot + synthetic data, BigQuery,

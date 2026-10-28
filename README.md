@@ -70,7 +70,7 @@ Recreated from a screenshot, on synthetic data (with known weaknesses).
 ## Links
 
 - GitHub: https://github.com/Gjandane/democratizing-google-data-studio
-- Hosted app: https://dss-frontend-872000338860.asia-southeast1.run.app (access code on request; builds need the owner's agent online). The hosted app is being upgraded from the frontend preview to the full app.
+- Hosted app: the link is shared privately with the judges (builds need the owner's agent online). The hosted app is being upgraded from the frontend preview to the full app.
 
 ## Run it locally
 
