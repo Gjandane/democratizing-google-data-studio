@@ -551,3 +551,15 @@ context. Task status lives in docs/plan.md, not here.
 - Why: user, 2026-10-29: accept 2.6 with findings; "All current weaknesses gets logged for future versions, and for future architect tasks. Most important now is to finish the github upload and cloud deployment".
 - Change requests (2.6 entry 2026-10-29): accept 2.6 with engine `partial` -> planned: 2.6 reopened with the amended Done when. `date_granularity` on `bar` (W4) -> deferred: PRD Later (contract recipe 1.4; engine and backend Later). Fixes for W1-W3 / W5-W7 -> deferred: engine and backend PRD Later (W6 too). check_contracts' ReferenceSet schema for api 3.2 -> planned: 2.6 (Files + Done when). Earlier 2.6 requests (2026-10-24, 2026-10-28) were settled by the 2026-10-24 and 2026-10-28 Changes.
 - Next: release 2.6 (check_contracts fix, then done), 2.7, 2.8, 3.1, 3.2, 4.1-4.4. No part tasks added; no gate added.
+
+## 2026-10-29: Task 2.6 Manual acceptance: screenshot recreation with synthetic data
+- Status: done
+- Plan check: off
+- What changed: integration/check_contracts.py: ReferenceSet takes `analysis` (null or ReferenceAnalysis per dashboard-intent 1.3, field by field) plus code rules; reference_set.pending.json now validated; 9 new ReferenceSet mutations (35 total). Acceptance row, matrix, W1-W7 and img from the 2026-10-29 entry stand (PASS with findings).
+- Checks: `uv run --project integration python integration/check_contracts.py` PASS 13 of 13 (12 fixtures; 35 invalid variants rejected, incl. disposition "hybrid"); Test (all) same command, PASS.
+- Decisions: code rules: recreate = 1 image, style => analysis null; item ids unique; box inside image; static => type null (item and proposed); proposed native needs a type, control types (date_range, dropdown, fixed_size_list) only on kind control; native type outside allowed_types only with issues; approved => issues []. `proposed.type` not checked against allowed_types (it may narrow after upload; review P3).
+- Digest: check_contracts.py: `REFERENCE_ANALYSIS` schema, `reference_set_errors(ref) -> list[str]`, `CONTROL_TYPES`; ReferenceSet fixtures reference_set.json + reference_set.pending.json; live 2.6 accepted PASS with findings (W1-W7, docs/acceptance.md).
+- Tried and failed: none
+- Gotchas: none
+- Left open: W1-W7 (docs/acceptance.md).
+- Next: Task 2.7 Synthetic label recipe check follows backend 23.2.

@@ -332,6 +332,26 @@ GENERATION_SPEC = _obj({
     })},
 })
 _ASSUMPTIONS = {"type": "array", "maxItems": 20, "items": {"type": "string", "maxLength": 240}}
+_DISPOSITION = {"enum": ["native", "static"]}
+_UNIT = {"type": "number", "minimum": 0, "maximum": 1}
+REFERENCE_ANALYSIS = _obj({   # dashboard-intent.md 1.3
+    "revision": {"type": "integer", "minimum": 1},
+    "state": {"enum": ["pending", "approved"]},
+    "summary": _STR,
+    "items": {"type": "array", "minItems": 1, "maxItems": 24, "items": _obj({
+        "id": {"type": "string", "pattern": r"^r[1-9][0-9]*$"},
+        "label": {"type": "string", "minLength": 1, "maxLength": 120},
+        "kind": {"enum": ["chart", "control", "kpi", "text", "image", "legend", "other"]},
+        "box": _obj({"x": _UNIT, "y": _UNIT, "w": _UNIT, "h": _UNIT}),
+        "disposition": _DISPOSITION, "type": _NULL_STR,
+        "shows": {"type": "string", "maxLength": 300},
+        "reason": {"type": "string", "maxLength": 300},
+        "proposed": _obj({"disposition": _DISPOSITION, "type": _NULL_STR})})},
+    "note": {"type": "string", "maxLength": 1000},
+    "allowed_types": {"type": "array", "uniqueItems": True, "items": _ID},
+    "issues": {"type": "array", "items": _obj({"path": _STR, "message": _STR})},   # api.md ValidationIssue
+})
+CONTROL_TYPES = {"date_range", "dropdown", "fixed_size_list"}   # recipe.md 1.3 controls
 FIXTURE_SCHEMAS = {
     "ReferenceSet": _obj({
         "id": _ID, "mode": {"enum": ["style", "recreate"]},
@@ -339,7 +359,8 @@ FIXTURE_SCHEMAS = {
         "images": {"type": "array", "minItems": 1, "maxItems": 3,
                    "items": _obj({"id": _ID, "name": _ID,
                                   "file": {"type": "string", "pattern": r"^reference_[A-Za-z0-9_-]+\.(png|jpg)$"}})},
-        "summary": _STR}),
+        "summary": _STR,
+        "analysis": {"oneOf": [{"type": "null"}, REFERENCE_ANALYSIS]}}),
     "Assessment": _obj({
         "id": _NULL_STR, "state": {"enum": ["unchecked", "blocked", "ready", "stale"]},
         "input_digest": _NULL_STR, "prototype_stale": {"type": "boolean"},
@@ -379,6 +400,7 @@ FIXTURE_SCHEMAS = {
 }
 FIXTURE_FILES = {   # fixture -> type (contracts/api.md 1.3/1.4 sections name them)
     INTENT_FIXTURES / "reference_set.json": "ReferenceSet",
+    INTENT_FIXTURES / "reference_set.pending.json": "ReferenceSet",
     INTENT_FIXTURES / "feasibility.json": "Assessment",
     INTENT_FIXTURES / "feasibility.alternatives.json": "Assessment",
     INTENT_FIXTURES / "feasibility.pending.json": "Assessment",
@@ -464,11 +486,48 @@ def generation_spec_errors(spec):
     return errors
 
 
+def reference_set_errors(ref):
+    """dashboard-intent.md rules JSON Schema can't express: images per mode, analysis per mode,
+    and the 1.3 analysis checks (unique ids, boxes inside the image, types per disposition)."""
+    errors, analysis = [], ref["analysis"]
+    if ref["mode"] == "recreate" and len(ref["images"]) != 1:
+        errors.append("recreate takes exactly one image")
+    if ref["mode"] == "style" and analysis is not None:
+        errors.append("a style set has analysis null")
+    if analysis is None:
+        return errors
+    allowed, ids = set(analysis["allowed_types"]), set()
+    for i, item in enumerate(analysis["items"]):
+        where, box, proposed = f"analysis/items/{i} ({item['id']})", item["box"], item["proposed"]
+        if item["id"] in ids:
+            errors.append(f"{where}: duplicate id")
+        ids.add(item["id"])
+        if box["w"] <= 0 or box["h"] <= 0 or box["x"] + box["w"] > 1 or box["y"] + box["h"] > 1:
+            errors.append(f"{where}: box is not inside the image")
+        for name, choice in (("", item), ("proposed ", proposed)):
+            if choice["disposition"] == "static" and choice["type"] is not None:
+                errors.append(f"{where}: {name}static item has a type")
+        # proposed was checked against allowed_types at upload; allowed_types may narrow since
+        if proposed["disposition"] == "native":
+            if proposed["type"] is None:
+                errors.append(f"{where}: proposed native item has no type")
+            elif proposed["type"] in CONTROL_TYPES and item["kind"] != "control":
+                errors.append(f"{where}: a control type is only for a control")
+        if (item["disposition"] == "native" and item["type"] not in allowed
+                and not analysis["issues"]):
+            errors.append(f"{where}: native type {item['type']!r} not in allowed_types and no issue")
+    if analysis["state"] == "approved" and analysis["issues"]:
+        errors.append("an approved analysis has issues")
+    return errors
+
+
 def fixture_errors(kind, obj, validators):
     """Schema errors, then the per-type rules from the contracts."""
     if (e := schema_error(validators[kind], obj)):
         return [e]
     errors = []
+    if kind == "ReferenceSet":
+        errors += reference_set_errors(obj)
     if "spec" in obj and kind in ("GenerationRequest", "Proposal", "SyntheticDataset"):
         errors += [f"spec/{e}" for e in generation_spec_errors(obj["spec"])]
     if kind == "GenerationRequest" and len(json.dumps(obj).encode()) > 64 * 1024:
@@ -504,6 +563,9 @@ def check_intent_synthetic_fixtures():
             errors.append(f"{rel(path)}: not JSON: {e}")
             continue
         errors += [f"{rel(path)} ({kind}): {e}" for e in fixture_errors(kind, obj, validators)]
+    style = _mutate(INTENT_FIXTURES / "reference_set.json", lambda o: o.update(mode="style", analysis=None))
+    errors += [f"style ReferenceSet with analysis null: {e}"
+               for e in fixture_errors("ReferenceSet", style, validators)]
     if errors:
         raise CheckFailed("; ".join(errors))
     return f"{len(FIXTURE_FILES)} dashboard-intent and synthetic-data fixtures match their contract shapes"
@@ -529,6 +591,7 @@ def check_fixture_error_cases():
     """Each mutation breaks one contract rule and must be rejected (shape or rule)."""
     validators = fixture_validators()
     req, gen = SYNTHETIC_FIXTURES / "request.json", ("spec", "columns")
+    ref, item = INTENT_FIXTURES / "reference_set.json", ("analysis", "items", 1)
     cases = [
         ("Assessment state maybe", "Assessment", INTENT_FIXTURES / "feasibility.json", _set(("state",), "maybe")),
         ("Issue status impossible", "Assessment", INTENT_FIXTURES / "feasibility.json",
@@ -540,8 +603,18 @@ def check_fixture_error_cases():
         ("pending batch of 21 comments", "Assessment", INTENT_FIXTURES / "feasibility.pending.json",
          lambda o: o["pending_comments"].update(comments=o["pending_comments"]["comments"] * 11)),
         ("ReferenceSet mode copy", "ReferenceSet", INTENT_FIXTURES / "reference_set.json", _set(("mode",), "copy")),
-        ("reference file is a path", "ReferenceSet", INTENT_FIXTURES / "reference_set.json",
-         _set(("images", 0, "file"), "../secrets.png")),
+        ("reference file is a path", "ReferenceSet", ref, _set(("images", 0, "file"), "../secrets.png")),
+        ("analysis disposition hybrid", "ReferenceSet", ref, _set(item + ("disposition",), "hybrid")),
+        ("analysis state done", "ReferenceSet", ref, _set(("analysis", "state"), "done")),
+        ("analysis item box outside the image", "ReferenceSet", ref, _set(item + ("box", "x"), 0.9)),
+        ("static item with a type", "ReferenceSet", ref, _set(item + ("disposition",), "static")),
+        ("native type outside allowed_types", "ReferenceSet", ref, _set(item + ("type",), "donut")),
+        ("approved analysis with issues", "ReferenceSet", ref,
+         _set(("analysis", "issues"), [{"path": "/items/1/type", "message": "x"}])),
+        ("duplicate analysis item id", "ReferenceSet", ref, _set(("analysis", "items", 2, "id"), "r2")),
+        ("25 analysis items", "ReferenceSet", ref,
+         lambda o: o["analysis"].update(items=[dict(o["analysis"]["items"][0], id=f"r{i}") for i in range(1, 26)])),
+        ("style set with an analysis", "ReferenceSet", ref, _set(("mode",), "style")),
         ("row_count 0", "GenerationRequest", req, _set(("spec", "row_count"), 0)),
         ("row_count 100001", "GenerationRequest", req, _set(("spec", "row_count"), 100_001)),
         ("seed above uint32", "GenerationRequest", req, _set(("spec", "seed"), 2**32)),
