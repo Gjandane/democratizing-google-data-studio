@@ -563,3 +563,17 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none
 - Left open: W1-W7 (docs/acceptance.md).
 - Next: Task 2.7 Synthetic label recipe check follows backend 23.2.
+
+## 2026-10-29: Task 2.7 Synthetic label recipe check follows backend 23.2
+- Status: blocked
+- Plan check: off
+- What changed: integration/e2e_references.py: recipe assertion flipped (synthetic datasource and no op line holds the label; prototype/background check untouched). Bench restored via git checkout.
+- Checks: `e2e_references.py --cases synthetic --live` FAIL before the recipe step (below); dry-run form of the Done-when can't run (driver: "--live is required"; `--live` with DSS_ENGINE_DRY_RUN=1 errors, and the bench is always rewritten). User chose the live run on a card. Flipped check not exercised; Test (all) not run.
+- Decisions: none
+- Tried and failed: live run, build b_d1a8b553abb2: all steps through design passed, then `POST /api/builds/b_d1a8b553abb2/design/confirm` -> HTTP 409 `{"error":{"code":"reference_unapproved","message":"Approve the reference analysis before continuing.","detail":{"reference_set_id":"ref_94ca8380bc51"}}}`.
+- Gotchas: none
+- Left open: none
+- Blocked because: (b) the synthetic case lacks the reference-analysis approval step the backend now demands (dashboard-intent 1.3), and the Done-when's dry-run form contradicts the driver's own guards.
+- Question: Add the analysis-approval step to the synthetic case (and fix the Done-when's dry-run wording) as part of 2.7?
+- Options: A widen 2.7 Files/Done-when: driver approves the analysis before design/confirm, Done-when uses `--live` and restores the bench / B open a separate task for the approval step, keep 2.7 as the label flip only / Recommend: A, same file, small.
+- Next: Task 2.7 after the architect's ruling.

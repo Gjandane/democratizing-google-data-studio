@@ -673,7 +673,8 @@ def case_synthetic(c: Case, args) -> None:
     c.snapshot("prototype")
     recipe = c.request("POST", f"/api/builds/{c.build_id}/recipe").json()
     c.check(c.api("GET", "/spec")["datasource"]["synthetic"] and any(
-        SYNTHETIC_LABEL in op["line"] for op in recipe["ops"]), f"recipe places the {SYNTHETIC_LABEL!r} text")
+        SYNTHETIC_LABEL in op["line"] for op in recipe["ops"]) is False,
+        f"recipe places no {SYNTHETIC_LABEL!r} text (the background layer holds the only copy)")
     c.live_build(1)
     # Generated data resolves needs_data, never a capability: moving GPS still refuses (v2, last).
     c.request("POST", f"/api/builds/{c.build_id}/versions")

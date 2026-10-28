@@ -98,7 +98,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: a step fails inside a part (synthetic schema, generation, reference intake, prototype, recipe) -> block this task naming the part, the step and the API error body.
   - If: the live run has failed ops -> diagnose with the screencast gotcha (AGENTS.md) and record each in the Known weaknesses table with its owner part (change 2026-10-29); not a block.
   - If: a time series on a date bucket still draws per day (spikes on the bucket's first day), or the "Synthetic sample data" label shows twice -> the change 2026-10-23 fixes (engine 12.1, backend 23.1, 23.2) didn't hold: block naming the part, the build id and the op (`date_granularity` missing in the recipe = backend; present but not applied = engine).
-- [ ] 2.7 Synthetic label recipe check follows backend 23.2
+- [!] 2.7 Synthetic label recipe check follows backend 23.2
   - Goal: integration/e2e_references.py's synthetic case still asserts "recipe places the 'Synthetic sample data' text"; after backend 23.2 the background is the label's only copy in the report (contracts/synthetic-data.md), so that check fails on the next run, including 4.3's hosted run. Flip it: the recipe places no label text, and the prototype and its background layer still say the label (the existing check).
   - Files: integration/e2e_references.py
   - Depends on: 2.5
