@@ -28,6 +28,9 @@ CHART_TYPES = ("bar", "time_series", "pie", "scatter")
 COMPONENT_TEXT = "Use #B91C1C as the color of this chart."
 DECORATION_TEXT = "Use a dark blue accent (#1E3A8A) for this component."
 V2_TEXT = "Use #0F766E as the color of this chart."
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+MIN_WAIT_S = 600   # no action waits less (the fixed wait before api.md 3.0)
+SLACK_S = 300      # polling, lock release and the work outside the stage clocks
 
 
 def env_value(name: str, default: str = "") -> str:
@@ -48,6 +51,33 @@ def env_value(name: str, default: str = "") -> str:
 
 def dumps(value) -> str:
     return json.dumps(value)
+
+
+def action_waits(settings: dict) -> dict[str, int]:
+    """Seconds to wait per action, from `GET /api/settings` (api.md 3.0 stage clocks). The HTML
+    actions run page 1, then the later pages, each on its brief clock plus its HTML clock."""
+    stages = settings["stages"]
+    html = stages["html_brief"]["timeout_s"] + max(stages["reference_html"]["timeout_s"],
+                                                   stages["html_no_reference"]["timeout_s"])
+    planning = stages["native_planning"]["timeout_s"] + SLACK_S
+    waits = {"/blueprint/accept": 2 * html + SLACK_S, "/comments": 2 * html + SLACK_S,
+             "/design/confirm": planning, "/blueprint/regenerate": planning,
+             "/reference-images": stages["reference_interpretation"]["timeout_s"] + SLACK_S}
+    return {action: max(MIN_WAIT_S, seconds) for action, seconds in waits.items()}
+
+
+def bench_server_url(server: str) -> str:
+    """A non-local server goes into the bench as "hosted": its URL stays out of the public repo."""
+    return server if httpx.URL(server).host in LOCAL_HOSTS else "hosted"
+
+
+def bench_record(flow: "Flow", server: str, mode: str, version2: bool, started: datetime,
+                 totals: dict) -> dict:
+    return {"run_date": started.isoformat().replace("+00:00", "Z"),
+            "server_url": bench_server_url(server), "mode": mode, "build_id": flow.build_id,
+            "version2": version2, "stages": flow.rows, "totals": totals,
+            "decisions": flow.decisions,
+            "report_urls": {str(n): u for n, u in flow.reports.items()}}
 
 
 def items_of(spec: dict) -> dict[str, dict]:
@@ -73,6 +103,7 @@ class Flow:
         self.build_id = ""
         self.rows: list[dict] = []
         self.decisions: list[dict] = []
+        self.waits: dict[str, int] = {}
         self._run_ids: list[str] = []
 
     def redact(self, value: str) -> str:
@@ -87,6 +118,19 @@ class Flow:
                 f"backend: {method} {path}: HTTP {response.status_code}: {response.text}"
             ))
         return response
+
+    def load_waits(self) -> dict[str, int]:
+        """Read the stage clocks once per run (api.md 3.0) and set the per-action waits."""
+        settings = self.request("GET", "/api/settings").json()
+        try:
+            self.waits = action_waits(settings)
+        except (KeyError, TypeError) as exc:
+            raise RuntimeError(f"backend: GET /api/settings has no api.md 3.0 stage timeouts ({exc!r})")
+        print("waits: " + ", ".join(f"{a} {s} s" for a, s in self.waits.items()), flush=True)
+        return self.waits
+
+    def wait_s(self, action: str) -> int:
+        return self.waits.get(action, MIN_WAIT_S)
 
     def api(self, method: str, suffix: str = "", **kwargs):
         return self.request(method, f"/api/builds/{self.build_id}{suffix}", **kwargs).json()
@@ -110,7 +154,8 @@ class Flow:
         if not run_id:
             raise RuntimeError(f"backend: POST {url}: no run_id in 202 response")
         self._run_ids.append(run_id)
-        deadline = time.monotonic() + 600
+        wait = self.wait_s(path)
+        deadline = time.monotonic() + wait
         while True:
             trace = next((t for t in self.traces() if t["run_id"] == run_id), None)
             if trace:
@@ -119,7 +164,7 @@ class Flow:
                 return run_id
             if time.monotonic() >= deadline:
                 stage = self.api("GET")["stage"]
-                raise RuntimeError(f"backend: {path} timed out after 600 s; stage={stage}")
+                raise RuntimeError(f"backend: {path} timed out after {wait} s; stage={stage}")
             time.sleep(2)
 
     @contextmanager
@@ -313,6 +358,7 @@ def main() -> int:
         flow = Flow(client, secrets, live=args.live)
         try:
             flow.request("GET", "/api/health")
+            flow.load_waits()
             build = flow.request("POST", "/api/builds", json={
                 "title": "E2E ecommerce sales", "archetype": "executive", "mode": "data",
             }).json()
@@ -338,11 +384,7 @@ def main() -> int:
                 for key in totals:
                     row[key] = sum(t[key] for t in traces if t["run_id"] in ids)
                     totals[key] += row[key]
-            bench = {"run_date": started.isoformat().replace("+00:00", "Z"),
-                     "server_url": server, "mode": args.mode, "build_id": flow.build_id,
-                     "version2": args.version2, "stages": flow.rows, "totals": totals,
-                     "decisions": flow.decisions,
-                     "report_urls": {str(n): u for n, u in flow.reports.items()}}
+            bench = bench_record(flow, server, args.mode, args.version2, started, totals)
             target = ROOT / "deck/data" / f"bench-{started:%Y-%m-%d}-{args.mode}.json"
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(json.dumps(bench, indent=2) + "\n", encoding="utf-8")

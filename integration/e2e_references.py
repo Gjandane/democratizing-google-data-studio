@@ -40,7 +40,7 @@ from pathlib import Path
 import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from e2e_flow1 import Flow, dumps, env_value  # noqa: E402
+from e2e_flow1 import LOCAL_HOSTS, Flow, bench_server_url, dumps, env_value  # noqa: E402
 from render_diagrams import find_chrome, png_size  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,7 +53,6 @@ ECOMMERCE = SAMPLES / "ecommerce_sales.csv"
 GROSS_NET = SAMPLES / "gross_net_sales.csv"
 RENDER = ROOT / "deck" / "render" / "references"     # git-ignored: prototype snapshots for the manual review
 CASES = ("refusal", "revenue", "style", "recreate", "synthetic")
-LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 SYNTHETIC_LABEL = "Synthetic sample data"
 CHART_TYPES = {"scorecard", "time_series", "bar", "pie", "table", "pivot_table", "geo_map", "scatter"}
 SIDE_EFFECT_NODES = {"prototype", "recipe", "execute"}
@@ -142,7 +141,8 @@ class Case(Flow):
             raise RuntimeError(self.redact(f"backend: {method} {url}: HTTP {response.status_code}: {response.text}"))
         run_id = response.json()["run_id"]
         self._run_ids.append(run_id)
-        deadline = time.monotonic() + 600
+        wait = self.wait_s(suffix)
+        deadline = time.monotonic() + wait
         while True:
             trace = next((t for t in self.traces() if t["run_id"] == run_id), None)
             if trace:
@@ -150,7 +150,7 @@ class Case(Flow):
                     raise RuntimeError(self.redact(f"backend: {method} {suffix}: " + dumps(trace)))
                 return run_id
             if time.monotonic() >= deadline:
-                raise RuntimeError(f"backend: {method} {suffix} timed out after 600 s")
+                raise RuntimeError(f"backend: {method} {suffix} timed out after {wait} s")
             time.sleep(2)
 
     def refused(self, method: str, suffix: str, status: int, codes: set[str], what: str, **kwargs) -> dict:
@@ -746,6 +746,11 @@ def bench_path(server: str) -> Path:
     return ROOT / "deck" / "data" / f"bench-references-{target}.json"
 
 
+def bench_header(server: str, revision: dict) -> dict:
+    return {"run_date": utc_now(), "server_url": bench_server_url(server), "git_revision": revision,
+            "live": True}
+
+
 def after_restart(flow: Case, server: str) -> int:
     path = bench_path(server)
     bench = json.loads(path.read_text(encoding="utf-8"))
@@ -808,9 +813,10 @@ def main() -> int:
         path = bench_path(args.server)
         bench = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"cases": {}}
         revision = git_revision()
-        bench.update(run_date=utc_now(), server_url=args.server, git_revision=revision, live=True)
+        bench.update(bench_header(args.server, revision))
         try:
             Flow(client, secrets).request("GET", "/api/health")
+            waits = Flow(client, secrets).load_waits()   # once per run, shared by every case
             bench["engine"] = client.get("/api/engine/status").json()
         except (RuntimeError, httpx.HTTPError, ValueError) as exc:
             print(f"FAIL preflight: {exc}", file=sys.stderr)
@@ -819,6 +825,7 @@ def main() -> int:
         for name in cases:
             case = Case(client, secrets, True, name)
             case.out["git_revision"] = revision  # cases merge across runs: each keeps its own revision
+            case.waits = waits
             try:
                 RUNNERS[name](case, args)
                 case.out["passed"] = True

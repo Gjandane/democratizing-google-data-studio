@@ -108,7 +108,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: the synthetic case fails at a step before the recipe -> block naming the part, the step and the API error body; never weaken another check.
   - If: the pending analysis has `issues` -> fail that case listing them; never edit the analysis to clear them.
   - Review focus: only the recipe-label assertion and the approval step change; the prototype/background label check and every other case stay as they are.
-- [ ] 2.8 E2e waits and contract check follow api.md 3.0
+- [~] 2.8 E2e waits and contract check follow api.md 3.0
   - Goal: the e2e drivers wait as long as the configured stage clocks allow instead of a fixed 600 s per action, and check_contracts also validates the stage-settings fixtures (change configurable model stages 2026-10-26, delta audit); and both drivers record a non-local `--server` as `server_url: "hosted"` in their bench, never the URL (change 2026-10-29: the URL stays out of the public repo).
   - Files: integration/e2e_flow1.py, integration/e2e_references.py, integration/check_contracts.py
   - Depends on: 2.7

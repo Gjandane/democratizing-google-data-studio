@@ -24,6 +24,9 @@ FIXTURES = CONTRACTS / "fixtures"
 API_FIXTURES = FIXTURES / "api"
 INTENT_FIXTURES = FIXTURES / "dashboard-intent"
 SYNTHETIC_FIXTURES = FIXTURES / "synthetic-data"
+STAGE_FIXTURES = FIXTURES / "stage-settings"
+STAGE_IDS = ("interview", "routine", "reference_interpretation", "native_planning", "html_brief",
+             "reference_html", "html_no_reference")   # api.md 3.0 StageId
 SAMPLES = ROOT / "samples"
 REFERENCE_SIZE = (1200, 750)    # samples/reference-dashboard.png, CSS px at device scale 1
 
@@ -189,11 +192,11 @@ def api_event_names():
     return names
 
 
-def check_events_sse(v):
-    path = API_FIXTURES / "events.sse"
-    allowed = api_event_names()
+def sse_errors(text, allowed, v):
+    """(errors, event names) of an SSE stream: one event and one JSON data line per event, each
+    name listed in contracts/api.md, and build.op data an engine op_finished event."""
     blocks, current = [], []
-    for line in read_text(path).splitlines():
+    for line in text.splitlines():
         if line.strip():
             current.append(line)
         elif current:
@@ -224,11 +227,111 @@ def check_events_sse(v):
             errors.append(f"event {i} (build.op): not an engine event: {e}")
         if name == "build.op" and data.get("event") != "op_finished":
             errors.append(f"event {i} (build.op): data.event is not op_finished")
+    return errors, seen
+
+
+def check_events_sse(v):
+    path = API_FIXTURES / "events.sse"
+    errors, seen = sse_errors(read_text(path), api_event_names(), v)
     if not seen:
         errors.append(f"{rel(path)} holds no events")
     if errors:
         raise CheckFailed("; ".join(errors))
     return f"{rel(path)}: {len(seen)} events, {len(set(seen))} names, all in contracts/api.md"
+
+
+def check_review_sse(v):
+    """events.review.sse (api.md 3.0): every event in the api.md table; an unknown one fails."""
+    path = STAGE_FIXTURES / "events.review.sse"
+    text, allowed = read_text(path), api_event_names()
+    errors, seen = sse_errors(text, allowed, v)
+    if "brief.review" not in seen:
+        errors.append(f"{rel(path)} has no brief.review event")
+    mutated = text.rstrip("\n") + '\n\nevent: brief.reviewed\ndata: {"review_id": "br_7d1e2f3a4b5c"}\n'
+    if not any("'brief.reviewed' is not listed" in e for e in sse_errors(mutated, allowed, v)[0]):
+        errors.append("a copy with the unknown event brief.reviewed passed")
+    if errors:
+        raise CheckFailed("; ".join(errors))
+    return (f"{rel(path)}: {len(seen)} events ({', '.join(dict.fromkeys(seen))}) in contracts/api.md; "
+            "a copy with unknown event brief.reviewed is rejected")
+
+
+# --- stage settings (api.md 3.0) and the e2e drivers -------------------------------------------
+
+def check_stage_settings_fixtures():
+    files = sorted(STAGE_FIXTURES.glob("*.json"))
+    if not files:
+        raise CheckFailed(f"no JSON fixtures in {rel(STAGE_FIXTURES)}")
+    errors = []
+    for f in files:
+        try:
+            json.loads(f.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            errors.append(f"{rel(f)}: {e}")
+    if errors:
+        raise CheckFailed("; ".join(errors))
+    stages = json.loads(read_text(STAGE_FIXTURES / "settings.json")).get("stages") or {}
+    if sorted(stages) != sorted(STAGE_IDS):
+        errors.append(f"settings.json stages are {sorted(stages)}, not the StageIds")
+    errors += [f"settings.json stages.{k}.timeout_s is not a positive int" for k, p in stages.items()
+               if not (isinstance(p.get("timeout_s"), int) and p["timeout_s"] > 0)]
+    if errors:
+        raise CheckFailed("; ".join(errors))
+    return f"{len(files)} JSON files in {rel(STAGE_FIXTURES)} parse; settings.json has all {len(STAGE_IDS)} stage clocks"
+
+
+def _drivers():
+    sys.path.insert(0, str(ROOT / "integration"))
+    import e2e_flow1
+    import e2e_references
+    return e2e_flow1, e2e_references
+
+
+def check_driver_waits():
+    """The drivers' per-action waits from Settings: 2 x (html_brief + the larger HTML profile) + 300
+    for blueprint accept and comments, the stage clock + 300 for design confirm and reference
+    upload, never under 600 s."""
+    flow1, _ = _drivers()
+    settings = json.loads(read_text(STAGE_FIXTURES / "settings.json"))
+    waits = flow1.action_waits(settings)
+    want = {"/blueprint/accept": 3900, "/comments": 3900, "/design/confirm": 1500,
+            "/blueprint/regenerate": 1500, "/reference-images": 900}
+    errors = [f"{rel(STAGE_FIXTURES / 'settings.json')}: {a} waits {waits.get(a)} s, expected {s} s"
+              for a, s in want.items() if waits.get(a) != s]
+    short = copy.deepcopy(settings)
+    for profile in short["stages"].values():
+        profile["timeout_s"] = 30
+    if set(flow1.action_waits(short).values()) != {600}:
+        errors.append(f"30 s clocks wait {flow1.action_waits(short)}, not the 600 s floor")
+    larger = copy.deepcopy(settings)
+    larger["stages"]["reference_html"]["timeout_s"] = 300
+    larger["stages"]["html_no_reference"]["timeout_s"] = 1500
+    if flow1.action_waits(larger)["/blueprint/accept"] != 2 * (600 + 1500) + 300:
+        errors.append("blueprint accept does not take the larger HTML profile's timeout_s")
+    if errors:
+        raise CheckFailed("; ".join(errors))
+    return (f"waits for {rel(STAGE_FIXTURES / 'settings.json')}: blueprint accept and comments "
+            f"{waits['/blueprint/accept']:,} s, design confirm {waits['/design/confirm']:,} s, "
+            f"reference upload {waits['/reference-images']:,} s; 600 s floor; larger HTML profile")
+
+
+def check_bench_server_url():
+    """Both drivers' bench records name a non-local --server "hosted", never its URL."""
+    flow1, refs = _drivers()
+    started, errors = dt.datetime.now(dt.timezone.utc), []
+    for server, want in (("https://example.run.app", "hosted"),
+                         ("http://localhost:8000", "http://localhost:8000")):
+        records = {"e2e_flow1": flow1.bench_record(flow1.Flow(None, []), server, "dry-run", False,
+                                                   started, {"input_tokens": 0, "output_tokens": 0}),
+                   "e2e_references": refs.bench_header(server, {"commit": "0" * 40, "dirty": False})}
+        for driver, record in records.items():
+            if record.get("server_url") != want:
+                errors.append(f"{driver} --server {server}: server_url {record.get('server_url')!r}, expected {want!r}")
+            if want == "hosted" and "example.run.app" in json.dumps(record):
+                errors.append(f"{driver} --server {server}: the bench record holds the URL")
+    if errors:
+        raise CheckFailed("; ".join(errors))
+    return 'e2e_flow1 and e2e_references bench records hold server_url "hosted" for --server https://example.run.app'
 
 
 class _PrototypeParser(HTMLParser):
@@ -799,8 +902,12 @@ def main():
         run("mutated op", check_mutated_op_rejected, validators)
         run("events fixture", check_events_fixture, validators)
         run("events.sse", check_events_sse, validators)
+        run("events.review.sse", check_review_sse, validators)
     run("api JSON fixtures", check_api_json)
     run("prototype HTML", check_prototype_html)
+    run("stage-settings fixtures", check_stage_settings_fixtures)
+    run("e2e waits", check_driver_waits)
+    run("bench server_url", check_bench_server_url)
     run("intent/synthetic fixtures", check_intent_synthetic_fixtures)
     run("intent/synthetic error cases", check_fixture_error_cases)
     run("reference samples", check_reference_samples)

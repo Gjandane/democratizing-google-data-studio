@@ -642,3 +642,14 @@ context. Task status lives in docs/plan.md, not here.
 - Question: Should the synthetic GPS refusal accept `stale` with unresolved unsupported_app GPS issues (recipe still refused), or does backend owe `blocked` here?
 - Options: A widen that check to `state in {blocked, stale}` with the unresolved GPS issues still required / B backend task: outline_other assessment reads `blocked`, then rerun 2.7 / Recommend: A if the architect reads stale+issues as a refusal per dashboard-intent; else B.
 - Next: Task 2.7 after the architect's ruling; then rerun only `--cases synthetic` live.
+
+## 2026-10-28: Task 2.8 E2e waits and contract check follow api.md 3.0
+- Status: partial
+- Plan check: off
+- What changed: integration/e2e_flow1.py: `action_waits(settings)`, `Flow.load_waits()` (one `GET /api/settings` per run), `Flow.wait_s(action)`, `bench_server_url(server)`, `bench_record(...)`; e2e_references.py: `Case.act` uses `wait_s`, waits read once in `main` and shared by every case, `bench_header(server, revision)`; check_contracts.py: events.review.sse (and an unknown-event copy rejected), stage-settings fixtures, e2e waits, bench server_url checks.
+- Checks: `uv run --project integration python integration/check_contracts.py` PASS (17 of 17, 4 new); smoke against a fake local server: both drivers print the settings-derived waits; mutations (URL kept in the bench, a hardcoded 3,900 s wait) fail the new checks. Not run (cloud session, no backend/Chrome): the live e2e_flow1 dry-run.
+- Decisions: the plan's design-confirm 900 s predates api.md 3.1 (native_planning timeout_s 600 -> 1,200), so the fixture gives 1,500 s and the check expects that; `/blueprint/regenerate` (same blueprint node) shares the design-confirm wait; engine run, upload and other actions keep the 600 s floor; local servers keep their URL in the bench; LOCAL_HOSTS moved to e2e_flow1 (e2e_references imports it).
+- Tried and failed: none
+- Gotchas: a smoke run of e2e_references.py against a fake server overwrites deck/data/bench-references-local.json; `git checkout --` it afterwards.
+- Left open: blueprint-reviewer report pending when this entry was written.
+- Next: locally, with `./start.sh` running and `DSS_ENGINE_DRY_RUN=1`, run `uv run --project integration python integration/e2e_flow1.py` (exit 0; rerun once on a live-model failure); check deck/data has only the new dry-run bench of today and its `server_url` is local; then write the done entry and `blueprint.py done 2.8`.
