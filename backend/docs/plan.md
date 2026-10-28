@@ -930,7 +930,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: chart/control marks from real components; real models and visible fallback; synthetic data labelled; the gate played only as the If says; no automatic acceptance beyond it. Full engine/report integration stays in release.
 
 ## Phase 27: Google sign-in gate (change 2026-10-29)
-- [ ] 27.1 Google sign-in session
+- [x] 27.1 Google sign-in session
   - Goal: per ../contracts/api.md 3.3 Access, `POST /api/session` accepts `{google_id_token}` when `GOOGLE_OAUTH_CLIENT_ID` is set, verifies it, applies `DSS_SIGNIN_ALLOW` and sets a signed 24 h session cookie; `Session` carries `google_client_id` and `user`; the code, its header and the agent token stay as they are.
   - Spec: docs/architecture.md#Cloud mode
   - Files: src/dss/api/session.py, src/dss/config.py, src/dss/main.py, pyproject.toml, uv.lock, tests/test_google_signin.py (new), tests/test_cloud_mode.py, tests/test_api_contract.py, docs/progress.md

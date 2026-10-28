@@ -5,6 +5,7 @@ from pathlib import Path
 from test_thin_slice import thin, load
 from test_execute import settle
 from test_recipe_contract import agent_client, no_engine, spec
+from test_google_signin import CODE, google_app, sign_in, verifier
 
 FIXTURES = Path(__file__).resolve().parents[2] / "contracts/fixtures/api"
 NULLABLE = {"spec_version": int, "report_url": str, "node": str, "model": str, "error": str, "build_id": str, "agent_last_seen": str, "notes": str}
@@ -265,6 +266,22 @@ def test_phase4_contract(thin):
         if kind in examples:
             shape(payload, examples[kind])
     assert {'run.started', 'run.finished', 'build.updated', 'stage.changed', 'build.finished'} <= {k for k, _ in events}
+
+
+def test_session_contract(tmp_path, verifier):
+    """3.3: session.json exactly with Google sign-in off, session.google.json's keys with it on."""
+    from fastapi.testclient import TestClient
+    fixture = json.loads((FIXTURES / "session.json").read_text())
+    with TestClient(google_app(tmp_path / "off", client_id="")) as client:
+        assert client.post("/api/session", json={"code": CODE}).json() == fixture
+        assert client.get("/api/session").json() == fixture
+    with TestClient(google_app(tmp_path / "on")) as client:
+        signed_in = sign_in(client, "tok-judge")
+        check(signed_in, "session.google.json")
+        assert signed_in.json()["user"] == "judge@example.com"
+        check(client.get("/api/session"), "session.google.json")
+        check(client.get("/api/session", headers={"X-DSS-Access-Code": CODE}), "session.google.json")
+        assert client.get("/api/session", headers={"Cookie": ""}).json()["user"] is None
 
 
 def test_recipe_contract_in_agent_mode_without_engine(agent_client, spec):

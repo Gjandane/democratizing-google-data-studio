@@ -2353,3 +2353,15 @@ assert min(timings) < .1
 - Contracts: api.md 3.3 (Access: `POST /api/session {google_id_token}`, `Session.google_client_id`/`user`, `403 signin_not_allowed`, `400 google_signin_off`; fixtures api/session.json updated, api/session.google.json new); conventions.md 1.5 (`GOOGLE_OAUTH_CLIENT_ID`, `DSS_SIGNIN_ALLOW`, Cloud deployment Access bullet and fail-closed rule). docs/program.md: goals, non-goal (no per-user accounts), hosted flow, decision log.
 - What changed here: architecture.md Cloud mode (Google sign-in bullet, oracle) and decision log; essentials contract versions and the `google-auth` row (verified 2026-10-29, other rows re-verified by `deps --write`); PRD non-goals; plan Phase 27 with 27.1 Google sign-in session (M).
 - Tasks affected: 27.1 new; release 4.1 needs it.
+
+## 2026-10-29: Task 27.1 Google sign-in session
+- Status: done
+- Plan check: off
+- What changed: session.py: `POST /api/session` takes exactly one of `{code}`/`{google_id_token}`; the token is verified off the loop, needs `email_verified` and passes `DSS_SIGNIN_ALLOW`, and the session gets a signed 24 h `g.` cookie. `Session` gains `google_client_id`/`user`. config.py reads `GOOGLE_OAUTH_CLIENT_ID`/`DSS_SIGNIN_ALLOW` and refuses to start with a client id but no code (main.py calls it). Adds `google-auth[requests]`. Tests: test_google_signin.py (new), test_cloud_mode.py, test_api_contract.py.
+- Checks: Done-when `uv run pytest tests/test_google_signin.py tests/test_cloud_mode.py tests/test_api_contract.py` PASS 109 (before the change: 31 failed, 78 passed). Test (all) `uv run pytest` PASS 2298 passed, 2 skipped, 17 deselected (baseline 2270).
+- Decisions: Google cookies count only while the client id is set. `email_verified` accepts True/"true"; a missing email is a 403 with `email ""`. Any verifier exception is a 401 after 1 s, unlogged. The email is unpadded base64url and the cookie has Max-Age=86400. A null or both keys gives a 422 `invalid_request`. `signin_allow` is parsed once by a validator. `validate_cloud` was renamed to `validate_start`. The `requests` extra is already locked. AGENTS.md: 1 gotcha.
+- Digest: `session.access(request, config)->(ok,user)`; cookie `g.<b64url email>.<exp>.<hmac>` via google_value(code,email,exp)/google_user(value,code); Config.google_client_id:str, signin_allow:tuple; Config.validate_start(); errors google_signin_off, signin_not_allowed
+- Tried and failed: none
+- Gotchas: none beyond AGENTS.md (no root `.env` here; no test needed it).
+- Left open: P3 Google certs fetched uncached on every sign-in, with google-auth's 120 s transport timeout (Spec names this call) - src/dss/api/session.py
+- Next: backend has no open task; release 4.1 (Cloud Run deploy, repo root) needs this.
