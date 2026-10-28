@@ -46,7 +46,7 @@ def create_app(config=None, *, model_lister=None, bigquery_factory=None):
 
     @asynccontextmanager
     async def lifespan(app):
-        config.validate_cloud()
+        config.validate_start()
         db_path = config.db_path or (Path(tempfile.gettempdir()) / "dss.sqlite" if config.cloud_service
                                      else config.data_dir / "dss.sqlite")
         if config.cloud_service and db_path.resolve().is_relative_to(config.data_dir.resolve()):

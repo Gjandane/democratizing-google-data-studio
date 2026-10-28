@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from dotenv import dotenv_values
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from dss.harness import stages as stage_settings
 from dss.harness.guardrails import RunError
 
@@ -31,12 +31,27 @@ class Config(BaseModel):
     static_dir: Path | None = None
     access_code: SecretStr = SecretStr("")
     agent_token: SecretStr = SecretStr("")
+    # Google sign-in at the gate (api.md 3.3): the OAuth web client id (public) and who may enter.
+    google_client_id: str = ""
+    signin_allow: tuple[str, ...] = ()
     engine_mode: Literal["local", "agent"] = "local"
     cloud_service: str = ""
     consolidate_every: int = Field(default=5, ge=1)
     # The planner designs each page around its components (architecture.md#Designed pages).
     # A Config attribute only: no env name, no API setting. Off: today's code layout and kits.
     designed_pages: bool = True
+
+    @field_validator("google_client_id", mode="before")
+    @classmethod
+    def _strip_client_id(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("signin_allow", mode="before")
+    @classmethod
+    def _parse_signin_allow(cls, value):
+        # Parsed once: trimmed, lower-cased, empty entries dropped; () or "*" admits any account.
+        entries = value.split(",") if isinstance(value, str) else value
+        return tuple(entry.strip().lower() for entry in entries if entry.strip())
 
     @classmethod
     def from_env(cls):
@@ -47,7 +62,8 @@ class Config(BaseModel):
                  "gcs_bucket": "GCS_BUCKET", "data_dir": "DSS_DATA_DIR", "db_path": "DSS_DB_PATH",
                  "static_dir": "DSS_STATIC_DIR", "access_code": "DSS_ACCESS_CODE",
                  "agent_token": "DSS_AGENT_TOKEN", "engine_mode": "DSS_ENGINE_MODE",
-                 "cloud_service": "K_SERVICE", "consolidate_every": "DSS_CONSOLIDATE_EVERY"}
+                 "cloud_service": "K_SERVICE", "consolidate_every": "DSS_CONSOLIDATE_EVERY",
+                 "google_client_id": "GOOGLE_OAUTH_CLIENT_ID", "signin_allow": "DSS_SIGNIN_ALLOW"}
         values = {field: env[name] for field, name in names.items() if env.get(name) is not None}
         for field in ("data_dir", "db_path", "static_dir"):
             if values.get(field):
@@ -62,7 +78,9 @@ class Config(BaseModel):
                 "google_api_key_set": bool(self.google_api_key.get_secret_value()),
                 "issues": stage_settings.issues(self.model_dump(include={'stages', 'fallback_model', 'review_briefs'}))}
 
-    def validate_cloud(self):
+    def validate_start(self):
+        if self.google_client_id and not self.access_code.get_secret_value():
+            raise RuntimeError("GOOGLE_OAUTH_CLIENT_ID requires DSS_ACCESS_CODE (it keys the session cookie)")
         if self.cloud_service:
             if len(self.access_code.get_secret_value()) < 12:
                 raise RuntimeError("Cloud Run requires DSS_ACCESS_CODE of at least 12 characters")
