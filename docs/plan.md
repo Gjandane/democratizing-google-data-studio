@@ -136,7 +136,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - If: a secret or forbidden path shows up in history, or origin/main isn't an ancestor of HEAD -> STOP and report the commit and file; never rewrite history or force-push.
 
 ## Phase 4: Cloud Run
-- [ ] 4.1 Dockerfile and deploy to `dss-frontend`
+- [!] 4.1 Dockerfile and deploy to `dss-frontend`
   - Goal: a root `Dockerfile` that builds the frontend and runs the backend on `$PORT`, and `deploy/deploy.sh` that sets up the GCP resources idempotently and deploys service `dss-frontend` in asia-southeast1 per contracts/conventions.md#Cloud deployment, replacing its static-frontend revision so the submitted URL serves the full app.
   - Files: Dockerfile, .dockerignore, .gcloudignore, deploy/deploy.sh, deploy/README.md
   - Depends on: 3.2

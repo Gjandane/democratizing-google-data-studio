@@ -601,3 +601,17 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none
 - Left open: P3 a `.git` file's gitdir target isn't read - integration/check_repo.py; P3 diff header split on " b/" can misname a path (fails safe) - integration/check_repo.py; P3 inline `# comment` after an unquoted .env value defeats the value match - integration/check_repo.py; manual GitHub README render check for the user.
 - Next: Task 4.1 Dockerfile and deploy to `dss-frontend`.
+
+## 2026-10-29: Task 4.1 Dockerfile and deploy to `dss-frontend`
+- Status: blocked
+- Plan check: off
+- What changed: nothing committed. Built Dockerfile, .dockerignore, .gcloudignore (allowlist: backend/, frontend/, contracts/), deploy/deploy.sh, deploy/README.md; set aside in `git stash` "blueprint: task 4.1 failed attempt 2026-10-29 05:26". Root .env now has a generated DSS_ACCESS_CODE (20) and DSS_AGENT_TOKEN (40), never printed.
+- Checks: `gcloud meta list-files-for-upload` 478 files, none under .env/data/.venv/node_modules/deck/.blueprint; deploy.sh vs a stub gcloud: dry-run exit 0, 0 secret hits, guard refuses wrong number/URL, short code/token refused, real mode pipes secrets on stdin, rerun skips existing; Test (all) check_contracts.py PASS 13/13. Real gcloud not run (reauth pending).
+- Decisions: build SA = `<number>-compute@` passed as `--build-service-account`; `--clear-volumes`/`--clear-volume-mounts` before add (gcloud removes before adding); `--command= --args=` reset to image CMD; a changed .env secret adds a version.
+- Tried and failed: none
+- Gotchas: gcloud reauth blocks non-interactive runs (Known gotcha); no Docker here, the image first builds in Cloud Build.
+- Left open: rollback revision name in deploy/README.md is `<STATIC_REVISION>`.
+- Blocked because: (b) the user wants Google sign-in on the hosted link (IAP or in-app) instead of the access code; IAP is a program non-goal and in-app sign-in changes backend, frontend and contracts/api.md Access.
+- Question: Replace the hosted access code with Google sign-in, IAP on Cloud Run or in-app Google OAuth, and who may sign in (allowlist or any Google account)?
+- Options: A IAP on dss-frontend (deploy flags + allowlisted judge emails; backend trusts IAP headers or keeps the code) / B in-app Google OAuth (backend + frontend tasks, contract change) / Recommend: A, least code; needs judges' emails or a domain.
+- Next: architect rules at the program root, then Task 4.1 resumes from the stash.
