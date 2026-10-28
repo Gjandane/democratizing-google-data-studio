@@ -559,6 +559,7 @@ def recreate_build(blueprint_api, monkeypatch, matching=True, data=RECREATE, syn
     if not designed:
         monkeypatch.setattr(app.state.settings, 'defaults', app.state.settings.defaults.model_copy(update={'designed_pages': False}))
     build = SimpleNamespace(client=client, app=app, bid=bid, folder=folder, llm=llm, value=value, context=context, data=data,
+                            monkeypatch=monkeypatch,
                             vision=Capture(response=output(), requests=[]), extraction=None)
     from test_reference_brief import BriefLLM
     from test_designer import ReferenceHTMLLLM
@@ -581,6 +582,47 @@ def approved_static_analysis():
         items=[item], note='', allowed_types=[], issues=[]).model_dump()
 
 
+def saved_image(folder, image_id):
+    """Transitional: a saved fixture's reference image as references.image_entry records it (size and digest),
+    written beside the set, so the blueprint planner and the brief can attach it (26.4)."""
+    import hashlib
+    from test_references import png
+    content = png()
+    (folder / 'reference_img_000000000000.png').write_bytes(content)
+    return {'id': image_id, 'name': 'reference.png', 'file': 'reference_img_000000000000.png', 'mime_type': 'image/png',
+            'width': 1200, 'height': 900, 'bytes': len(content), 'sha256': hashlib.sha256(content).hexdigest()}
+
+
+NOTES = {'palette_notes': '', 'type_notes': '', 'spacing_notes': ''}
+
+
+def legacy_observation_inputs(monkeypatch, folder):
+    """Exercise the old helpers explicitly until their deletion in 26.5. Real approved analyses
+    ignore old observations; these old-path regression tests supply a legacy snapshot instead."""
+    from dss.spec import requirements as req
+    original = req.inputs
+    reference_id = req.references.load(folder)['id']
+
+    def legacy(db, build_id, current):
+        snapshot = original(db, build_id, current)
+        if not (reference := snapshot.get('reference')) or reference['id'] != reference_id or reference['mode'] != 'recreate':
+            return snapshot
+        reference = {k: v for k, v in reference.items() if k != 'analysis'}
+        snapshot['reference'] = reference
+        rid = reference['id']
+        if reference.get('instructions'):
+            snapshot['incoming'].append(req.Source(id=rid + ':instructions', kind='reference',
+                text=reference['instructions'], reference_id=rid).model_dump())
+        for item in reference['interpretation']['items']:
+            if item['kind'] in ('chart', 'control', 'unknown') or item.get('metric_label'):
+                snapshot['incoming'].append(req.Source(id=rid + ':' + item['id'], kind='image',
+                    text=json.dumps(item, ensure_ascii=False), reference_id=rid,
+                    image_id=reference['images'][0]['id'], item_id=item['id']).model_dump())
+        return snapshot
+
+    monkeypatch.setattr(req, 'inputs', legacy)
+
+
 def seed_observations(build):
     """Transitional (26.2-26.4): uploads now commit a reference analysis and no observations, while
     the observation path these tests exercise still exists; write the fixture's observations into
@@ -594,6 +636,7 @@ def seed_observations(build):
         {k: record['interpretation'][k] for k in ('palette_notes', 'type_notes', 'spacing_notes')}, observed).model_dump()
     record['analysis'] = approved_static_analysis()
     (build.folder / references.SET_FILE).write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
+    legacy_observation_inputs(build.monkeypatch, build.folder)
 
 
 def upload_recreate(build, instructions=''):
@@ -1116,12 +1159,11 @@ def saved_year_build(blueprint_api, monkeypatch, case, data=None):
     ledger = req.Ledger.model_validate(data['requirements'])
     image = next(r.source for r in ledger.requirements if r.source.kind == 'image')
     ref = {'id': image.reference_id, 'mode': 'recreate', 'instructions': data['instructions'], 'summary': 'Saved reference',
-           'images': [{'id': image.image_id, 'name': 'reference.png', 'file': 'reference_img_000000000000.png',
-                       'mime_type': 'image/png', 'width': 1200, 'height': 900}],
-           'interpretation': {'mode': 'recreate', 'items': data['items'], 'aspect_ratio': 1.3333},
+           'images': [saved_image(folder, image.image_id)],
+           'interpretation': {'mode': 'recreate', 'items': data['items'], 'aspect_ratio': 1.3333, **NOTES},
            'analysis': approved_static_analysis()}
     (folder / 'references.json').write_text(json.dumps(ref), encoding='utf-8')
-    (folder / 'reference_img_000000000000.png').write_bytes(png())
+    legacy_observation_inputs(monkeypatch, folder)
     # Identity pseudonymization invalidates the old hashes. Rebind extracted
     # evidence to these current inputs, recheck it in code, and replay ONLY the
     # recorded approved drop through the real decision gate.
@@ -2209,3 +2251,305 @@ def test_recipe_13_types_leave_older_prototypes_unchanged():
     golden = DashboardSpec.model_validate_json(Path('tests/data/golden_spec.json').read_text(encoding='utf-8'))
     assert tuple(sha256(render(golden, layer=layer).encode()).hexdigest() for layer in (None, 'decoration')) == GOLDEN_PROTOTYPE
     assert 'fixed_size_list' not in render(golden) and 'fixed_size_list' not in render(designed_spec())
+
+
+# Task 26.4 (architecture.md#Reference analysis and approval gate): Argon plans from the image plus the
+# approved items; the electricity split is the 26.2 fixture's (bar, area, region list native; the rest static).
+NATIVE_ROWS = {
+    'r3': {'type': 'fixed_size_list', 'label': 'Region Selector', 'dimensions': ['region'], 'metrics': [],
+           'date_dimension': None, 'breakdown': None, 'sort': None, 'options': {}},
+    'r6': {'type': 'area', 'label': 'Rural and urban access by country', 'dimensions': [], 'date_dimension': 'year',
+           'metrics': [{'field': 'urban_pct', 'agg': 'avg'}, {'field': 'rural_pct', 'agg': 'avg'}],
+           'breakdown': None, 'sort': None, 'options': {}},
+    'r8': {'type': 'bar', 'label': 'People without access to electricity', 'dimensions': ['year'], 'date_dimension': None,
+           'metrics': [{'field': 'people_without_access', 'agg': 'sum'}], 'breakdown': None, 'sort': None, 'options': {}}}
+
+
+def item_row(item, component=None, question_id=None):
+    return {'question_id': question_id, 'section_id': 's1', 'page': 1, 'note': '', 'status': 'ok', 'issue_ids': [],
+            'reference_item': item, 'component': copy.deepcopy(component or NATIVE_ROWS[item])}
+
+
+def items_build(blueprint_api, monkeypatch, items=('r3', 'r6', 'r8'), extra=(), replies=None, images=2):
+    """The electricity build with the 26.2 analysis committed (`images` reference images) and approved through
+    the gate; the planner's draft adds rows naming `items` (plus `extra` rows) to the release build's rows."""
+    from types import SimpleNamespace
+    from dss.db import now
+    from dss.spec import references
+    from dss.spec.models import TYPES
+    from test_reference_gate import FIXTURE, approve
+    from test_references import png
+    monkeypatch.setenv('DSS_ALLOWED_TYPES', ','.join(TYPES))
+    build = recreate_build(blueprint_api, monkeypatch, data=ELECTRICITY, synthetic=True, designed=False)
+    bq = blueprint_api[5]
+    bq.dry_run = lambda sql: bq.sql.append(sql) or [SimpleNamespace(name='year_year', field_type='DATE', mode='NULLABLE')]
+    reply = FIXTURE['reply']
+    files = [{'id': f'img_{n:012d}', 'name': f'electricity-{n}.png', 'file': f'reference_img_{n:012d}.png',
+              'mime_type': 'image/png', 'width': 160 + n, 'height': 100, 'content': png(160 + n, 100)} for n in range(images)]
+    interpretation = references.interpret('recreate', 160, 100, {k: reply[k] for k in ('palette_notes', 'type_notes', 'spacing_notes')}, [])
+    analysis = references.analyze([references.AnalysisAnswer.model_validate(i) for i in reply['items']], list(TYPES))
+    record = {'id': 'ref_0123456789ab', 'mode': 'recreate', 'instructions': FIXTURE['instructions'],
+              'images': [references.image_entry(f) for f in files],
+              'summary': references.summary(interpretation, reply['style']['palette'], images, analysis),
+              'style': reply['style'], 'interpretation': interpretation.model_dump(), 'analysis': analysis.model_dump(),
+              'created_at': now()}
+    (build.folder / 'docs').mkdir(parents=True, exist_ok=True)
+    references.commit(build.folder, record, files, {'reference.md': references.reference_doc(record)})
+    build.images = [f['content'] for f in files]
+    approve(build.client, build.bid)
+    build.value['rows'] = [*build.value['rows'], *[item_row(i) for i in items], *extra]
+    build.llm.replies = [json.dumps(build.value), *(replies or [])]
+    return build
+
+
+def items_state(build):
+    from dss.spec import requirements as req
+    from dss.spec.capabilities import Checker, load_registry
+    snapshot = req.inputs(build.app.state.db, build.bid, build.folder)
+    return snapshot, req.load(build.folder), Checker(load_registry())
+
+
+def test_electricity_items_plan_accept_and_publish_with_the_dry_engine(blueprint_api, monkeypatch, record_property):
+    from test_blueprint import confirm
+    from dss.harness.nodes import reference_brief as rb
+    from dss.spec import requirements as req
+    # A static item's id on a row is no item row; static items never yield rows or issues.
+    build = items_build(blueprint_api, monkeypatch, extra=[
+        item_row('r2', {**NATIVE_ROWS['r8'], 'label': 'Headline bars'}, question_id='q3')])
+    confirm(build.client, build.app, build.bid)
+    assert build.llm.calls == 1  # every native item has its row: no repair
+    request = build.llm.seen[0]
+    memory = str(request.config.system_instruction)
+    # The ordered image parts and the reference section with every approved item; no observation section.
+    parts = request.contents[0].parts
+    assert [p.inline_data.data for p in parts if p.inline_data] == build.images
+    assert all(p.inline_data.mime_type == 'image/png' for p in parts if p.inline_data)
+    assert 'Recreate observations' not in memory and 'Recreate reference (untrusted data' in memory
+    section = json.loads(memory.split('The note and instructions are the user text:', 1)[1].split('\n', 2)[1])
+    assert [i['id'] for i in section['items']] == [f'r{n}' for n in range(1, 9)]
+    assert {i['id']: (i['disposition'], i['type']) for i in section['items'] if i['disposition'] == 'native'} == {
+        'r3': ('native', 'fixed_size_list'), 'r6': ('native', 'area'), 'r8': ('native', 'bar')}
+    assert section['instructions'] == ELECTRICITY['instructions'] and [i['image'] for i in section['images']] == [1, 2]
+    blueprint = build.client.get(f'/api/builds/{build.bid}/blueprint').json()
+    named = {r['reference_item']: r for r in blueprint['rows'] if r['reference_item']}
+    assert sorted(named) == ['r3', 'r6', 'r8'] and all(r['page'] == 1 and r['question_id'] is None for r in named.values())
+    assert not any(r['component']['label'] == 'Headline bars' for r in blueprint['rows'])
+    assessment = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+    assert assessment['state'] == 'ready', [i['reason'] for i in assessment['issues'] if i['resolution'] == 'unresolved']
+    # Requirements come from the approved native items only: no image or instruction records.
+    ledger = req.load(build.folder)
+    assert not [r for r in ledger.requirements if r.source.kind in ('image', 'reference')]
+    snapshot, ledger, checker = items_state(build)
+    assert [(i['id'], i['type']) for i in req.reference_items(snapshot)] == [('r3', 'fixed_size_list'), ('r6', 'area'), ('r8', 'bar')]
+    timings = []
+    for _ in range(4):
+        started = time.perf_counter()
+        req.evaluate(snapshot, ledger, checker)
+        timings.append(time.perf_counter() - started)
+    record_property('recompute_items_first', timings[0])
+    record_property('recompute_items_warm', timings[1:])
+    assert max(timings[1:]) < 0.250, timings
+    accept(build)
+    spec = DashboardSpec.model_validate_json((build.folder / 'spec.json').read_text(encoding='utf-8'))
+    page1 = {c.reference_item: c for c in spec.pages[0].components if c.reference_item}
+    assert {k: c.type for k, c in page1.items()} == {'r3': 'fixed_size_list', 'r6': 'area', 'r8': 'bar'}
+    assert not [c for p in spec.pages[1:] for c in p.components if c.reference_item]
+    snapshot, ledger, checker = items_state(build)
+    assert req.coverage_errors(snapshot, ledger, checker) == []
+    # The brief report: native items name their slots; static items are art with their boxes.
+    report = rb.report(snapshot, ledger, checker)[1]['reference_items']
+    assert {i['id']: i['slots'] for i in report['native']} == {k: [c.id] for k, c in page1.items()}
+    assert [i['id'] for i in report['static']] == ['r1', 'r2', 'r4', 'r5', 'r7']
+    assert all(set(i) == {'id', 'kind', 'label', 'box', 'shows'} for i in report['static'])
+    assert next(i for i in report['static'] if i['id'] == 'r4')['kind'] == 'image'
+    executes(build.client, build.app, build.bid, monkeypatch)
+    recipe = (build.folder / 'recipe.jsonl').read_text(encoding='utf-8')
+    assert 'reference_item' not in recipe and '"fixed_size_list"' in recipe
+
+
+def test_item_without_row_gets_the_one_repair(blueprint_api, monkeypatch):
+    from test_blueprint import confirm
+    repair = {'rows': [item_row('r8')]}
+    build = items_build(blueprint_api, monkeypatch, items=('r3', 'r6'), replies=[json.dumps(repair)])
+    confirm(build.client, build.app, build.bid)
+    assert build.llm.calls == 2
+    text = str(build.llm.seen[1].config.system_instruction)
+    assert 'Reference item r8' in text and 'component type bar' in text
+    blueprint = build.client.get(f'/api/builds/{build.bid}/blueprint').json()
+    assert sorted(r['reference_item'] for r in blueprint['rows'] if r['reference_item']) == ['r3', 'r6', 'r8']
+    assert build.client.get(f'/api/builds/{build.bid}/feasibility').json()['state'] == 'ready'
+
+
+def test_unfulfilled_item_is_an_issue_whose_drop_keeps_it_static(blueprint_api, monkeypatch):
+    from test_blueprint import confirm
+    from dss.harness.nodes import reference_brief as rb
+    from dss.spec import requirements as req
+    build = items_build(blueprint_api, monkeypatch, items=('r3', 'r6'), replies=[json.dumps({'rows': []})])
+    confirm(build.client, build.app, build.bid)
+    assert build.llm.calls == 2  # the draft and the one row repair, no more
+    assessment = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+    pending = [i for i in assessment['issues'] if i['resolution'] == 'unresolved']
+    assert assessment['state'] == 'blocked' and len(pending) == 1, pending
+    [issue] = pending
+    assert issue['status'] == 'needs_clarification' and 'r8' in issue['reason'] and 'bar' in issue['reason']
+    # Code-built alternatives only: the item's type on an existing row's fields, as a page-1 row naming it.
+    for alternative in issue['alternatives']:
+        assert alternative['label'].startswith('Show People without access to electricity as a bar')
+    response = build.client.post(f'/api/builds/{build.bid}/blueprint/accept')
+    assert response.status_code == 409 and response.json()['error']['code'] == 'feasibility_blocked'
+    # The blocked accept re-saves the assessment (blueprint.preflight); decide on the current one.
+    assessment = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+    [issue] = [i for i in assessment['issues'] if i['resolution'] == 'unresolved']
+    dropped = build.client.post(f'/api/builds/{build.bid}/feasibility/decisions', json={
+        'assessment_id': assessment['id'], 'decisions': [{'issue_id': issue['id'], 'action': 'drop', 'alternative_id': None}]})
+    assert dropped.status_code == 200, dropped.text
+    after = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+    assert after['state'] == 'ready', [i['reason'] for i in after['issues'] if i['resolution'] == 'unresolved']
+    assert {i['id']: i['resolution'] for i in after['issues']}[issue['id']] == 'dropped'
+    assert "r8 'People without access to electricity' kept as static art (dropped)" in (
+        build.folder / 'docs/feasibility.md').read_text(encoding='utf-8')
+    accept(build)
+    snapshot, ledger, checker = items_state(build)
+    assert req.coverage_errors(snapshot, ledger, checker) == []
+    report = rb.report(snapshot, ledger, checker)[1]['reference_items']
+    assert [i['id'] for i in report['native']] == ['r3', 'r6']
+    assert 'r8' in [i['id'] for i in report['static']]
+    spec = DashboardSpec.model_validate_json((build.folder / 'spec.json').read_text(encoding='utf-8'))
+    assert 'r8' not in {c.reference_item for p in spec.pages for c in p.components}
+
+
+def test_unfulfilled_item_alternative_adds_its_row(blueprint_api, monkeypatch):
+    from test_blueprint import confirm
+    build = items_build(blueprint_api, monkeypatch, items=('r3', 'r6'), replies=[json.dumps({'rows': []})])
+    confirm(build.client, build.app, build.bid)
+    assessment = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+    [issue] = [i for i in assessment['issues'] if i['resolution'] == 'unresolved']
+    assert issue['alternatives'], issue
+    chosen = build.client.post(f'/api/builds/{build.bid}/feasibility/decisions', json={'assessment_id': assessment['id'],
+        'decisions': [{'issue_id': issue['id'], 'action': 'accept_alternative', 'alternative_id': issue['alternatives'][0]['id']}]})
+    assert chosen.status_code == 200, chosen.text
+    assert build.client.get(f'/api/builds/{build.bid}/feasibility').json()['state'] == 'ready'
+    rows = build.client.get(f'/api/builds/{build.bid}/blueprint').json()['rows']
+    [row] = [r for r in rows if r['reference_item'] == 'r8']
+    assert row['page'] == 1 and row['component']['type'] == 'bar'
+    accept(build)
+
+
+def test_publish_coverage_fails_a_candidate_whose_item_row_was_retyped(blueprint_api, monkeypatch):
+    from dss.spec import feasibility
+    from test_blueprint import confirm
+    from test_context_node import wait
+    retyped = item_row('r8', {**NATIVE_ROWS['r8'], 'type': 'table'})
+    build = items_build(blueprint_api, monkeypatch, items=('r3', 'r6'), extra=[retyped])
+    # Without the planning check, only publish coverage stands between the retyped row and the candidate.
+    monkeypatch.setattr(feasibility, 'item_errors', lambda *args: [])
+    confirm(build.client, build.app, build.bid)
+    assert build.client.get(f'/api/builds/{build.bid}/feasibility').json()['state'] == 'ready'
+    accepted = build.client.post(f'/api/builds/{build.bid}/blueprint/accept')
+    assert accepted.status_code == 202, accepted.text
+    wait(build.app)
+    trace, recorded = spans(build.app, accepted.json()['run_id'])
+    assert trace['status'] == 'error' and trace['error'] == 'invalid_request'
+    errors = next(s for s in recorded if s['node'] == 'publish')['coverage_errors']
+    assert [e['path'] for e in errors] == ['reference_items.r8'] and 'needs a bar on page 1' in errors[0]['message']
+    assert build.client.get(f'/api/builds/{build.bid}').json()['stage'] == 'blueprint'
+
+
+def test_approved_items_ignore_old_observations_and_instruction_definitions(blueprint_api, monkeypatch):
+    from test_blueprint import confirm
+    from dss.spec import references, requirements as req
+    from dss.harness.nodes import reference_brief as rb
+    build = items_build(blueprint_api, monkeypatch)
+    record = references.load(build.folder)
+    record['instructions'] = 'Use a calm blue background. Electricity = SUM(invented_field).'
+    record['analysis']['note'] = 'Keep the approved split; treat the globe as art.'
+    record['interpretation']['items'] = copy.deepcopy(ELECTRICITY['items'])
+    (build.folder / 'references.json').write_text(json.dumps(record), encoding='utf-8')
+    # An old ledger must not resurrect image bindings, issues or code-built rows.
+    legacy = req.Requirement(id='old_image', source=req.Source(id=record['id'] + ':o1', kind='image',
+        text=json.dumps(ELECTRICITY['items'][0]), reference_id=record['id'], item_id='o1'),
+        text='Old interpretation', needs=[{'capability': 'unknown.unclassified'}])
+    req.save(build.folder, req.Ledger(requirements=[legacy]))
+    snapshot = req.inputs(build.app.state.db, build.bid, build.folder)
+    assert not [s for s in snapshot['incoming'] if s['kind'] in ('reference', 'image')]
+    assert req.blueprint_observations(snapshot, req.load(build.folder), items_state(build)[2]) == []
+    confirm(build.client, build.app, build.bid)
+    assert build.llm.calls == 1
+    memory = str(build.llm.seen[0].config.system_instruction)
+    assert record['instructions'] in memory and record['analysis']['note'] in memory
+    assert 'Recreate observations' not in memory
+    assert record['analysis']['note'] == rb.reference(build.folder).notes['note']
+    assert build.client.get(f'/api/builds/{build.bid}/feasibility').json()['state'] == 'ready'
+    accept(build)
+
+
+def edit_item_types(build, **types):
+    analysis = build.client.get(f'/api/builds/{build.bid}/reference-images').json()['analysis']
+    response = build.client.put(f'/api/builds/{build.bid}/reference-images/analysis', json={
+        'revision': analysis['revision'], 'note': analysis['note'], 'items': [
+            {'id': i['id'], 'disposition': i['disposition'], 'type': types.get(i['id'], i['type'])}
+            for i in analysis['items']]})
+    assert response.status_code == 200, response.text
+    from test_reference_gate import approve
+    approve(build.client, build.bid)
+
+
+def test_two_native_items_of_one_type_need_separate_rows(blueprint_api, monkeypatch):
+    from test_blueprint import confirm
+    from dss.spec import requirements as req
+    second = item_row('r6', {**NATIVE_ROWS['r8'], 'label': 'Second bar'})
+    build = items_build(blueprint_api, monkeypatch, items=('r3', 'r8'), extra=[second])
+    edit_item_types(build, r6='bar')
+    confirm(build.client, build.app, build.bid)
+    assert build.llm.calls == 1
+    assert build.client.get(f'/api/builds/{build.bid}/feasibility').json()['state'] == 'ready'
+    accept(build)
+    snapshot, ledger, checker = items_state(build)
+    slots = req.item_components(snapshot, ledger, checker)
+    assert len(slots['r6']) == len(slots['r8']) == 1 and slots['r6'] != slots['r8']
+
+
+def test_unfeedable_native_item_has_no_invented_field_alternative(blueprint_api, monkeypatch):
+    from test_blueprint import confirm, choose
+    build = items_build(blueprint_api, monkeypatch, items=('r3', 'r6'), replies=[json.dumps({'rows': []})])
+    edit_item_types(build, r8='geo_map')
+    confirm(build.client, build.app, build.bid)
+    assert build.llm.calls == 2
+    assessment = build.client.get(f'/api/builds/{build.bid}/feasibility').json()
+    [issue] = [i for i in assessment['issues'] if i['resolution'] == 'unresolved']
+    assert issue['status'] == 'needs_clarification' and issue['alternatives'] == []
+    response = choose(build.client, build.bid, assessment, issue)
+    assert response.status_code == 200 and response.json()['state'] == 'ready', response.text
+
+
+def test_zero_native_items_plan_and_publish_as_art_plus_outline_rows(blueprint_api, monkeypatch):
+    from test_blueprint import confirm
+    from test_reference_gate import approve
+    from dss.spec import requirements as req
+    from dss.harness.nodes import reference_brief as rb
+    build = items_build(blueprint_api, monkeypatch, items=())
+    analysis = build.client.get(f'/api/builds/{build.bid}/reference-images').json()['analysis']
+    response = build.client.put(f'/api/builds/{build.bid}/reference-images/analysis', json={
+        'revision': analysis['revision'], 'note': '', 'items': [
+            {'id': i['id'], 'disposition': 'static', 'type': None} for i in analysis['items']]})
+    assert response.status_code == 200, response.text
+    approve(build.client, build.bid)
+    confirm(build.client, build.app, build.bid)
+    assert build.llm.calls == 1
+    assert build.client.get(f'/api/builds/{build.bid}/feasibility').json()['state'] == 'ready'
+    accept(build)
+    snapshot, ledger, checker = items_state(build)
+    assert req.reference_items(snapshot) == [] and req.coverage_errors(snapshot, ledger, checker) == []
+    split = rb.report(snapshot, ledger, checker)[1]['reference_items']
+    assert split['native'] == [] and len(split['static']) == 8
+
+
+def test_item_repair_can_also_answer_a_selected_question(blueprint_api, monkeypatch):
+    from test_blueprint import confirm
+    build = items_build(blueprint_api, monkeypatch, items=('r3', 'r6'),
+        replies=[json.dumps({'rows': [item_row('r8', question_id='q3')]})])
+    confirm(build.client, build.app, build.bid)
+    assert build.llm.calls == 2
+    rows = build.client.get(f'/api/builds/{build.bid}/blueprint').json()['rows']
+    assert any(r['reference_item'] == 'r8' and r['question_id'] == 'q3' and r['page'] == 1 for r in rows)
+    assert build.client.get(f'/api/builds/{build.bid}/feasibility').json()['state'] == 'ready'

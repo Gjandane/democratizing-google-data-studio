@@ -279,9 +279,10 @@ def native_year_inputs(blueprint_api):
         columns = json.loads(conn.execute('SELECT columns_json FROM sources WHERE id=?', (sid,)).fetchone()[0])
         columns.append(dict(name='year', type='date', bq_type='DATE', bucket_start='year', null_pct=0, sample=[]))
         conn.execute('UPDATE sources SET columns_json=? WHERE id=?', (json.dumps(columns), sid))
-    from test_render import approved_static_analysis
+    from test_render import NOTES, approved_static_analysis, saved_image
     (folder / 'references.json').write_text(json.dumps(dict(id='ref_native', mode='recreate', instructions='',
-        images=[], interpretation={'items': []}, analysis=approved_static_analysis())), encoding='utf-8')
+        summary='Saved reference', images=[saved_image(folder, 'img_native')], interpretation={'items': [], **NOTES},
+        analysis=approved_static_analysis())), encoding='utf-8')
     row = next(r for r in value['rows'] if r['question_id'] == 'q4')
     row['component'].update(type='time_series', dimensions=[], date_dimension='year_trunc',
                             sort={'field': 'year_trunc', 'order': 'asc'})
@@ -686,6 +687,52 @@ def test_compact_inputs_exclude_profile_payloads_and_join_facts():
     memory = blueprint_context(Context.model_validate(fixture('context')), metadata, [], {}, node.catalog_summary(), [])
     assert memory.node == 'blueprint' and BUDGETS['blueprint'] == 131072  # change 2026-10-26
     assert all(s.kind != 'history' for s in memory.sections)
+
+
+async def test_item_request_overflow_keeps_all_items_and_ordered_images():
+    from google.adk.models.llm_request import LlmRequest
+    from google.genai import types
+    reference = {'items': [{'id': 'r1', 'disposition': 'native', 'type': 'bar'},
+                           {'id': 'r2', 'disposition': 'static', 'type': None}],
+                 'note': 'Keep the split', 'instructions': 'Use navy'}
+    memory = blueprint_context(Context.model_validate(fixture('context')), [], [], {}, [], [], reference=reference)
+    parts = [types.Part(text='Draft'), *[types.Part(inline_data=types.Blob(mime_type='image/png', data=data))
+                                       for data in (b'first', b'second')]]
+    request = LlmRequest(model='fake', config=types.GenerateContentConfig(system_instruction=str(memory)),
+                         contents=[types.Content(role='user', parts=parts)])
+    class Counted(ContextLLM):
+        async def count_request_tokens(self, sent):
+            assert [p.inline_data.data for p in sent.contents[0].parts if p.inline_data] == [b'first', b'second']
+            assert json.dumps(reference, separators=(',', ':')) in sent.config.system_instruction
+            return 200000
+    with pytest.raises(RunError) as error:
+        await fit_request(memory, request, Counted(), {})
+    assert error.value.detail['reason'] == 'over_budget'
+
+
+def test_item_rows_stay_on_page_one_and_static_items_never_get_rows():
+    from dss.artifacts.models import BlueprintRow
+    row = BlueprintRow.model_validate(fixture('blueprint')['rows'][0])
+    row.question_id, row.section_id, row.reference_item = 'q_later', 's2', 'r1'
+    selected = {'q_later': {'section_id': 's2'}}
+    items = {'r1': {'disposition': 'native'}, 'r2': {'disposition': 'static'}}
+    [shared] = node.normalize_rows([row], selected, {'s1': 1, 's2': 2}, items)
+    assert shared.page == 1 and shared.section_id == 's2' and shared.question_id == 'q_later'
+    row.question_id, row.section_id = None, 'invented'
+    [standalone] = node.normalize_rows([row], selected, {'s1': 1, 's2': 2}, items)
+    assert standalone.page == 1 and standalone.section_id == 's1'
+    row.reference_item = 'r2'
+    assert node.normalize_rows([row], selected, {'s1': 1, 's2': 2}, items) == []
+
+
+@pytest.mark.parametrize('reference', [None, {'mode': 'style', 'analysis': None}])
+def test_style_and_no_reference_planner_request_fingerprints_stay_unchanged(tmp_path, reference):
+    import hashlib
+    section, parts = node.reference_section(tmp_path, {'reference': reference})
+    assert section is None and parts == []
+    request = blueprint_context(Context.model_validate(fixture('context')), [], [], {}, [], [], reference=section)
+    # Captured from HEAD before 26.4, with these same protected metadata inputs.
+    assert hashlib.sha256(request.encode()).hexdigest() == '52c640073b9f22910117aa8d2d153bd839a28a86d29f2f954f9d8c89296a6d02'
 
 
 def test_catalog_summary_dropdown_slots_match_feasibility():

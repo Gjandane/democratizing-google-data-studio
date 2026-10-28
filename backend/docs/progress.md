@@ -2294,3 +2294,15 @@ assert min(timings) < .1
 - Gotchas: none beyond AGENTS.md
 - Left open: P3 Re-approving after an edit makes a `stale` Blueprint acceptable without a replan (`confirmed()` only refuses `missing`); 26.4's item coverage may close it - src/dss/artifacts/state.py. P3 No test that the gate holds on a new version (copy_inputs copies references.json whole) - tests/test_reference_gate.py
 - Next: Task 26.4. Start by `status --task 26.4`; read requirements.inputs (still reads observations) and the native_planning context.
+
+## 2026-10-28: Task 26.4 Argon planning and brief from the image and approved items
+- Status: partial
+- Plan check: off
+- What changed: Salvaged planner images/items/note, item repair/issues/drop, coverage, brief slots/static boxes. Instructions/old observations cannot supply bindings. User requested handoff.
+- Checks: Focused regressions 16 passed; legacy flows 3 + 5 passed (.blueprint/qa/task-26.4-* logs/XML). Warm recomputation 17-18 ms; syntax 136 files and diff --check passed. Broad checks interrupted; full suite/reviewer pending.
+- Decisions: Retain Component.reference_item/auto_layout provenance (outside Files). Legacy helpers remain until 26.5; legacy_observation_inputs supplies test-only legacy snapshots. Real recreate snapshots include analysis, even null.
+- Digest: requirements.reference_items(snapshot), item_components(snapshot,ledger,checker); feasibility.item_errors/dropped_items; planner image parts; brief reference_items={native,static}; legacy_observation_inputs is test-only until 26.5.
+- Tried and failed: Updated obsolete incoming-image oracle. Interrupted write corrupted test_blueprint.py; reconstructed edits; syntax/NUL scan passed.
+- Gotchas: Normal process access required; see AGENTS.md.
+- Left open: Required checks/reviewer; task remains in progress.
+- Next: Resume 26.4: status/diff, Done-when, full pytest, reviewer, progress, done, final commit. Stop before 26.5.

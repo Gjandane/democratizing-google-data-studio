@@ -107,17 +107,24 @@ def derived_fields(context, extra, retained=()):
     return list(fields.values())
 
 
-def normalize_rows(rows, selected, pages):
+def normalize_rows(rows, selected, pages, items=None):
+    """Approved items only; static items never get rows. Item rows always sit on page 1,
+    and a question-less item row belongs to the first selected section."""
+    items = items or {}
     result = []
     for row in rows:
-        section = selected[row.question_id]['section_id'] if row.question_id in selected else row.section_id
+        if row.reference_item in items and items[row.reference_item]['disposition'] == 'static':
+            continue
+        item = row.reference_item if row.reference_item in items else None
+        section = (selected[row.question_id]['section_id'] if row.question_id in selected else
+                   next(iter(pages), row.section_id) if item and row.question_id is None else row.section_id)
         if section not in pages or (row.question_id is not None and row.question_id not in selected):
             continue  # model cannot resurrect a deselected or invent a selected question
         # Leaked list/quote syntax keeps the first clean fragment; none left -> the row repair.
         label = label_text(row.component.label)
         component = row.component if label is None else row.component.model_copy(update={'label': label})
-        result.append(row.model_copy(update={'section_id': section, 'page': pages[section], 'component': component,
-                                            'status': 'ok', 'issue_ids': []}, deep=True))
+        result.append(row.model_copy(update={'section_id': section, 'page': 1 if item else pages[section], 'component': component,
+                                            'status': 'ok', 'issue_ids': [], 'reference_item': item}, deep=True))
     return result
 
 
@@ -137,6 +144,24 @@ def observations(db, build_id, folder):
     found = req.blueprint_observations(snapshot, req.load(folder), Checker(load_registry()))
     kpis = snapshot.get('confirmed_kpis')
     return [(req.observation_meaning(*o, kpis=kpis), req.observation_meaning(*o, labels=False, kpis=kpis)) for o in found]
+
+
+def reference_section(folder, snapshot):
+    """(compact reference section, ordered image parts) for a recreate set with an approved analysis
+    (architecture.md#Reference analysis and approval gate), else (None, []). Every approved item is listed
+    (static ones so the planner knows what is art), with the note and the instructions as untrusted text."""
+    record = snapshot.get('reference') or {}
+    analysis = record.get('analysis') if record.get('mode') == 'recreate' else None
+    if not analysis or analysis.get('state') != 'approved':
+        return None, []
+    from dss.harness.nodes.reference_brief import reference
+    images = reference(folder)  # validated bytes in reference order; missing or damaged refuses
+    items = [{k: item[k] for k in ('id', 'kind', 'label', 'box', 'disposition', 'type', 'shows')} for item in analysis['items']]
+    dropped = feasibility.dropped_items(snapshot, req.load(folder), Checker(load_registry()))
+    items = [{**item, 'disposition': 'static', 'type': None} if item['id'] in dropped else item for item in items]
+    parts = [types.Part(inline_data=types.Blob(mime_type=mime, data=data)) for mime, data in images.images]
+    return {'images': list(images.described), 'items': items, 'note': analysis.get('note') or '',
+            'instructions': record.get('instructions') or ''}, parts
 
 
 def inputs_path(folder):
@@ -228,6 +253,9 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
     metadata, summary = source_metadata(connected), catalog_summary()
     facts = join_facts(metadata)
     observed = observations(harness.db, build_id, folder)
+    snapshot_now = req.inputs(harness.db, build_id, folder)
+    reference, image_parts = reference_section(folder, snapshot_now)
+    items = {i['id']: i for i in reference['items']} if reference else {}
     retained = [f for f in old.derived_fields if f.name not in recorded.get('context_fields', [])] if old and kept_ids else []
     initial_view = ViewDraft(view_sources=old.view_sources if old and kept_ids else
         ViewSources(base=connected[0]['id'], joins=[], union=[]), derived_fields=derived_fields(context, [], retained))
@@ -236,10 +264,10 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                     and any(v['question'] == fingerprints[qid] for qid in selected)]
     if kept_ids and native_dates:
         restored = feasibility.restore_native_dates(Blueprint(revision=1, **initial_view.model_dump(),
-            rows=normalize_rows(kept, selected, pages), view_table=None, assessment_id=None), native_dates)
+            rows=normalize_rows(kept, selected, pages, items), view_table=None, assessment_id=None), native_dates)
         kept = restored.rows
         initial_view = ViewDraft(view_sources=restored.view_sources, derived_fields=restored.derived_fields)
-    state = {'raw': '', 'draft': None, 'view': initial_view, 'rows': normalize_rows(kept, selected, pages),
+    state = {'raw': '', 'draft': None, 'view': initial_view, 'rows': normalize_rows(kept, selected, pages, items),
              'errors': [], 'row_repaired': False, 'sql_repaired': False, 'phase': 'generate', 'failure': None,
              'native_dates': native_dates}
     state['row_view'], state['row_rows'] = initial_view, list(state['rows'])
@@ -260,7 +288,7 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
         if phase == 'row_repair':
             ids = repair_ids()
             request_questions = {qid: selected[qid] for qid in ids if qid in selected}
-            indices = {i for e in state['errors'] if e['repairable'] for i in e['indices']}
+            indices = {i for e in state['errors'] if e['repairable'] for i in e['indices'] + e.get('repair_indices', [])}
             # A page-targeted observation error (feasibility.observation_errors) replaces its page's question rows: show them.
             targeted = {qid for e in state['errors'] if e['repairable'] for qid in e.get('repair_qids', [])}
             repair = {'kind': 'rows', 'errors': state['errors'],
@@ -272,14 +300,15 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                       'view': state['view'].model_dump()}
             schema = ViewDraft
         memory = blueprint_context(context, metadata, list(request_questions.values()), pages, summary, facts,
-            previous_view=state['view'].model_dump(), repair=repair, observations=observed)
+            previous_view=state['view'].model_dump(), repair=repair, observations=observed, reference=reference)
         check_reply(memory, secrets)
         llm_request.config.system_instruction = str(memory)
         llm_request.config.response_mime_type = 'application/json'
         llm_request.config.response_json_schema = provider_schema(schema)
         llm_request.config.max_output_tokens = MAX_OUTPUT_TOKENS
         llm_request.config.thinking_config = types.ThinkingConfig(thinking_level='LOW')
-        llm_request.contents = [types.Content(role='user', parts=[types.Part(text='Return the requested Blueprint draft JSON only.')])]
+        llm_request.contents = [types.Content(role='user', parts=[types.Part(text='Return the requested Blueprint draft JSON only.'),
+                                                                  *image_parts])]
         await fit_request(memory, llm_request, model, trace.spans[-1])
 
     async def after_model(callback_context, llm_response):
@@ -307,7 +336,7 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                     state['view'] = ViewDraft(view_sources=draft.view_sources,
                         derived_fields=derived_fields(context, draft.derived_fields, retained))
                     state['row_view'] = state['view']
-                    state['rows'] += normalize_rows([r for r in draft.rows if r.question_id not in kept_ids], pending, pages)
+                    state['rows'] += normalize_rows([r for r in draft.rows if r.question_id not in kept_ids], pending, pages, items)
                     state['row_rows'] = list(state['rows'])
                 elif state['phase'] == 'row_repair':
                     repaired = RowRepair.model_validate_json(state['raw'])
@@ -316,10 +345,13 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
                     state['view'] = state.get('row_view', state['view'])
                     state['rows'] = list(state.get('row_rows', state['rows']))
                     ids = repair_ids()
-                    indices = {i for e in state['errors'] if e['repairable'] for i in e['indices']
+                    indices = {i for e in state['errors'] if e['repairable'] for i in e['indices'] + e.get('repair_indices', [])
                                if state['rows'][i].question_id is None}
+                    # An unfulfilled reference item takes question-less repair rows that name it.
+                    wanted = {i for e in state['errors'] if e['repairable'] for i in e.get('item_ids', [])}
                     state['rows'] = [r for i, r in enumerate(state['rows']) if r.question_id not in ids and i not in indices] + normalize_rows(
-                        [r for r in repaired.rows if r.question_id in ids or (indices and r.question_id is None)], selected, pages)
+                        [r for r in repaired.rows if r.question_id in ids or r.reference_item in wanted
+                            or (indices and r.question_id is None)], selected, pages, items)
                     state['row_rows'] = list(state['rows'])
                 canonicalize()
                 dirty = [i for i, r in enumerate(state['rows']) if label_text(r.component.label) is None]
@@ -393,7 +425,8 @@ def make_branch(harness, build_id, run_id, payload, model, trace, model_error):
 
     def repair_ids():
         return {qid for e in state['errors'] if e['repairable']
-                for qid in (e['qids'] + e.get('repair_qids', []) + [state['rows'][i].question_id for i in e['indices']])
+                for qid in (e['qids'] + e.get('repair_qids', []) + [state['rows'][i].question_id
+                                                                     for i in e['indices'] + e.get('repair_indices', [])])
                 if qid is not None}
 
     async def check_view(node_input):

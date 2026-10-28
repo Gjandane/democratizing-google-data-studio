@@ -16,6 +16,10 @@ from dss.spec.validate import allowed_types, catalog, label_text
 
 
 def binding(snapshot, checker, target):
+    if target.get('code') == 'reference_item':
+        # An item decision holds while the approved item it names is unchanged (re-upload or re-typing ends it).
+        item = next((i for i in req.reference_items(snapshot) if i['id'] == target['item_id']), None)
+        return req.digest([(snapshot.get('reference') or {}).get('id'), item])
     context = snapshot['context']
     qids = target['qids']
     questions = [q for s in snapshot['outline']['sections'] for q in s['questions']
@@ -39,6 +43,12 @@ def binding(snapshot, checker, target):
 
 def choices(snapshot, ledger, checker):
     return [d for d in ledger.blueprint_decisions if d['binding'] == binding(snapshot, checker, d['target'])]
+
+
+def dropped_items(snapshot, ledger, checker):
+    """Approved native item ids the user's drop keeps as static art."""
+    return {d['target']['item_id'] for d in choices(snapshot, ledger, checker)
+            if d['target'].get('code') == 'reference_item' and d['action'] == 'drop'}
 
 
 def component_errors(component, fields, checker, rules=None):
@@ -141,6 +151,7 @@ def diagnostics(snapshot, ledger, checker, *, observations=None):
             'View sources or join keys are invalid; choose a source or union',
             'needs_data', False, offers)
     kpis = {k.id: k for k in context.kpis}
+    items = {item['id']: item for item in req.reference_items(snapshot)}
     native_dates = snapshot.get('native_dates', []) if (snapshot.get('reference') or {}).get('mode') == 'recreate' else []
     question_keys = {qid: req.digest(dict(id=qid, text=q.text, kpi_refs=q.kpi_refs, section_id=sections[qid],
         definitions=[kpis[ref].model_dump() if ref in kpis else None for ref in q.kpi_refs])) for qid, q in selected.items()}
@@ -232,7 +243,7 @@ def diagnostics(snapshot, ledger, checker, *, observations=None):
         if not 1 <= page <= 5:
             add('page', indices, [], 'Blueprint needs 1-5 pages')
         # A code-added chart is no supporting control; a code-added control still counts.
-        controls = [i for i in indices if bp.rows[i].question_id is None
+        controls = [i for i in indices if bp.rows[i].question_id is None and bp.rows[i].reference_item not in items
                     and not (added(bp.rows[i]) and bp.rows[i].component.type not in CONTROL_TYPES)]
         if len(controls) > 2 or any(bp.rows[i].component.type not in CONTROL_TYPES for i in controls):
             add('controls', controls, [], 'At most two supporting controls are allowed per page')
@@ -256,7 +267,56 @@ def diagnostics(snapshot, ledger, checker, *, observations=None):
             add('sql', list(range(len(bp.rows))), [], error['message'], 'needs_data', False)
     if not source_invalid:
         result.extend(observation_errors(snapshot, ledger, checker, bp, fields, connected, context, rules, observations))
+        result.extend(item_errors(snapshot, ledger, checker, bp, fields, rules, items))
     return result
+
+
+def item_fulfils(row, item, fields, checker, rules):
+    """A Blueprint row that fulfils an approved native item: it names the item, sits on page 1 and has the
+    item's type with bindings the catalog accepts (architecture.md#Reference analysis and approval gate)."""
+    return (row.reference_item == item['id'] and row.page == 1 and row.component.type == item['type']
+            and not component_errors(row.component, fields, checker, rules))
+
+
+def item_errors(snapshot, ledger, checker, bp, fields, rules, items):
+    """An approved native item no row fulfils: repairable once (the row repair gets its id and expected
+    type), then a needs_clarification issue whose alternatives code builds and rechecks: the item's type on
+    an existing row's fields, as a new page-1 row naming it. A drop keeps the item static. A row naming an
+    id that is no approved native item needs repair too; static items never yield rows or issues."""
+    errors = []
+    for i, row in enumerate(bp.rows):
+        if row.reference_item is not None and row.reference_item not in items:
+            errors.append(dict(code='row', indices=[i], qids=[row.question_id] if row.question_id else [],
+                status='needs_clarification', repairable=True, offers=[], evidence=[],
+                message=f'Row names reference item {row.reference_item}, which is no approved native item: set reference_item null'))
+    if not items:
+        return errors
+    dropped = dropped_items(snapshot, ledger, checker)
+    section = next((s.id for s in Outline.model_validate(snapshot['outline']).sections if any(q.selected for q in s.questions)), None)
+    full = sum(r.page == 1 for r in bp.rows) >= 12
+    for item in items.values():
+        if item['id'] in dropped or any(item_fulfils(r, item, fields, checker, rules) for r in bp.rows):
+            continue
+        naming = [i for i, r in enumerate(bp.rows) if r.reference_item == item['id']]
+        offers, seen = [], []
+        for row in bp.rows:
+            if full or section is None or len(offers) >= 2 or row.reference_item is not None:
+                continue
+            component = row.component.model_copy(update={'type': item['type'], 'label': label_text(item['label']) or
+                                                          row.component.label, 'options': {}}, deep=True)
+            candidate = BlueprintRow(question_id=None, section_id=section, page=1, component=component,
+                note=f"reference item {item['id']}", status='ok', issue_ids=[], reference_item=item['id'])
+            if component.model_dump() in seen or not item_fulfils(candidate, item, fields, checker, rules):
+                continue
+            seen.append(component.model_dump())
+            offers.append({'id': f"item_row_{len(offers) + 1}", 'label': f"Show {item['label']} as a {item['type']} "
+                           f"of {row.component.label}", 'rows': [candidate.model_dump()], 'replace_indices': []})
+        errors.append(dict(code='reference_item', indices=[], qids=[], status='needs_clarification', repairable=True,
+            offers=offers, evidence=[], item_ids=[item['id']], expected=item['type'], repair_indices=naming,
+            item_id=item['id'], label=item['label'], requirement=f"Reference item {item['id']} {item['label']!r}",
+            message=f"Reference item {item['id']} ({item['kind']} {item['label']!r}, shows {item['shows']!r}) needs an "
+                    f"ok row on page 1 with reference_item {item['id']} and component type {item['type']}"))
+    return errors
 
 
 AGGS = {'sum': 'SUM', 'avg': 'AVG', 'count': 'COUNT', 'count_distinct': 'COUNT DISTINCT', 'min': 'MIN', 'max': 'MAX'}
@@ -321,7 +381,7 @@ def canonical_dates(snapshot, ledger, checker, bp, protected=()):
     # filter, including conflicts recorded before reconciliation could set `using`.
     reference_id = snapshot['reference'].get('id')
     intents = {}
-    for r in ledger.requirements:
+    for r in req.active_requirements(snapshot, ledger):
         if r.source.kind not in ('image', 'reference') or r.source.reference_id != reference_id:
             continue
         covered = req._covered(r, snapshot, ledger, checker)
@@ -768,7 +828,17 @@ def decide(snapshot, ledger, checker, body):
                 updated.decisions.append(req.observation_drop(snapshot, ledger, target['requirement_id'], issue.id))
         else:
             effect = offer or {'drop_questions': drop_questions}
-        if item.action == 'drop' and target['code'] != 'observation':
+        if target['code'] == 'reference_item':
+            # Keep ordinary question rows, but remove item-only rows: the dropped item is now art.
+            effect = offer or {'drop_item': target['item_id'], 'drop_questions': []}
+            if item.action == 'drop':
+                for i, row in enumerate(bp.rows):
+                    if row.reference_item == target['item_id']:
+                        if row.question_id is None:
+                            remove_indices.add(i)
+                        else:
+                            row.reference_item = None
+        if item.action == 'drop' and target['code'] not in ('observation', 'reference_item'):
             remove_indices.update(target['indices'])
             if target['code'] == 'sql':
                 fresh['blueprint_errors'] = []

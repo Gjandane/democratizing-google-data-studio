@@ -112,10 +112,12 @@ class Component(Model):
     image_path: str | None = None
     field: str | None = None
     question_ref: str | None = None
+    # The approved native reference item this component fulfils (Blueprint row reference_item); omitted when None.
+    reference_item: str | None = None
 
     @model_serializer(mode='wrap')
     def _serialize(self, handler):
-        return _without_none(handler, self, ('box',))
+        return _without_none(handler, self, ('box', 'reference_item'))
 
 class Decoration(Model):
     id: str = Field(pattern=r"^p[1-9][0-9]*_[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")

@@ -252,16 +252,16 @@ def inputs(db, build_id, folder):
             else:
                 messages.append(Source(id=r["id"], kind="message", text=r["text"]).model_dump())
     reference = references.load(folder)
+    if reference and reference['mode'] == 'recreate':
+        # Pre-1.3 sets have no analysis. Read them as unapproved; never revive their observations.
+        reference = {'analysis': None, **reference}
     incoming = list(messages)
     if reference:
         rid = reference["id"]
-        if reference.get("instructions"):
+        if reference["mode"] != "recreate" and reference.get("instructions"):
             incoming.append(Source(id=rid + ":instructions", kind="reference", text=reference["instructions"], reference_id=rid).model_dump())
-        if reference["mode"] == "recreate":
-            for item in reference["interpretation"]["items"]:
-                if item["kind"] in ("chart", "control", "unknown") or item.get("metric_label"):
-                    incoming.append(Source(id=rid + ":" + item["id"], kind="image", text=json.dumps(item, ensure_ascii=False),
-                        reference_id=rid, image_id=reference["images"][0]["id"], item_id=item["id"]).model_dump())
+        # Recreate instructions and image text reach the planner as untrusted task data.
+        # Only the approved native items create reference requirements (26.4).
     definitions = {}
     for name in ("derived-fields.md", "kpis.md", "decisions.md"):
         path = folder / "docs" / name
@@ -309,6 +309,15 @@ def input_digest(snapshot, ledger, checker):
                    "blueprint_decisions": ledger.blueprint_decisions,
                    "pending_comments": ledger.pending_comments.model_dump() if ledger.pending_comments else None,
                    "retired_sources": ledger.retired_sources, "registry_allowed": checker.digest()})
+
+
+def active_requirements(snapshot, ledger):
+    """An analysis supersedes legacy image/instruction records without migrating their bindings.
+    Keep the old helpers until 26.5; their records cannot influence an analysis-based build."""
+    reference = snapshot.get('reference') or {}
+    if reference.get('mode') == 'recreate' and 'analysis' in reference:
+        return [r for r in ledger.requirements if r.source.kind not in ('image', 'reference')]
+    return ledger.requirements
 
 
 def schema(snapshot):
@@ -382,6 +391,7 @@ def keep_unsent(before, after, sent):
 def merge(ledger, snapshot, extraction):
     """Append code-identified requirements. A model cannot delete earlier intent or spoof a source."""
     updated = ledger.model_copy(deep=True)
+    updated.requirements = active_requirements(snapshot, updated)
     sources = {s["id"]: s for s in new_sources(snapshot, ledger)}
     if any(r.source_id not in sources for r in extraction.requirements):
         raise ValueError("Extraction cites an unknown source")
@@ -1257,7 +1267,8 @@ def _reconcile_observation(r, snapshot, *, candidates=_candidates):
 def observation_stale(snapshot, r, *, candidates=_candidates):
     """The stored reconciliation no longer follows from the current KPIs, instructions and schema."""
     reference = snapshot.get('reference') or {}
-    if reference.get('mode') != 'recreate' or not r.source.reference_id or r.source.reference_id != reference.get('id'):
+    if (reference.get('mode') != 'recreate' or 'analysis' in reference
+            or not r.source.reference_id or r.source.reference_id != reference.get('id')):
         return False
     fresh = r.model_copy(deep=True)
     _reconcile_observation(fresh, snapshot, candidates=candidates)
@@ -1703,7 +1714,7 @@ def _requirement_issues(snapshot, ledger, checker, *, candidates=_candidates):
     """Internal issue targets never come from client/model claims."""
     fields, rows = schema(snapshot), []
     types = {c['id']: c['type'] for p in (snapshot['spec'] or {}).get('pages', []) for c in p.get('components', [])}
-    for r in ledger.requirements:
+    for r in active_requirements(snapshot, ledger):
         context = audience_requirement(r, ledger)
         verdicts = [] if context else [(f"need:{i}", checker.need(n, fields)) for i, n in enumerate(r.needs) if f'need:{i}' not in r.superseded]
         if any(types.get(cid) == 'scorecard' for cid in r.component_ids):
@@ -2053,7 +2064,7 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None, titles=None):
     removed = {cid for r in ledger.requirements if (cid := removal(r))}
     decorations = {c['id']: c for p in (snapshot['spec'] or {}).get('pages', []) for c in p.get('decorations', [])}
     designs = design_html(snapshot)
-    for r in ledger.requirements:
+    for r in active_requirements(snapshot, ledger):
         if audience_requirement(r, ledger):
             continue
         if r.mapping_origins.get('origin') == 'outline_other':
@@ -2121,6 +2132,12 @@ def coverage_errors(snapshot, ledger, checker, *, bindings=None, titles=None):
             errors.append({"path": "requirements." + r.id, "message": "Candidate spec does not fulfill requirement: " + r.text + hint})
         elif bindings is not None:
             bindings[r.id] = [c['id'] for c in matches]
+    labels = {item['id']: item for item in reference_items(snapshot)}
+    for item_id, ids in item_components(snapshot, ledger, checker).items():
+        if not ids:
+            item = labels[item_id]
+            errors.append({'path': 'reference_items.' + item_id, 'message': f"Candidate spec does not fulfill reference "
+                           f"item {item_id} {item['label']!r}: it needs a {item['type']} on page 1 from its Blueprint row"})
     return errors
 
 
@@ -2133,7 +2150,7 @@ def blueprint_observations(snapshot, ledger, checker, *, requirement_issues=None
     stands). A stale one stays in: evaluate blocks it with its own obs_stale issue. Every other
     build: none."""
     reference = snapshot.get('reference') or {}
-    if reference.get('mode') != 'recreate':
+    if reference.get('mode') != 'recreate' or 'analysis' in reference:
         return []
     issues = _requirement_issues(snapshot, ledger, checker) if requirement_issues is None else requirement_issues
     own = {r.id for issue, r, _, _ in issues if issue.resolution == 'unresolved'}
@@ -2250,6 +2267,42 @@ def observation_drop(snapshot, ledger, requirement_id, issue_id):
     return {"requirement_id": r.id, "meaning": meaning(r), "slot": "unknown", "action": "drop", "alternative": None,
             "prerequisites": _prerequisites(snapshot, [], r.mappings), "evidence": [], "issue_id": issue_id,
             "source_id": r.source.id, "baseline": _bindings(snapshot, r), "applied": False}
+
+
+def reference_items(snapshot):
+    """architecture.md#Reference analysis and approval gate: one requirement record per approved
+    native item of the current recreate set, built by code from the analysis (no extraction), as
+    {source, id, kind, type, label, shows}. Static items, pending or pre-1.3 analyses and other
+    builds: none. The gate (references.approved) keeps a narrowed type from reaching planning."""
+    reference = snapshot.get('reference') or {}
+    analysis = reference.get('analysis') if reference.get('mode') == 'recreate' else None
+    if not analysis or analysis.get('state') != 'approved':
+        return []
+    return [{'source': 'reference_item', **{k: item[k] for k in ('id', 'kind', 'type', 'label', 'shows')}}
+            for item in analysis['items'] if item['disposition'] == 'native']
+
+
+def item_components(snapshot, ledger, checker):
+    """{item id: [component ids]} proving each approved native item on the candidate spec: the chain
+    item -> ok Blueprint row naming it with its type on page 1 -> the page-1 component laid out from
+    that row (reference_item, same type). Items the user dropped (kept static) are left out."""
+    from dss.spec.feasibility import dropped_items
+    items = reference_items(snapshot)
+    if not items:
+        return {}
+    dropped = dropped_items(snapshot, ledger, checker) if snapshot.get('blueprint') else set()
+    rows = (snapshot.get('blueprint') or {}).get('rows', [])
+    pages = (snapshot.get('spec') or {}).get('pages', [])
+    first = next((p for p in pages if p.get('index') == 1), {'components': []})
+    result = {}
+    for item in items:
+        if item['id'] in dropped:
+            continue
+        planned = any(r.get('reference_item') == item['id'] and r['page'] == 1 and r['status'] == 'ok'
+                      and r['component']['type'] == item['type'] for r in rows)
+        result[item['id']] = [c['id'] for c in first['components'] if planned and
+                              c.get('reference_item') == item['id'] and c['type'] == item['type']]
+    return result
 
 
 def _recipe_fulfills(need, checker, ops):
@@ -2447,7 +2500,7 @@ def verification(snapshot, ledger, checker):
     for issue, target, slot, _ in _requirement_issues(snapshot, ledger, checker):
         if issue.resolution != "unresolved":
             resolved.setdefault(target.id, []).append((issue, slot))
-    for r in ledger.requirements:
+    for r in active_requirements(snapshot, ledger):
         if audience_requirement(r, ledger):
             proof[r.id] = [{'status': 'context', 'kind': 'audience', 'reason': 'Recognized audience clause of the original message; no capability assertion',
                             'source_id': r.source.id}]
@@ -2617,6 +2670,9 @@ def save(folder, ledger, assessment=None):
         bindings = [f"- {d['observation']} bound by clause {d['alternative']['clause']}" if d['alternative']['clause'] else
                     f"- {d['observation']} bound to field {d['alternative']['needs'][0]['fields']['control_field']}"
                     for d in ledger.decisions if d.get("observation") and d.get("issue_id") in accepted]
+        # A dropped reference item stays static art by the user's choice (#Reference analysis and approval gate).
+        bindings += [f"- {d['target']['item_id']} {d['target']['label']!r} kept as static art (dropped)"
+                     for d in ledger.blueprint_decisions if d['target'].get('code') == 'reference_item' and d['action'] == 'drop']
         if bindings:
             body += "\n## Decisions\n\n" + "\n".join(bindings) + "\n"
         body += "\n## Verification evidence\n\n" + json.dumps(ledger.verification, ensure_ascii=False, indent=2) + "\n"

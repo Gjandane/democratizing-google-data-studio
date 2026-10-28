@@ -89,6 +89,8 @@ def reference(folder):
         interpretation = record['interpretation']
         notes = {'summary': record['summary'], **{key.removesuffix('_notes'): interpretation[key]
                                                   for key in ('palette_notes', 'type_notes', 'spacing_notes')}}
+        if record['mode'] == 'recreate' and (analysis := record.get('analysis')) and analysis['state'] == 'approved':
+            notes['note'] = analysis.get('note') or ''
         result = Reference(record['mode'], record.get('instructions') or '', tuple(images), tuple(described), notes)
     except (KeyError, TypeError, AttributeError, ValueError, OSError):
         raise damaged() from None
@@ -107,7 +109,7 @@ def report(snapshot, ledger, checker):
     from dss.spec import feasibility
     spec, assessment = snapshot['spec'], ledger.assessment
     identity = {'id': assessment.id, 'state': assessment.state} if assessment else {'id': None, 'state': 'unchecked'}
-    requirements = {r.id: r for r in ledger.requirements}
+    requirements = {r.id: r for r in req.active_requirements(snapshot, ledger)}
     observed = {r.id: (needs, properties) for r, needs, properties in req.blueprint_observations(snapshot, ledger, checker)}
 
     def about(r):
@@ -144,8 +146,32 @@ def report(snapshot, ledger, checker):
         entry['grains'] = {f: grains[f] for f in dict.fromkeys(fields) if f in grains}
         entry['bindings'] = bound.get(c['id'], [])
         return _present(entry)
-    return {page['index']: {'assessment': identity, 'components': [component(c) for c in page['components']],
-                            'decisions': decisions} for page in spec['pages']}
+    result = {page['index']: {'assessment': identity, 'components': [component(c) for c in page['components']],
+                              'decisions': decisions} for page in spec['pages']}
+    if 1 in result and (items := reference_items(snapshot, ledger, checker)):
+        result[1]['reference_items'] = items
+    return result
+
+
+def reference_items(snapshot, ledger, checker):
+    """Page 1's approved reference split for the brief (architecture.md#Reference analysis and approval gate),
+    or None without an approved recreate analysis: each native item with the slot ids that fulfil it (via its
+    Blueprint rows), and every static item, a dropped native one included, with label, kind, box and `shows`
+    as background art. No rows, fields or data."""
+    from dss.spec import feasibility
+    record = snapshot.get('reference') or {}
+    analysis = record.get('analysis') if record.get('mode') == 'recreate' else None
+    if not analysis or analysis.get('state') != 'approved':
+        return None
+    slots = req.item_components(snapshot, ledger, checker)
+    dropped = feasibility.dropped_items(snapshot, ledger, checker) if snapshot.get('blueprint') else set()
+    native, static = [], []
+    for item in analysis['items']:
+        if item['disposition'] == 'native' and item['id'] not in dropped:
+            native.append({**{k: item[k] for k in ('id', 'kind', 'label', 'type', 'shows')}, 'slots': slots.get(item['id'], [])})
+        else:
+            static.append({k: item[k] for k in ('id', 'kind', 'label', 'box', 'shows')})
+    return {'native': native, 'static': static}
 
 
 def _present(value):

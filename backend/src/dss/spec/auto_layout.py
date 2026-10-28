@@ -212,6 +212,8 @@ def _component(prefix, row, cell, used):
         value['dimensions'] = list(dict.fromkeys(c.options.get('row_dimensions', []) + c.options.get('column_dimensions', [])))
     if c.type == 'text':
         value['text'] = c.label
+    if row.reference_item:
+        value['reference_item'] = row.reference_item
     return value
 
 

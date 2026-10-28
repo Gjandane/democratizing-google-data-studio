@@ -675,3 +675,28 @@ async def test_designer_requests_without_a_reference_keep_their_bytes():
     assert len(sent) == 4 and not any('## Reference' in s or 'inline_data' in s for s in sent)
     assert all(attached(r) == ('Return the page design JSON only.', []) for r in llm.requests + later.requests)
     assert hashlib.sha256('\n'.join(sent).encode()).hexdigest() == NO_REFERENCE_REQUESTS
+
+
+def test_brief_and_html_requests_carry_the_approved_split_only_with_one():
+    """26.4: the report's reference split becomes its own section after the components (native slot ids,
+    static art with boxes); a report without one (style, no reference, observations) builds unchanged."""
+    from dss.harness.context import ITEMS_HEADER, reference_brief_context, reference_html_context
+    from test_context import brief_inputs
+    reference, design, page, approved = brief_inputs()
+    page = {**page, 'index': 1}
+    split = {'native': [{'id': 'r3', 'kind': 'control', 'label': 'Region Selector', 'type': 'fixed_size_list',
+                         'shows': 'region', 'slots': ['p1_region_selector']}],
+             'static': [{'id': 'r4', 'kind': 'image', 'label': 'Globe', 'box': {'x': 0.3, 'y': 0.1, 'w': 0.4, 'h': 0.6},
+                         'shows': 'access % by country'}]}
+    plain = reference_brief_context(reference, design, page, approved)
+    split_brief = reference_brief_context(reference, design, page, {**approved, 'reference_items': split})
+    names = lambda c: [s.name for s in c.sections]
+    assert names(split_brief) == [*names(plain)[:5], 'reference-items', *names(plain)[5:]]
+    assert split_brief.sections[4].text == plain.sections[4].text  # the components section stays the report's
+    assert split_brief.sections[5].text == ITEMS_HEADER + '\n' + json.dumps(split, separators=(',', ':'))
+    assert 'fake chart' in ITEMS_HEADER and 'background' in ITEMS_HEADER
+    brief = {'overall': 'Navy page', 'slots': {'p2_revenue': 'Top left'}}
+    html_plain = reference_html_context(reference, brief, design, page, approved, attempt=1)
+    html_split = reference_html_context(reference, brief, design, page, {**approved, 'reference_items': split}, attempt=1)
+    at = names(html_plain).index('components') + 1
+    assert names(html_split) == [*names(html_plain)[:at], 'reference-items', *names(html_plain)[at:]]

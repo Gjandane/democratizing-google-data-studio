@@ -1043,7 +1043,7 @@ def test_ledger_section_cites_each_source_once(tmp_path):
     assert requirement_sections(tmp_path)[0].body.count('order count is') == 8
 
 
-def test_comment_and_image_item_provenance_and_reference_removal(thin):
+def test_comment_provenance_legacy_observations_ignored_and_reference_removal(thin):
     client, app, bid, folder = thin
     folder.mkdir(parents=True)
     message = episodic.save(app.state.db, bid, "user", json.dumps([{"component_id": "p1_revenue", "text": "Use a bar"}]), "revise")
@@ -1051,12 +1051,16 @@ def test_comment_and_image_item_provenance_and_reference_removal(thin):
               "interpretation": {"items": [{"id": "o1", "kind": "chart", "chart_candidate": "sankey", "label": "Flow"}]}}
     (folder / "references.json").write_text(json.dumps(record))
     snapshot = req.inputs(app.state.db, bid, folder)
-    comment, image = snapshot["incoming"]
+    [comment] = snapshot["incoming"]
     assert comment["kind"] == "comment" and comment["id"] == message["id"] + ":0" and comment["component_id"] == "p1_revenue"
-    assert image["kind"] == "image" and image["reference_id"] == "ref_one" and image["image_id"] == "img_one" and image["item_id"] == "o1"
+    assert snapshot['reference']['analysis'] is None and req.reference_items(snapshot) == []
     ledger = req.merge(req.Ledger(), snapshot, req.Extraction(requirements=[
-        req.Extracted(**extracted(comment["id"])), req.Extracted(source_id=image["id"], text="Flow with sankey")]))
+        req.Extracted(**extracted(comment["id"]))]))
+    # Historical provenance can remain on disk, but is not an active requirement or an extraction input.
+    ledger.requirements.append(req.Requirement(id='old_image', source=req.Source(id='ref_one:o1', kind='image',
+        text='Flow', reference_id='ref_one', image_id='img_one', item_id='o1'), text='Flow with sankey'))
     assert len(ledger.requirements) == 2
+    assert req.active_requirements(snapshot, ledger) == [ledger.requirements[0]]
     snapshot["reference"] = None
     snapshot["incoming"] = [comment]
     updated = req.merge(ledger, snapshot, req.Extraction(requirements=[]))
@@ -2758,7 +2762,7 @@ def test_binding_offers_recompute_within_budget(record_property):
 def unlabeled_build(blueprint_api, monkeypatch, polluted=False):
     """Run 20261027-173624's reference and extracted rows installed as a staged build, rechecked in code
     through the real gate; the planner answers with the fixture's reconstructed draft."""
-    from test_render import approved_static_analysis
+    from test_render import NOTES, approved_static_analysis, saved_image, legacy_observation_inputs
     from types import SimpleNamespace
     from dss.artifacts.models import Context, Design, Outline
     from dss.render import background
@@ -2778,12 +2782,11 @@ def unlabeled_build(blueprint_api, monkeypatch, polluted=False):
     artifact(folder, Outline.model_validate(case['outline']))
     artifact(folder, Design.model_validate(case['design']))
     reference = {'id': case['reference']['id'], 'mode': 'recreate', 'instructions': case['instructions'], 'summary': 'Saved reference',
-                 'images': [{'id': case['reference']['image_id'], 'name': 'reference.png', 'file': 'reference_img_000000000000.png',
-                             'mime_type': 'image/png', 'width': 1200, 'height': 900}],
-                 'interpretation': {'mode': 'recreate', 'items': case['items'], 'aspect_ratio': 1.7196},
+                 'images': [saved_image(folder, case['reference']['image_id'])],
+                 'interpretation': {'mode': 'recreate', 'items': case['items'], 'aspect_ratio': 1.7196, **NOTES},
                  'analysis': approved_static_analysis()}
     (folder / 'references.json').write_text(json.dumps(reference), encoding='utf-8')
-    (folder / 'reference_img_000000000000.png').write_bytes(png())
+    legacy_observation_inputs(monkeypatch, folder)
     snapshot = req.inputs(app.state.db, bid, folder)
     ledger = req.Ledger.model_validate(case['requirements'])
     if polluted:
