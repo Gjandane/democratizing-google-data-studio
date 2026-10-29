@@ -139,6 +139,7 @@
           "required": ["component_id", "style"]
         },
         { "properties": { "op": { "const": "save_report" } } },
+        { "properties": { "op": { "const": "share_report" }, "access": { "enum": ["link_viewer", "link_editor"] } }, "required": ["access"] },
         { "properties": { "op": { "const": "get_link" } } }
       ]
     },

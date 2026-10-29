@@ -23,8 +23,10 @@ engine replays a compiled recipe of UI ops deterministically, with no LLM in the
 - No automated Google sign-in and no password handling: the user signs in by hand once.
 - No editing of reports the engine didn't create in this run.
 - No Data Studio blends or calculated fields (the backend's BigQuery view holds them).
-- No headless/Cloud Run mode: the engine always runs on the user's machine; for the hosted app the
-  backend's `dss-agent` runs `dsengine run` locally (change 2026-10-19). The engine CLI is unchanged.
+- No headless mode and no sign-in in the cloud: locally the engine runs on the user's machine.
+  Change 2026-10-29 cloud engine: on Cloud Run it runs headful under a virtual display as a
+  dedicated demo account whose session is exported on the owner's machine and imported
+  (docs/architecture.md#Cloud session and sharing); Google sign-in is still never automated.
 - No CI.
 
 ## Core flows
@@ -37,7 +39,7 @@ engine replays a compiled recipe of UI ops deterministically, with no LLM in the
 ## Features
 | Must | Should | Won't (this version) |
 |---|---|---|
-| CLI: run, validate, print, browser, login, check; `--dry-run` | `--screencast` frames | headless Cloud Run mode |
+| CLI: run, validate, print, browser, login, check, session export (1.4); `--dry-run` | `--screencast` frames | headless mode; sign-in in the cloud |
 | ops: open_report, set_canvas, set_background_image, add_chart (8 types), add_control, add_text, save_report, get_link | add_image, set_style, add_page, go_to_page | theme editing |
 | selectors in an OKF bundle (`knowledge/datastudio-ui/`) | read-back verification of boxes | self-healing selectors via LLM |
 

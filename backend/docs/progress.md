@@ -2370,3 +2370,11 @@ assert min(timings) < .1
 - What changed: contracts/conventions.md 1.6 adds `DSS_PUBLIC`; docs/architecture.md Cloud mode gets the "Open link" bullet and a decision row; new task 28.1 (Open-link opt-in on Cloud Run, S) in Phase 28; essentials pin conventions 1.6 and are restamped.
 - Why: the user wants the hosted URL open to anyone with the link (the GCP project's OAuth branding is limited to one domain); release 4.1 now `Needs: backend 28.1`.
 - Affected tasks: 28.1 only; access middleware, session routes and agent token unchanged.
+
+## 2026-10-29: Change cloud engine (program root)
+- What changed: contracts/conventions.md 1.7 (`DSS_ENGINE_MODE=cloud`, `DSS_REPORT_SHARE`, `DSS_LOCKED_SOURCES`, session/Chrome names), api.md 3.4 (mode `cloud`, `409 login_in_cloud`, optional `Session.locked_sources`, `403 source_locked`), recipe.md 1.4 (`share_report`); docs/architecture.md Cloud mode gets the "Cloud engine" bullet, oracle line and a decision row; new Phase 29: 29.1 Cloud engine mode (M), 29.2 Report sharing op and locked sources (S, `Needs: engine 14.2`); essentials pin api 3.4, recipe 1.4, conventions 1.7, restamped.
+- Why: the user wants judges to download nothing and get a finished Data Studio link they can edit in their own session; the engine runs in the Cloud Run container as a demo Google account (release 4.2 spike decides go/no-go; fallback: hosted stops at the recipe).
+- Affected tasks: 29.1, 29.2 (new); 28.1 unchanged; agent mode unchanged (rollback).
+
+## 2026-10-29: Audit (delta, change cloud engine)
+- Applied here: 29.1 takes the engine lock before `check`/`browser`, runs the startup `browser` under the lock, and fails versions left `building` at startup (scale to zero, conventions 1.7); PRD non-goal "no engine in the cloud" amended; architecture.md Cloud engine bullet updated; restamped.

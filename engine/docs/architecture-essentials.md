@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:4f988a891453 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:a2bb65338cfd (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: engine
 One page, read at the start of every build session. A summary of docs/architecture.md, which
 wins if the two disagree.
@@ -7,6 +7,9 @@ wins if the two disagree.
 - Python 3.12 + uv; Playwright for Python attached over CDP (`connect_over_cdp`) to the installed
   Google Chrome started with `--user-data-dir=<DSS_CHROME_PROFILE> --remote-debugging-port=<DSS_CDP_PORT> --app=<url>`;
   argparse CLI; pydantic + jsonschema for recipes; pyyaml for selector files; pytest.
+- Cloud Run (change 2026-10-29): the same engine in a Linux container, Playwright's Chromium at
+  `DSS_CHROME_PATH` with `DSS_CHROME_ARGS`, under Xvfb, signed in by importing the demo account's
+  session file (docs/architecture.md#Cloud session and sharing).
 
 ## Folder map
 ```text
@@ -49,14 +52,17 @@ tests/                   offline tests (fake driver); tests/live/ marked `live`
 ## Never do
 - Never call an LLM or send screenshots anywhere.
 - Never type passwords or automate Google sign-in; never touch tabs the engine didn't open.
+- Never print, log or put in an event a cookie value or the session file's content; export only
+  from the demo account's own profile (`../data/chrome-profile-bot`, the repo root's data/), never
+  the local build profile; session files live only under the root data/ or engine/data/ (ignored).
 - Never edit ../contracts/; a needed change is a blocked task.
 - Never sleep more than 1 s at a time; wait on conditions.
 
 ## Contracts
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
-| ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.3 | consumes recipes; provides events | `uv run pytest tests/test_contract.py` |
-| ../contracts/conventions.md | 1.6 | consumes | manual: env names, ports and paths match (1.1-1.6 add nothing the engine reads; the engine stays local) |
+| ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.4 | consumes recipes; provides events | `uv run pytest tests/test_contract.py` |
+| ../contracts/conventions.md | 1.7 | consumes | manual: env names, ports and paths match (1.7 adds `DSS_GOOGLE_SESSION_FILE`, `DSS_CHROME_ARGS`; the engine also runs on Cloud Run) |
 
 ## Dependencies
 | Package | Registry | Version | Why | Verified |

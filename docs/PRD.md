@@ -7,8 +7,9 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
 
 ## Users
 - The user: runs `./start.sh`, does the manual acceptance, gives the demo, approves each push.
-- Hackathon judges: read the README and the submission deck, open the hosted app with the access
-  code, may run it locally.
+- Hackathon judges: read the README and the submission deck, open the hosted app (an open link
+  through 2026-11-07: no sign-in, nothing to install), build a dashboard and open the finished
+  report in their own Data Studio session, may run it locally.
 
 ## Goals
 1. `./start.sh` (and `./start.ps1`) starts backend and frontend; `.env.example` lists every name
@@ -32,14 +33,18 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
    `deploy/deploy.sh` deploy the app as service `dss-frontend` per
    contracts/conventions.md#Cloud deployment, so the submitted URL
    (`DSS_AGENT_SERVER` in .env, shared privately, never in the repo) serves the full app; flow 1 passes
-   against it up to the compiled recipe, where the hosted app stops (`424 agent_offline`; hosted Data Studio
-   builds through the build agent are v2, change 2026-10-29 hosted scope).
+   against it live to a Data Studio link (change 2026-10-29 cloud engine): the engine runs in the
+   container as a dedicated demo Google account (session exported once on the owner's machine),
+   each report is shared as "anyone with the link can edit", so a judge opens it in their own Data
+   Studio session; BigQuery and GCS sources are locked hosted (README says so). A spike on Cloud
+   Run (4.2) decides go/no-go; the user's fallback is the agent-mode revision that stops at the
+   recipe.
 
 7. Required: reference-image recreation/style and unsupported-request refusal pass task 2.5
-   locally and task 4.3 on the hosted API (up to the recipe) before release acceptance.
+   locally and task 4.4 on the hosted API (live builds) before release acceptance.
 
 8. Release acceptance proves screenshot-only -> generated CSV -> BigQuery -> labeled dashboard
-   locally, and up to the labeled prototype and recipe hosted, including persisted CSV download after service restart.
+   locally and hosted (4.4), including persisted CSV download after service restart.
 9. Manual acceptance (change 2026-10-20 final phases): before anything is published, the user
    builds one dashboard per source through the local UI and marks each PASS in
    docs/acceptance.md: CSV upload, research mode, BigQuery table and CSV in GCS right after the
@@ -82,8 +87,8 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
 - `uv run --project integration python integration/check_contracts.py` passes.
 - `e2e_flow1.py --live` prints a `https://datastudio.google.com/` link that opens the dashboard.
 - `uv run --project integration python integration/check_repo.py` passes before each push.
-- `e2e_flow1.py --server <Cloud Run URL> --until recipe` compiles a recipe, and Build answers
-  `424 agent_offline`.
+- `e2e_flow1.py --server <Cloud Run URL> --live` builds to a Data Studio link that another Google
+  account opens with edit access (4.3, change 2026-10-29 cloud engine).
 - docs/acceptance.md has a user-confirmed PASS row with a Data Studio link for each of the five
   sources.
 - `git ls-remote origin main` equals local `HEAD` after the final push.
@@ -112,6 +117,15 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
   default `BQ_LOCATION`), or a table the user names; GCS = samples/ecommerce_sales.csv copied to
   `gs://$GCS_BUCKET/samples/`. Fixed inputs keep the rows repeatable.
 
+- Cloud engine defaults (change 2026-10-29): Playwright's Chromium under Xvfb in the existing
+  image (one service, one instance, one engine lock: a second build gets the busy message, no
+  queue); the demo account's profile lives at `data/chrome-profile-bot` on the owner's machine
+  and its exported session at `data/session-export.json` (both git-ignored under data/); the
+  Cloud Run spike runs as a Cloud Run job from the service's image so no backend code is needed
+  for the go/no-go; `--memory 4Gi`; scale to zero (`--min-instances 0`, user 2026-10-29: pay only
+  while up, accept a cold start); closing the open link after 2026-11-07 is manual
+  (deploy/README.md), with a reminder offered by the architect.
+
 ## Open questions
 - none
 
@@ -136,8 +150,13 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
   synthetic v2 GPS refusal reading `stale`, ruled for 4.3 as a refusal when the GPS issues stay
   unresolved, and backend returning `blocked` after an outline Other on a built version is a
   backend item (backend/docs/PRD.md Later). The bench `server_url: "hosted"` mask moved into 4.2/4.3.
-- Hosted Data Studio builds: `dss-agent` against the Cloud Run URL (backend 5.2/5.3, built and
-  tested locally, never accepted hosted), and the hosted Build panel showing visitors an agent
-  command they can't run without the token (frontend): v2 (change 2026-10-29 hosted scope, docs/v2-handoff.md).
+- Hosted Data Studio builds through `dss-agent` against the Cloud Run URL (backend 5.2/5.3):
+  replaced by the cloud engine (change 2026-10-29); agent mode stays only as the rollback.
+- A per-visitor build agent (pairing code, guided setup command, report data as a public CSV in
+  GCS read by the visitor's own account) and a Chrome extension bridge: considered and not chosen
+  (change 2026-10-29 cloud engine); v2 material (docs/v2-handoff.md).
+- Builds that got a BigQuery or GCS source during the 4.1 open window keep it in the shared
+  history; their live builds fail (the demo account can't read those tables). No refusal on
+  their later actions (audit 2026-10-29, P2).
 - v2: dashboards built in each visitor's own Looker Studio by a zero-Python agent on their
   machine, in a new repo; brief and every deferred item in docs/v2-handoff.md (change 2026-10-29).

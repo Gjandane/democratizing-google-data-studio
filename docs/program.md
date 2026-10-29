@@ -12,9 +12,12 @@ Written 2026-10-18.
 - Context: Google GCP hackathon (AI Builder Cup). Deadline: no longer binding; the user keeps the full
   scope past 2026-10-23 01:05 MPST (change 2026-10-23; earlier 2026-10-20 and 2026-10-19 01:05).
 - Hosted on Cloud Run in this version (change 2026-10-19): the app runs as one Cloud Run service
-  as an open link: anyone with the URL gets in, no sign-in (change 2026-10-29 open hosted link, conventions 1.6; Google sign-in stays in the code for a later lock-down); the Data Studio build runs through a build agent on the user's
-  machine, because the engine needs the signed-in Chrome profile. Hosted v1 goes up to the
-  recipe; the hosted build through the agent is v2 (change 2026-10-29 hosted scope).
+  as an open link: anyone with the URL gets in, no sign-in (change 2026-10-29 open hosted link, conventions 1.6; Google sign-in stays in the code for a later lock-down). Change 2026-10-29 cloud engine
+  (conventions 1.7): the hosted Data Studio build runs inside the container as a dedicated demo
+  Google account (its session exported once on the owner's machine); each report is shared as
+  "anyone with the link can edit", so visitors download nothing and open the result in their own
+  Data Studio session. The build agent stays for the owner's machine and as the rollback (hosted
+  then stops at the recipe).
 
 ## Parts
 | Part | Folder | Purpose | Target | Provides | Consumes |
@@ -52,12 +55,13 @@ Written 2026-10-18.
   semantic memory = an OKF bundle (no vector store), episodic memory = SQLite + FTS5,
   consolidation after every 5 builds that reach `done` (worker model), one trace per run.
 - Goal: deployed on Cloud Run (contracts/conventions.md, Cloud deployment): one service, one
-  instance, an open link (`DSS_PUBLIC=1`; change 2026-10-29), state on a GCS volume, secrets in Secret Manager, the engine run by
-  a local build agent (v2; hosted v1 stops at the recipe, change 2026-10-29 hosted scope); deployed with one script (`bash deploy/deploy.sh`).
+  instance, an open link (`DSS_PUBLIC=1`; change 2026-10-29) through 2026-11-07, state on a GCS volume, secrets in Secret Manager, the engine
+  in the container as the demo account with BigQuery and GCS sources locked (change 2026-10-29 cloud engine); deployed with one script (`bash deploy/deploy.sh`).
 - Non-goal: per-user accounts, roles or data isolation (POC): every visitor of the open link
   shares the one history (change 2026-10-29).
-- Non-goal: the engine in the cloud (headless Chrome with a stored Google session): the Google
-  session stays on the user's machine; the build agent runs the engine there.
+- Non-goal: automated Google sign-in, signing in as a visitor, or a cloud browser for the owner's
+  own account. Lifted in part (change 2026-10-29 cloud engine): the engine runs on Cloud Run,
+  headful under Xvfb, as a dedicated demo account whose session is exported by hand.
 - Non-goal: more than one Cloud Run instance, autoscaling, a custom domain, IAP or per-user accounts.
 - Non-goal: vector store or embeddings (OKF navigation replaces RAG).
 - Non-goal: Data Studio blends or calculated fields built through the UI (SQL view instead).
@@ -82,20 +86,21 @@ Written 2026-10-18.
    sources file (backend) -> flow 1 from the context step.
 3. **History:** open a past build from History (frontend) -> comment edits -> re-run the
    recipe as a new dashboard version (backend, engine).
-4. **Hosted (must-have after flow 1):** the user opens the Cloud Run URL and signs in with Google
-   (frontend, backend) -> flow 1 runs in the hosted app -> on Build, the backend queues a job ->
-   `dss-agent` on the user's machine pulls it and runs `dsengine` with the signed-in Chrome (backend,
-   engine) -> events stream back to the hosted Build stage -> the dashboard link shows. v1 hosted: up to the
-   recipe, Build answers `424 agent_offline`; the agent half is v2 (change 2026-10-29 hosted scope).
+4. **Hosted (must-have after flow 1):** a visitor opens the Cloud Run URL (open link, no sign-in;
+   frontend, backend) -> flow 1 runs in the hosted app with CSV upload, research or screenshot +
+   synthetic data (BigQuery and GCS locked) -> on Build, the backend runs `dsengine` in the
+   container as the demo account (backend, engine) -> events stream to the Build stage -> the
+   report is shared "anyone with the link can edit" and the link shows; the visitor opens it in
+   their own Data Studio session (change 2026-10-29 cloud engine).
 
 ## Contracts
 | Contract | Version | Provider | Consumers | Conformance check |
 |---|---|---|---|---|
-| contracts/conventions.md | 1.6 | program | engine, backend, frontend, release | release: `uv run --project integration python integration/check_contracts.py` (the one root `.env.example` has every name); manual: each part's config reads these names, ports and paths |
-| contracts/recipe.md | 1.3 | backend (recipe), engine (events) | engine, backend, release | engine: `uv run pytest tests/test_contract.py`; backend: `uv run pytest tests/test_recipe_contract.py` |
-| contracts/api.md | 3.3 | backend | frontend, release | backend: `uv run pytest tests/test_api_contract.py`; frontend: `npm test -- contract`; both against contracts/fixtures/api/ and, from backend 25.1 / frontend 16.1, contracts/fixtures/stage-settings/ |
-| contracts/dashboard-intent.md | 1.3 | backend | frontend, release | backend: capability/reference/feasibility tests; frontend: contract and reference tests; release: tasks 2.5 and 4.3 |
-| contracts/synthetic-data.md | 1.3 | backend | frontend, release | backend synthetic tests, frontend 11.1-11.2, release 2.5, 2.6 and 4.3 |
+| contracts/conventions.md | 1.7 | program | engine, backend, frontend, release | release: `uv run --project integration python integration/check_contracts.py` (the one root `.env.example` has every name); manual: each part's config reads these names, ports and paths |
+| contracts/recipe.md | 1.4 | backend (recipe), engine (events) | engine, backend, release | engine: `uv run pytest tests/test_contract.py`; backend: `uv run pytest tests/test_recipe_contract.py` |
+| contracts/api.md | 3.4 | backend | frontend, release | backend: `uv run pytest tests/test_api_contract.py`; frontend: `npm test -- contract`; both against contracts/fixtures/api/ and, from backend 25.1 / frontend 16.1, contracts/fixtures/stage-settings/ |
+| contracts/dashboard-intent.md | 1.3 | backend | frontend, release | backend: capability/reference/feasibility tests; frontend: contract and reference tests; release: tasks 2.5 and 4.4 |
+| contracts/synthetic-data.md | 1.3 | backend | frontend, release | backend synthetic tests, frontend 11.1-11.2, release 2.5, 2.6 and 4.4 |
 
 ## Delivery
 - Targets: one GitHub repo, https://github.com/Gjandane/democratizing-google-data-studio (this
@@ -107,8 +112,9 @@ Written 2026-10-18.
   of five dashboard sources (CSV upload, research mode, screenshot + synthetic data, BigQuery,
   GCS) -> README and the first GitHub push -> Cloud Run deploy and hosted acceptance -> final push.
 - Start everything locally: `./start.ps1` (Windows) or `./start.sh`: backend on 8000, frontend on 5173.
-- Hosted: the Cloud Run URL, open to anyone with the link (no sign-in, change 2026-10-29); v1 goes up to the recipe (Data Studio builds run
-  locally; hosted builds through `dss-agent` are v2, change 2026-10-29 hosted scope).
+- Hosted: the Cloud Run URL, open to anyone with the link (no sign-in, change 2026-10-29) through
+  2026-11-07, then closed by hand (deploy/README.md); builds run in the container as the demo
+  account and the report link opens with edit access for the visitor (change 2026-10-29 cloud engine).
 - Ships: all code, the planning docs (docs/, AGENTS.md, CLAUDE.md: they show the process), the
   submission deck draft `deck/AI-Builder-Cup-Submission.pptx` and `.pdf` as built by release 1.3
   (no further deck work: change 2026-10-20 final phases), README (pitch, features, capabilities,
@@ -199,6 +205,18 @@ phases" below.
   bench URL mask themselves; 4.3 reads a `stale` synthetic GPS refusal with unresolved issues as a
   refusal. Backend returning `blocked` there is a later backend item. Next: 4.1 (deploy), 4.2-4.4.
 
+- Cloud engine (change 2026-10-29, user cards; conventions 1.7, api 3.4, recipe 1.4): release 4.1
+  (agent-mode deploy, in progress) first; engine 14.1 (session export/import; STOP: the user creates
+  the demo Gmail account, signs its profile in by hand, grants it BigQuery) -> release 4.2 (Cloud
+  Run job spike, STOP go/no-go). In parallel, offline: backend 29.1 (cloud mode) -> 29.2
+  (`share_report`, locked sources; `Needs: engine 14.2`), frontend 19.1 (cloud Build panel, locked
+  sources), engine 14.2 (`share_report`, live in the demo profile) after 14.1. Then release 4.3
+  (cloud deploy + hosted live e2e; needs all of them), 4.4 (hosted acceptance), 4.5 (README, push).
+  No-go at 4.2 -> the user's fallback: hosted stops at the recipe on the 4.1 revision; the
+  architect removes 4.3's cloud steps and the parts' cloud-engine tasks, keeping 29.2's source
+  lock (every open deploy sets it). The service scales to zero (user 2026-10-29), 4.1 included. Engine tasks share the one
+  signed-in Chrome with release live runs: never at the same time.
+
 ## Integration checks
 - `uv run --project integration python integration/check_contracts.py`: the recipe and event
   fixtures validate against contracts/recipe.schema.json; every env name is in `.env.example`.
@@ -207,15 +225,15 @@ phases" below.
   (flow 1), then a second version reaches `done` (flow 3).
 - `uv run --project integration python integration/e2e_flow1.py --live`: same, with the real
   engine and the signed-in Chrome profile; prints a `https://datastudio.google.com/` link.
-- `uv run --project integration python integration/e2e_flow1.py --server <Cloud Run URL> --until recipe`:
-  flow 1 at the deployed open service compiles a recipe, and `POST /run` answers
-  `424 agent_offline` (no agent; hosted builds are v2, change 2026-10-29 hosted scope).
+- `uv run --project integration python integration/e2e_flow1.py --server <Cloud Run URL> --live`:
+  flow 1 at the deployed open service builds live with the cloud engine to a Data Studio link that
+  another Google account opens with edit access (release 4.3, change 2026-10-29 cloud engine).
 
 - Manual acceptance (release 2.4 and 2.6): the user builds one dashboard per source through the local UI
   (CSV upload, research mode, screenshot + synthetic data, BigQuery table, CSV in GCS); each row in
   docs/acceptance.md has a Data Studio link and the user's PASS.
-- Required image/capability acceptance: release 2.5 (local) and 4.3 (hosted) run `integration/e2e_references.py`, `--live`
-  locally and `--server <Cloud Run URL> --until recipe` hosted; scenario oracle is dashboard-intent.md.
+- Required image/capability acceptance: release 2.5 (local) and 4.4 (hosted) run `integration/e2e_references.py`, `--live`
+  locally and `--server <Cloud Run URL> --live` hosted (change 2026-10-29 cloud engine); scenario oracle is dashboard-intent.md.
 
 ## Research facts (2026-10-18)
 - Data Studio API (`datastudio.googleapis.com/v1`) only searches assets and manages permissions:
@@ -310,3 +328,5 @@ phases" below.
 | 2026-10-29 | Release 2.6 accepted as PASS with findings; W1-W7 (engine area auto-fields and box placement, `bar` date grain, backend legends, HTML flake, scorecard pick) deferred to the parts' Later lists; 2.6 reopened only to fix check_contracts' ReferenceSet schema; GitHub and Cloud Run next | plan engine/backend/contract fixes now, gate 4.3 on them | user: finish the GitHub upload and Cloud Run deployment first; the report is usable with recorded findings | change 2026-10-29 (user, release 2.6 block) |
 | 2026-10-29 | Hosted v1 scope: the Cloud Run app goes from Google sign-in to the compiled recipe; Build answers `424 agent_offline` (the contract's existing stop, no contract change); Data Studio builds stay local; release 4.2/4.3 run `--until recipe` hosted, 4.3 skips the narrowed-allowlist step hosted, 4.4's README says so; one always-on instance kept | hosted builds through the owner's `dss-agent` (v1 plan); scale to zero (`--min-instances 0`) | user: the local agent is v2; no cold starts for judges, runs after 202 and the DB backup keep CPU | change 2026-10-29 hosted scope (user, release audit cards) |
 | 2026-10-29 | Open hosted link (conventions 1.6): `DSS_PUBLIC=1` on Cloud Run, with the code and the Google client id empty, runs the service ungated; agent token unchanged; backend 28.1 (fail-closed opt-in), release 4.1 gated on it (deploy.sh open and gated modes), 4.2/4.4 wording; frontend unchanged (the gate opens on `required: false`) | OAuth client in a separate billing-free project with External branding (no code change); access code shared with the link; switch the existing branding to External | user: anyone with the link gets in; the project's branding is limited to one domain; an explicit flag so a missing secret never opens the service | change 2026-10-29 open hosted link (user cards) |
+| 2026-10-29 | Cloud engine (conventions 1.7, api 3.4, recipe 1.4): on Cloud Run the backend runs the engine in the container (`DSS_ENGINE_MODE=cloud`, Chromium under Xvfb) as a dedicated demo Gmail account whose session is exported on the owner's machine and imported (never a sign-in in the cloud); recipes end with `share_report` (anyone with the link: Editor); `DSS_LOCKED_SOURCES=bigquery,gcs` on the open link; one engine lock (busy message, no queue); a Cloud Run job spike first (release 4.2, go/no-go); engine 14.1-14.2, backend 29.1-29.2, frontend 19.1, release 4.2-4.5 (old 4.2-4.4 renumbered) | a build agent on each visitor's PC with a guided setup command and pairing, report data as a public CSV in GCS (judges would download uv and the repo); a Chrome extension bridge (engine rewrite, store review); a VM; the owner's PC as the agent | user: judges download nothing and get the finished link they can edit in their own Data Studio; a dedicated account limits what an imported session can lose; an open link must not read the owner's tables; fallback if Google won't keep the session: hosted stops at the recipe | change 2026-10-29 cloud engine (user cards) |
+| 2026-10-29 | Scale to zero and delta-audit fixes for the cloud engine: `--min-instances 0 --max-instances 1` (4.1 and 4.3), a build cut by a stopped instance fails at startup (backend 29.1); source lock on every open deploy in any mode; session files carry `exported_at`; lock before `check`; Secret Accessor on the session secret; Chrome disk cache capped; spike re-checks after 12 h; the close removes the demo account's BigQuery roles; paths under the root data/ | always-on instance (no cold start, about USD 40 to Nov 8); a Cloud Run job per build (parallel, but new backend work) | user: pay only when it is used; audit: 6 P1 and 7 P2 findings, all fixed in the docs, P2-7 to Later | change 2026-10-29 cloud engine (delta audit, user cards) |

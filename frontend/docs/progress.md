@@ -658,3 +658,11 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: worker's Python edit wrote cp1252 `...` once (known gotcha). Screenshot technique added to AGENTS.md Known gotchas.
 - Left open: P3 no timeout if the GIS script never fires load/error - src/features/access/gis.ts; P3 Retry unmounts its button so focus drops to body - AccessGate.tsx; P3 load-failure title repeats the message - AccessGate.tsx; P3 TopBar email is visible only on hover/title - WorkspaceShell.tsx; P3 `400 google_signin_off` after load shows "use the access code" on a gate without a code field - AccessGate.tsx
 - Next: Phase 18 done; release 4.1 (program root) needs this. No frontend task left.
+
+## 2026-10-29: Change cloud engine (program root)
+- What changed: api.md 3.4 (EngineStatus mode `cloud`, `409 login_in_cloud`, optional `Session.locked_sources`, `403 source_locked`; fixtures in contracts/fixtures/cloud-engine/), conventions 1.7; new Phase 19: 19.1 Cloud build panel and locked sources (M); essentials pin api 3.4, conventions 1.7.
+- Why: on the hosted link the build runs in the cloud and the visitor gets an editable link; BigQuery/GCS are locked there.
+- Affected tasks: 19.1 (new); release 4.3 needs it.
+
+## 2026-10-29: Audit (delta, change cloud engine)
+- Nothing changed here: 19.1 stands as planned.

@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "source_locked",
+    "message": "BigQuery sources are not available on the hosted demo. Upload a CSV, use research mode or generate synthetic data, or run the app locally.",
+    "detail": {"kind": "bigquery"}
+  }
+}

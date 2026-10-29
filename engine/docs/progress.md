@@ -549,3 +549,11 @@ context. Task status lives in docs/plan.md, not here.
 
 ## 2026-10-29: Change Google sign-in (program root)
 - What changed here: essentials' conventions row 1.4 -> 1.5 only (the new names are backend-only). No task affected.
+
+## 2026-10-29: Change cloud engine (program root)
+- What changed: recipe.md 1.4 (`share_report`, its failure rule, `dsengine session export` and the session import), conventions 1.7 (`DSS_GOOGLE_SESSION_FILE`, `DSS_CHROME_ARGS`); docs/architecture.md section "Cloud session and sharing" and a decision row; PRD non-goal and Features reworded (Cloud Run runs headful under Xvfb with an imported session; still no automated sign-in); new Phase 14: 14.1 Session export and import (M, STOP: the user creates the demo Gmail account, signs its profile in, grants BigQuery), 14.2 Share report op (M); essentials restamped.
+- Why: release 4.2 runs the engine on Cloud Run as the demo account; visitors open the shared report.
+- Affected tasks: 14.1, 14.2 (new). One signed-in Chrome: never alongside release live runs.
+
+## 2026-10-29: Audit (delta, change cloud engine)
+- Applied here: 14.1 paths under the repo root's data/ (`../data/chrome-profile-bot`, `--out ../data/session-export.json`), engine/.gitignore ignores data/ (in Files), `dsengine browser` before `check` on a fresh profile with `DSS_CDP_PORT=9224`, `exported_at` in session files with import trying both, no refresh write without `DSS_GOOGLE_SESSION_FILE`, `--disk-cache-size=33554432`; recipe.md 1.4 CLI text and architecture.md updated; restamped.
