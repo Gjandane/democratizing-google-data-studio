@@ -6,7 +6,7 @@ import { api, httpApi } from '../src/api/client';
 import { ApiError, type Build } from '../src/api/types';
 import { NewBuildDialog } from '../src/features/history/NewBuildDialog';
 import { ConnectStage } from '../src/features/workspace/connect/ConnectStage';
-import { resetMockState } from '../src/mocks/api';
+import { resetMockState, setMockHosting } from '../src/mocks/api';
 import { fixtures } from '../src/mocks/fixtures';
 
 beforeEach(() => resetMockState());
@@ -31,6 +31,7 @@ async function renderConnect() {
 const dropZone = () => screen.getByRole('region', { name: 'Upload CSV files' });
 const drop = (...files: File[]) => fireEvent.drop(dropZone(), { dataTransfer: { files } });
 const off = (el: HTMLElement) => (el as HTMLButtonElement).disabled;
+const unusable = (el: HTMLElement) => el.matches(':disabled');
 const type = (input: HTMLElement, value: string) => fireEvent.change(input, { target: { value } });
 
 function Where() {
@@ -153,5 +154,41 @@ describe('Connect stage', () => {
     fireEvent.click(button);
     await waitFor(() => expect(start).toHaveBeenCalledWith(build.id));
     await waitFor(async () => expect((await api.getBuild(build.id)).stage).toBe('context'));
+  });
+});
+
+describe('Connect stage on the open link (locked sources)', () => {
+  const LOCKED = 'GCS and BigQuery sources need the local app (see README)';
+
+  it('disables the GCS/BigQuery form with the reason, while CSV upload still works', async () => {
+    setMockHosting('open');
+    await renderConnect();
+    expect(await screen.findByText(LOCKED)).toBeTruthy();
+    for (const radio of within(screen.getByRole('radiogroup', { name: 'Source type' })).getAllByRole('radio')) expect(unusable(radio)).toBe(true);
+    expect(unusable(screen.getByPlaceholderText('gs://bucket/path/file.csv'))).toBe(true);
+    expect(unusable(screen.getByRole('button', { name: 'Add source' }))).toBe(true);
+    expect(off(screen.getByRole('button', { name: 'Choose CSV files' }))).toBe(false);
+    drop(csv('orders.csv'));
+    expect(await screen.findByRole('table', { name: 'Sources' })).toBeTruthy();
+  });
+
+  it('local mode shows no lock', async () => {
+    await renderConnect();
+    await waitFor(() => expect(off(screen.getByRole('button', { name: 'Choose CSV files' }))).toBe(false));
+    expect(screen.queryByText(LOCKED)).toBeNull();
+    expect(unusable(screen.getByPlaceholderText('gs://bucket/path/file.csv'))).toBe(false);
+  });
+
+  it('403 source_locked shows the same text, not a field error, and locks the form', async () => {
+    vi.spyOn(api, 'addSource').mockRejectedValue(new ApiError(403, 'source_locked', 'locked on the server', { kind: 'gcs' }));
+    await renderConnect();
+    const input = screen.getByPlaceholderText('gs://bucket/path/file.csv');
+    type(input, 'gs://bucket/data/sales.csv');
+    fireEvent.submit(input.closest('form')!);
+    expect(await screen.findByText(LOCKED)).toBeTruthy();
+    expect(screen.queryByText('locked on the server')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(unusable(screen.getByPlaceholderText('gs://bucket/path/file.csv'))).toBe(true);
+    expect(off(screen.getByRole('button', { name: 'Choose CSV files' }))).toBe(false);
   });
 });

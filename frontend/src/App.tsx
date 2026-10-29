@@ -4,6 +4,7 @@ import { EmptyState } from './components/EmptyState';
 import { AccessGate } from './features/access/AccessGate';
 import { HistoryPage } from './features/history/HistoryPage';
 import { AppServicesProvider, useAppServices } from './features/settings/AppServices';
+import { HostingProvider } from './features/workspace/build/hosting';
 import { WorkspaceShell } from './features/workspace/WorkspaceShell';
 
 function NotFound() {
@@ -34,11 +35,13 @@ export function App() {
   return (
     <AccessGate>
       <AppServicesProvider>
-        <Routes>
-          <Route path="/" element={<HistoryPage />} />
-          <Route path="/builds/:id" element={<WorkspaceRoute />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <HostingProvider>
+          <Routes>
+            <Route path="/" element={<HistoryPage />} />
+            <Route path="/builds/:id" element={<WorkspaceRoute />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </HostingProvider>
       </AppServicesProvider>
     </AccessGate>
   );

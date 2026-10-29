@@ -221,6 +221,34 @@ export function setMockHosting(hosted: MockHosted): void {
   state.tickets.clear();
 }
 
+/**
+ * Agent mode: the build's code expires while waiting (api.md 3.4): the ticket is `expired`, the
+ * run's pending events are dropped, and the run ends `job_expired` with the stage back at prototype.
+ * For tests.
+ */
+export function expireMockJob(buildId: string): void {
+  const ticket = state.tickets.get(buildId);
+  const build = state.builds.get(buildId);
+  if (!ticket || !build) return;
+  for (const timer of runTimers) clearTimeout(timer);
+  runTimers.clear();
+  ticket.state = 'expired';
+  const version = build.versions.find((v) => v.n === build.current_version);
+  if (version) version.status = 'draft';
+  emit(buildId, { name: 'build.finished', data: { status: 'failed', report_url: null, version: build.current_version } });
+  emit(buildId, {
+    name: 'run.finished',
+    data: { run_id: ticket.run_id, node: 'execute', status: 'error', error: 'job_expired: That build code expired. Build again for a new code.' },
+  });
+  setStage(build, 'prototype');
+  announce(build);
+}
+
+/** Agent mode: forgets the build's ticket and leaves the stage as it is (a lost code). For tests. */
+export function dropMockJob(buildId: string): void {
+  state.tickets.delete(buildId);
+}
+
 /** Turns the access-code gate on or off; `{required: true, ok: false}` also ends a session. For tests and the dev server. */
 export function setMockSession(session: Pick<Session, 'required' | 'ok'> & Partial<Session>): void {
   state.session = { google_client_id: null, user: null, ...session };
@@ -1102,6 +1130,9 @@ export function createMockApi(): ApiClient {
       respond(() => {
         requireNoReview(findBuild(id));
         const build = findBuild(id);
+        if (state.hosting.locked_sources.includes(kind)) {
+          throw new ApiError(403, 'source_locked', 'GCS and BigQuery sources need the local app (see README)', { kind });
+        }
         requireGcp();
         const value = uri.trim();
         if (kind === 'gcs' && !/^gs:\/\/[^/\s]+\/\S+\.csv$/i.test(value)) {

@@ -53,6 +53,8 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Live preview: `preview_start` config `frontend-live` (.claude/launch.json) runs plain `npm run dev` against the backend on 8000.
 - A full `npm test` run can fail one untouched test under load (seen 4x in Phase 16 in tests/blueprint.test.tsx "groups the rows by page"): the first test that renders WorkspaceShell in a file can outlast the default 1 s findBy. Rerun that file alone, then the full suite, and report both.
 - Google sign-in gate screenshots (mock): `VITE_MOCK_GOOGLE=1` seeds session.google.json with `ok:true`, so CDP `Fetch` must fulfil `*session.google.json*` as `export default {...ok:false}` to show the gate; the real GIS callback is reachable by a capture-phase `load` listener (Page.addScriptToEvaluateOnNewDocument) wrapping `google.accounts.id.initialize`; GIS localizes its button by network region (`locale` and `--lang` don't change it).
+- Vitest fake timers: RTL `findBy*`/`waitFor` hang (their wait uses the faked timers); advance with `vi.advanceTimersByTimeAsync`/`runAllTimersAsync`, then assert with `getBy*`. A disabled `<fieldset>` doesn't set `.disabled` on its children: assert `el.matches(':disabled')`.
+- Headless walkthrough of Build: the first "Generate recipe" click right after "Continue to build" can be a no-op while the gates load; retry the click until the Recipe list appears. Hosted mock flow: `VITE_MOCK=1 VITE_MOCK_HOSTED=1`, the failed run via the mock module's `setMockHosting('failed')` before Build.
 
 ## Skills
 Use each skill only at its step, on that task's files. If one isn't installed in your tool, skip it and say so under Gotchas. The essentials' UI design section wins over a skill's generic advice.

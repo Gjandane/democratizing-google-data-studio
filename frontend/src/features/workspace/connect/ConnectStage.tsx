@@ -15,6 +15,7 @@ import { ResearchPanel } from './ResearchPanel';
 import { hasSyntheticSource, SYNTHETIC_LABEL, SyntheticBadge, SyntheticDataPanel, SyntheticDetails } from './SyntheticDataPanel';
 import { ReferencePanel } from '../ReferencePanel';
 import { useReviewLock } from '../briefs/reviewLock';
+import { useHosting } from '../build/hosting';
 
 type UriKind = 'gcs' | 'bigquery';
 type DataChoice = 'upload' | 'generate';
@@ -88,6 +89,8 @@ const sourceColumns = (buildId: string): TableColumn<Source>[] => [
   },
 ];
 
+const SOURCE_LOCKED = 'GCS and BigQuery sources need the local app (see README)';
+
 const message = (error: unknown, fallback: string) => (error instanceof ApiError ? error.message : fallback);
 
 /** Most characters of "About this data" a context draft accepts (api.md 2.0, POST context). */
@@ -125,6 +128,10 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
   const [uriKind, setUriKind] = useState<UriKind>('gcs');
   const [uri, setUri] = useState('');
   const [uriError, setUriError] = useState<string | null>(null);
+  // The open link locks GCS and BigQuery (api.md 3.4): hosting says so up front, a 403 source_locked confirms it.
+  const hosting = useHosting();
+  const [serverLocked, setServerLocked] = useState(false);
+  const uriLocked = serverLocked || (hosting?.locked_sources.includes(uriKind) ?? false);
   const [choice, setChoice] = useState<DataChoice>('upload');
   const [newDashboard, setNewDashboard] = useState(false);
   const [reference, setReference] = useState<ReferenceSet | null | undefined>(undefined);
@@ -223,7 +230,8 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
       addToBuild([source]);
       setUri('');
     } catch (e) {
-      setUriError(message(e, "Couldn't add the source. Try again."));
+      if (e instanceof ApiError && e.code === 'source_locked') setServerLocked(true);
+      else setUriError(message(e, "Couldn't add the source. Try again."));
     } finally {
       finish();
       requestAnimationFrame(() => refocus(uriInput.current));
@@ -370,6 +378,8 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
 
       <form hidden={generating} onSubmit={(e) => void addUri(e)} className="flex flex-col gap-3 rounded-panel border border-border bg-surface p-4">
         <h3 className="text-title font-semibold text-text">Or add a table from Google Cloud</h3>
+        {uriLocked && <p className="text-label text-text-muted">{SOURCE_LOCKED}</p>}
+        <fieldset disabled={uriLocked} className="flex min-w-0 flex-col gap-3">
         <div role="radiogroup" aria-label="Source type" className="inline-flex w-fit rounded-control border border-border-strong p-0.5">
           {(Object.keys(URI_KINDS) as UriKind[]).map((kind) => (
             <label key={kind} className="relative">
@@ -413,6 +423,7 @@ export function ConnectStage({ build, onBuildChange, stretchRuns = noRuns, onRef
             Add source
           </Button>
         </div>
+        </fieldset>
       </form>
 
       <ReferencePanel

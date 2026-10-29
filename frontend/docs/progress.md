@@ -678,3 +678,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: until 19.2, VITE_MOCK_HOSTED=1 shows the agent offline and Build disabled (EnginePanel still reads agent_connected).
 - Left open: none
 - Next: Task 19.2. Start by `status --task 19.2`; replace the agent-mode EnginePanel with the job ticket panel.
+
+## 2026-10-30: Task 19.2 Hosted Build job command and the Connect lock
+- Status: done
+- Plan check: off
+- What changed: build/JobPanel.tsx (ticket panel: Chrome line, PowerShell/bash tabs with Copy, code, countdown, share note, one 3 s poller, restore on mount, expired/lost lines), build/hosting.tsx (HostingProvider in App.tsx, useHosting), build/setupCommand.ts, build/CopyCommand.tsx; BuildStage agent branch; EnginePanel local-only; Connect GCS/BigQuery lock; mocks expireMockJob/dropMockJob, addSource 403 source_locked.
+- Checks: `npm test -- build agent-status connect` PASS 62/62; `npm run typecheck` PASS; Test (all) `npm test` PASS 583/583 (25 files); `npm run build` PASS; manual yes: screenshots/19.2-{job-waiting,job-running,job-failed,connect-locked}-{1280,1440}.png + 19.2-job-waiting-keyboard-1280.png; CDP focus check: both tabs, the command boxes and Copy show the 2 px focus ring, arrows move between tabs.
+- Decisions: Build notes delegated to a Sonnet worker. Hosting is loaded once in HostingProvider (App.tsx); bare renders load it per component; agent = (hosting?.mode ?? engine?.mode) === 'agent'. Retired polling-agent UI (AgentStatus, agentCommand) removed, its tests replaced; engineReady = signed_in. job_expired hides the failed ResultCard in agent mode (JobPanel's expired line covers it). Hosted error-code prefixes ("agent_timeout: ") are stripped from shown errors. Lost ticket with stage still build enables Build. Countdown tabular-nums, code translate="no" (review P3s). AGENTS.md: 2 Known gotchas lines (fake timers/fieldset, headless Build walkthrough).
+- Digest: build/setupCommand.ts `setupCommands(origin, 'job'|'check', code) -> {powershell, bash}` (conventions 1.7); build/hosting.tsx `HostingProvider`, `useHosting(): Hosting|null`; build/CopyCommand.tsx `CopyCommand({command})`; mocks expireMockJob(id), dropMockJob(id)
+- Tried and failed: passing RecipePanel `running: false` while waiting (review P3) showed Regenerate during a waiting job; reverted.
+- Gotchas: Lucide has no Chrome icon (Globe used). Mock ticket code is always K7QM-4XRT.
+- Left open: P2 failed GET /api/hosting is silent and never retried (share note missing, Connect unlocked until a 403) - src/features/workspace/build/hosting.tsx; P3 waiting state spins op s001 in RecipePanel - BuildStage.tsx; P3 countdown 0:00 shows expired while the spinner still says building until the server event - JobPanel.tsx; P3 lost-code Build answers 409 wrong_stage in the mock - BuildStage.tsx; P3 no focus/announcement after 403 source_locked - ConnectStage.tsx.
+- Next: Task 19.3 Setup step with the agent connection check. Start by reusing setupCommands(origin, 'check', code) and CopyCommand in the Build stage.
