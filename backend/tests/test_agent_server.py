@@ -7,6 +7,7 @@ import logging
 import os
 from pathlib import Path
 import re
+import sqlite3
 import time
 
 from fastapi.testclient import TestClient
@@ -250,6 +251,31 @@ def test_retired_polling_routes(remote):
                              "agent_connected": False, "agent_last_seen": None}
     assert client.get(f"/api/builds/{bid}/job").json()["error"]["code"] == "job_not_found"
     assert client.get("/api/builds/b_000000000000/job").json()["error"]["code"] == "build_not_found"
+
+
+def test_running_app_sweeps_on_its_own(tmp_path, monkeypatch):
+    from dss.agent import jobs
+    monkeypatch.setattr(jobs, "SWEEP_INTERVAL_S", .05)
+    app = agent_app(tmp_path)
+    with TestClient(app, headers={"X-DSS-Access-Code": CODE}) as client:
+        bid, _ = make_build(client, app, tmp_path)
+        run_id = issue(client, bid)
+        backdate(app, run_id, "expires_at", 1)
+        for _ in range(200):
+            if ticket(client, bid)["state"] == "expired":
+                break
+            time.sleep(.02)
+        assert ticket(client, bid)["state"] == "expired"
+
+
+def test_live_codes_are_unique_while_running(remote):
+    client, app, bid, folder = remote
+    run_id, _ = accept(remote)
+    code = ticket(client, bid)["code"]
+    with app.state.db.connect() as conn, pytest.raises(sqlite3.IntegrityError):
+        conn.execute("INSERT INTO agent_tickets(run_id,build_id,version,code,state,created_at,expires_at,job_json) "
+                     "VALUES('r_000000000001',?,1,?,'waiting','x','x','{}')", (bid, code))
+    finish(client, run_id, 1)
 
 
 def test_waiting_ticket_expires_and_next_run_gets_new_code(remote):

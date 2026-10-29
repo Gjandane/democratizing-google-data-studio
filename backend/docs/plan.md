@@ -952,7 +952,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: no path opens the API unless `DSS_PUBLIC` is exactly `1` on Cloud Run; agent routes untouched.
 
 ## Phase 29: Local agent per judge (change 2026-10-29)
-- [~] 29.1 One-shot job tickets replace the polling agent
+- [x] 29.1 One-shot job tickets replace the polling agent
   - Goal: per ../contracts/api.md 3.4 (Agent endpoints) and conventions 1.7, agent-mode `POST /run` issues a persisted job ticket with a one-time code (`GET /api/builds/{id}/job`), `POST /api/agent/claim` trades the code for a per-job token, the per-job routes check that token, and the heartbeat, `jobs/next`, the shared agent token and the global agent-mode lock are removed.
   - Spec: docs/architecture.md#Hosted one-shot builds
   - Files: src/dss/agent/jobs.py, src/dss/api/agent.py, src/dss/api/run.py, src/dss/api/engine.py, src/dss/db.py, src/dss/config.py, src/dss/main.py, src/dss/harness/nodes/execute.py, tests/test_agent_server.py, tests/test_cloud_mode.py, tests/test_api_contract.py, docs/progress.md

@@ -84,6 +84,7 @@ def create_app(config=None, *, model_lister=None, bigquery_factory=None):
             try:
                 if config.engine_mode == "agent":
                     await app.state.agent_jobs.close()
+                if sweep_task:
                     sweep_task.cancel()
                 tasks = tuple(app.state.engine_tasks)
                 for task in tasks:

@@ -89,7 +89,7 @@ class LiveServer:
     def __init__(self, data):
         data.mkdir(parents=True, exist_ok=True)
         self.data = data
-        self.app = create_app(Config(data_dir=data, engine_mode="agent", access_code=CODE, agent_token=TOKEN),
+        self.app = create_app(Config(data_dir=data, engine_mode="agent", access_code=CODE),
                               model_lister=fake_models)
         self.sock = socket.socket()
         self.sock.bind(("127.0.0.1", 0))
@@ -131,10 +131,17 @@ class LiveServer:
         return bid, folder
 
     def run(self, bid):
-        wait_for(lambda: self.api.get("/api/engine/status").json()["agent_connected"], "agent heartbeat")
+        """POST /run, then claim the ticket's code as the one-shot agent will (api.md 3.4).
+        Returns the run, its Job and the job token; no access code goes with the claim."""
         response = self.api.post(f"/api/builds/{bid}/run")
         assert response.status_code == 202, response.text
-        return response.json()["run_id"]
+        code = self.api.get(f"/api/builds/{bid}/job").json()["code"]
+        claimed = httpx.post(self.url + "/api/agent/claim", json={"code": code, "agent_version": "test"}, timeout=10)
+        assert claimed.status_code == 200, claimed.text
+        return response.json()["run_id"], claimed.json()["job"], claimed.json()["job_token"]
+
+    def ticket(self, bid):
+        return self.api.get(f"/api/builds/{bid}/job").json()
 
     def finished(self, bid):
         wait_for(lambda: self.api.get(f"/api/builds/{bid}").json()["stage"] != "build", "build end", 30)
@@ -178,103 +185,81 @@ def fast(monkeypatch, caplog):
         monkeypatch.setattr(client, name, value)
 
 
+def job_agent(server, token, data, command, dry_run=False):
+    """The job half of today's client with a claimed job's token; 29.2 replaces its polling loop."""
+    agent = client.Agent(server.url, token, data, command, dry_run)
+    http = httpx.Client(base_url=server.url, headers={"X-DSS-Job-Token": token},
+                        timeout=httpx.Timeout(client.HTTP_TIMEOUT_S, connect=client.CONNECT_TIMEOUT_S))
+    return agent, http
+
+
 @contextmanager
-def running(agent):
+def running(agent, http, job):
     result = {}
-    thread = threading.Thread(target=lambda: result.update(code=agent.run()), daemon=True)
+    def run():
+        try:
+            agent.run_job(http, job)
+            result["code"] = 0
+        except client.AgentExit as error:
+            result["code"], result["error"] = error.code, str(error)
+    thread = threading.Thread(target=run, daemon=True)
     thread.start()
     try:
         yield thread, result
     finally:
+        thread.join(30)
         agent.stop.set()
-        thread.join(15)
+        http.close()
 
 
 def notes(path):
     return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
 
-def assert_no_token(*texts):
-    assert texts and all(TOKEN not in text for text in texts)
+def assert_no_token(*texts, secrets=(TOKEN,)):
+    assert texts and all(secret not in text for secret in secrets for text in texts)
 
 
-@pytest.mark.parametrize("cwd,dry_run", [(REPO, True), (ROOT, False)], ids=["repo-root-dry-run", "backend"])
-def test_console_script_takes_queued_build_to_done(server, cwd, dry_run):
+def test_polling_agent_takes_no_job_from_a_3_4_server(server, tmp_path):
+    """The 5.3 polling form against api.md 3.4: heartbeat and jobs/next are gone, so it exits and the
+    ticket stays waiting for its code (29.2 replaces the loop with `dss-agent run --job`)."""
     script = shutil.which("dss-agent", path=str(Path(sys.executable).parent))
     assert script, "uv sync installs the dss-agent console script"
+    bid, _ = server.queue_build()
+    assert server.api.post(f"/api/builds/{bid}/run").status_code == 202
     env = {**os.environ, "DSS_AGENT_TOKEN": TOKEN, "DSS_ENGINE_CMD": f'"{sys.executable}" "{FAKE}"',
-           "DSS_DATA_DIR": "", "DSS_AGENT_SERVER": "", "PYTHONUNBUFFERED": "1"}
-    agent = subprocess.Popen([script, "--server", server.url] + ["--dry-run"] * dry_run, cwd=cwd, env=env,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, start_new_session=os.name != "nt")
-    lines = []
-    reader = threading.Thread(target=lambda: [lines.append(line) for line in agent.stdout], daemon=True)
-    reader.start()
-    bid = None
-    try:
-        bid, source = server.queue_build()
-        server.run(bid)
+           "DSS_DATA_DIR": str(tmp_path / "data"), "DSS_AGENT_SERVER": "", "PYTHONUNBUFFERED": "1"}
+    agent = subprocess.run([script, "--server", server.url], cwd=ROOT, env=env, capture_output=True,
+                           text=True, encoding="utf-8", errors="replace", timeout=60)
+    assert agent.returncode != 0
+    assert server.ticket(bid)["state"] == "waiting"
+    status = server.api.get("/api/engine/status").json()
+    assert status["agent_connected"] is False and status["agent_last_seen"] is None
+    assert not (tmp_path / "data/agent").exists()
+    assert_no_token(agent.stdout, agent.stderr)
+
+
+@pytest.mark.parametrize("dry_run", [True, False], ids=["dry-run", "real"])
+def test_claimed_job_takes_build_to_done(server, tmp_path, monkeypatch, caplog, capfd, dry_run):
+    caplog.set_level(logging.INFO)
+    monkeypatch.chdir(tmp_path)  # the engine must still start in backend/
+    bid, source = server.queue_build()
+    run_id, job, token = server.run(bid)
+    agent, http = job_agent(server, token, tmp_path / "data", [sys.executable, str(FAKE)], dry_run)
+    with running(agent, http, job) as (thread, result):
         build = server.finished(bid)
-        assert build["stage"] == "done" and build["versions"][0]["status"] == "published"
-        status = server.api.get("/api/engine/status").json()
-        assert status["chrome_running"] and status["signed_in"]
-        folder = (REPO / "data/agent" / bid / "v1").resolve()
-        for name in ("recipe.jsonl", "background_p1.png"):
-            assert (folder / name).read_bytes() == (source / name).read_bytes()
-        flags = json.loads((folder / "fake-args.json").read_text())
-        assert flags[flags.index("--timeout") + 1] == "19"
-        assert Path(flags[flags.index("--screens") + 1]) == folder / "screens"
-        assert ("--dry-run" in flags) is dry_run
-        wait_for(lambda: "finished (exit code 0)" in "".join(lines), "the agent's job report")
-    finally:
-        terminate_tree(agent)
-        agent.wait(15)
-        reader.join(15)
-        if bid:
-            shutil.rmtree(REPO / "data/agent" / bid, ignore_errors=True)
-    output = "".join(lines)
-    assert "Connected to " + server.url in output
-    assert_no_token(output)
-
-
-def test_heartbeats_during_polls_and_runs_and_checks_only_while_idle(server, wrapper, fast, tmp_path,
-                                                                     monkeypatch, caplog, capfd):
-    monkeypatch.setenv("DSS_TEST_ENGINE_SLEEP", "1.5")
-    jobs, beats, polls = server.app.state.agent_jobs, [], []
-    heartbeat, poll = jobs.heartbeat, jobs.next
-    def record_beat(chrome_running, signed_in):
-        beats.append((time.time(), chrome_running, signed_in))
-        heartbeat(chrome_running, signed_in)
-    async def record_poll(wait):
-        started = time.time()
-        try:
-            return await poll(wait)
-        finally:
-            polls.append((started, time.time()))
-    jobs.heartbeat, jobs.next = record_beat, record_poll
-    agent = client.Agent(server.url, TOKEN, tmp_path / "data", [sys.executable, str(wrapper)])
-    log = tmp_path / "engine.log"
-    with running(agent) as (thread, result):
-        wait_for(lambda: beats, "first heartbeat")
-        assert notes(log)[0]["kind"] == "check" and notes(log)[0]["t"] < beats[0][0]
-        status = server.api.get("/api/engine/status").json()
-        assert status["chrome_running"] and not status["signed_in"]
-        time.sleep(1.4)
-        bid, _ = server.queue_build()
-        server.run(bid)
-        assert server.finished(bid)["stage"] == "done"
-        wait_for(lambda: [n for n in notes(log) if n["kind"] == "check" and n["t"] > run_end(log)],
-                 "an idle check after the run")
-        assert thread.is_alive()
-    assert result["code"] == 0
-    started = next(n["t"] for n in notes(log) if n["kind"] == "run_started")
-    checks = [n["t"] for n in notes(log) if n["kind"] == "check"]
-    assert len([t for t in checks if t < started]) >= 2
-    assert not [t for t in checks if started <= t <= run_end(log)]
-    assert len([b for b in beats if started < b[0] < run_end(log)]) >= 5
-    long_polls = [(a, b) for a, b in polls if b - a >= .4]
-    assert any(len([beat for beat in beats if a < beat[0] < b]) >= 3 for a, b in long_polls)
-    assert all(beat[1:] == (True, False) for beat in beats)
-    assert_no_token(caplog.text, *capfd.readouterr())
+    assert result == {"code": 0}
+    assert build["stage"] == "done" and build["versions"][0]["status"] == "published"
+    assert server.ticket(bid)["state"] == "finished"
+    folder = tmp_path / "data/agent" / bid / "v1"
+    for name in ("recipe.jsonl", "background_p1.png"):
+        assert (folder / name).read_bytes() == (source / name).read_bytes()
+    flags = json.loads((folder / "fake-args.json").read_text())
+    assert flags[flags.index("--timeout") + 1] == "19"
+    assert Path(flags[flags.index("--screens") + 1]) == folder / "screens"
+    assert ("--dry-run" in flags) is dry_run
+    assert f"Job {run_id} finished (exit code 0)" in caplog.text
+    assert_no_token(caplog.text, *capfd.readouterr(), secrets=(token,))
 
 
 def run_end(log):
@@ -293,10 +278,10 @@ def test_screenshots_upload_before_their_events_flushed_within_a_second(server, 
         batches.append((time.time(), [event.get("op_id") for event in events], shots))
         return await post(run_id, events)
     jobs.events = record_events
-    agent = client.Agent(server.url, TOKEN, tmp_path / "data", [sys.executable, str(wrapper)])
-    with running(agent):
-        bid, source = server.queue_build()
-        server.run(bid)
+    bid, source = server.queue_build()
+    run_id, job, token = server.run(bid)
+    agent, http = job_agent(server, token, tmp_path / "data", [sys.executable, str(wrapper)])
+    with running(agent, http, job):
         assert server.finished(bid)["stage"] == "done"
     log = tmp_path / "engine.log"
     assert {Path(n["cwd"]).resolve() for n in notes(log)} == {ROOT}
@@ -306,27 +291,28 @@ def test_screenshots_upload_before_their_events_flushed_within_a_second(server, 
     assert shots == [b"\x89PNG shot"]
     assert [path.name for path in (source / "screens").iterdir()] == ["s900_shot.png"]
     assert "skipped a screenshot" in caplog.text
-    assert_no_token(caplog.text, *capfd.readouterr())
+    assert_no_token(caplog.text, *capfd.readouterr(), secrets=(token,))
 
 
 def test_job_not_found_mid_job_kills_engine_tree_and_deletes_folder(server, wrapper, fast, tmp_path,
                                                                     monkeypatch, caplog, capfd):
     monkeypatch.setenv("DSS_TEST_ENGINE_TRICKLE", "1")
     alive = tmp_path / "alive"
-    agent = client.Agent(server.url, TOKEN, tmp_path / "data", [sys.executable, str(wrapper)])
-    with running(agent) as (thread, result):
-        bid, source = server.queue_build()
-        run_id = server.run(bid)
-        folder = tmp_path / "data/agent" / bid / "v1"
+    bid, source = server.queue_build()
+    run_id, job, token = server.run(bid)
+    agent, http = job_agent(server, token, tmp_path / "data", [sys.executable, str(wrapper)])
+    folder = tmp_path / "data/agent" / bid / "v1"
+    with running(agent, http, job) as (thread, result):
         wait_for(lambda: "working" in (source / "events.jsonl").read_text(), "events relayed")
         wait_for(lambda: alive.exists() and "c" in alive.read_text(), "engine child")
         assert (folder / "recipe.jsonl").is_file()
         jobs = server.app.state.agent_jobs
         async def expire():
-            # The server's own timeout path: the job is completed and forgotten.
-            job = jobs.get(run_id)
-            async with job.lock:
-                jobs.complete(job, 1, RunError("agent_timeout", "Build agent timed out", 504))
+            # The sweep's agent_timeout path: the ticket ends and the job is completed and forgotten.
+            held = jobs.get(run_id)
+            async with held.lock:
+                jobs.close_ticket(run_id)
+                jobs.complete(held, 1, RunError("agent_timeout", "Build agent timed out", 504))
         server.call(expire())
         wait_for(lambda: not folder.exists(), "job folder removal")
         size = alive.stat().st_size
@@ -334,14 +320,19 @@ def test_job_not_found_mid_job_kills_engine_tree_and_deletes_folder(server, wrap
         assert alive.stat().st_size == size
         build = server.finished(bid)
         assert build["stage"] == "prototype" and build["versions"][0]["status"] == "failed"
-        assert thread.is_alive() and not server.app.state.engine_busy
-        retry = server.queue_build()[0]
-        monkeypatch.delenv("DSS_TEST_ENGINE_TRICKLE")
-        server.run(retry)
+        thread.join(15)
+    assert result == {"code": 0} and not server.app.state.engine_busy
+    assert server.ticket(bid)["state"] == "finished"
+    # Another build's ticket is unaffected: claimed and run to done.
+    retry = server.queue_build()[0]
+    monkeypatch.delenv("DSS_TEST_ENGINE_TRICKLE")
+    _, retry_job, retry_token = server.run(retry)
+    agent, http = job_agent(server, retry_token, tmp_path / "data", [sys.executable, str(wrapper)])
+    with running(agent, http, retry_job) as (_, retried):
         assert server.finished(retry)["stage"] == "done"
-    assert result["code"] == 0
+    assert retried == {"code": 0}
     assert f"Job {run_id} no longer exists" in caplog.text
-    assert_no_token(caplog.text, *capfd.readouterr())
+    assert_no_token(caplog.text, *capfd.readouterr(), secrets=(token, retry_token))
 
 
 def test_nested_image_inputs_reach_the_engine_as_plain_files(server, wrapper, fast, tmp_path, monkeypatch,
@@ -349,13 +340,13 @@ def test_nested_image_inputs_reach_the_engine_as_plain_files(server, wrapper, fa
     from test_agent_server import nested_inputs
     seen = tmp_path / "inputs.json"
     monkeypatch.setenv("DSS_TEST_ENGINE_INPUTS", str(seen))
-    agent = client.Agent(server.url, TOKEN, tmp_path / "data", [sys.executable, str(wrapper)])
-    with running(agent):
-        bid, source = server.queue_build()
-        nested_inputs(source)
-        from fakes import ready_fixture
-        ready_fixture(server.app, bid, source)
-        server.run(bid)
+    bid, source = server.queue_build()
+    nested_inputs(source)
+    from fakes import ready_fixture
+    ready_fixture(server.app, bid, source)
+    _, job, token = server.run(bid)
+    agent, http = job_agent(server, token, tmp_path / "data", [sys.executable, str(wrapper)])
+    with running(agent, http, job):
         assert server.finished(bid)["stage"] == "done"
     canonical = [json.loads(line) for line in
                  (source / "recipe.jsonl").read_text(encoding="utf-8").split("\n")[1:-1]]
@@ -370,30 +361,50 @@ def test_nested_image_inputs_reach_the_engine_as_plain_files(server, wrapper, fa
     folder = tmp_path / "data/agent" / bid / "v1"
     assert sorted(path.name for path in folder.iterdir() if path.is_file() and path.suffix == ".png") == sorted(
         sent.values())
-    assert_no_token(caplog.text, *capfd.readouterr())
+    assert_no_token(caplog.text, *capfd.readouterr(), secrets=(token,))
 
 
-def test_network_errors_retry_with_backoff_then_exit_nonzero(tmp_path, fast, monkeypatch, caplog, capfd):
+def test_network_errors_retry_with_backoff_then_exit_nonzero(tmp_path, wrapper, fast, monkeypatch, caplog, capfd):
     assert client.RETRY_BUDGET_S == 60
     monkeypatch.setattr(client, "RETRY_BUDGET_S", 20)
     live = LiveServer(tmp_path / "server")
-    agent = client.Agent(live.url, TOKEN, tmp_path / "data", [sys.executable, str(FAKE)])
+    probe = client.Agent(live.url, TOKEN, tmp_path / "data", [sys.executable, str(FAKE)])
+    reached, result, token = {}, {}, None
+    def call():
+        with probe.http() as http:
+            try:
+                probe.call(http, "GET", "/jobs/next")
+            except client.JobGone:  # 3.4 retired jobs/next: the 404 proves the retry reached the server
+                reached["ok"] = True
     try:
-        with running(agent) as (thread, result):
-            wait_for(lambda: "retrying" in caplog.text, "a refused request", 15)
-            live.start()
-            wait_for(lambda: live.app.state.agent_jobs.connected, "reconnect", 15)
+        # Refused while the server is down, retried with backoff, answered once it starts.
+        prober = threading.Thread(target=call, daemon=True)
+        prober.start()
+        wait_for(lambda: "retrying" in caplog.text, "a refused request", 15)
+        live.start()
+        prober.join(15)
+        assert reached == {"ok": True}
+        # Mid-job the server goes away: the job's calls retry for the budget, then the engine stops.
+        monkeypatch.setenv("DSS_TEST_ENGINE_TRICKLE", "1")
+        alive = tmp_path / "alive"
+        bid, _ = live.queue_build()
+        _, job, token = live.run(bid)
+        agent, http = job_agent(live, token, tmp_path / "data", [sys.executable, str(wrapper)])
+        with running(agent, http, job) as (thread, result):
+            wait_for(lambda: alive.exists() and "c" in alive.read_text(), "engine child")
             monkeypatch.setattr(client, "RETRY_BUDGET_S", 1)
             stopped = time.monotonic()
             live.stop()
             thread.join(30)
             assert not thread.is_alive()
             assert time.monotonic() - stopped >= 1
+        size = alive.stat().st_size
+        time.sleep(.5)
+        assert alive.stat().st_size == size
     finally:
         live.stop()
-    assert result["code"] == 1
-    assert "Server unavailable for 1 s" in caplog.text
-    assert_no_token(caplog.text, *capfd.readouterr())
+    assert result["code"] == 1 and "Server unavailable for 1 s" in result["error"]
+    assert_no_token(caplog.text, *capfd.readouterr(), secrets=(TOKEN, token))
 
 
 def test_backoff_doubles_and_429_or_5xx_retry_until_the_budget(tmp_path, monkeypatch):

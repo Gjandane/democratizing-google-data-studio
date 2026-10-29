@@ -2401,3 +2401,15 @@ assert min(timings) < .1
 - Gotchas: tests/test_agent_client.py server-integration tests (LiveServer: console script, heartbeats, screenshots, job_not_found, nested images, network reconnect) still use heartbeat/jobs/next and will fail against 29.1; the If clause allows rewriting them in that file: claim via HTTP, then drive `Agent.run_job(httpx.Client(headers={"X-DSS-Job-Token": t}), job)`; polling-loop-only tests become "old polling form vs 3.4 server" checks.
 - Left open: review (blueprint-reviewer) not run yet.
 - Next: rerun full `uv run pytest`; fix test_agent_client.py as above; review; then progress entry `done` and `blueprint.py done 29.1`.
+
+## 2026-10-29: Task 29.1 One-shot job tickets replace the polling agent
+- Status: done
+- Plan check: off
+- What changed: (continuation of the partial entry) main.py cancels the sweep only if started (tests flip engine_mode to agent after startup); db.py live-code unique index now covers `waiting` and `running`; test_agent_server: periodic-sweep and running-code-uniqueness tests; test_agent_client.py server-integration tests now claim a code and drive `Agent.run_job` with `X-DSS-Job-Token`; the console-script test became "polling agent takes no job from a 3.4 server".
+- Checks: `uv run pytest tests/test_agent_server.py tests/test_cloud_mode.py tests/test_api_contract.py` PASS (150); Test (all) `uv run pytest` PASS (2313 passed, 17 deselected).
+- Decisions: index renamed `agent_tickets_live_codes` (WIP DBs keep the old one harmlessly); retired agent routes answer `404 job_not_found` via the catch-all.
+- Digest: agent/jobs.py AgentJobs: prepare/issue/claim(code)->{job,job_token,api_version}/authorize(run_id,token)/ticket(bid)/sweep/recover; new_code(), normalize_code(); table agent_tickets(run_id,build_id,version,code,state,expires_at,claimed_at,token_sha256,last_event_at,job_json).
+- Tried and failed: none
+- Gotchas: client.py's polling loop raises JobGone uncaught on a 3.4 server's `jobs/next` 404 (exit 1, traceback); 29.2 replaces it.
+- Left open: P3 client idle-check/heartbeat test removed without replacement (polling loop retired by 29.2) - tests/test_agent_client.py
+- Next: Task 29.2 One-shot `dss-agent run`.

@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS agent_tickets (
  code TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('waiting','running','finished','expired')),
  created_at TEXT NOT NULL, expires_at TEXT NOT NULL, claimed_at TEXT, token_sha256 TEXT,
  last_event_at TEXT, job_json TEXT NOT NULL);
-CREATE UNIQUE INDEX IF NOT EXISTS agent_tickets_live_code ON agent_tickets(code) WHERE state='waiting';
+CREATE UNIQUE INDEX IF NOT EXISTS agent_tickets_live_codes ON agent_tickets(code) WHERE state IN ('waiting','running');
 CREATE INDEX IF NOT EXISTS agent_tickets_build ON agent_tickets(build_id);
 CREATE TABLE IF NOT EXISTS consolidation (
  id INTEGER PRIMARY KEY CHECK(id=1), last_run_at TEXT, chats_since INTEGER NOT NULL DEFAULT 0);
