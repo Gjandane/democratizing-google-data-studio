@@ -2365,3 +2365,8 @@ assert min(timings) < .1
 - Gotchas: none beyond AGENTS.md (no root `.env` here; no test needed it).
 - Left open: P3 Google certs fetched uncached on every sign-in, with google-auth's 120 s transport timeout (Spec names this call) - src/dss/api/session.py
 - Next: backend has no open task; release 4.1 (Cloud Run deploy, repo root) needs this.
+
+## 2026-10-29: Change open hosted link
+- What changed: contracts/conventions.md 1.6 adds `DSS_PUBLIC`; docs/architecture.md Cloud mode gets the "Open link" bullet and a decision row; new task 28.1 (Open-link opt-in on Cloud Run, S) in Phase 28; essentials pin conventions 1.6 and are restamped.
+- Why: the user wants the hosted URL open to anyone with the link (the GCP project's OAuth branding is limited to one domain); release 4.1 now `Needs: backend 28.1`.
+- Affected tasks: 28.1 only; access middleware, session routes and agent token unchanged.

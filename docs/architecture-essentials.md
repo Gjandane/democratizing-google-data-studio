@@ -42,16 +42,19 @@ docs/img/                README screenshots from 2.4/2.6, cropped (no email, ava
   startup probe `/api/health`, env `GCP_PROJECT_ID`, `BQ_DATASET`, `BQ_LOCATION`,
   `DSS_DATA_DIR=/data`, `DSS_DB_PATH=/tmp/dss.sqlite`, `DSS_ENGINE_MODE=agent`,
   `DSS_STATIC_DIR=/app/frontend/dist` (never `DSS_DEV`); secrets `GOOGLE_API_KEY`,
-  `DSS_ACCESS_CODE`, `DSS_AGENT_TOKEN`; bucket `<project>-dss-state` at `/data`; runtime SA roles
-  per the contract; `--allow-unauthenticated` only with the gate (Google sign-in, code for scripts; env
-  `GOOGLE_OAUTH_CLIENT_ID`, `DSS_SIGNIN_ALLOW`, plain); every deploy guards the
+  `DSS_AGENT_TOKEN`, and `DSS_ACCESS_CODE` only when gated; bucket `<project>-dss-state` at `/data`;
+  runtime SA roles per the contract; `--allow-unauthenticated`. Open link (conventions 1.6, change
+  2026-10-29): `DSS_PUBLIC=1` in .env deploys with no gate (`DSS_PUBLIC=1`, empty
+  `GOOGLE_OAUTH_CLIENT_ID` and `DSS_SIGNIN_ALLOW`, no code secret); `DSS_PUBLIC` empty deploys the
+  gated path (Google sign-in, code for scripts; plain env `GOOGLE_OAUTH_CLIENT_ID`,
+  `DSS_SIGNIN_ALLOW`). Every deploy guards the
   project number and sets SA, port, ingress, env and secrets in full, then traffic to latest (4.1).
   Commands and checks refer to secrets as unexpanded `$VARS`, never literal values.
 - Diagrams: one HTML page per diagram on a 1840x800 canvas, white background, black text, Google
   accents (#4285F4, #EA4335, #FBBC04, #34A853), the vendored font, no network requests.
 - Numbers in README come only from deck/data/bench-*.json (e2e runs), with the run date.
 - Links, exactly: GitHub https://github.com/Gjandane/democratizing-google-data-studio ; hosted app: never in
-  a tracked file (`DSS_AGENT_SERVER` in .env; shared privately with the judges; Google sign-in;
+  a tracked file (`DSS_AGENT_SERVER` in .env; shared privately with the judges; open link, no sign-in;
   hosted v1 stops at the recipe; Data Studio builds run locally, hosted builds are v2).
 - README diagrams: deck/img d5 (node graph), d4 (harness, OKF not RAG), d8 (Google Cloud).
 - README claims a feature on a target only after its acceptance passed there (local 2.4-2.6; hosted 4.2-4.3, up to the recipe).
@@ -69,7 +72,7 @@ docs/img/                README screenshots from 2.4/2.6, cropped (no email, ava
 |---|---|---|---|
 | contracts/recipe.md | 1.3 | consumes (validates fixtures) | `uv run --project integration python integration/check_contracts.py` |
 | contracts/api.md | 3.3 | consumes (e2e, local and deployed) | `uv run --project integration python integration/e2e_flow1.py` |
-| contracts/conventions.md | 1.5 | consumes | `uv run --project integration python integration/check_contracts.py` (every env name is in .env.example) |
+| contracts/conventions.md | 1.6 | consumes | `uv run --project integration python integration/check_contracts.py` (every env name is in .env.example) |
 | contracts/dashboard-intent.md | 1.1 | consumes | `uv run --project integration python integration/check_contracts.py`; tasks 2.5 and 4.3 end-to-end |
 | contracts/synthetic-data.md | 1.1 | consumes | release 2.5, 2.6 and 4.3 |
 

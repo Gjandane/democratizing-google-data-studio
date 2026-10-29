@@ -12,7 +12,7 @@ Written 2026-10-18.
 - Context: Google GCP hackathon (AI Builder Cup). Deadline: no longer binding; the user keeps the full
   scope past 2026-10-23 01:05 MPST (change 2026-10-23; earlier 2026-10-20 and 2026-10-19 01:05).
 - Hosted on Cloud Run in this version (change 2026-10-19): the app runs as one Cloud Run service
-  behind Google sign-in (change 2026-10-29; the shared access code stays for scripts); the Data Studio build runs through a build agent on the user's
+  as an open link: anyone with the URL gets in, no sign-in (change 2026-10-29 open hosted link, conventions 1.6; Google sign-in stays in the code for a later lock-down); the Data Studio build runs through a build agent on the user's
   machine, because the engine needs the signed-in Chrome profile. Hosted v1 goes up to the
   recipe; the hosted build through the agent is v2 (change 2026-10-29 hosted scope).
 
@@ -52,10 +52,10 @@ Written 2026-10-18.
   semantic memory = an OKF bundle (no vector store), episodic memory = SQLite + FTS5,
   consolidation after every 5 builds that reach `done` (worker model), one trace per run.
 - Goal: deployed on Cloud Run (contracts/conventions.md, Cloud deployment): one service, one
-  instance, Google sign-in at the gate (code for scripts), state on a GCS volume, secrets in Secret Manager, the engine run by
+  instance, an open link (`DSS_PUBLIC=1`; change 2026-10-29), state on a GCS volume, secrets in Secret Manager, the engine run by
   a local build agent (v2; hosted v1 stops at the recipe, change 2026-10-29 hosted scope); deployed with one script (`bash deploy/deploy.sh`).
-- Non-goal: per-user accounts, roles or data isolation (POC): Google sign-in only opens the one
-  shared history (change 2026-10-29).
+- Non-goal: per-user accounts, roles or data isolation (POC): every visitor of the open link
+  shares the one history (change 2026-10-29).
 - Non-goal: the engine in the cloud (headless Chrome with a stored Google session): the Google
   session stays on the user's machine; the build agent runs the engine there.
 - Non-goal: more than one Cloud Run instance, autoscaling, a custom domain, IAP or per-user accounts.
@@ -91,9 +91,9 @@ Written 2026-10-18.
 ## Contracts
 | Contract | Version | Provider | Consumers | Conformance check |
 |---|---|---|---|---|
-| contracts/conventions.md | 1.4 | program | engine, backend, frontend, release | release: `uv run --project integration python integration/check_contracts.py` (the one root `.env.example` has every name); manual: each part's config reads these names, ports and paths |
+| contracts/conventions.md | 1.6 | program | engine, backend, frontend, release | release: `uv run --project integration python integration/check_contracts.py` (the one root `.env.example` has every name); manual: each part's config reads these names, ports and paths |
 | contracts/recipe.md | 1.3 | backend (recipe), engine (events) | engine, backend, release | engine: `uv run pytest tests/test_contract.py`; backend: `uv run pytest tests/test_recipe_contract.py` |
-| contracts/api.md | 3.2 | backend | frontend, release | backend: `uv run pytest tests/test_api_contract.py`; frontend: `npm test -- contract`; both against contracts/fixtures/api/ and, from backend 25.1 / frontend 16.1, contracts/fixtures/stage-settings/ |
+| contracts/api.md | 3.3 | backend | frontend, release | backend: `uv run pytest tests/test_api_contract.py`; frontend: `npm test -- contract`; both against contracts/fixtures/api/ and, from backend 25.1 / frontend 16.1, contracts/fixtures/stage-settings/ |
 | contracts/dashboard-intent.md | 1.3 | backend | frontend, release | backend: capability/reference/feasibility tests; frontend: contract and reference tests; release: tasks 2.5 and 4.3 |
 | contracts/synthetic-data.md | 1.3 | backend | frontend, release | backend synthetic tests, frontend 11.1-11.2, release 2.5, 2.6 and 4.3 |
 
@@ -107,7 +107,7 @@ Written 2026-10-18.
   of five dashboard sources (CSV upload, research mode, screenshot + synthetic data, BigQuery,
   GCS) -> README and the first GitHub push -> Cloud Run deploy and hosted acceptance -> final push.
 - Start everything locally: `./start.ps1` (Windows) or `./start.sh`: backend on 8000, frontend on 5173.
-- Hosted: the Cloud Run URL plus Google sign-in (any Google account by default); v1 goes up to the recipe (Data Studio builds run
+- Hosted: the Cloud Run URL, open to anyone with the link (no sign-in, change 2026-10-29); v1 goes up to the recipe (Data Studio builds run
   locally; hosted builds through `dss-agent` are v2, change 2026-10-29 hosted scope).
 - Ships: all code, the planning docs (docs/, AGENTS.md, CLAUDE.md: they show the process), the
   submission deck draft `deck/AI-Builder-Cup-Submission.pptx` and `.pdf` as built by release 1.3
@@ -208,7 +208,7 @@ phases" below.
 - `uv run --project integration python integration/e2e_flow1.py --live`: same, with the real
   engine and the signed-in Chrome profile; prints a `https://datastudio.google.com/` link.
 - `uv run --project integration python integration/e2e_flow1.py --server <Cloud Run URL> --until recipe`:
-  flow 1 at the deployed service (access code from `.env`) compiles a recipe, and `POST /run` answers
+  flow 1 at the deployed open service compiles a recipe, and `POST /run` answers
   `424 agent_offline` (no agent; hosted builds are v2, change 2026-10-29 hosted scope).
 
 - Manual acceptance (release 2.4 and 2.6): the user builds one dashboard per source through the local UI
@@ -309,3 +309,4 @@ phases" below.
 | 2026-10-29 | Google sign-in at the hosted gate (api.md 3.3, conventions 1.5): `POST /api/session {google_id_token}` verified with google-auth, `DSS_SIGNIN_ALLOW` (empty = any Google account; `@domain` via `hd`, or emails) so a domain lock after the hackathon is one env change and a redeploy; signed 24 h cookie keyed by the code; the code and header stay for scripts and e2e drivers; agent token unchanged; backend 27.1, frontend 18.1, release 4.1 gated on both | IAP on Cloud Run (the local build agent would need Google ID tokens too; lifts the IAP non-goal); code only | user wants Google sign-in on the hosted link; in-app keeps SSE, iframe and agent paths unchanged | change 2026-10-29 (user, release 4.1 block, cards) |
 | 2026-10-29 | Release 2.6 accepted as PASS with findings; W1-W7 (engine area auto-fields and box placement, `bar` date grain, backend legends, HTML flake, scorecard pick) deferred to the parts' Later lists; 2.6 reopened only to fix check_contracts' ReferenceSet schema; GitHub and Cloud Run next | plan engine/backend/contract fixes now, gate 4.3 on them | user: finish the GitHub upload and Cloud Run deployment first; the report is usable with recorded findings | change 2026-10-29 (user, release 2.6 block) |
 | 2026-10-29 | Hosted v1 scope: the Cloud Run app goes from Google sign-in to the compiled recipe; Build answers `424 agent_offline` (the contract's existing stop, no contract change); Data Studio builds stay local; release 4.2/4.3 run `--until recipe` hosted, 4.3 skips the narrowed-allowlist step hosted, 4.4's README says so; one always-on instance kept | hosted builds through the owner's `dss-agent` (v1 plan); scale to zero (`--min-instances 0`) | user: the local agent is v2; no cold starts for judges, runs after 202 and the DB backup keep CPU | change 2026-10-29 hosted scope (user, release audit cards) |
+| 2026-10-29 | Open hosted link (conventions 1.6): `DSS_PUBLIC=1` on Cloud Run, with the code and the Google client id empty, runs the service ungated; agent token unchanged; backend 28.1 (fail-closed opt-in), release 4.1 gated on it (deploy.sh open and gated modes), 4.2/4.4 wording; frontend unchanged (the gate opens on `required: false`) | OAuth client in a separate billing-free project with External branding (no code change); access code shared with the link; switch the existing branding to External | user: anyone with the link gets in; the project's branding is limited to one domain; an explicit flag so a missing secret never opens the service | change 2026-10-29 open hosted link (user cards) |

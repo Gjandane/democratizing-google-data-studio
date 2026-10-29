@@ -1,5 +1,5 @@
 # Conventions (shared by every part)
-Version 1.5 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
+Version 1.6 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
 (added DSS_ALLOWED_TYPES, DSS_CONSOLIDATE_EVERY, DSS_ENGINE_TIMEOUT_S, background_p<n>.png, engine lock).
 1.1 (2026-10-19) Cloud Run deployment: one hosted service, access code, local build agent, DB backup
 (added PORT, DSS_STATIC_DIR, DSS_ACCESS_CODE, DSS_ENGINE_MODE, DSS_AGENT_SERVER,
@@ -18,6 +18,9 @@ the agent-mode lock fixes the key and GCP values, not model settings. No name ad
 tracked file (the repo is public; the link is shared privately);
 the browser signs in with Google at the gate (contracts/api.md 3.3); the access code stays for
 scripts. Cloud deployment: Access bullet, fail-closed rule, shared-history wording.
+1.6 (2026-10-29, change open hosted link, user request) added `DSS_PUBLIC`: `1` on Cloud Run runs
+the service with no gate (empty code, no Google sign-in; anyone with the URL gets in); the
+fail-closed rule now has that one explicit opt-in. Access, Secrets bullets.
 Only the architect at the program root edits this file. Parts read it; they never edit it.
 
 ## Ports and URLs
@@ -58,6 +61,7 @@ values. Names:
 | `DSS_STATIC_DIR` | (empty = serve no frontend) | backend | built frontend folder served at `/` with SPA fallback (container: `/app/frontend/dist`) |
 | `DSS_ACCESS_CODE` | (empty = no gate) | backend | shared access code, at least 12 characters; when set, `/api` needs it (contracts/api.md, Access). Cloud Run: from Secret Manager; the root `.env` value also gates the local app |
 | `GOOGLE_OAUTH_CLIENT_ID` | (empty = no Google sign-in) | backend | 1.5: OAuth 2.0 Web client id (public, not a secret) for Google sign-in at the gate (contracts/api.md 3.3, Access); its Authorized JavaScript origins list the Cloud Run URL, `http://localhost:5173` and `http://localhost:8000`; needs `DSS_ACCESS_CODE`. Cloud Run: a plain env var |
+| `DSS_PUBLIC` | (empty = gated) | backend | 1.6: read only when `K_SERVICE` is set (Cloud Run). `1` = open hosted link: the backend starts with `DSS_ACCESS_CODE` and `GOOGLE_OAUTH_CLIENT_ID` empty and gates nothing (contracts/api.md, Access, empty code); `1` with either of them set refuses to start; any other non-empty value refuses to start. Cloud Run: a plain env var, set from `.env` by `bash deploy/deploy.sh` |
 | `DSS_SIGNIN_ALLOW` | (empty = any Google account) | backend | 1.5: who may sign in with Google: empty or `*` = any verified Google account; otherwise a comma list of `@domain` (the token's Workspace `hd` claim) and exact emails. Cloud Run: a plain env var, changed by editing `.env` and rerunning `bash deploy/deploy.sh` |
 | `DSS_AGENT_TOKEN` | (empty) | backend, agent | secret token for `/api/agent/*` (header `X-DSS-Agent-Token`), at least 24 characters; never shown in the UI. Cloud Run: from Secret Manager |
 | `DSS_ENGINE_MODE` | `local` | backend | `local` = the backend runs `DSS_ENGINE_CMD` itself; `agent` = builds are queued for a build agent (Cloud Run) |
@@ -126,10 +130,13 @@ backend stores them in SQLite. The API key is write-only through the API: it is 
 - Fail closed: when `K_SERVICE` is set (Cloud Run), the backend refuses to start if
   `DSS_ACCESS_CODE` is shorter than 12 characters or, in agent mode, `DSS_AGENT_TOKEN` is shorter
   than 24. Anywhere, `GOOGLE_OAUTH_CLIENT_ID` without `DSS_ACCESS_CODE` refuses to start (1.5).
+  The one opt-in (1.6): `DSS_PUBLIC=1` replaces the code rule by "code and client id both empty";
+  the agent-token rule stays (Agent endpoints keep their token).
 - Access (1.5): the browser signs in with Google (any account unless `DSS_SIGNIN_ALLOW` narrows
   it); the access code stays for scripts, the e2e drivers and the owner. The OAuth consent screen
   is External and In production (basic scopes need no Google verification; in Testing only
-  listed test users get in).
+  listed test users get in). Open link (1.6): with `DSS_PUBLIC=1` there is no gate at all, so
+  every visitor shares one history and spends the owner's Gemini and BigQuery.
 - One instance only (`--min-instances 1 --max-instances 1`), CPU always allocated
   (`--no-cpu-throttling`, agent runs continue after the `202`), request timeout 3600 s (SSE and
   long polls).
@@ -140,7 +147,8 @@ backend stores them in SQLite. The API key is write-only through the API: it is 
   `/tmp/dss.bak`, which is copied to `/data/dss.sqlite.tmp` and renamed over `/data/dss.sqlite`.
   At most 30 s of writes can be lost on a crash.
 - Secrets: `GOOGLE_API_KEY`, `DSS_ACCESS_CODE` and `DSS_AGENT_TOKEN` come from Secret Manager as env
-  vars; never in the image, the repo, the deploy script's output or the deck.
+  vars; never in the image, the repo, the deploy script's output or the deck. With `DSS_PUBLIC=1`
+  the service gets no `DSS_ACCESS_CODE` (1.6).
 - Settings: on Cloud Run (agent mode) the API key and GCP values are fixed by the deployment;
   `PUT /api/settings` may change only model settings: stage profiles, fallback model and brief
   review (contracts/api.md 3.0).
