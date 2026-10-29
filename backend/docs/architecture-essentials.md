@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:e0b1210f17fc (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:16986abec0a5 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 docs/architecture.md wins.
 
@@ -37,7 +37,10 @@ tests/          offline fakes; tests/live/ marked live
   2026-10-29, api.md 3.4, from 29.1): one-shot job tickets in SQLite (code, per-job token hash, one
   live ticket per build, expiry sweep); `dss-agent run --server --job`; open link locks GCS and
   BigQuery sources; share data = one stdlib CSV per run on the mounted share bucket with a
-  `googleCloudStorage` header (#Hosted one-shot builds).
+  `googleCloudStorage` header (#Hosted one-shot builds). Agent checks share the live-code
+  namespace (DB triggers); the client prints user lines, never echoes a code. Google sign-in
+  (27.1): verified email + `DSS_SIGNIN_ALLOW`, HMAC `g.` cookie (24 h) valid only while the client
+  id is set; `DSS_PUBLIC` exactly `1` on Cloud Run only, else fail closed (28.1).
 - Accept publishes its candidate view/spec/artifacts atomically; never clean a published view.
   Backgrounds: background.write_pages per page, 3x, <2 MB.
 - Designed pages: Argon brief (html_brief) -> Flash HTML (reference_html or html_no_reference),
@@ -64,8 +67,7 @@ tests/          offline fakes; tests/live/ marked live
   or a selected native date-axis use of a recognized truncation; missing aliases need explicit
   intent. No guessed SQL simplification. Exact missing-KPI feedback uses the
   existing one repair; unresolved KPIs block (#Recreate date binding normalization).
-  Item rows sit on page 1; code-assigned titles drop unenforced period phrases and show the
-  mapped unit (#Recreate page placement and truthful observed titles).
+  Item rows sit on page 1 with planner titles (truthful-title rule retired with 26.5; PRD Later).
   Reuse effective allowed types only within an operation; the next operation sees current
   env/.env (#Feasibility recomputation performance preservation).
   Final POC speed acceptance: 250 ms warm (user, 2026-10-27), with first/cold timings

@@ -2461,3 +2461,16 @@ assert min(timings) < .1
 - Gotchas: none beyond AGENTS.md
 - Left open: P3 a missing or broken engine reads as "Chrome not running"/"sign in" instead of "rerun the setup command" - src/dss/agent/client.py
 - Next: all plan tasks done; final audit with the architect.
+
+## 2026-10-30: Audit (final)
+- Verdict: ACCEPTED. Re-audit after the 2026-10-27 DEFECTS audit; independent blueprint-reviewer (opus, high) found no P0/P1 across 25.9-29.5.
+- Scope: tasks done since that audit: 25.9, 25.10, 26.1-26.6, 27.1, 28.1, 29.1-29.5 (25.11 removed by change, superseded by 26.6). Earlier tasks covered by Test (all) only.
+- Test (all): `uv run pytest` PASS 2367 passed, 17 deselected, 9 warnings, 977 s, exit 0 (log .blueprint/qa/final-audit-20261030/pytest-all.log, junit.xml). Every audited Done-when pytest module is in that run. 26.5 grep (`observation|_unlabeled_control|ObservedItem|observation_errors`, case-insensitive) in src/dss and prompts: no match.
+- Skipped: 26.6 live campaign (paid; user approved its visual STOP on run 3, 2026-10-28) and every other live-marked check; engine 14.1 (29.4 Needs) is the engine part's.
+- Secrets: `git log --all` for *.env/*.env.* and `git ls-files` .env: none. Dependencies match the verified table (google-auth 2026-10-29).
+- Security (reviewer, file:line in its report): Google token aud/iss/exp + email_verified + hd-only domain match, HMAC cookie with constant-time compare; DSS_PUBLIC fail-closed; job codes from `secrets`, claim in BEGIN IMMEDIATE, token SHA-256 only, redaction; source lock before any GCS/BigQuery call; share CSV under 128-bit random folder, only the published view.
+- POC checklist: Commands (AGENTS.md) cover install/run/agent/test; core flow passes offline and live (26.6); known limitations in PRD Later; backend has no UI screens of its own.
+- Doc sweep: architecture.md#Recreate page placement marks the truthful-title/unit rule retired with 26.5 (code/doc mismatch, P2 -> Later); #Testing gains the 26.2-26.4 reference-fake and engine_mode-flip rules from AGENTS.md; obsolete native_planning 3.1-defaults gotcha removed; 15 gotchas written after the block's end marker moved inside it. Essentials: Cloud/agent and sign-in decisions folded; stamped. PRD: Open question closed; Later adds item-row titles, reference-path and hosted leftovers (audit 2026-10-30).
+- Mechanical: stamp PASS; lint 0 errors, 21 warnings (size).
+- Left for the user: untracked ../Dockerfile, ../.dockerignore, ../.gcloudignore, ../deploy/ belong to the release part (not touched).
+

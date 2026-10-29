@@ -1169,8 +1169,10 @@ Final-audit corrections (2026-10-19):
   fixtures publish unchanged.
 
 ### Recreate page placement and truthful observed titles
-- Retargeted 2026-10-28: "observations" below now means approved native items (page 1); the
-  truthful-title and unit rules apply to their rows' titles. Observation inputs are gone.
+- Retargeted 2026-10-28: "observations" below now means approved native items (page 1).
+  Observation inputs are gone. Final audit 2026-10-30: the truthful-title and unit rules are
+  retired with 26.5 (it removed `observed_title`/`_period_free` with no replacement); item rows
+  keep planner titles. A truthful-title rule for item rows is in PRD Later. Placement rules stand.
 - Problem (task 24.10 block, change 2026-10-26): run 20261026-045323-8f75b9ce published with
   every observation bound, but the approved urban/rural area chart sat on page 3 while page 1's
   right panel was a country table: coverage proves a binding on any page. Its access scorecard
@@ -2192,6 +2194,15 @@ Durable test conventions folded from the final-audit gotcha sweep:
   tests/test_feasibility.py already has API `choose(client, bid, assessment, *items)`.
 - The definition speed oracle includes `_reconcile_definitions`, `_reconcile_grains` and
   `evaluate`; evaluate-only profiles do not prove the full workload's 250 ms acceptance.
+- Reference fakes (from 26.2-26.4, final audit 2026-10-30): use test_references.Capture, which
+  answers the requested schema (style uploads reject `items`/`element_count`; recreate commits
+  `analysis` with `interpretation.items == []`). Fixtures writing references.json need an
+  approved analysis (test_render.approved_static_analysis(); a pre-1.3 `analysis: null` never
+  passes the gate), and live staged flows PUT/approve it. Approving native items needs their
+  page-1 `reference_item` rows planned; gate-only tests approve an all-static split
+  (test_reference_gate.static_split).
+- Tests flip `app.state.config.engine_mode` to agent after startup (test_feasibility): lifespan
+  code must not assume agent-only setup (sweep task, recover) ran.
 
 pytest, offline by default: FakeLLM (scripted responses by node), FakeBigQuery (in-memory rows
 from a CSV), fake engine (a script that prints ../contracts/fixtures/events.sample.jsonl).

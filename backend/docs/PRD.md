@@ -297,8 +297,7 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
   validation repairs, clearly labeled and with a Settings enable/disable switch (A).
 
 ## Open questions
-- Visual fidelity approval is the STOP in 26.6 (replaces 25.11, change 2026-10-28: reference
-  analysis gate; user request and cards). No other planning question is open.
+- None. 26.6's visual STOP was approved by the user (run 3, 2026-10-28).
 
 ## Later
 - Date-grain parity: feasibility can read component options while the compiler derives
@@ -436,3 +435,19 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
   the reference are added on page 1. W4 (contract, a recipe version after 1.4): emit `date_granularity` on a
   `bar` over a DATE bucket column once the engine applies it (yearly bar s015 labels
   "Jan 1, 2000" and folds groups past 10 into "Others").
+- Item-row titles: 26.5 retired the truthful-title/unit rule (period phrases, mapped unit) with no
+  replacement; item rows show planner titles (P2, 26.5 left open; audit 2026-10-30).
+- Reference path leftovers: approved-item requirement records/evidence are not persisted in
+  requirements.json or feasibility.md; an accepted item alternative keeps a wrong-type row naming
+  the item; stale item drops still listed in feasibility.md; re-approving after an edit accepts a
+  `stale` Blueprint without a replan; the gate on a new version is untested; style run 4 KPI repair
+  variance (q8) can block readiness; GLOBE regex statics any non-target map/earth/globe label;
+  repaired style replies aren't re-checked against the provider schema; prompts/skills still state
+  pre-item row rules; visible axis-label overlap and full-date x labels (P2/P3, 25.10-26.6 left
+  open; audit 2026-10-30).
+- Hosted leftovers: Google certs fetched uncached on each sign-in (120 s transport timeout); a
+  retried `POST /claim` after a network error can burn a committed claim; cancel mid-export leaves
+  an orphan CSV; a second Run during export answers `wrong_stage`, not `engine_busy`;
+  `POST /versions` copies `share/` records; old share folders are never deleted (bucket lifecycle
+  is the release part's); `dss-agent check` reports a missing engine as Chrome/sign-in (P3,
+  27.1-29.5 left open; audit 2026-10-30).
