@@ -648,3 +648,7 @@ context. Task status lives in docs/plan.md, not here.
 - Why: user asked whether 2.7/2.8 are core; they are test-harness only, and Cloud Run (phase 4) comes first. User chose on cards: defer both, keep the URL mask; accept `stale` + unresolved issues as a refusal.
 - Tasks affected: 2.7, 2.8 (deferred), 4.2, 4.3. 2.7's committed driver code (label flip, analysis approval, .env.example names) stays; 4.3's hosted run is its first full exercise.
 - Change requests: 2.7 session 1 question (approval step) settled earlier in session 2; session 2 question (GPS stale): planned in 4.3's If line; backend `blocked` deferred to PRD Later.
+
+## 2026-10-29: Change v2 handoff brief
+- What changed: new docs/v2-handoff.md (v2 goal: per-visitor builds in their own Looker Studio via a zero-Python agent, new repo set up by the builder; v1 end state, constraints, design options, deferred items incl. 2.7/2.8 and W1-W7, open questions); docs/PRD.md Later points to it. No task changes: v1 continues with 4.1-4.4.
+- Why: user asked; v2 gets its own interview, so no v2 tasks are planned here.

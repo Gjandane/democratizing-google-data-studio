@@ -134,3 +134,5 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
   synthetic v2 GPS refusal reading `stale`, ruled for 4.3 as a refusal when the GPS issues stay
   unresolved, and backend returning `blocked` after an outline Other on a built version is a
   backend item (backend/docs/PRD.md Later). The bench `server_url: "hosted"` mask moved into 4.2/4.3.
+- v2: dashboards built in each visitor's own Looker Studio by a zero-Python agent on their
+  machine, in a new repo; brief and every deferred item in docs/v2-handoff.md (change 2026-10-29).
