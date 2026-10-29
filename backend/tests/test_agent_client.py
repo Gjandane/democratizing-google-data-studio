@@ -1,4 +1,4 @@
-"""The real dss-agent against a live agent-mode uvicorn on a free port."""
+"""The real dss-agent (`dss-agent run --server --job`) against a live agent-mode uvicorn on a free port."""
 import asyncio
 from contextlib import contextmanager
 import json
@@ -16,7 +16,7 @@ import httpx
 import pytest
 import uvicorn
 
-from dss.agent import client
+from dss.agent import client, jobs as server_jobs
 from dss.config import Config
 from dss.harness.guardrails import RunError
 from dss.harness.nodes.execute import terminate_tree
@@ -77,7 +77,18 @@ if os.environ.get("DSS_TEST_ENGINE_SHOT"):
     finished("s901", "../escape.png")
     note("shot_emitted")
 time.sleep(float(os.environ.get("DSS_TEST_ENGINE_SLEEP", "0")))
-code = subprocess.call([sys.executable, os.environ["DSS_TEST_FAKE_ENGINE"], *sys.argv[1:]])
+args = [sys.executable, os.environ["DSS_TEST_FAKE_ENGINE"], *sys.argv[1:]]
+if os.environ.get("DSS_TEST_ENGINE_REPORT"):
+    # A real run's run_finished names the report; the fake engine's has none.
+    engine = subprocess.Popen(args, stdout=subprocess.PIPE, text=True)
+    for line in engine.stdout:
+        event = json.loads(line)
+        if event.get("event") == "run_finished":
+            event["report_url"] = os.environ["DSS_TEST_ENGINE_REPORT"]
+        print(json.dumps(event), flush=True)
+    code = engine.wait()
+else:
+    code = subprocess.call(args)
 note("run_finished")
 sys.exit(code)
 '''
@@ -130,16 +141,6 @@ class LiveServer:
         ready_fixture(self.app, bid, folder)
         return bid, folder
 
-    def run(self, bid):
-        """POST /run, then claim the ticket's code as the one-shot agent will (api.md 3.4).
-        Returns the run, its Job and the job token; no access code goes with the claim."""
-        response = self.api.post(f"/api/builds/{bid}/run")
-        assert response.status_code == 202, response.text
-        code = self.api.get(f"/api/builds/{bid}/job").json()["code"]
-        claimed = httpx.post(self.url + "/api/agent/claim", json={"code": code, "agent_version": "test"}, timeout=10)
-        assert claimed.status_code == 200, claimed.text
-        return response.json()["run_id"], claimed.json()["job"], claimed.json()["job_token"]
-
     def ticket(self, bid):
         return self.api.get(f"/api/builds/{bid}/job").json()
 
@@ -180,36 +181,58 @@ def wrapper(tmp_path, monkeypatch):
 @pytest.fixture
 def fast(monkeypatch, caplog):
     caplog.set_level(logging.DEBUG)
-    for name, value in (("HEARTBEAT_S", .1), ("CHECK_S", .8), ("POLL_WAIT_S", .6), ("BACKOFF_S", .05),
-                        ("BACKOFF_MAX_S", .2)):
+    for name, value in (("BACKOFF_S", .05), ("BACKOFF_MAX_S", .2)):
         monkeypatch.setattr(client, name, value)
 
 
-def job_agent(server, token, data, command, dry_run=False):
-    """The job half of today's client with a claimed job's token; 29.2 replaces its polling loop."""
-    agent = client.Agent(server.url, token, data, command, dry_run)
-    http = httpx.Client(base_url=server.url, headers={"X-DSS-Job-Token": token},
-                        timeout=httpx.Timeout(client.HTTP_TIMEOUT_S, connect=client.CONNECT_TIMEOUT_S))
-    return agent, http
+@pytest.fixture
+def visitor(tmp_path, monkeypatch):
+    """A visitor's machine as the setup leaves it: a cwd with no .env, no DSS_AGENT_TOKEN, and only
+    DSS_DATA_DIR and DSS_ENGINE_CMD set. Returns a setter for the engine script."""
+    home = tmp_path / "visitor"
+    home.mkdir()
+    monkeypatch.chdir(home)
+    for name in ("DSS_AGENT_TOKEN", "DSS_AGENT_SERVER"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("DSS_DATA_DIR", str(tmp_path / "data"))
+    def engine(script):
+        monkeypatch.setenv("DSS_ENGINE_CMD", f'"{sys.executable}" "{script}"')
+    engine(FAKE)
+    return engine
+
+
+def issue(server, bid):
+    """POST /run and the code the Build stage shows (GET .../job)."""
+    response = server.api.post(f"/api/builds/{bid}/run")
+    assert response.status_code == 202, response.text
+    return response.json()["run_id"], server.ticket(bid)["code"]
+
+
+def record_tokens(server):
+    """The job tokens the server hands out, so the tests can look for them in output and files."""
+    manager, tokens = server.app.state.agent_jobs, []
+    claim = manager.claim
+    async def recording(code):
+        claimed = await claim(code)
+        tokens.append(claimed["job_token"])
+        return claimed
+    manager.claim = recording
+    return tokens
+
+
+def agent_run(server, code, *flags):
+    return client.main(["run", "--server", server.url, "--job", code, *flags])
 
 
 @contextmanager
-def running(agent, http, job):
+def in_thread(function, *args):
     result = {}
-    def run():
-        try:
-            agent.run_job(http, job)
-            result["code"] = 0
-        except client.AgentExit as error:
-            result["code"], result["error"] = error.code, str(error)
-    thread = threading.Thread(target=run, daemon=True)
+    thread = threading.Thread(target=lambda: result.update(code=function(*args)), daemon=True)
     thread.start()
     try:
         yield thread, result
     finally:
         thread.join(30)
-        agent.stop.set()
-        http.close()
 
 
 def notes(path):
@@ -220,134 +243,188 @@ def assert_no_token(*texts, secrets=(TOKEN,)):
     assert texts and all(secret not in text for secret in secrets for text in texts)
 
 
-def test_polling_agent_takes_no_job_from_a_3_4_server(server, tmp_path):
-    """The 5.3 polling form against api.md 3.4: heartbeat and jobs/next are gone, so it exits and the
-    ticket stays waiting for its code (29.2 replaces the loop with `dss-agent run --job`)."""
+def assert_kept_secret(secrets, capsys, caplog, data):
+    """Neither the code (as shown or typed without its dash) nor the job token reaches stdout, stderr,
+    the log or any file the agent leaves under data/agent/."""
+    secrets = [form for secret in secrets for form in (secret, secret.replace("-", ""))]
+    assert secrets and all(secrets)
+    out, err = capsys.readouterr()
+    files = [path.read_bytes() for path in (data / "agent").rglob("*") if path.is_file()]
+    for secret in secrets:
+        assert secret not in out and secret not in err and secret not in caplog.text
+        assert all(secret.encode() not in content for content in files)
+
+
+def test_bare_and_polling_forms_exit_2_naming_run(server, visitor, capsys):
+    """The 5.3 polling agent is gone: its bare form and its --server-only form print the usage of
+    `run` and exit 2, and the installed console script does the same; nothing is claimed."""
     script = shutil.which("dss-agent", path=str(Path(sys.executable).parent))
     assert script, "uv sync installs the dss-agent console script"
     bid, _ = server.queue_build()
-    assert server.api.post(f"/api/builds/{bid}/run").status_code == 202
-    env = {**os.environ, "DSS_AGENT_TOKEN": TOKEN, "DSS_ENGINE_CMD": f'"{sys.executable}" "{FAKE}"',
-           "DSS_DATA_DIR": str(tmp_path / "data"), "DSS_AGENT_SERVER": "", "PYTHONUNBUFFERED": "1"}
-    agent = subprocess.run([script, "--server", server.url], cwd=ROOT, env=env, capture_output=True,
-                           text=True, encoding="utf-8", errors="replace", timeout=60)
-    assert agent.returncode != 0
+    _, code = issue(server, bid)
+    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    for argv in ([], ["--server", server.url]):
+        agent = subprocess.run([script, *argv], env=env, capture_output=True, text=True, encoding="utf-8",
+                               errors="replace", timeout=60)
+        assert agent.returncode == 2 and client.USAGE in agent.stdout, agent.stdout + agent.stderr
+        assert client.main(argv) == 2
+    # Malformed lines print the usage without echoing what was typed (it may be the code).
+    for argv in ([code], ["run", "--server", server.url], ["run", "--job", code],
+                 ["run", "--server", server.url, "--job", code, "--token", code]):
+        assert client.main(argv) == 2
     assert server.ticket(bid)["state"] == "waiting"
-    status = server.api.get("/api/engine/status").json()
-    assert status["agent_connected"] is False and status["agent_last_seen"] is None
-    assert not (tmp_path / "data/agent").exists()
-    assert_no_token(agent.stdout, agent.stderr)
+    out, err = capsys.readouterr()
+    assert out.count(client.USAGE) == 6 and code not in out + err
 
 
 @pytest.mark.parametrize("dry_run", [True, False], ids=["dry-run", "real"])
-def test_claimed_job_takes_build_to_done(server, tmp_path, monkeypatch, caplog, capfd, dry_run):
+def test_run_claims_runs_reports_and_prints_the_report_link(server, visitor, wrapper, tmp_path, monkeypatch,
+                                                            caplog, capsys, dry_run):
     caplog.set_level(logging.INFO)
-    monkeypatch.chdir(tmp_path)  # the engine must still start in backend/
+    visitor(wrapper)
+    monkeypatch.setenv("DSS_TEST_ENGINE_SHOT", "1")
+    report = "https://datastudio.google.com/reporting/00000000-0000-0000-0000-000000000000/page/p_1"
+    if not dry_run:
+        monkeypatch.setenv("DSS_TEST_ENGINE_REPORT", report)
+    tokens = record_tokens(server)
     bid, source = server.queue_build()
-    run_id, job, token = server.run(bid)
-    agent, http = job_agent(server, token, tmp_path / "data", [sys.executable, str(FAKE)], dry_run)
-    with running(agent, http, job) as (thread, result):
-        build = server.finished(bid)
-    assert result == {"code": 0}
+    run_id, code = issue(server, bid)
+    assert agent_run(server, code, *(["--dry-run"] if dry_run else [])) == 0
+    build = server.finished(bid)
     assert build["stage"] == "done" and build["versions"][0]["status"] == "published"
-    assert server.ticket(bid)["state"] == "finished"
+    assert server.ticket(bid)["state"] == "finished" and len(tokens) == 1
+    # Job.files downloaded into data/agent/<build_id>/v<n>/.
     folder = tmp_path / "data/agent" / bid / "v1"
     for name in ("recipe.jsonl", "background_p1.png"):
         assert (folder / name).read_bytes() == (source / name).read_bytes()
+    # The engine: an argument list, started in backend/ whatever the cwd.
+    assert {Path(n["cwd"]).resolve() for n in notes(tmp_path / "engine.log")} == {ROOT}
     flags = json.loads((folder / "fake-args.json").read_text())
     assert flags[flags.index("--timeout") + 1] == "19"
     assert Path(flags[flags.index("--screens") + 1]) == folder / "screens"
     assert ("--dry-run" in flags) is dry_run
+    # The events in the engine's order, the screenshot an event names, then finished.
+    ops = [json.loads(line)["id"] for line in (source / "recipe.jsonl").read_text(encoding="utf-8").splitlines()[1:]]
+    expected = [("op_finished", "s900"), ("op_finished", "s901"), ("run_started", None),
+                *[(kind, op) for op in ops for kind in ("op_started", "op_finished")], ("run_finished", None)]
+    relayed = [json.loads(line) for line in (source / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [(event["event"], event.get("op_id")) for event in relayed] == expected
+    assert (source / "screens/s900_shot.png").read_bytes() == b"\x89PNG shot"
     assert f"Job {run_id} finished (exit code 0)" in caplog.text
-    assert_no_token(caplog.text, *capfd.readouterr(), secrets=(token,))
+    out = capsys.readouterr().out
+    assert (f"Report: {report}" in out) is not dry_run
+    assert ("Dry run finished" in out) is dry_run
+    print(out)  # back to capsys for the secret check
+    assert_kept_secret([code, *tokens], capsys, caplog, tmp_path / "data")
 
 
 def run_end(log):
     return next((n["t"] for n in notes(log) if n["kind"] == "run_finished"), float("inf"))
 
 
-def test_screenshots_upload_before_their_events_flushed_within_a_second(server, wrapper, fast, tmp_path,
-                                                                        monkeypatch, caplog, capfd):
-    monkeypatch.chdir(tmp_path)  # the engine must still start in backend/
+def test_screenshots_upload_before_their_events_flushed_within_a_second(server, visitor, wrapper, fast, tmp_path,
+                                                                        monkeypatch, caplog, capsys):
+    visitor(wrapper)
     monkeypatch.setenv("DSS_TEST_ENGINE_SHOT", "1")
     monkeypatch.setenv("DSS_TEST_ENGINE_SLEEP", "2")
-    jobs, batches = server.app.state.agent_jobs, []
-    post = jobs.events
+    manager, batches, tokens = server.app.state.agent_jobs, [], record_tokens(server)
+    post = manager.events
     async def record_events(run_id, events):
         shots = [path.read_bytes() for path in server.data.glob("builds/*/v1/screens/*")]
         batches.append((time.time(), [event.get("op_id") for event in events], shots))
         return await post(run_id, events)
-    jobs.events = record_events
+    manager.events = record_events
     bid, source = server.queue_build()
-    run_id, job, token = server.run(bid)
-    agent, http = job_agent(server, token, tmp_path / "data", [sys.executable, str(wrapper)])
-    with running(agent, http, job):
-        assert server.finished(bid)["stage"] == "done"
+    _, code = issue(server, bid)
+    assert agent_run(server, code) == 0
+    assert server.finished(bid)["stage"] == "done"
     log = tmp_path / "engine.log"
-    assert {Path(n["cwd"]).resolve() for n in notes(log)} == {ROOT}
     emitted = next(n["t"] for n in notes(log) if n["kind"] == "shot_emitted")
     arrived, op_ids, shots = next(batch for batch in batches if "s900" in batch[1])
     assert op_ids == ["s900", "s901"] and arrived - emitted < 1.5 and arrived < run_end(log)
     assert shots == [b"\x89PNG shot"]
     assert [path.name for path in (source / "screens").iterdir()] == ["s900_shot.png"]
     assert "skipped a screenshot" in caplog.text
-    assert_no_token(caplog.text, *capfd.readouterr(), secrets=(token,))
+    assert_kept_secret([code, *tokens], capsys, caplog, tmp_path / "data")
 
 
-def test_job_not_found_mid_job_kills_engine_tree_and_deletes_folder(server, wrapper, fast, tmp_path,
-                                                                    monkeypatch, caplog, capfd):
+def test_used_or_unknown_code_exits_1(server, visitor, tmp_path, caplog, capsys):
+    bid, _ = server.queue_build()
+    _, code = issue(server, bid)
+    claimed = httpx.post(server.url + "/api/agent/claim", json={"code": code, "agent_version": "test"}, timeout=10)
+    assert claimed.status_code == 200
+    for attempt in (code, code.lower().replace("-", " "), "ABCD-EFGH"):
+        assert agent_run(server, attempt) == 1
+    out = capsys.readouterr().out
+    assert out.count(client.CODE_INVALID) == 3 and not (tmp_path / "data/agent").exists()
+    print(out)
+    assert_kept_secret([code, "ABCD-EFGH"], capsys, caplog, tmp_path / "data")
+
+
+def test_claim_with_another_api_version_exits_2(server, visitor, tmp_path, monkeypatch, caplog, capsys):
+    monkeypatch.setattr(server_jobs, "API_VERSION", "9.9")  # the server's; the agent keeps its own
+    tokens = record_tokens(server)
+    bid, _ = server.queue_build()
+    _, code = issue(server, bid)
+    assert agent_run(server, code) == 2
+    out = capsys.readouterr().out
+    assert client.UPDATE in out
+    print(out)  # back to capsys for the secret check
+    assert not (tmp_path / "data/agent").exists()
+    # It still ended the claimed ticket, so the next Build needn't wait out the server's timeout.
+    assert server.finished(bid)["stage"] == "prototype" and server.ticket(bid)["state"] == "finished"
+    assert_kept_secret([code, *tokens], capsys, caplog, tmp_path / "data")
+
+
+def test_job_not_found_mid_job_kills_engine_tree_deletes_folder_exits_1(server, visitor, wrapper, fast, tmp_path,
+                                                                         monkeypatch, caplog, capsys):
+    visitor(wrapper)
     monkeypatch.setenv("DSS_TEST_ENGINE_TRICKLE", "1")
-    alive = tmp_path / "alive"
+    alive, tokens = tmp_path / "alive", record_tokens(server)
     bid, source = server.queue_build()
-    run_id, job, token = server.run(bid)
-    agent, http = job_agent(server, token, tmp_path / "data", [sys.executable, str(wrapper)])
+    run_id, code = issue(server, bid)
     folder = tmp_path / "data/agent" / bid / "v1"
-    with running(agent, http, job) as (thread, result):
-        wait_for(lambda: "working" in (source / "events.jsonl").read_text(), "events relayed")
+    with in_thread(agent_run, server, code) as (thread, result):
+        wait_for(lambda: (source / "events.jsonl").is_file() and "working" in (source / "events.jsonl").read_text(),
+                 "events relayed")
         wait_for(lambda: alive.exists() and "c" in alive.read_text(), "engine child")
         assert (folder / "recipe.jsonl").is_file()
-        jobs = server.app.state.agent_jobs
+        manager = server.app.state.agent_jobs
         async def expire():
             # The sweep's agent_timeout path: the ticket ends and the job is completed and forgotten.
-            held = jobs.get(run_id)
+            held = manager.get(run_id)
             async with held.lock:
-                jobs.close_ticket(run_id)
-                jobs.complete(held, 1, RunError("agent_timeout", "Build agent timed out", 504))
+                manager.close_ticket(run_id)
+                manager.complete(held, 1, RunError("agent_timeout", "Build agent timed out", 504))
         server.call(expire())
-        wait_for(lambda: not folder.exists(), "job folder removal")
-        size = alive.stat().st_size
-        time.sleep(.5)
-        assert alive.stat().st_size == size
-        build = server.finished(bid)
-        assert build["stage"] == "prototype" and build["versions"][0]["status"] == "failed"
         thread.join(15)
-    assert result == {"code": 0} and not server.app.state.engine_busy
-    assert server.ticket(bid)["state"] == "finished"
-    # Another build's ticket is unaffected: claimed and run to done.
-    retry = server.queue_build()[0]
-    monkeypatch.delenv("DSS_TEST_ENGINE_TRICKLE")
-    _, retry_job, retry_token = server.run(retry)
-    agent, http = job_agent(server, retry_token, tmp_path / "data", [sys.executable, str(wrapper)])
-    with running(agent, http, retry_job) as (_, retried):
-        assert server.finished(retry)["stage"] == "done"
-    assert retried == {"code": 0}
-    assert f"Job {run_id} no longer exists" in caplog.text
-    assert_no_token(caplog.text, *capfd.readouterr(), secrets=(token, retry_token))
+    assert result == {"code": 1} and not folder.exists()
+    size = alive.stat().st_size
+    time.sleep(.5)
+    assert alive.stat().st_size == size  # engine and its child are gone
+    build = server.finished(bid)
+    assert build["stage"] == "prototype" and build["versions"][0]["status"] == "failed"
+    assert not server.app.state.engine_busy
+    out = capsys.readouterr().out
+    assert f"Job {run_id} no longer exists" in out
+    print(out)
+    assert_kept_secret([code, *tokens], capsys, caplog, tmp_path / "data")
 
 
-def test_nested_image_inputs_reach_the_engine_as_plain_files(server, wrapper, fast, tmp_path, monkeypatch,
-                                                             caplog, capfd):
+def test_nested_image_inputs_reach_the_engine_as_plain_files(server, visitor, wrapper, fast, tmp_path, monkeypatch,
+                                                             caplog, capsys):
     from test_agent_server import nested_inputs
+    visitor(wrapper)
     seen = tmp_path / "inputs.json"
     monkeypatch.setenv("DSS_TEST_ENGINE_INPUTS", str(seen))
+    tokens = record_tokens(server)
     bid, source = server.queue_build()
     nested_inputs(source)
     from fakes import ready_fixture
     ready_fixture(server.app, bid, source)
-    _, job, token = server.run(bid)
-    agent, http = job_agent(server, token, tmp_path / "data", [sys.executable, str(wrapper)])
-    with running(agent, http, job):
-        assert server.finished(bid)["stage"] == "done"
+    _, code = issue(server, bid)
+    assert agent_run(server, code) == 0
+    assert server.finished(bid)["stage"] == "done"
     canonical = [json.loads(line) for line in
                  (source / "recipe.jsonl").read_text(encoding="utf-8").split("\n")[1:-1]]
     kept = {op["id"]: op["path"] for op in canonical if "path" in op}
@@ -361,21 +438,23 @@ def test_nested_image_inputs_reach_the_engine_as_plain_files(server, wrapper, fa
     folder = tmp_path / "data/agent" / bid / "v1"
     assert sorted(path.name for path in folder.iterdir() if path.is_file() and path.suffix == ".png") == sorted(
         sent.values())
-    assert_no_token(caplog.text, *capfd.readouterr(), secrets=(token,))
+    assert_kept_secret([code, *tokens], capsys, caplog, tmp_path / "data")
 
 
-def test_network_errors_retry_with_backoff_then_exit_nonzero(tmp_path, wrapper, fast, monkeypatch, caplog, capfd):
+def test_network_errors_retry_with_backoff_then_exit_nonzero(tmp_path, visitor, wrapper, fast, monkeypatch,
+                                                             caplog, capsys):
     assert client.RETRY_BUDGET_S == 60
     monkeypatch.setattr(client, "RETRY_BUDGET_S", 20)
+    visitor(wrapper)
     live = LiveServer(tmp_path / "server")
-    probe = client.Agent(live.url, TOKEN, tmp_path / "data", [sys.executable, str(FAKE)])
-    reached, result, token = {}, {}, None
+    probe = client.Agent(live.url, None, tmp_path / "data", [sys.executable, str(FAKE)])
+    reached, result, tokens, code = {}, {}, [], None
     def call():
         with probe.http() as http:
             try:
-                probe.call(http, "GET", "/jobs/next")
-            except client.JobGone:  # 3.4 retired jobs/next: the 404 proves the retry reached the server
-                reached["ok"] = True
+                probe.call(http, "POST", "/claim", json={"code": "ABCD-EFGH", "agent_version": "test"})
+            except client.JobError as error:  # the miss proves the retry reached the server
+                reached["code"] = str(error)
     try:
         # Refused while the server is down, retried with backoff, answered once it starts.
         prober = threading.Thread(target=call, daemon=True)
@@ -383,14 +462,14 @@ def test_network_errors_retry_with_backoff_then_exit_nonzero(tmp_path, wrapper, 
         wait_for(lambda: "retrying" in caplog.text, "a refused request", 15)
         live.start()
         prober.join(15)
-        assert reached == {"ok": True}
+        assert reached == {"code": "job_code_invalid"}
+        tokens = record_tokens(live)
         # Mid-job the server goes away: the job's calls retry for the budget, then the engine stops.
         monkeypatch.setenv("DSS_TEST_ENGINE_TRICKLE", "1")
         alive = tmp_path / "alive"
         bid, _ = live.queue_build()
-        _, job, token = live.run(bid)
-        agent, http = job_agent(live, token, tmp_path / "data", [sys.executable, str(wrapper)])
-        with running(agent, http, job) as (thread, result):
+        _, code = issue(live, bid)
+        with in_thread(agent_run, live, code) as (thread, result):
             wait_for(lambda: alive.exists() and "c" in alive.read_text(), "engine child")
             monkeypatch.setattr(client, "RETRY_BUDGET_S", 1)
             stopped = time.monotonic()
@@ -403,8 +482,11 @@ def test_network_errors_retry_with_backoff_then_exit_nonzero(tmp_path, wrapper, 
         assert alive.stat().st_size == size
     finally:
         live.stop()
-    assert result["code"] == 1 and "Server unavailable for 1 s" in result["error"]
-    assert_no_token(caplog.text, *capfd.readouterr(), secrets=(TOKEN, token))
+    assert result == {"code": 1}
+    out = capsys.readouterr().out
+    assert "Server unavailable for 1 s" in out
+    print(out)
+    assert_kept_secret([code, *tokens], capsys, caplog, tmp_path / "data")
 
 
 def test_backoff_doubles_and_429_or_5xx_retry_until_the_budget(tmp_path, monkeypatch):
@@ -416,11 +498,11 @@ def test_backoff_doubles_and_429_or_5xx_retry_until_the_budget(tmp_path, monkeyp
     def mock(handler):
         return httpx.Client(base_url=agent.server, transport=httpx.MockTransport(handler))
     codes = [429, 503, 204]
-    assert agent.call(mock(lambda request: httpx.Response(codes.pop(0))), "GET", "/jobs/next").status_code == 204
+    assert agent.call(mock(lambda request: httpx.Response(codes.pop(0))), "POST", "/claim").status_code == 204
     assert delays == [.05, .1]
     delays.clear()
     with pytest.raises(client.AgentExit) as error:
-        agent.call(mock(lambda request: httpx.Response(500)), "GET", "/jobs/next")
+        agent.call(mock(lambda request: httpx.Response(500)), "POST", "/claim")
     assert error.value.code == 1 and delays[:3] == [.05, .1, .2] and max(delays) == .2
 
 
@@ -459,21 +541,20 @@ def scripted(tmp_path, outcomes):
 def test_transport_failures_retry_until_success_before_the_deadline(tmp_path):
     refused = httpx.ConnectError("refused")
     agent, http, clock, starts = scripted(tmp_path, [(0, refused), (0, refused), (30, refused), (0, 204)])
-    assert agent.call(http, "GET", "/jobs/next", params={"wait": 25}).status_code == 204
-    # The first attempt long-polls with the ordinary timeout; retries only probe, bounded by what remains.
-    assert starts == [(0, {"wait": "25"}, 40), (1, {"wait": "0"}, 40), (3, {"wait": "0"}, 40),
-                      (37, {"wait": "0"}, 23)]
+    assert agent.call(http, "POST", "/claim", json={}).status_code == 204
+    # The first attempt has the ordinary timeout; retries are bounded by what remains.
+    assert starts == [(0, {}, 40), (1, {}, 40), (3, {}, 40), (37, {}, 23)]
 
 
 def test_429_and_5xx_share_the_deadline_measured_from_the_first_failure(tmp_path):
     # The first failure ends at 10 s, so the deadline is 70 s; slow attempts spend it like backoff does.
     agent, http, clock, starts = scripted(tmp_path, [(10, 429), (10, 503), (10, 502), (10, 200)])
-    assert agent.call(http, "POST", "/heartbeat", json={}).status_code == 200
+    assert agent.call(http, "POST", "/claim", json={}).status_code == 200
     assert [start for start, *_ in starts] == [0, 11, 23, 37]
     assert [timeout for *_, timeout in starts] == [40, 40, 40, 33]
     agent, http, clock, starts = scripted(tmp_path, [(10, 429), (25, 503), (29, 500), (0, 200)])
     with pytest.raises(client.AgentExit) as error:
-        agent.call(http, "POST", "/heartbeat", json={})
+        agent.call(http, "POST", "/claim", json={})
     # The third attempt fails at 67 s: its 4 s backoff is cut to the 3 s left, so no fourth attempt.
     assert [start for start, *_ in starts] == [0, 11, 38] and clock.now == 70
     assert error.value.code == 1 and "Server unavailable for 60 s (HTTP 500)" in str(error.value)
@@ -500,11 +581,11 @@ def test_retry_worker_rechecks_deadline_after_thread_scheduling(tmp_path, monkey
         return thread(*args, target=target, **kwargs)
     monkeypatch.setattr(client.threading, "Thread", delayed_thread)
     with pytest.raises(client.AgentExit):
-        agent.attempt(http, "GET", "/jobs/next", 1, "HTTP 503", {})
+        agent.attempt(http, "POST", "/claim", 1, "HTTP 503", {})
     assert starts == []
     assert agent.close_http(http).wait(1) and http.is_closed
     with pytest.raises(client.AgentExit):
-        agent.call(http, "GET", "/jobs/next")
+        agent.call(http, "POST", "/claim")
     assert starts == []
 
 
@@ -652,11 +733,11 @@ def test_retry_expiry_bounds_stalled_cleanup(tmp_path, wrapper, monkeypatch, sta
     assert http.is_closed
 
 
-def test_run_expiry_bounds_client_close_and_heartbeat_join(tmp_path, monkeypatch):
+def test_run_expiry_bounds_client_close(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(client, "RETRY_BUDGET_S", .15)
     monkeypatch.setattr(client, "BACKOFF_S", .01)
-    release, close_entered, beat_entered = threading.Event(), threading.Event(), threading.Event()
-    agent = client.Agent("http://127.0.0.1:1", TOKEN, tmp_path, ["dsengine"])
+    release, close_entered = threading.Event(), threading.Event()
+    agent = client.Agent("http://127.0.0.1:1", None, tmp_path, ["dsengine"])
     first, requests, closes = [], [], []
     def handler(request):
         requests.append(time.monotonic())
@@ -672,45 +753,74 @@ def test_run_expiry_bounds_client_close_and_heartbeat_join(tmp_path, monkeypatch
         close_entered.set()
         release.wait()
         real_close()
-    def heartbeat():
-        beat_entered.set()
-        release.wait()
     monkeypatch.setattr(http, "close", close)
     monkeypatch.setattr(agent, "http", lambda: http)
-    monkeypatch.setattr(agent, "check", lambda: setattr(agent, "next_check", float("inf")))
-    monkeypatch.setattr(agent, "heartbeats", heartbeat)
     outcome = {}
     def run():
-        outcome.update(code=agent.run(), ended=time.monotonic())
+        outcome.update(code=agent.run("ABCD-EFGH"), ended=time.monotonic())
     runner = threading.Thread(target=run, daemon=True)
     try:
         runner.start()
         runner.join(3)
         assert not runner.is_alive() and outcome["code"] == 1
         assert .15 <= outcome["ended"] - first[0] <= .15 + .5
-        assert close_entered.is_set() and beat_entered.is_set() and closes == [1]
+        assert close_entered.is_set() and closes == [1]
         assert len(requests) == 2 and requests[-1] - first[0] < .15
     finally:
         release.set()
         runner.join(3)
         agent.close_http(http).wait(3)
     assert http.is_closed
+    assert "ABCD" not in "".join(capsys.readouterr())
+
+
+def claim_answer(tmp_path, monkeypatch, response):
+    agent = client.Agent("http://127.0.0.1:1", None, tmp_path, [sys.executable, str(FAKE)])
+    monkeypatch.setattr(agent, "http", lambda: httpx.Client(base_url=agent.server,
+                                                            transport=httpx.MockTransport(lambda request: response)))
+    return agent.run("ABCD-EFGH")
+
+
+def error(code):
+    return httpx.Response(404, json={"error": {"code": code, "message": "", "detail": {}}})
 
 
 @pytest.mark.parametrize("response,code", [
-    (httpx.Response(200, text="<!doctype html>"), 1), (httpx.Response(401), 2),
-    (httpx.Response(404, json={"error": {"code": "agent_mode_off", "message": "", "detail": {}}}), 2)])
-def test_misconfigured_server_exits_instead_of_looping(tmp_path, monkeypatch, response, code):
-    agent = client.Agent("http://127.0.0.1:1", TOKEN, tmp_path, [sys.executable, str(FAKE)])
+    (httpx.Response(200, text="<!doctype html>"), 2), (httpx.Response(200, json={"job": {}}), 2),
+    (httpx.Response(200, json={"job": {"run_id": "r_00000000000d"}, "job_token": "jt\n"}), 2),
+    (httpx.Response(401), 2), (error("agent_mode_off"), 2), (error("job_not_found"), 2),
+    (error("job_code_invalid"), 1), (httpx.Response(200, json={"api_version": "9.9", "token": "x"}), 2)])
+def test_misconfigured_server_or_bad_claim_exits(tmp_path, monkeypatch, capsys, response, code):
+    assert claim_answer(tmp_path, monkeypatch, response) == code
+    out, err = capsys.readouterr()
+    assert out.strip() and "ABCD" not in out + err and not (tmp_path / "agent").exists()
+    # Another API version gets the update hint whatever shape its claim has.
+    assert (client.UPDATE in out) is (b'"9.9"' in response.content)
+
+
+def test_another_api_version_reports_failed_and_exits_2(tmp_path, monkeypatch, capsys):
+    claimed, calls = {**json.loads((REPO / "contracts/fixtures/hosted-build/claimed_job.json").read_text()),
+                      "api_version": "9.9"}, []
     def handler(request):
-        return httpx.Response(200, json={"ok": True}) if request.url.path.endswith("/heartbeat") else response
-    monkeypatch.setattr(agent, "http", lambda: httpx.Client(base_url=agent.server, transport=httpx.MockTransport(handler)))
-    assert agent.run() == code
+        calls.append((request.method, request.url.path, request.headers.get("x-dss-job-token"),
+                      request.content and json.loads(request.content)))
+        return httpx.Response(200, json=claimed if request.url.path.endswith("/claim") else {"ok": True})
+    agent = client.Agent("http://127.0.0.1:1", None, tmp_path, [sys.executable, str(FAKE)])
+    monkeypatch.setattr(agent, "http", lambda: httpx.Client(base_url=agent.server, transport=httpx.MockTransport(handler),
+                                                            headers={"X-DSS-Job-Token": agent.token or ""}))
+    assert agent.run("ABCD-EFGH") == 2
+    assert calls[0][:2] == ("POST", "/api/agent/claim")
+    assert calls[0][3] == {"code": "ABCD-EFGH", "agent_version": agent.version}
+    run_id, token = claimed["job"]["run_id"], claimed["job_token"]
+    assert calls[1][:3] == ("POST", f"/api/agent/jobs/{run_id}/finished", token) and calls[1][3]["exit_code"] == 2
+    assert len(calls) == 2 and not (tmp_path / "agent").exists()
+    out, err = capsys.readouterr()
+    assert client.UPDATE in out and token not in out + err and "ABCD" not in out + err
 
 
 def test_timeouts_engine_arguments_and_job_validation(tmp_path):
-    assert (client.HEARTBEAT_S, client.CHECK_S, client.POLL_WAIT_S, client.FLUSH_S) == (10, 60, 25, 1)
-    assert client.HTTP_TIMEOUT_S > client.POLL_WAIT_S + 10
+    assert (client.FLUSH_S, client.RETRY_BUDGET_S) == (1, 60)
+    assert not any(hasattr(client, name) for name in ("HEARTBEAT_S", "CHECK_S", "POLL_WAIT_S"))  # no polling
     agent = client.Agent("http://127.0.0.1:1", TOKEN, tmp_path, ["dsengine"])
     with agent.http() as http:
         assert http.timeout.read == client.HTTP_TIMEOUT_S
@@ -732,26 +842,19 @@ def test_timeouts_engine_arguments_and_job_validation(tmp_path):
 
 def test_configuration_resolves_from_backend_whatever_the_cwd(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DSS_AGENT_TOKEN", TOKEN)
+    monkeypatch.delenv("DSS_AGENT_TOKEN", raising=False)
     monkeypatch.setenv("DSS_DATA_DIR", "")
-    monkeypatch.setenv("DSS_AGENT_SERVER", "https://dss-abc123-as.a.run.app/")
+    monkeypatch.setenv("DSS_AGENT_SERVER", "https://dss-abc123-as.a.run.app")  # 1.7: --server only
     monkeypatch.setenv("DSS_ENGINE_CMD", f'"{sys.executable}" "{FAKE}"')
-    agent = client.Agent.from_env()
-    assert agent.server == "https://dss-abc123-as.a.run.app"
+    agent = client.Agent.from_env("https://dss-abc123-as.a.run.app/")
+    assert agent.server == "https://dss-abc123-as.a.run.app" and agent.token is None
     assert agent.data_dir == (REPO / "data").resolve() and agent.command == [sys.executable, str(FAKE)]
     assert client.Agent.from_env("http://localhost:8000").server == "http://localhost:8000"
     monkeypatch.setenv("DSS_DATA_DIR", "../data/elsewhere")
-    assert client.Agent.from_env().data_dir == (REPO / "data/elsewhere").resolve()
-    for server in ("http://example.com", "https://dss.a.run.app/builds", "https://dss.a.run.app?x=1"):
+    assert client.Agent.from_env("http://localhost:8000").data_dir == (REPO / "data/elsewhere").resolve()
+    for server in (None, "", "http://example.com", "https://dss.a.run.app/builds", "https://dss.a.run.app?x=1"):
         with pytest.raises(client.AgentExit) as error:
             client.Agent.from_env(server)
         assert error.value.code == 2
-    for token in ("", TOKEN + "\n", TOKEN + "é"):
-        monkeypatch.setenv("DSS_AGENT_TOKEN", token)
-        with pytest.raises(client.AgentExit) as error:
-            client.Agent.from_env()
-        assert error.value.code == 2 and (not token or TOKEN not in str(error.value))
-    monkeypatch.setenv("DSS_AGENT_TOKEN", TOKEN)
-    assert client.main(["--server", "ftp://example.com"]) == 2
-    assert client.main(["--server", "http://localhost:8000", "--token", TOKEN]) == 2
-    assert_no_token(*capsys.readouterr())
+    assert client.main(["run", "--server", "ftp://example.com", "--job", "ABCD-EFGH"]) == 2
+    assert "ABCD" not in "".join(capsys.readouterr())

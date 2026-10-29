@@ -1,10 +1,9 @@
-"""dss-agent: runs the local engine for the builds an agent-mode backend queues."""
+"""dss-agent run: claims one hosted build by its code, runs it on this machine's engine, then exits."""
 import argparse
 from collections import deque
 from importlib.metadata import PackageNotFoundError, version as package_version
 import json
 import logging
-import os
 import queue
 import re
 import shutil
@@ -16,14 +15,11 @@ from urllib.parse import urlparse
 
 import httpx
 
+from dss.agent.jobs import API_VERSION, normalize_code
 from dss.config import BACKEND_DIR, Config
-from dss.harness.nodes.execute import engine_command, environment, start_engine, terminate_tree
+from dss.harness.nodes.execute import engine_command, start_engine, terminate_tree
 
-HEARTBEAT_S = 10
-CHECK_S = 60
-CHECK_TIMEOUT_S = 30
-POLL_WAIT_S = 25
-HTTP_TIMEOUT_S = 40  # longer than the long poll's wait + 10 s
+HTTP_TIMEOUT_S = 40
 CONNECT_TIMEOUT_S = 10
 FLUSH_S = 1
 RETRY_BUDGET_S = 60
@@ -32,8 +28,13 @@ BACKOFF_S, BACKOFF_MAX_S = 1, 10
 KILL_GRACE_S = 5  # as the local backend: the engine's own --timeout ends the run first
 STDERR_TAIL = 4000
 LOOPBACK = ("localhost", "127.0.0.1", "::1")
+REPORT_HOSTS = ("datastudio.google.com", "lookerstudio.google.com")
 RUN_ID, BUILD_ID = re.compile(r"r_[0-9a-f]{12}"), re.compile(r"b_[0-9a-f]{12}")
 NAME = re.compile(r"[A-Za-z0-9._-]+")
+ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{0,63}")
+USAGE = "usage: dss-agent run --server <URL> --job <CODE> [--dry-run]"
+CODE_INVALID = "That code was used or has expired. Click Build again for a new code."
+UPDATE = "Rerun the setup command with -Update"
 logger = logging.getLogger(__name__)
 
 
@@ -48,7 +49,7 @@ class Stopped(Exception):
 
 
 class JobGone(Exception):
-    """404 job_not_found: the server no longer holds the job (restart or timeout)."""
+    """404 job_not_found: the server no longer holds the job (restart, expiry or timeout)."""
 
 
 class JobError(Exception):
@@ -60,15 +61,29 @@ def describe(error):
     return str(error) if isinstance(error, (AgentExit, JobError)) else type(error).__name__
 
 
+def say(message):
+    print(message, flush=True)
+
+
+def report_link(url):
+    """The server's report_url rule (EngineEvents.parse): only such a link is printed."""
+    try:
+        parsed = urlparse(url) if isinstance(url, str) else None
+        return bool(parsed and parsed.scheme == "https" and parsed.hostname in REPORT_HOSTS
+                    and not parsed.username and not parsed.password and parsed.port in (None, 443))
+    except ValueError:
+        return False
+
+
 class Agent:
     def __init__(self, server, token, data_dir, command, dry_run=False):
+        # token: the claimed job's token (None until the claim); it and the code are never logged.
         self.server, self.token, self.data_dir = server.rstrip("/"), token, data_dir
         self.command, self.dry_run = command, dry_run
-        self.status = {"chrome_running": False, "signed_in": False}
-        self.lock = threading.Lock()
+        self.secrets = ()
+        self.outcome = None  # the engine's run_finished event
         self.stop = threading.Event()
         self.clock = time.monotonic  # the retry deadline's clock (tests inject a fake)
-        self.next_check = 0.0
         self.cleanup_deadline = None
         self.closing = {}
         try:
@@ -77,26 +92,22 @@ class Agent:
             self.version = "unknown"
 
     @classmethod
-    def from_env(cls, server=None, dry_run=False):
-        """The root .env, DSS_DATA_DIR and DSS_ENGINE_CMD resolve from backend/, whatever the cwd."""
-        env, config = environment(), Config.from_env()
-        server = (server or env.get("DSS_AGENT_SERVER") or "").strip().rstrip("/")
+    def from_env(cls, server, dry_run=False):
+        """No .env needed: DSS_DATA_DIR and DSS_ENGINE_CMD resolve from backend/ as the backend's do
+        (env vars first, then the root .env if there is one, then the defaults), whatever the cwd."""
+        server = (server or "").strip().rstrip("/")
         url = urlparse(server)
         if url.scheme not in ("http", "https") or not url.hostname:
-            raise AgentExit("Set DSS_AGENT_SERVER in the root .env or pass --server <URL>", 2)
+            raise AgentExit("Pass --server <URL>: the hosted app's http(s) address", 2)
         if url.path or url.query or url.fragment:
             raise AgentExit("The server URL is the hosted app's base URL, without a path", 2)
         if url.scheme == "http" and url.hostname not in LOOPBACK:
-            raise AgentExit("Use an https server URL: the agent token must not cross the network in clear text", 2)
-        token = config.agent_token.get_secret_value()
-        if not token:
-            raise AgentExit("Set DSS_AGENT_TOKEN in the root .env", 2)
-        if not (token.isascii() and token.isprintable()):
-            raise AgentExit("DSS_AGENT_TOKEN must be printable ASCII", 2)
-        return cls(server, token, config.data_dir.resolve(), engine_command(), dry_run)
+            raise AgentExit("Use an https server URL: the job token must not cross the network in clear text", 2)
+        return cls(server, None, Config.from_env().data_dir.resolve(), engine_command(), dry_run)
 
     def http(self):
-        return httpx.Client(base_url=self.server, headers={"X-DSS-Agent-Token": self.token},
+        headers = {"X-DSS-Job-Token": self.token} if self.token else {}
+        return httpx.Client(base_url=self.server, headers=headers,
                             timeout=httpx.Timeout(HTTP_TIMEOUT_S, connect=CONNECT_TIMEOUT_S))
 
     def call(self, http, method, path, *, retry=True, **kwargs):
@@ -127,7 +138,7 @@ class Agent:
                 raise Stopped()
             delay = min(delay * 2, BACKOFF_MAX_S)
         if response.status_code == 401:
-            raise AgentExit("The server rejected DSS_AGENT_TOKEN", 2)
+            raise AgentExit("The server refused the agent (HTTP 401); check the server URL", 2)
         if response.status_code >= 400:
             try:
                 code = response.json()["error"]["code"]
@@ -165,6 +176,12 @@ class Agent:
             threading.Thread(target=close, name="dss-agent-close", daemon=True).start()
         return self.closing[http]
 
+    def release(self, http):
+        if self.cleanup_deadline is None:
+            http.close()
+        else:
+            self.close_http(http).wait(self.remaining_cleanup())
+
     def attempt(self, http, method, path, deadline, reason, kwargs):
         """A retry ends by the deadline whatever the server does: none starts at or after it, and one
         that is still waiting then (connect, DNS or a trickling answer) is abandoned in its thread and
@@ -172,9 +189,6 @@ class Agent:
         remaining = deadline - self.clock()
         if remaining <= 0:
             raise self.expired(reason, http)
-        if "wait" in kwargs.get("params", {}):
-            # A retried long poll only probes: waiting would outlast the remaining budget.
-            kwargs = {**kwargs, "params": {**kwargs["params"], "wait": 0}}
         timeout = httpx.Timeout(min(HTTP_TIMEOUT_S, remaining), connect=min(CONNECT_TIMEOUT_S, remaining))
         outcome, done = {}, threading.Event()
         def send():
@@ -201,87 +215,62 @@ class Agent:
             raise outcome["error"]
         return outcome["response"]
 
-    def check(self):
-        """`dsengine check` feeds the heartbeat; only the idle main loop calls it, never during a run."""
-        status = {"chrome_running": False, "signed_in": False}
-        try:
-            process = subprocess.Popen(self.command + ["check"], cwd=BACKEND_DIR, stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace",
-                start_new_session=os.name != "nt")
-        except OSError as error:
-            logger.warning("dsengine check could not start (%s)", describe(error))
-        else:
-            try:
-                output, _ = process.communicate(timeout=CHECK_TIMEOUT_S)
-                value = json.loads(output) if process.returncode == 0 else {}
-                status = {key: isinstance(value, dict) and value.get(key) is True for key in status}
-            except (ValueError, subprocess.TimeoutExpired):
-                logger.warning("dsengine check returned no status")
-            finally:
-                if process.poll() is None:
-                    terminate_tree(process)
-                process.wait()
-                process.stdout.close()
-        with self.lock:
-            self.status = status
-        self.next_check = time.monotonic() + CHECK_S
-
-    def heartbeats(self):
-        """Own thread and client, so heartbeats continue during long polls and engine runs."""
-        connected = None
-        with self.http() as http:
-            while True:
-                with self.lock:
-                    body = {**self.status, "agent_version": self.version}
-                try:
-                    self.call(http, "POST", "/heartbeat", retry=False, json=body)
-                    if not connected:
-                        logger.info("Connected to %s", self.server)
-                    connected = True
-                except Exception as error:  # keep beating; the main loop decides when to exit
-                    if connected is not False:
-                        logger.warning("Heartbeat failed: %s", describe(error))
-                    connected = False
-                if self.stop.wait(HEARTBEAT_S):
-                    return
-
-    def run(self):
+    def run(self, code):
+        """Claim the job the code names, run it, report it; returns the exit code (the engine's when it ran)."""
+        normalized = normalize_code(code) or ""
+        self.secrets = tuple(secret for secret in {code, normalized, normalized.replace("-", "")} if secret)
         logger.info("dss-agent %s: server %s, jobs in %s%s", self.version, self.server,
                     self.data_dir / "agent", ", dry run" if self.dry_run else "")
-        self.check()
-        beat = threading.Thread(target=self.heartbeats, name="dss-agent-heartbeat", daemon=True)
-        beat.start()
         try:
             http = self.http()
             try:
-                while not self.stop.is_set():
-                    if time.monotonic() >= self.next_check:
-                        self.check()
-                    wait = max(0.0, min(POLL_WAIT_S, self.next_check - time.monotonic()))
-                    try:
-                        response = self.call(http, "GET", "/jobs/next", params={"wait": round(wait, 2)})
-                    except JobError as error:
-                        raise AgentExit(f"The server refused the job poll ({error})") from None
-                    if response.status_code == 200:
-                        try:
-                            job = response.json()
-                        except ValueError:
-                            raise AgentExit("The server answered the job poll without JSON; check the server URL") from None
-                        self.run_job(http, job)  # one job at a time: no poll until it is reported
+                claimed = self.claim(http, code)
             finally:
-                if self.cleanup_deadline is None:
-                    http.close()
-                else:
-                    self.close_http(http).wait(self.remaining_cleanup())
-            return 0
+                self.release(http)
+            job = claimed.get("job")
+            http = self.http()
+            try:
+                # Before the shape: another API version may name or shape a claim differently.
+                if claimed.get("api_version") not in (None, API_VERSION):
+                    # Best effort, so the build's ticket ends now instead of at the server's timeout.
+                    if self.token and isinstance(job, dict) and RUN_ID.fullmatch(str(job.get("run_id"))):
+                        self.report(http, job["run_id"], 2, "the build agent's API version differs", retry=False)
+                    raise AgentExit(f"This agent speaks API {API_VERSION}, the server another version. {UPDATE}", 2)
+                if not self.token or not isinstance(job, dict):
+                    raise AgentExit("The server's answer is not a claimed job; check the server URL", 2)
+                return self.run_job(http, job)
+            finally:
+                self.release(http)
         except Stopped:
-            return 0
+            say("Stopped")
+            return 1
         except AgentExit as error:
-            logger.error("%s", error)
+            say(str(error))
             return error.code
         finally:
             self.stop.set()
-            beat.join(timeout=1 if self.cleanup_deadline is None else self.remaining_cleanup())
+
+    def claim(self, http, code):
+        try:
+            response = self.call(http, "POST", "/claim", json={"code": code, "agent_version": self.version})
+        except JobGone:
+            raise AgentExit("The server does not take job codes; check the server URL", 2) from None
+        except JobError as error:
+            if str(error) == "job_code_invalid":
+                raise AgentExit(CODE_INVALID) from None
+            raise AgentExit(f"The server refused the code ({error})") from None
+        try:
+            claimed = response.json()
+        except ValueError:
+            claimed = None
+        if not isinstance(claimed, dict):
+            raise AgentExit("The server's answer is not a claimed job; check the server URL", 2)
+        token = claimed.get("job_token")
+        if isinstance(token, str) and token:
+            self.secrets += (token,)
+            if token.isascii() and token.isprintable():
+                self.token = token  # else run() refuses the claim: an httpx header must be printable ASCII
+        return claimed
 
     def folder(self, job):
         """Validate a job before any of its fields reaches a path or a command line."""
@@ -300,16 +289,17 @@ class Agent:
         return self.data_dir / "agent" / job["build_id"] / f"v{job['version']}"
 
     def run_job(self, http, job):
+        """The 5.3 job path for the one claimed job; returns the exit code."""
         run_id = job.get("run_id") if isinstance(job, dict) else None
         if not isinstance(run_id, str) or not RUN_ID.fullmatch(run_id):
-            logger.error("Ignored a job without a valid run_id")
-            return
+            say("The server sent a job without a valid run_id")
+            return 2
         try:
             folder = self.folder(job)
         except ValueError as error:
-            logger.error("Job %s is invalid (%s)", run_id, error)
+            say(f"Job {run_id} is invalid ({error})")
             self.report(http, run_id, 2, "the build agent rejected an invalid job")
-            return
+            return 2
         logger.info("Job %s: build %s v%s", run_id, job["build_id"], job["version"])
         try:
             if folder.exists():
@@ -320,16 +310,31 @@ class Agent:
             code, tail = self.run_engine(http, run_id, job, folder)
         except JobGone:
             self.forget(run_id, folder)
-            return
+            return 1
         except (JobError, OSError) as error:
-            logger.error("Job %s could not run (%s)", run_id, describe(error))
+            say(f"Job {run_id} could not run ({describe(error)})")
             self.report(http, run_id, 1, "the build agent could not run the job", folder)
-            return
+            return 1
         except (KeyboardInterrupt, Stopped):
             self.report(http, run_id, 1, "the build agent stopped", folder, retry=False)
             raise
-        if self.report(http, run_id, code, tail, folder):
-            logger.info("Job %s finished (exit code %s)", run_id, code)
+        if not self.report(http, run_id, code, tail, folder):
+            return 1
+        logger.info("Job %s finished (exit code %s)", run_id, code)
+        self.summary(code, job)
+        return code if code >= 0 else 1
+
+    def summary(self, code, job):
+        event = self.outcome or {}
+        url, error = event.get("report_url"), event.get("error_code")
+        if report_link(url):
+            say(f"Report: {url}")
+        elif code == 0:
+            say("Dry run finished: no report was created" if self.dry_run or job["dry_run"]
+                else "The build finished without a report link")
+        if code != 0:
+            reason = error if isinstance(error, str) and ERROR_CODE.fullmatch(error) else f"exit code {code}"
+            say(f"The build failed ({reason})")
 
     def report(self, http, run_id, code, tail, folder=None, retry=True):
         try:
@@ -347,7 +352,7 @@ class Agent:
 
     def forget(self, run_id, folder):
         shutil.rmtree(folder, ignore_errors=True)
-        logger.warning("Job %s no longer exists on the server; stopped it and removed %s", run_id, folder)
+        say(f"Job {run_id} no longer exists on the server; stopped it and removed {folder}")
 
     def engine_args(self, job, folder):
         args = self.command + ["run", str(folder / "recipe.jsonl"), "--timeout", str(job["timeout_s"])]
@@ -427,11 +432,18 @@ class Agent:
             value = json.loads(line)
         except ValueError:
             return None
-        return self.redact(value) if isinstance(value, dict) else None
+        if not isinstance(value, dict):
+            return None
+        value = self.redact(value)
+        if value.get("event") == "run_finished":
+            self.outcome = value
+        return value
 
     def redact(self, value):
         if isinstance(value, str):
-            return value.replace(self.token, "[redacted]")
+            for secret in self.secrets:
+                value = value.replace(secret, "[redacted]")
+            return value
         if isinstance(value, dict):
             return {self.redact(key): self.redact(item) for key, item in value.items()}
         if isinstance(value, list):
@@ -462,29 +474,41 @@ class Agent:
             logger.warning("Job %s: the server refused screenshot %s (%s)", run_id, name, error)
 
 
+class Parser(argparse.ArgumentParser):
+    def error(self, message):
+        # argparse would echo the offending values, which may be the job code.
+        say(USAGE)
+        raise SystemExit(2)
+
+
 def main(argv=None):
     logging.basicConfig(level=logging.INFO, stream=sys.stdout, format="%(levelname)s backend.agent: %(message)s")
     for name in ("httpx", "httpcore"):
         logging.getLogger(name).setLevel(logging.WARNING)
-    parser = argparse.ArgumentParser(prog="dss-agent",
-        description="Run the builds a hosted backend queues on this machine's engine.")
-    parser.add_argument("--server", help="hosted app URL (default: DSS_AGENT_SERVER from the root .env)")
-    parser.add_argument("--dry-run", action="store_true", help="add --dry-run to every engine run (rehearsals)")
-    # Rejected without echoing: argparse would print an unknown option's value.
-    parser.add_argument("--token", help=argparse.SUPPRESS)
-    args = parser.parse_args(argv)
-    if args.token is not None:
-        logger.error("The agent token comes only from DSS_AGENT_TOKEN in the root .env, never from a flag")
+    parser = Parser(prog="dss-agent", usage=USAGE.removeprefix("usage: "),
+                    description="Run one hosted build on this machine's engine.")
+    commands = parser.add_subparsers(dest="command")
+    run = commands.add_parser("run", usage=USAGE.removeprefix("usage: "),
+                              help="claim the job a code names, run it and exit")
+    run.add_argument("--server", required=True, help="the hosted app's URL")
+    run.add_argument("--job", required=True, help="the code the Build stage shows")
+    run.add_argument("--dry-run", action="store_true", help="add --dry-run to the engine run (rehearsals)")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as error:
+        return error.code
+    if args.command != "run":
+        say(USAGE)  # the bare form was the retired polling agent
         return 2
     try:
         agent = Agent.from_env(args.server, args.dry_run)
     except AgentExit as error:
-        logger.error("%s", error)
+        say(str(error))
         return error.code
     try:
-        return agent.run()
+        return agent.run(args.job)
     except KeyboardInterrupt:
-        logger.info("Stopped")
+        say("Stopped")
         return 130
 
 

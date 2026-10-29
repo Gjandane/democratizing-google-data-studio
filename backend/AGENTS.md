@@ -8,7 +8,7 @@ SSE API. Target: POC.
 Run from this folder (`backend/`) in bash.
 - Install: `uv sync && uv run playwright install chromium`
 - Run: `uv run uvicorn dss.main:app --port 8000`   (never `--reload`: it breaks subprocess and Playwright on Windows and kills running builds; Cloud Run runs `python -m dss.main`, which reads `$PORT`)
-- Build agent (after task 5.3): `uv run dss-agent --server <hosted URL>` here; from the repo root `uv run --project backend dss-agent --server <hosted URL>` (plain `uv run dss-agent` outside `backend/` finds no script; reads the root `.env` incl. `DSS_AGENT_TOKEN`; `--dry-run` for rehearsals)
+- Build agent (from task 29.2): `uv run dss-agent run --server <URL> --job <CODE>` here; elsewhere `uv run --project <path to backend> dss-agent run --server <URL> --job <CODE>` (plain `uv run dss-agent` outside `backend/` finds no script; no `.env` or token needed, `<CODE>` from the Build stage or `GET /api/builds/<id>/job`; `--dry-run` for rehearsals)
 - Test (all): `uv run pytest`   (each task's own check is its "Done when" in docs/plan.md; live tests run only with `-m live`)
 - Lint: none
 

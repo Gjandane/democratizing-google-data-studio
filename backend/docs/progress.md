@@ -2413,3 +2413,15 @@ assert min(timings) < .1
 - Gotchas: client.py's polling loop raises JobGone uncaught on a 3.4 server's `jobs/next` 404 (exit 1, traceback); 29.2 replaces it.
 - Left open: P3 client idle-check/heartbeat test removed without replacement (polling loop retired by 29.2) - tests/test_agent_client.py
 - Next: Task 29.2 One-shot `dss-agent run`.
+
+## 2026-10-29: Task 29.2 One-shot `dss-agent run`
+- Status: done
+- Plan check: off
+- What changed: client.py: `dss-agent run --server --job [--dry-run]` claims one code, runs the 5.3 job path with `X-DSS-Job-Token`, prints the report link/failure, exits; polling loop, heartbeat and check loop removed; bare/old forms print usage, exit 2. Tests rewritten for main(); AGENTS.md command line.
+- Checks: `uv run pytest tests/test_agent_client.py` PASS 30 (20 of the first 29 failed on the HEAD client); Test (all) `uv run pytest` PASS 2320 passed, 17 deselected (before the P3 fixes, which touch only client.py and its tests); manual: local agent-mode uvicorn + DSS_ENGINE_DRY_RUN=1, `uv run --project backend dss-agent run --server http://localhost:8000 --job <code> --dry-run` from an empty cwd exit 0, SSE `build.finished {"status": "ok"}`, code in 0 output lines/files.
+- Decisions: api_version mismatch (checked before the claim's shape) best-effort posts finished(2) so the ticket ends now; data dir/engine cmd: env first, root .env fallback, no DSS_AGENT_SERVER/TOKEN; argparse errors print only USAGE (never echo the code); secrets = code forms + job token, redacted from events/tail; e2e tests use the live uvicorn LiveServer (persistent loop) rather than TestClient; exit = engine code (negative -> 1).
+- Digest: dss.agent.client: main(argv)->int; Agent(server, token|None, data_dir, command, dry_run).run(code)->exit; Agent.from_env(server, dry_run); USAGE, CODE_INVALID, UPDATE; call(http, method, path) prefixes /api/agent; claim body {code, agent_version}.
+- Tried and failed: none
+- Gotchas: client.main's logging.basicConfig is a no-op under pytest (caplog owns root); user-facing lines use print (capsys), progress uses logging.
+- Left open: P3 POST /claim retried on network errors can burn a committed claim (prints CODE_INVALID, ticket stays running until timeout_s+60) - src/dss/agent/client.py
+- Next: Task 29.3. Start by `status --task 29.3`.
