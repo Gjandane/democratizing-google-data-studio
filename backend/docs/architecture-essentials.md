@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:6ad4eeb343ba (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:ae7a09a3fe09 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 docs/architecture.md wins.
 
@@ -33,7 +33,11 @@ tests/          offline fakes; tests/live/ marked live
 - Types: `DSS_ALLOWED_TYPES`; sort `{field, order}`. COUNT variants allow dimensions; dropdown
   uses one dimension. Chart colors override theme (no scorecards); accents affect only their target.
 - Cloud: SPA/$PORT, code cookie/header, fail-closed startup; backup API every 30 s when dirty;
-  agent token, 60 s retry. Run recompiles the current spec; dev routes need DSS_DEV=1.
+  60 s retry. Run recompiles the current spec; dev routes need DSS_DEV=1. Agent mode (change
+  2026-10-29, api.md 3.4, from 29.1): one-shot job tickets in SQLite (code, per-job token hash, one
+  live ticket per build, expiry sweep); `dss-agent run --server --job`; open link locks GCS and
+  BigQuery sources; share data = one stdlib CSV per run on the mounted share bucket with a
+  `googleCloudStorage` header (#Hosted one-shot builds).
 - Accept publishes its candidate view/spec/artifacts atomically; never clean a published view.
   Backgrounds: background.write_pages per page, 3x, <2 MB.
 - Designed pages: Argon brief (html_brief) -> Flash HTML (reference_html or html_no_reference),
@@ -90,9 +94,9 @@ tests/          offline fakes; tests/live/ marked live
 ## Contracts
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
-| ../contracts/api.md | 3.3 | provides | `uv run pytest tests/test_api_contract.py` |
-| ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.3 | provides recipes; consumes events | `uv run pytest tests/test_recipe_contract.py` |
-| ../contracts/conventions.md | 1.6 | consumes | manual: env names, ports, paths and IDs match |
+| ../contracts/api.md | 3.4 | provides | `uv run pytest tests/test_api_contract.py` (from 29.1 also fixtures/hosted-build/) |
+| ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.4 | provides recipes; consumes events | `uv run pytest tests/test_recipe_contract.py` (from 29.4 also fixtures/recipe.gcs.sample.jsonl) |
+| ../contracts/conventions.md | 1.7 | consumes | manual: env names, ports, paths and IDs match |
 | ../contracts/dashboard-intent.md | 1.3 | provides | `uv run pytest tests/test_api_contract.py tests/test_feasibility.py` |
 | ../contracts/synthetic-data.md | 1.3 | provides | `uv run pytest tests -k synthetic` |
 

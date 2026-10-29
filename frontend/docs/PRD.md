@@ -41,6 +41,13 @@ view of the dashboard being built.
   the actual model, fallback and token limits of each call are visible, with estimated costs per
   stage, call, run and build (api.md 3.0).
 
+## Goals added by change 2026-10-29 (local agent per judge)
+- On the hosted link, Build gives the visitor one setup command with a one-time job code
+  (PowerShell for Windows, bash labeled untested) and follows that job from "waiting for the
+  command" through the live build to the link of the report in the visitor's own Data Studio
+  (api.md 3.4, conventions 1.7); Chrome is stated as required; the share-data note says the data
+  goes to a link-readable CSV; Connect shows GCS and BigQuery as locked on the open link.
+
 ## Non-goals
 - No accounts or per-user data (POC): only the gate of ../contracts/api.md#Access (Google sign-in
   when the backend offers it, else the shared access code; change 2026-10-29).
@@ -73,7 +80,7 @@ view of the dashboard being built.
 | Prototype click-to-comment, apply, reload | research-mode prompt | |
 | Build: recipe lines, live op status, link, engine sign-in | screencast panel | |
 | Settings modal; mock mode against fixtures | | |
-| access-code gate; build-agent status in Build | | |
+| access-code gate; hosted Build job command and states, Connect source lock (change 2026-10-29) | | a polling-agent panel (removed 2026-10-29) |
 | | activity strip and run checklist (change 2026-10-19) | |
 | synthetic sample data: schema review, generate, CSV download, labels (change 2026-10-19) | | |
 

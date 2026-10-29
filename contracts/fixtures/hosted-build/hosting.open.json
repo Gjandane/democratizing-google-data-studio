@@ -1,0 +1,7 @@
+{
+  "mode": "agent",
+  "public": true,
+  "locked_sources": ["gcs", "bigquery"],
+  "share_data": true,
+  "api_version": "3.4"
+}

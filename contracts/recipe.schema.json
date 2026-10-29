@@ -39,15 +39,29 @@
           "properties": { "width": { "$ref": "#/$defs/size" }, "height": { "$ref": "#/$defs/size" } }
         },
         "datasource": {
-          "type": "object",
-          "required": ["connector", "project_id", "dataset_id", "table_id"],
-          "additionalProperties": false,
-          "properties": {
-            "connector": { "const": "bigQuery" },
-            "project_id": { "type": "string", "minLength": 1 },
-            "dataset_id": { "type": "string", "minLength": 1 },
-            "table_id": { "type": "string", "minLength": 1 }
-          }
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["connector", "project_id", "dataset_id", "table_id"],
+              "additionalProperties": false,
+              "properties": {
+                "connector": { "const": "bigQuery" },
+                "project_id": { "type": "string", "minLength": 1 },
+                "dataset_id": { "type": "string", "minLength": 1 },
+                "table_id": { "type": "string", "minLength": 1 }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["connector", "path_type", "path"],
+              "additionalProperties": false,
+              "properties": {
+                "connector": { "const": "googleCloudStorage" },
+                "path_type": { "const": "FILE" },
+                "path": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{1,220}/[A-Za-z0-9._/-]+\\.csv$" }
+              }
+            }
+          ]
         }
       }
     },

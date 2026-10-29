@@ -10,8 +10,19 @@
   `google.accounts.id.initialize({client_id, callback})` and `renderButton`, and posts the
   callback's `credential` as `{google_id_token}`; no code field then. Type the small GIS surface
   you use in a local .d.ts; tests stub `window.google`. Never store the token.
-- Agent mode: Build shows an agent panel instead of sign-in (`agent_connected`, copyable
-  `dss-agent` command with `--server <origin>`); Build off while offline.
+- Agent mode (api.md 3.4, change 2026-10-29): Build in Data Studio is enabled (no agent to wait
+  for); after `POST /run`, `GET /api/builds/{id}/job` gives the ticket; poll it every 3 s while
+  `waiting` (stop on `running`, `finished`, `expired` or unmount) and follow the run on the event
+  stream as in local mode. The job panel shows "Needs Google Chrome", two tabs (Windows
+  PowerShell, macOS/Linux bash "untested") with the conventions 1.7 setup command built from
+  `window.location.origin` and the code, one Copy button per tab, the code's countdown, and
+  with `Hosting.share_data` the note "Your data is saved as a CSV that anyone with its private
+  link can read, so your Data Studio account can open it." `expired` offers Build again; on mount in stage
+  `build` the panel restores the ticket from `GET .../job` (a 404 offers Build again); a failed
+  hosted run shows its error and Build again. The code is never logged or stored beyond the React
+  state. `GET /api/hosting` once per app load;
+  `locked_sources` disables the GCS/BigQuery form in Connect with "GCS and BigQuery sources need
+  the local app (see README)"; `403 source_locked` shows the same text.
 - `VITE_MOCK=1` swaps `client.ts` for `src/mocks/` (same function signatures). Mocks import
   ../contracts/fixtures/api/* directly (`server.fs.allow` includes `..`); never copy fixtures.
 - One EventSource per open build (`/api/builds/{id}/events`); on reconnect re-fetch build + messages.

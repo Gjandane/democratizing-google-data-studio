@@ -127,7 +127,9 @@ Files per version: `data/builds/<id>/v<n>/` (../contracts/conventions.md).
   `timeout_graceful_shutdown` of at most 3 s (Cloud Run kills 10 s after SIGTERM; open long polls
   must not hold shutdown).
 - Fail closed: with `K_SERVICE` set, startup exits with a message if `DSS_ACCESS_CODE` is under 12
-  characters or, in agent mode, `DSS_AGENT_TOKEN` is under 24.
+  characters or, in agent mode, `DSS_AGENT_TOKEN` is under 24 (change 2026-10-29 local agent per
+  judge: from task 29.1 nothing reads `DSS_AGENT_TOKEN` and that rule goes; anywhere,
+  `DSS_SHARE_BUCKET` set without `DSS_SHARE_DIR`, or the reverse, exits with a message).
 - Open link (change 2026-10-29, ../contracts/conventions.md 1.6): with `K_SERVICE` set and
   `DSS_PUBLIC=1`, the code rule becomes "`DSS_ACCESS_CODE` and `GOOGLE_OAUTH_CLIENT_ID` both
   empty" (either set exits with a message); any other non-empty `DSS_PUBLIC` exits too; the
@@ -158,31 +160,73 @@ Files per version: `data/builds/<id>/v<n>/` (../contracts/conventions.md).
   most one backup at a time.
 - Settings lock: in agent mode, `PUT /api/settings` accepts only `planner_model`/`worker_model`
   (`403 settings_locked`), so a code holder can't swap the API key or the GCP project.
-- Agent jobs (server, task 5.2): an in-memory FIFO (one instance, so no external queue); a job is
-  handed out once (`GET /jobs/next` long-polls up to 25 s); the heartbeat refreshes
-  `agent_last_seen`, `chrome_running`, `signed_in`; "connected" = a heartbeat within 30 s. Agent
-  routes check `X-DSS-Agent-Token` only. The engine lock is taken at `POST /run` and released on
-  `finished`, on timeout (`Job.timeout_s + 60` s without events) and at startup (a job running
-  before a restart fails with `agent_timeout`). Posted events go through the same parser as the
-  subprocess's stdout lines. `report_url` must be on `datastudio.google.com` or
-  `lookerstudio.google.com`, else `invalid_report_url`. File names: `^[A-Za-z0-9._-]+$`, resolved
-  inside the version folder, downloads only for names in `Job.files` (`400 invalid_name`).
-- The agent (`dss-agent`, task 5.3): resolves the root `.env`, `DSS_DATA_DIR` and
-  `DSS_ENGINE_CMD` from its package location as the backend does from `backend/`, whatever the
-  cwd. A heartbeat thread (every 10 s, also during jobs and polls); `dsengine check` at start and
-  every 60 s while idle feeds `signed_in`/`chrome_running`. Per job: download `Job.files` into
-  `data/agent/<build_id>/v<n>/`, run `DSS_ENGINE_CMD run recipe.jsonl --timeout <Job.timeout_s>
-  [--dry-run] --screens screens/` with `subprocess.Popen` (argument list, `cwd=backend/`); `--dry-run`
-  on the agent's command line forces `--dry-run`; post events in batches (flush at least every
-  second), `PUT` each screenshot an event names, then `finished` with the exit code. HTTP timeout
-  > 35 s. `404 job_not_found` mid-job -> kill the engine, delete the job folder. Network errors:
-  retry with backoff up to 60 s, then exit non-zero. One job at a time. Never logs the token.
-- Edge cases: agent disconnects mid-job -> timeout path; two agents -> each job goes to one;
-  `POST /run` while a job is queued or running -> `409 engine_busy`; uploads over 32 MB on Cloud
-  Run get Cloud Run's own `413`; the hosted app with no agent stops at the recipe (`424
-  agent_offline`), which is also the cut fallback (docs/program.md).
+- Hosted builds in agent mode: #Hosted one-shot builds (change 2026-10-29 local agent per judge).
+- Edge cases: agent disconnects mid-job -> timeout path; two people with one code -> the first
+  claim wins, the second gets `job_code_invalid`; `POST /run` while the build's ticket is
+  waiting or running -> `409 engine_busy`; a new version -> a new run and code; uploads over
+  32 MB on Cloud Run get Cloud Run's own `413`; scale to zero while a ticket waits -> it stays
+  claimable after the restore (at most 30 s of writes lost: a ticket issued in the last 30 s
+  before a crash can vanish, so `GET .../job` answers 404 and the UI offers Build again).
 - Oracle: tests/test_cloud_mode.py, tests/test_agent_server.py, tests/test_agent_client.py (plan
-  tasks 5.1-5.3), tests/test_google_signin.py (27.1, the verifier stubbed, no network); every earlier test passes with the code empty and `DSS_ENGINE_MODE=local`.
+  tasks 5.1-5.3, rewritten by 29.1-29.2), tests/test_google_signin.py (27.1, the verifier stubbed,
+  no network), tests/test_hosting.py (29.3), tests/test_share_data.py (29.4, BigQuery stubbed, a tmp
+  share dir); every earlier test passes with the code empty and `DSS_ENGINE_MODE=local`.
+
+### Hosted one-shot builds
+- Problem: on the open link each visitor builds into their own Data Studio account from their own
+  machine, which can't read the owner's BigQuery (../contracts/api.md 3.4, conventions 1.7,
+  recipe.md 1.4). Edge cases and the oracle: #Cloud mode.
+- One-shot jobs (server; change 2026-10-29 local agent per judge, ../contracts/api.md 3.4, task
+  29.1; replaces the 5.2 FIFO, long poll and heartbeat): `POST /run` in agent mode prepares the
+  job exactly as before (current spec, packaged files, Build consistency), then inserts a ticket
+  row in SQLite: run_id, build_id, version, code, `state`, `expires_at` (+30 min), `claimed_at`,
+  `token_sha256`, `last_event_at`. Codes: 8 characters from `secrets.choice` over the 32-letter
+  alphabet (A-Z, 2-9 without I, O, 0, 1), unique among live tickets, shown as `XXXX-XXXX`, stored
+  as plain text (they die at claim or expiry and are the job's only secret before it). One live
+  ticket per build (`409 engine_busy`); no global lock in agent mode. `POST /api/agent/claim`
+  normalizes the code, looks up a `waiting` ticket that hasn't expired, and in one transaction
+  sets `running`, `claimed_at` and the SHA-256 of a fresh `secrets.token_urlsafe(32)` job token,
+  which it returns once; misses sleep 1 s (off the event loop) and answer `404 job_code_invalid`.
+  Per-job routes compare `sha256(X-DSS-Job-Token)` with `hmac.compare_digest` against that run's
+  hash (`401 agent_unauthorized`). A background sweep (every 15 s, and once at startup) expires
+  `waiting` tickets past `expires_at` (`build.finished(failed)`, `job_expired`, stage back to
+  `prototype`) and fails `running` ones with no event for `Job.timeout_s + 60` s
+  (`agent_timeout`); at startup every `running` ticket fails with `agent_timeout` (the instance
+  that held it is gone). Ticket writes mark the DB dirty, so the 30 s backup carries them across a
+  scale-to-zero restart. Posted events go through the same parser as the subprocess's stdout
+  lines. `report_url` must be on `datastudio.google.com` or `lookerstudio.google.com`, else
+  `invalid_report_url`. File names: `^[A-Za-z0-9._-]+$`, resolved inside the version folder,
+  downloads only for names in `Job.files` (`400 invalid_name`). `GET /builds/{id}/job` returns
+  the build's latest ticket. The heartbeat, `jobs/next` and the `X-DSS-Agent-Token` check are
+  deleted; `GET /api/engine/status` answers the agent fields false/null in agent mode.
+- The agent (`dss-agent run --server <URL> --job <CODE> [--dry-run]`, task 29.2; replaces the 5.3
+  polling loop): no `.env` needed; resolves `DSS_DATA_DIR` and `DSS_ENGINE_CMD` from its package
+  location as the backend does from `backend/`, env vars first. Claims the code (agent_version =
+  the package version); an `api_version` other than its own exits 2 with "Rerun the setup command
+  with -Update". Then as before: download `Job.files` into `data/agent/<build_id>/v<n>/`, run
+  `DSS_ENGINE_CMD run recipe.jsonl --timeout <Job.timeout_s> [--dry-run] --screens screens/` with
+  `subprocess.Popen` (argument list, `cwd=backend/`); post events in batches (flush at least
+  every second), `PUT` each screenshot an event names, then `finished` with the exit code, then
+  print the report link (or the failure) and exit with the engine's code. `404 job_not_found`
+  mid-job -> kill the engine, delete the job folder, exit 1. Network errors: retry with backoff up
+  to 60 s, then exit non-zero. Never prints, logs or writes the code or the token (argv carries
+  the code; it dies at claim).
+- Hosting info and source lock (task 29.3): `GET /api/hosting` from config (`public` =
+  `K_SERVICE` set and `DSS_PUBLIC=1`; `share_data` = agent mode with both `DSS_SHARE_*` set).
+  With `public`, `POST /sources {gcs|bigquery}` answers `403 source_locked` before touching
+  GCS or BigQuery; uploads, research and synthetic sources are unchanged.
+- Share data (task 29.4, ../contracts/api.md 3.4 Share data, recipe.md 1.4): with `share_data`,
+  `POST /run` (after compile checks, before the ticket) runs `SELECT * FROM <view>` through the
+  existing BigQuery client and streams rows with the stdlib csv writer to
+  `<DSS_SHARE_DIR>/<secrets.token_hex(16)>/data.csv.tmp`, renamed to `data.csv` when complete;
+  counts rows and bytes while writing and stops at 1,000,000 rows or 100 MB (`422
+  share_too_large`, partial file removed). Value formats: DATE `YYYY-MM-DD`; DATETIME/TIMESTAMP
+  `YYYY-MM-DD HH:MM:SS` in UTC; NULL empty; numbers via `str()`; booleans `true`/`false`. The
+  recipe header becomes `{"connector": "googleCloudStorage", "path_type": "FILE", "path":
+  "<DSS_SHARE_BUCKET>/<hex>/data.csv"}`; the ops are unchanged. The folder is per run (a rerun
+  exports fresh rows); its name is stored with the version for the trace. Any other failure ->
+  `503 share_export_failed`, no ticket, stage unchanged. Recipe preview (`POST /recipe`) keeps
+  the BigQuery header (no export). Local mode never exports.
 
 ### Build consistency
 Final-audit corrections (2026-10-19):
@@ -2224,4 +2268,5 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-27 | Final POC deterministic feasibility acceptance is 250 ms warm; retain existing workloads/samples/semantics and report first/cold time separately | another optimization campaign to retain 100 ms; favorable reruns | explicit user concession after full-workload 104-105 ms warm and 1.08 s first-sample evidence; no backend contract fixes 100 ms | final audit 2026-10-27 (user answer) |
 | 2026-10-28 | Recreate reference_extract normalizes common style color/font forms and falls back per field to the build's design-prefill preset, so style values never reject a recreate extraction; style mode still rejects an unrecoverable style value; observations stay strict; offline 25.10 precedes live 25.11 | treat style-pattern rejections as one-rerun transients; repair plus a rerun allowance; preset fallback in style mode too | 25.10 run 2 rejected a whole recreate answer on 8 style-only `pattern` issues; the same inputs extracted cleanly before | change 2026-10-28 (user card) |
 | 2026-10-28 | Recreate references go through a Flash analysis (native catalog component or static art per item) and one user approval gate before design/confirm, blueprint, recipe and run; approved native items are the requirements, static items consented art; Argon blueprint and brief get the image plus the approved items; the observation path (reconciliation, completion, unlabeled-control offers, approved drops) is deleted; native_planning default medium; 25.11 superseded by 26.6 | keep observations with medium planning; gate at design/confirm with field bindings; old path behind a flag | 24.7-25.11 blocked on observation edge cases settled by harness-only approvals; one explicit user decision replaces them; high planning timed out twice at 1,200 s, medium answered in 79 s | change 2026-10-28 (user request and cards; api.md 3.2, dashboard-intent.md 1.3) |
+| 2026-10-29 | Local agent per judge (../contracts/api.md 3.4, conventions 1.7, recipe 1.4): one-shot job tickets with a one-time code and a per-job token replace the polling agent, heartbeat, shared agent token and global agent-mode lock; tickets in SQLite (survive scale to zero via the backup); share data as one stdlib-csv file on the mounted share bucket with a GCS recipe header; GCS/BigQuery sources locked when public | pairing per browser with a polling agent; EXPORT DATA to GCS (sharded, FOLDER mode); google-cloud-storage client; tickets in memory | user cards 2026-10-29; no new dependency; one file per run is what the Linking API FILE path needs | change 2026-10-29 local agent per judge |
 | 2026-10-29 | Open hosted link: `DSS_PUBLIC=1` (Cloud Run only) is the one opt-in past the fail-closed start; it needs the code and the Google client id empty, so the open service runs the existing no-gate path; agent token rule unchanged | drop the fail-closed rule; a public flag that keeps a code or client id; Google sign-in through an OAuth-only project | user: anyone with the link gets in (the project's OAuth branding is locked to one domain); an explicit flag keeps a missing secret from opening the service by accident | change 2026-10-29 open hosted link (user cards; conventions 1.6) |

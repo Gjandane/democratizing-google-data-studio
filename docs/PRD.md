@@ -7,8 +7,9 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
 
 ## Users
 - The user: runs `./start.sh`, does the manual acceptance, gives the demo, approves each push.
-- Hackathon judges: read the README and the submission deck, open the hosted app with the access
-  code, may run it locally.
+- Hackathon judges: read the README and the submission deck, open the hosted app (an open link,
+  no sign-in, change 2026-10-29) and build into their own Data Studio with the setup command, may
+  run it locally.
 
 ## Goals
 1. `./start.sh` (and `./start.ps1`) starts backend and frontend; `.env.example` lists every name
@@ -31,9 +32,10 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
 6. Cloud Run (change 2026-10-19), last (change 2026-10-20 final phases): a root Dockerfile and
    `deploy/deploy.sh` deploy the app as service `dss-frontend` per
    contracts/conventions.md#Cloud deployment, so the submitted URL
-   (`DSS_AGENT_SERVER` in .env, shared privately, never in the repo) serves the full app; flow 1 passes
-   against it up to the compiled recipe, where the hosted app stops (`424 agent_offline`; hosted Data Studio
-   builds through the build agent are v2, change 2026-10-29 hosted scope).
+   (`DSS_AGENT_SERVER` in .env, shared privately, never in the repo) serves the full app as an
+   open link scaling to zero; flow 1 passes against it up to the compiled recipe (4.2, 4.3), and
+   after the redeploy for judge builds (4.5) a visitor builds into their own Data Studio account
+   through one copied setup command (change 2026-10-29 local agent per judge).
 
 7. Required: reference-image recreation/style and unsupported-request refusal pass task 2.5
    locally and task 4.3 on the hosted API (up to the recipe) before release acceptance.
@@ -44,6 +46,11 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
    builds one dashboard per source through the local UI and marks each PASS in
    docs/acceptance.md: CSV upload, research mode, BigQuery table and CSV in GCS right after the
    live e2e (2.4), screenshot + synthetic data once the reference work is in (2.6).
+10. Judge path (change 2026-10-29 local agent per judge): `agent-setup/setup.ps1` (Windows,
+   tested) and `agent-setup/setup.sh` (macOS/Linux, untested) install the one-shot agent per
+   contracts/conventions.md 1.7 (Build agent); the user proves it in a private window with a
+   second Google account that can't read the owner's BigQuery, and the report lands in that
+   account with data (4.6). The link is closed by hand after judging ends 2026-11-07.
 
 ## Non-goals
 - No code in the parts: the release never edits engine/, backend/ or frontend/ (program rule).
@@ -55,6 +62,8 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
   (a secret found in history is a STOP for the user).
 - No further deck work: no snapshots, benchmark slide or links slide (change 2026-10-20).
 - No separate architecture document: features and the simplified architecture live in README.md.
+- No GCS or BigQuery sources on the open link, no uploads over 32 MB, no automatic closing of the
+  link (change 2026-10-29 local agent per judge; the parts' PRD Later lists hold the first two).
 
 ## Core flows
 1. User runs `./start.sh` -> backend on 8000, frontend on 5173 -> opens http://localhost:5173.
@@ -136,8 +145,9 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
   synthetic v2 GPS refusal reading `stale`, ruled for 4.3 as a refusal when the GPS issues stay
   unresolved, and backend returning `blocked` after an outline Other on a built version is a
   backend item (backend/docs/PRD.md Later). The bench `server_url: "hosted"` mask moved into 4.2/4.3.
-- Hosted Data Studio builds: `dss-agent` against the Cloud Run URL (backend 5.2/5.3, built and
-  tested locally, never accepted hosted), and the hosted Build panel showing visitors an agent
-  command they can't run without the token (frontend): v2 (change 2026-10-29 hosted scope, docs/v2-handoff.md).
-- v2: dashboards built in each visitor's own Looker Studio by a zero-Python agent on their
-  machine, in a new repo; brief and every deferred item in docs/v2-handoff.md (change 2026-10-29).
+- (Planned now, change 2026-10-29 local agent per judge: release 4.4-4.6 with backend 29.x,
+  frontend 19.x, engine 14.x.) Hosted Data Studio builds in each visitor's own account.
+- A zero-Python agent (docs/v2-handoff.md) instead of the uv-installed `dss-agent`: still a later
+  option; this version ships the uv agent (change 2026-10-29 local agent per judge).
+- An automatic reminder or scheduled teardown for closing the link after 2026-11-07 (the 4.7
+  STOP offers the user a reminder; closing stays manual).

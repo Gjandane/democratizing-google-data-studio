@@ -49,7 +49,11 @@ engine/
 - **dry-run**: validate -> `run_started` -> for each op `op_started` + `op_finished(skipped)` ->
   `run_finished(status ok, report_url null)`. No browser.
 - **login**: start Chrome with the profile at `https://accounts.google.com/` then
-  `https://datastudio.google.com/`; poll the signed-in check every 3 s up to 5 min.
+  `https://datastudio.google.com/`; poll the signed-in check every 3 s up to 5 min. Change
+  2026-10-29 (task 14.2): after sign-in it also waits, inside the same 5 min, until the Data
+  Studio home is usable (its first-run terms/country dialog accepted by the person, never
+  clicked by the engine), and says on stderr what the person must do; exit 3 when time runs out.
+  It then checks the UI language (English) and the page zoom (100%) and says what to change.
 - Failure paths: Chrome missing -> exit 1 with a `log` error naming `DSS_CHROME_PATH`; CDP port
   busy by another browser -> `log` error and exit 1; a modal/tour popup -> dismiss via the
   `dismiss.*` selectors before each op.
@@ -97,8 +101,16 @@ engine/
   `ds.ds0.datasetId`, `ds.ds0.tableId`, `ds.ds0.billingProjectId=GCP_PROJECT_ID`; `c.reportId`
   only when the template ID is set; every value URL-encoded; deterministic param order.
   Source: https://developers.google.com/looker-studio/integrate/linking-api
-- Edge cases: report name with `&`, `#`, spaces, non-ASCII; missing `GCP_PROJECT_ID` (error before
-  any browser work).
+- GCS header (change 2026-10-29, ../contracts/recipe.md 1.4, task 14.1): for
+  `connector: googleCloudStorage` the params are `c.mode=edit`, `r.reportName`,
+  `ds.ds0.connector=googleCloudStorage`, `ds.ds0.pathType=FILE`, `ds.ds0.path=<path>` (then
+  `c.reportId` when set), in that order; `GCP_PROJECT_ID` is not read. Data Studio reads the file
+  with the signed-in account's credentials. Source (verified 2026-10-29):
+  https://developers.google.com/looker-studio/integrate/linking-api
+- Edge cases: report name with `&`, `#`, spaces, non-ASCII; missing `GCP_PROJECT_ID` with a
+  `bigQuery` header (error before any browser work); a GCS path with spaces or `/` segments
+  (URL-encoded); a GCS authorization prompt in the editor (never clicked by `run`: `open_report`
+  fails with a message that names the setup command).
 - Approach: fixed (string building). The spike confirms whether the data source alias for a
   blank report is `ds0` or needs a template.
 - Oracle: unit tests with exact expected URLs, including the encoding cases.
@@ -223,4 +235,5 @@ These conventions consolidate the verified build decisions and selector traps fr
 | 2026-10-21 | Placement ops reach boxes below the viewport fold at 100% zoom, read back in canvas coordinates | backend caps page height at the viewport; zoom out the editor | tall per_section pages are the staged design; 100% zoom keeps the ±4 px readback | change tall canvas (user choice), task 9.1 |
 | 2026-10-22 | Scorecard value sized from the box (prototype rule), `rename_page` op, palette colors applied to the swatches a chart has | new recipe font-size argument; accept "Untitled Page"; skip palettes longer than the swatch list | user flagged scorecard size on release 2.4; all 16 palette ops of b_a8ace098d03b were skipped; additive op keeps recipe_version 1.0 files valid | change report quality (user choice), tasks 11.1-11.3 |
 | 2026-10-23 | `date_granularity` sets a time series' date type in the chart, through the shared Data type menu path | infer the grain from the field name; change the field type in the data source; set Missing data to line breaks | a DATE_TRUNC bucket is a DATE column that Data Studio draws per day, spikes on the 1st and zeros between (release 2.5, b_36f20b42159c s015); a chart-level type changes only that chart | change live report defects (program root) |
+| 2026-10-29 | Recipe 1.4 GCS CSV header: Linking API `googleCloudStorage` FILE source, no billing project; `login` waits until Data Studio's first-run dialog is accepted by the person | a template report with a GCS source; the engine accepting the terms | hosted builds run in a visitor's account that can't read the owner's BigQuery, on a machine with no `.env`; the engine never accepts terms or consents for the person | change 2026-10-29 local agent per judge (program root) |
 | 2026-10-24 | Recipe 1.3: `area`, `fixed_size_list`, `stacked_percent`; breakdown series colors through "Select series", skipped (never timed out) when no swatch | slider control (number fields only); recipe-side color skip | release 2.6's reference recreation needs Data Studio's native area chart, fixed-size list and 100% stacked bar; s011 timed out on a breakdown's series list (b_697880743b4f) | change reference fidelity (program root, user choice) |

@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:4f988a891453 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:3698d7ee4cc2 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: engine
 One page, read at the start of every build session. A summary of docs/architecture.md, which
 wins if the two disagree.
@@ -32,6 +32,9 @@ tests/                   offline tests (fake driver); tests/live/ marked `live`
   Append pages from the last page; exclude images from chart enumeration.
 - Canvases can be taller than the viewport: bring each target region into view before mouse
   geometry and read boxes back in canvas coordinates; a background ends behind all, deselected.
+- Recipe 1.4 (change 2026-10-29): a `googleCloudStorage` header opens a FILE source with no
+  `GCP_PROJECT_ID`; never click a GCS authorization or Data Studio terms prompt (the person does,
+  in `login`). docs/architecture.md#Linking API URL.
 - Start the owned browser before checking sign-in; `check` stays read-only. Retry keyboard/mouse
   cleanup has no timeout keyword: check its budget first and bound canvas lookup by time left.
 - Cache source fields at editor readiness, before image/control selection clears the Data panel.
@@ -55,8 +58,8 @@ tests/                   offline tests (fake driver); tests/live/ marked `live`
 ## Contracts
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
-| ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.3 | consumes recipes; provides events | `uv run pytest tests/test_contract.py` |
-| ../contracts/conventions.md | 1.6 | consumes | manual: env names, ports and paths match (1.1-1.6 add nothing the engine reads; the engine stays local) |
+| ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.4 | consumes recipes; provides events | `uv run pytest tests/test_contract.py` (from 14.1 also fixtures/recipe.gcs.sample.jsonl) |
+| ../contracts/conventions.md | 1.7 | consumes | manual: env names, ports and paths match (1.7: on a visitor's machine the setup sets `DSS_CHROME_PROFILE` and `DSS_DATA_DIR` to absolute paths and there is no `.env`) |
 
 ## Dependencies
 | Package | Registry | Version | Why | Verified |

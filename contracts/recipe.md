@@ -1,5 +1,5 @@
 # Contract: recipe and engine events
-Version 1.3 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
+Version 1.4 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
 (`--timeout`, `error_code: timeout`, background file name); 1.1 (2026-10-22, change report quality)
 `rename_page` op, scorecard value sizing and `colors` series order stated. Header `recipe_version`
 stays "1.0" (the op is additive); 1.2 (2026-10-23, change live date buckets) `time_series` option
@@ -7,7 +7,11 @@ stays "1.0" (the op is additive); 1.2 (2026-10-23, change live date buckets) `ti
 ignore unknown options); 1.3 (2026-10-24, change reference fidelity) chart type `area`,
 control type `fixed_size_list`, `bar`/`area` option `stacked_percent`, and the `colors` rule for a
 chart with a `breakdown`; header still "1.0", but engines before 1.3 reject the new enum values, so
-the backend emits them only after the engine supports them (plan gates).
+the backend emits them only after the engine supports them (plan gates); 1.4 (2026-10-29, change
+local agent per judge) header `datasource` may be a `googleCloudStorage` CSV file (hosted builds in
+a visitor's own Data Studio account, who can't read the owner's BigQuery); header still "1.0", but
+engines before 1.4 reject it, so the backend emits it only after the engine supports it (plan
+gates). Fixture `contracts/fixtures/recipe.gcs.sample.jsonl`.
 Provider: backend writes recipes (its recipe compiler); engine writes events. Consumers: engine
 reads recipes; backend reads events; release validates both. Machine-readable schema:
 `contracts/recipe.schema.json` (JSON Schema 2020-12, `$defs`: `header`, `op`, `event`).
@@ -20,17 +24,26 @@ UTF-8 JSON Lines, one JSON object per line, no blank lines.
   `{"recipe_version": "1.0", "build_id": "b_...", "version": 1, "report_name": "...",
   "canvas": {"width": 1200, "height": 900}, "datasource": {"connector": "bigQuery",
   "project_id": "...", "dataset_id": "...", "table_id": "dash_b_..._v1"}}`.
+- 1.4: or `"datasource": {"connector": "googleCloudStorage", "path_type": "FILE", "path":
+  "<bucket>/<folder>/data.csv"}` (no `gs://`): one CSV file with a header row whose names are
+  the field names. `open_report` then uses the Linking API's `ds.ds0.connector=googleCloudStorage`,
+  `ds.ds0.pathType=FILE`, `ds.ds0.path=<path>`; Data Studio reads the file with the credentials
+  of whoever opens the report, so the file must be readable by that account (the hosted share
+  bucket is public-read, contracts/conventions.md). Field types are Data Studio's inference from
+  the CSV; `date_granularity` still sets the date type in the chart.
 - Every later line is one **op**: `{"id": "s001", "op": "<name>", ...args}`. IDs are unique and
   increasing. Ops run in file order.
-- The engine always passes `GCP_PROJECT_ID` (contracts/conventions.md) as the BigQuery billing
-  project, so `project_id` may name another project's table (e.g. `bigquery-public-data`).
+- With a `bigQuery` header the engine passes `GCP_PROJECT_ID` (contracts/conventions.md) as the
+  BigQuery billing project, so `project_id` may name another project's table (e.g.
+  `bigquery-public-data`). 1.4: a `googleCloudStorage` header needs no `GCP_PROJECT_ID` (a
+  visitor's machine has none).
 - Paths in ops are relative to the recipe file's folder (e.g. `background_p1.png`).
 - Colors are `#RRGGBB`. Geometry is integer px on the page canvas (contracts/conventions.md).
 
 ## Ops
 | op | Args (required unless marked ?) | What the engine does |
 |---|---|---|
-| `open_report` | — (uses the header) | opens the Linking API create URL in edit mode with the header's BigQuery table as data source and `report_name`; ends on an editable page 1 |
+| `open_report` | — (uses the header) | opens the Linking API create URL in edit mode with the header's data source (BigQuery table, or 1.4 GCS CSV file) and `report_name`; ends on an editable page 1 |
 | `set_canvas` | `width`, `height` | sets the current page's canvas size |
 | `set_background_image` | `path`, `x`, `y`, `w`, `h` | inserts the image, sends it to the back, and locks it if the UI allows |
 | `add_page` | `name` | adds a page and makes it current |
@@ -63,7 +76,7 @@ UTF-8 JSON Lines, one JSON object per line, no blank lines.
 - Scorecards (engine behaviour, no argument): the value is sized to the box like the prototype,
   `clamp(16, h - 28, 36)` px (Data Studio's largest offered size not above it), and the metric
   name is hidden when `title` is set, since the title carries the label.
-- Field names are BigQuery column names of the header's table, exactly.
+- Field names are BigQuery column names of the header's table (1.4: the CSV's header names), exactly.
 
 ## Engine CLI (provided by engine)
 - `dsengine run <recipe.jsonl> [--dry-run] [--screens <dir>] [--screencast] [--timeout <s>]`: runs the recipe and

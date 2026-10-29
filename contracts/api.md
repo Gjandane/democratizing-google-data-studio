@@ -1,5 +1,5 @@
 # Contract: backend HTTP API (REST + SSE)
-Version 3.3 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
+Version 3.4 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
 (recipe ops with ids, stage rules, engine_busy, shared fixtures). 1.1 (2026-10-19) Cloud Run:
 Access (session endpoints, `access_required`), engine status `mode`/agent fields, Agent endpoints,
 errors `access_denied`, `login_on_agent`, `agent_offline`, `agent_timeout`; fixtures
@@ -64,6 +64,18 @@ browser when `GOOGLE_OAUTH_CLIENT_ID` is set: `POST /api/session` also takes
 `{google_id_token}`, `Session` adds `google_client_id` and `user`, errors
 `403 signin_not_allowed` and `400 google_signin_off`; the code, its header and the agent token
 are unchanged. Fixtures: api/session.json, new api/session.google.json.
+3.4 (2026-10-29, change local agent per judge, user cards; breaking for the Agent endpoints only,
+which no deployed agent ever used): hosted builds run as one-shot jobs on the visitor's own
+machine. In agent mode `POST /run` issues a `JobTicket` with a one-time code (new
+`GET /api/builds/{id}/job`); `dss-agent run --server <URL> --job <CODE>` claims it with
+`POST /api/agent/claim` and gets a per-job token (`X-DSS-Job-Token`) for that job's routes; the
+polling agent (`POST /api/agent/heartbeat`, `GET /api/agent/jobs/next`, `X-DSS-Agent-Token`) and
+`424 agent_offline` are removed; one ticket per build instead of one engine lock; new
+`GET /api/hosting` (`Hosting`); open link: `403 source_locked` for GCS and BigQuery sources;
+share data path: `422 share_too_large`, `503 share_export_failed`; errors `404 job_code_invalid`,
+`job_expired`. Every other shape and route is unchanged. Fixtures: new folder
+contracts/fixtures/hosted-build/ (hosting.open.json, hosting.local.json, job_ticket.waiting.json,
+job_ticket.running.json, claimed_job.json); fixtures/api/ unchanged.
 Requirements and feasibility follow contracts/dashboard-intent.md 1.3.
 Provider: backend. Consumers: frontend, release. Base: `http://localhost:8000/api` (the frontend
 uses relative `/api`, proxied by Vite; contracts/conventions.md). JSON bodies, UTF-8. Errors use
@@ -112,10 +124,24 @@ Session    = { required: boolean /* DSS_ACCESS_CODE is set */, ok: boolean /* th
                google_client_id: string|null /* 3.3: GOOGLE_OAUTH_CLIENT_ID when Google sign-in is on; else null */,
                user: string|null /* 3.3: the email of a Google session cookie; null for the code or no session */ }
 EngineStatus = { mode: "local"|"agent", chrome_running: boolean, signed_in: boolean,
-               agent_connected: boolean /* a heartbeat in the last 30 s; false in local mode */,
-               agent_last_seen: string|null }
+               agent_connected: boolean /* a heartbeat in the last 30 s; false in local mode;
+               3.4: always false in agent mode (no heartbeat) */,
+               agent_last_seen: string|null /* 3.4: always null in agent mode */ }
 Job        = { run_id: string, build_id: string, version: int, dry_run: boolean, timeout_s: int,
                files: string[] /* "recipe.jsonl" first, then every file the recipe's ops name */ }
+JobTicket  = { run_id: string, build_id: string, version: int,
+               code: string /* 3.4: one-time job code, "XXXX-XXXX" from A-Z and 2-9 without
+               I, O, 0, 1 */,
+               state: "waiting"|"running"|"finished"|"expired",
+               expires_at: string /* creation + 30 min; a waiting ticket expires then */,
+               claimed_at: string|null }   /* 3.4, agent mode */
+ClaimedJob = { job: Job, job_token: string /* per-job bearer token for that job's routes */,
+               api_version: string /* "3.4" */ }   /* 3.4 */
+Hosting    = { mode: "local"|"agent", public: boolean /* DSS_PUBLIC=1 on Cloud Run */,
+               locked_sources: ("gcs"|"bigquery")[] /* both when public, else [] */,
+               share_data: boolean /* agent mode with DSS_SHARE_BUCKET and DSS_SHARE_DIR set: the build's data is
+               exported to a public-read CSV the report reads */,
+               api_version: string /* "3.4" */ }   /* 3.4 */
 ```
 
 ## Access
@@ -161,7 +187,7 @@ folder; otherwise `400 invalid_name`.
 | `POST /api/builds` | `{title?: string, archetype: Archetype, mode: Mode}` | `201 Build` (stage `connect`) |
 | `GET /api/builds/{id}` | — | `Build` |
 | `POST /api/builds/{id}/sources/upload` | multipart, field `files` (one or more `.csv`) | `201 {sources: Source[]}` |
-| `POST /api/builds/{id}/sources` | `{kind: "gcs"\|"bigquery", uri: string}` (`gs://bucket/path.csv` or `project.dataset.table`) | `201 Source` |
+| `POST /api/builds/{id}/sources` | `{kind: "gcs"\|"bigquery", uri: string}` (`gs://bucket/path.csv` or `project.dataset.table`) | `201 Source`; 3.4: open link (`Hosting.public`) -> `403 source_locked` (`detail.kind`), before any read |
 | `POST /api/builds/{id}/style-images` | multipart, field `files` (png/jpg) | `202 {run_id}` (stretch) |
 | `POST /api/builds/{id}/research` | `{prompt: string}` | `202 {run_id}` (stretch; mode `research`) |
 | `GET /api/builds/{id}/messages` | — | `Message[]`, oldest first (assistant explanations, refusals and revise outcomes; 2.0 has no free-text chat input) |
@@ -171,12 +197,14 @@ folder; otherwise `400 invalid_name`.
 | `POST /api/builds/{id}/comments` | `{comments: Comment[]}` (1-20) | `202 {run_id}`; `prototype.updated` when done |
 | `POST /api/builds/{id}/audit` | — | `202 {run_id}` (stretch); findings arrive as an assistant message |
 | `POST /api/builds/{id}/recipe` | — | `200 {op_count: int, ops: [{op_id: string, line: string /* dsengine print line */}]}`; compiles from the current spec |
-| `POST /api/builds/{id}/run` | — | `202 {run_id}`; stage -> `build`, then `done` (also after `partial`); after `failed` the stage returns to `prototype`. One engine run at a time on the machine: else `409 engine_busy`. Agent mode: queued as a `Job`; no agent heartbeat in the last 30 s -> `424 agent_offline` |
+| `POST /api/builds/{id}/run` | — | `202 {run_id}`; stage -> `build`, then `done` (also after `partial`); after `failed` the stage returns to `prototype`. One engine run at a time on the machine: else `409 engine_busy`. Agent mode (3.4): issues a `JobTicket` (`GET .../job`) for a one-shot agent; a build whose ticket is `waiting` or `running` -> `409 engine_busy`; builds don't wait on each other. With `share_data`: the view is exported first (Agent endpoints, Share data); `422 share_too_large` and `503 share_export_failed` start no job and leave the stage as it was |
+| `GET /api/builds/{id}/job` | — | 3.4, agent mode: the `JobTicket` of the build's latest run; `404 job_not_found` when it has none; local mode `404 agent_mode_off` |
+| `GET /api/hosting` | — | 3.4: `Hosting` (gated like every other route) |
 | `POST /api/builds/{id}/versions` | — | `201 Build`: new version from the latest spec and its four confirmed artifacts; stage -> `prototype` |
 | `GET /api/builds/{id}/files/{name}` | — | a file from the current version folder (`background_p<n>.png`, `screens/<file>`) |
 | `GET /api/builds/{id}/events` | — | `text/event-stream` (below) |
 | `GET /api/traces` | query `build_id?` | `Trace[]`, newest first |
-| `GET /api/engine/status` | — | `EngineStatus` (agent mode: `chrome_running` and `signed_in` come from the agent's last heartbeat) |
+| `GET /api/engine/status` | — | `EngineStatus` (agent mode, 3.4: the agent fields are false/null; the Build stage uses `JobTicket`) |
 | `POST /api/engine/login` | — | `202 {run_id}`; opens the sign-in window. Agent mode: `409 login_on_agent` (run `dsengine login` on the agent's machine) |
 
 ## Staged workflow endpoints (added in 2.0)
@@ -322,23 +350,36 @@ Node names add `synthetic_schema` and `synthetic_generate`; event payloads uncha
 `409 synthetic_requires_empty_build`; body >64 KiB is `413`. Async failures use run.finished.
 
 ## Agent endpoints
-Agent mode only (`404 agent_mode_off` in local mode). Used only by the build agent
-(contracts/conventions.md, Build agent). Every call needs `X-DSS-Agent-Token: <DSS_AGENT_TOKEN>`
-(constant-time compare), else `401 agent_unauthorized`; the access code is not accepted here.
+Agent mode only (`404 agent_mode_off` in local mode). Used only by the one-shot build agent
+(`dss-agent run`, contracts/conventions.md, Build agent). 3.4: one job per agent run, claimed by
+its code; there is no polling agent, heartbeat or shared agent token.
 
 | Method and path | Body | Response |
 |---|---|---|
-| `POST /api/agent/heartbeat` | `{chrome_running: boolean, signed_in: boolean, agent_version: string}` | `{ok: true}`; the agent sends it every 10 s |
-| `GET /api/agent/jobs/next` | query `wait=<s>` (long poll, max 25) | `200 Job`, or `204` when no job is queued within `wait` |
+| `POST /api/agent/claim` | `{code: string, agent_version: string}` (no auth) | `200 ClaimedJob`; the code is read case-insensitively with spaces and dashes dropped; unknown, used or expired -> `404 job_code_invalid` after a 1 s delay |
 | `GET /api/agent/jobs/{run_id}/files/{name}` | — | the bytes of one file listed in `Job.files` |
 | `POST /api/agent/jobs/{run_id}/events` | `{events: object[]}` (engine stdout events, in order, one or more) | `{ok: true}`; each `op_finished` is relayed as `build.op` |
 | `PUT /api/agent/jobs/{run_id}/screens/{file}` | raw PNG bytes | `{ok: true}`; stored as `screens/<file>` of the build version |
 | `POST /api/agent/jobs/{run_id}/finished` | `{exit_code: int, stderr_tail: string}` | `{ok: true}`; mapped like a local `dsengine run` exit (contracts/recipe.md), then `build.finished` |
 
-A job with no events or `finished` for `Job.timeout_s + 60` s fails with `build.finished(failed)`
-and error `agent_timeout`, and the engine lock is released; a server restart fails the running job
-the same way. A job is handed out once; calls for an unknown or finished `run_id` get
-`404 job_not_found`. A `report_url` whose host is not `datastudio.google.com` or
+- Tokens: every `/api/agent/jobs/{run_id}/...` call needs `X-DSS-Job-Token: <job_token>` of that
+  run (constant-time compare of its SHA-256; the backend stores only the hash), else
+  `401 agent_unauthorized`, checked before the run is looked up (an unknown run without a valid
+  token is 401, not 404). The access code is not accepted here. A token dies with its job.
+- Tickets: a claim moves the ticket from `waiting` to `running`, once; a second claim of the same
+  code is `job_code_invalid`. A `waiting` ticket expires at `expires_at`: the run ends with
+  `build.finished(failed)`, error `job_expired`, the stage returns to `prototype`; the next
+  `POST /run` issues a new code. A claimed job with no events or `finished` for
+  `Job.timeout_s + 60` s fails with error `agent_timeout`. Tickets and token hashes live in the
+  database, so they survive a restart; at startup a `running` ticket fails with `agent_timeout`,
+  a `waiting` one stays claimable until it expires.
+- Share data (3.4): with `Hosting.share_data`, `POST /run` writes the version's view rows as one
+  CSV (header = the view's column names; DATE as `YYYY-MM-DD`, DATETIME and TIMESTAMP as
+  `YYYY-MM-DD HH:MM:SS` UTC) to `gs://<DSS_SHARE_BUCKET>/<32 random hex>/data.csv` and compiles
+  the recipe with the `googleCloudStorage` header (contracts/recipe.md 1.4) for that file; over
+  1,000,000 rows or 100 MB -> `422 share_too_large`; a failed write -> `503 share_export_failed`.
+  Anyone with the file's URL can read it; the folder name is the only secret.
+- Calls for an unknown or finished `run_id` get `404 job_not_found`. A `report_url` whose host is not `datastudio.google.com` or
 `lookerstudio.google.com` is never stored: the run fails with `invalid_report_url`. Screens and
 files are accepted only for names in `Job.files` or plain screenshot names (Access, `invalid_name`).
 
@@ -349,8 +390,10 @@ the current stage; `detail.stage`); `409 artifact_invalid` (confirm with open va
 call failed); `503 gcp_not_configured` (no `gcp_project_id`). The UI sends the user to Settings
 on both 503s. Cloud Run: `401 access_required` (the UI shows the access-code gate);
 `401 access_denied` (wrong code or Google token); 3.3: `403 signin_not_allowed` (the gate names
-the email and offers another Google account); `409 login_on_agent`; `424 agent_offline` (the UI shows how to
-start the build agent); `403 settings_locked` (Settings shows the field as fixed by the
+the email and offers another Google account); `409 login_on_agent`; 3.4: `403 source_locked`
+(Connect says GCS and BigQuery sources need the local app), `422 share_too_large`,
+`503 share_export_failed`, `job_expired` in `build.finished` (the Build stage offers a new
+code; `424 agent_offline` is retired); `403 settings_locked` (Settings shows the field as fixed by the
 deployment); `413` from Cloud Run (an HTML page, not the JSON shape) on uploads over 32 MB: the UI
 checks file size first and maps any 413 to "Files over 32 MB can't be uploaded to the hosted app";
 `400 invalid_name`. 3.0: `422 invalid_settings` (`detail.issues`: ValidationIssue[] with paths

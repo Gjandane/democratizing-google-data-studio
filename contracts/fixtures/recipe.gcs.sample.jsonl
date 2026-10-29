@@ -1,0 +1,5 @@
+{"recipe_version": "1.0", "build_id": "b_3f9a0c12d4e5", "version": 1, "report_name": "E-commerce sales", "canvas": {"width": 1200, "height": 900}, "datasource": {"connector": "googleCloudStorage", "path_type": "FILE", "path": "example-dss-share/0123456789abcdef0123456789abcdef/data.csv"}}
+{"id": "s001", "op": "open_report"}
+{"id": "s002", "op": "add_chart", "component_id": "p1_kpi_revenue", "chart_type": "scorecard", "x": 24, "y": 24, "w": 260, "h": 120, "dimensions": [], "metrics": [{"field": "revenue", "agg": "sum"}], "title": "Revenue"}
+{"id": "s003", "op": "save_report"}
+{"id": "s004", "op": "get_link"}

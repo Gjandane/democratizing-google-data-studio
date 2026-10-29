@@ -79,7 +79,11 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 6. History: `POST /versions` copies the latest spec into v<n+1> -> stage `prototype`.
 7. Cloud mode (change 2026-10-19): the same app on Cloud Run: serves the built frontend, `$PORT`,
    shared access code, SQLite on local disk with a backup on the `/data` GCS volume, and agent
-   mode, where `dss-agent` on the user's machine runs the engine for the hosted app.
+   mode, where `dss-agent` on the user's machine runs the engine for the hosted app (change
+   2026-10-29 local agent per judge: each Build issues a one-shot job code; `dss-agent run
+   --server <URL> --job <CODE>` on the visitor's machine claims it and builds into the visitor's
+   Data Studio account from a public-read CSV of the view; GCS and BigQuery sources are locked on
+   the open link).
 
 ## Features
 | Must | Should | Won't (this version) |
@@ -89,7 +93,7 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 | context, outline, blueprint, layout, revise, render, compile, execute, publish nodes; theme kit; reference modes, feasibility, synthetic data | (style-from-picture now in reference modes) | LLM-judge release gate automation |
 | episodic memory, context assembly, traces | research mode (google_search, capped) | multi-user; LLM-written charts or component HTML |
 | 4 archetype skills, 12-type catalog in OKF | LLM-judge eval script | |
-| cloud mode, access code, agent mode + `dss-agent` | | |
+| cloud mode, access code, agent mode + one-shot `dss-agent run`, share-data CSV, source lock on the open link (change 2026-10-29) | | a visitor's own BigQuery/GCS on the open link; a polling agent |
 | | live token totals on the event stream (`run.usage`, change 2026-10-19) | |
 
 ## Constraints
@@ -351,8 +355,16 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 - Data Studio calculated fields when a view can't express them (plan).
 - Bound/compact the consolidated user index before it outgrows mandatory context; currently a
   long-running installation can fail consolidation while retaining its counter (audit 2026-10-19).
-- Verify Windows idle Ctrl+C responsiveness; an in-flight agent long poll can delay it up to
-  25 seconds (audit 2026-10-19, not yet measured).
+- (Obsolete with the one-shot agent, change 2026-10-29: no long poll.) Verify Windows idle Ctrl+C
+  responsiveness; an in-flight agent long poll could delay it up to 25 seconds (audit 2026-10-19).
+- A visitor's own BigQuery or GCS data on the open link: the visitor grants the runtime service
+  account BigQuery Data Viewer (or Storage Object Viewer) on their data, the backend refuses the
+  owner project's tables, and the report queries BigQuery billed to the visitor's project
+  (CUSTOM_QUERY) instead of the share CSV (change 2026-10-29 local agent per judge, user card).
+- Uploads over Cloud Run's 32 MB request limit through signed-URL uploads straight to GCS (change
+  2026-10-29 local agent per judge, user card).
+- Share CSV retention: objects stay until the owner closes the link; no lifecycle rule (change
+  2026-10-29 local agent per judge, user card).
 - Live smoke checks for optional consolidation, UX audit and judge schemas remain unrun;
   offline checks pass. Main planner and reference vision flows pass live, but reference
   extraction intermittently rejects invalid observations: both audits saw an initial failure
@@ -421,6 +433,6 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
   b_236ae4aa34ee): W5 static legends from the approved split (rural/urban, map scale) missing
   from background_p1; W6 page-1 reference HTML failed validation 3x on the first prototype run
   (trace r_2051c7758120; retry passed); W7 the KPI caption is missing and two scorecards not in
-  the reference are added on page 1. W4 (contract, recipe 1.4): emit `date_granularity` on a
+  the reference are added on page 1. W4 (contract, a recipe version after 1.4): emit `date_granularity` on a
   `bar` over a DATE bucket column once the engine applies it (yearly bar s015 labels
   "Jan 1, 2000" and folds groups past 10 into "Others").

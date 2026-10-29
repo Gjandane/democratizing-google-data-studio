@@ -88,4 +88,4 @@ engine replays a compiled recipe of UI ops deterministically, with no LLM in the
   requested position/size for a 100% stacked bar (s005, 1 of 6 rows shown), date_range (s019)
   and tables (s038, s044); W3 `area` with a breakdown: "field year not in data source" (s033).
   Oracle for the fix: replay those ops from that build's recipe live with failed 0. Also W4
-  (contract): applying recipe 1.4 `date_granularity` on `bar`, before the backend emits it.
+  (contract): applying `date_granularity` on `bar` (a recipe version after 1.4), before the backend emits it.

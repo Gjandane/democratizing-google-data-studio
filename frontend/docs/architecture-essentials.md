@@ -22,7 +22,7 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
 - Read docs/implementation-notes.md for API/auth, mocks, iframe geometry, activity, stage
   settings, brief review lock and test rules.
 - Relative /api; Vite proxy locally, backend static hosting on Cloud Run. Gate access with the
-  cookie; never retain the code or a Google token (Google sign-in when offered, 3.3). Agent mode uses the agent panel instead of local sign-in.
+  cookie; never retain the code or a Google token (Google sign-in when offered, 3.3). Agent mode (3.4, change 2026-10-29): Build shows the one-shot job command and its ticket states instead of local sign-in; `GET /api/hosting` drives the Connect lock and the share-data note (docs/implementation-notes.md).
 - Exact runtime contract guards; mocks import shared fixtures. One EventSource per build;
   reconnect refetches state. Build/SSE guards stay exact in API 2.0 (stages, artifacts, notes, artifact.updated).
 - Backend prototype iframe and pin overlay share one scaled 1200px canvas; no injected scripts.
@@ -65,8 +65,8 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
 ## Contracts
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
-| ../contracts/api.md | 3.3 | consumes | `npm test -- contract` (fixtures/api/ and, from 16.1, fixtures/stage-settings/) |
-| ../contracts/conventions.md | 1.6 | consumes | manual: port 5173, `/api` proxy to 8000 (1.6 `DSS_PUBLIC` is backend-only; the gate already opens on `required: false`) |
+| ../contracts/api.md | 3.4 | consumes | `npm test -- contract` (fixtures/api/ and, from 16.1, fixtures/stage-settings/, from 19.1, fixtures/hosted-build/) |
+| ../contracts/conventions.md | 1.7 | consumes | manual: port 5173, `/api` proxy to 8000; 1.7 Build agent "Setup command" text verbatim (19.2) |
 | ../contracts/dashboard-intent.md | 1.3 | consumes | `npm test -- contract` |
 | ../contracts/synthetic-data.md | 1.3 | consumes | `npm test -- synthetic` |
 
