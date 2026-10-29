@@ -2389,3 +2389,15 @@ assert min(timings) < .1
 - Gotchas: none
 - Left open: P3 no test pins the agent-token rule on the open link (rule retired in 29.1) - tests/test_cloud_mode.py
 - Next: Task 29.1. Start by `status` and recall docs/architecture.md#Hosted one-shot builds; 29.3 consumes `Config.open_link` for the source lock.
+
+## 2026-10-29: Task 29.1 One-shot job tickets replace the polling agent
+- Status: partial
+- Plan check: off
+- What changed: agent/jobs.py rewritten (SQLite `agent_tickets`, codes, claim, per-job token hash, sweep, startup recover/resume); api/agent.py (`POST /claim`, `X-DSS-Job-Token` on job routes, heartbeat/jobs/next gone); run.py (`GET /builds/{id}/job`, per-build `engine_busy`, `launch()`); engine.py agent fields false/null; config.py `share_bucket`/`share_dir` pair rule, agent-token start rule removed; main.py sweep task; db.py table. Tests rewritten in test_agent_server/test_cloud_mode/test_api_contract (+ test_recipe_contract, test_google_signin: superseded heartbeat asserts).
+- Checks: `uv run pytest tests/test_agent_server.py tests/test_cloud_mode.py tests/test_api_contract.py` PASS (plus recipe_contract, google_signin: 219 passed). Full `uv run pytest` NOT yet seen (run was in flight at the usage limit).
+- Decisions: shutdown leaves live tickets (no publish); recover deletes the interrupted run's `cancelled` trace and resumes waiting tickets under the same run_id via `run.launch`; ticket times fixed `%Y-%m-%dT%H:%M:%SZ`; `Config.agent_token` kept only as a redaction secret and for client.py until 29.2; job token added to the event parser's redaction list at claim.
+- Digest: none yet (partial).
+- Tried and failed: none
+- Gotchas: tests/test_agent_client.py server-integration tests (LiveServer: console script, heartbeats, screenshots, job_not_found, nested images, network reconnect) still use heartbeat/jobs/next and will fail against 29.1; the If clause allows rewriting them in that file: claim via HTTP, then drive `Agent.run_job(httpx.Client(headers={"X-DSS-Job-Token": t}), job)`; polling-loop-only tests become "old polling form vs 3.4 server" checks.
+- Left open: review (blueprint-reviewer) not run yet.
+- Next: rerun full `uv run pytest`; fix test_agent_client.py as above; review; then progress entry `done` and `blueprint.py done 29.1`.

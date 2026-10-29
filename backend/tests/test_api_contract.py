@@ -292,6 +292,37 @@ def test_recipe_contract_in_agent_mode_without_engine(agent_client, spec):
     check(client.post(f"/api/builds/{spec.build_id}/recipe"), "recipe.json")
 
 
+def hosted(name):
+    return json.loads((FIXTURES.parent / "hosted-build" / name).read_text(encoding="utf-8"))
+
+
+def test_hosted_build_job_contract(agent_client, spec):
+    """api.md 3.4: JobTicket (waiting, running), ClaimedJob and the agent-mode EngineStatus."""
+    client, app, folder = agent_client
+    (folder / "spec.json").write_text(spec.model_dump_json(), encoding="utf-8")
+    from fakes import ready_fixture
+    ready_fixture(app, spec.build_id, folder)
+    assert client.post(f"/api/builds/{spec.build_id}/recipe").status_code == 200
+    for line in (folder / "recipe.jsonl").read_text(encoding="utf-8").splitlines()[1:]:
+        if path := json.loads(line).get("path"):  # the job ships every input its recipe names
+            (folder / path).parent.mkdir(parents=True, exist_ok=True)
+            (folder / path).write_bytes(b"input")
+    check(client.post(f"/api/builds/{spec.build_id}/run"), "run_accepted.json", 202)
+    waiting = client.get(f"/api/builds/{spec.build_id}/job").json()
+    shape(waiting, hosted("job_ticket.waiting.json"))
+    claimed = client.post("/api/agent/claim", json={"code": waiting["code"], "agent_version": "test"})
+    assert claimed.status_code == 200, claimed.text
+    shape(claimed.json(), hosted("claimed_job.json"))
+    assert claimed.json()["api_version"] == hosted("claimed_job.json")["api_version"]
+    shape(client.get(f"/api/builds/{spec.build_id}/job").json(), hosted("job_ticket.running.json"))
+    check(client.get("/api/engine/status"), "engine_status.json")
+    run_id, token = claimed.json()["job"]["run_id"], claimed.json()["job_token"]
+    response = client.post(f"/api/agent/jobs/{run_id}/finished", headers={"X-DSS-Job-Token": token},
+                           json={"exit_code": 1, "stderr_tail": ""})
+    assert response.status_code == 200
+    assert client.get(f"/api/builds/{spec.build_id}/job").json()["state"] == "finished"
+
+
 @pytest.mark.parametrize('stored_stage', ['interview', 'plan', 'context'])
 def test_build_2_contract_hides_storage_and_reads_migrated_stages(thin, stored_stage):
     client, app, bid, _ = thin
@@ -340,7 +371,7 @@ def test_corrupted_saved_spec_rejected_without_engine_or_publication(agent_clien
         assert client.get(f'/api/builds/{spec.build_id}').json()['stage'] == 'prototype'
         assert not app.state.engine_busy and not app.state.harness.active_builds
         assert not app.state.engine_tasks
-        assert not app.state.agent_jobs.jobs and not app.state.agent_jobs.queue and not app.state.agent_jobs.running
+        assert not app.state.agent_jobs.jobs and not app.state.agent_jobs.running
         with app.state.db.connect() as conn:
             assert not conn.execute("SELECT 1 FROM versions WHERE status='building'").fetchone()
             assert not conn.execute("SELECT 1 FROM traces WHERE node='execute'").fetchone()

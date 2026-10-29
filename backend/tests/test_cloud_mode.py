@@ -120,8 +120,9 @@ def test_every_registered_api_route_is_gated(tmp_path, monkeypatch):
         for path in ("/api", "/api/nope", "/api/health/", "/api/session/"):
             assert client.get(path, follow_redirects=False).status_code == 401
         assert client.delete("/api/session").status_code == 401
-        # The future agent router has a separate token gate, never a session gate.
+        # Agent routes have their own per-job token gate (api.md 3.4), never a session gate.
         assert client.get("/api/agent/jobs/next").status_code == 404
+        assert client.post("/api/agent/claim", json={}).json()["error"]["code"] == "agent_mode_off"
         assert client.get("/api/agentish").status_code == 401
 
 
@@ -134,18 +135,35 @@ def test_no_code_preserves_local_access(tmp_path):
         assert client.get("/api/nope").status_code == 404
 
 
-@pytest.mark.parametrize("code,mode,token,error", [
-    ("", "local", "", "DSS_ACCESS_CODE"),
-    ("x" * 11, "local", "", "DSS_ACCESS_CODE"),
-    ("x" * 12, "agent", "", "DSS_AGENT_TOKEN"),
-    ("x" * 12, "agent", "t" * 23, "DSS_AGENT_TOKEN"),
+@pytest.mark.parametrize("code,mode,share,error", [
+    ("", "local", {}, "DSS_ACCESS_CODE"),
+    ("x" * 11, "local", {}, "DSS_ACCESS_CODE"),
+    ("x" * 12, "agent", {"share_bucket": "p-dss-share"}, "DSS_SHARE_BUCKET and DSS_SHARE_DIR"),
+    ("x" * 12, "agent", {"share_dir": "/share"}, "DSS_SHARE_BUCKET and DSS_SHARE_DIR"),
 ])
-def test_fail_closed(tmp_path, code, mode, token, error):
-    app = cloud_app(tmp_path, cloud_service="dss", access_code=code, engine_mode=mode, agent_token=token)
+def test_fail_closed(tmp_path, code, mode, share, error):
+    app = cloud_app(tmp_path, cloud_service="dss", access_code=code, engine_mode=mode, **share)
     with pytest.raises(RuntimeError, match=error):
         with TestClient(app):
             pass
     assert not (tmp_path / "data").exists()
+
+
+@pytest.mark.parametrize("cloud", ["", "dss"])
+def test_share_pair_required_anywhere(tmp_path, cloud):
+    for share in ({"share_bucket": "p-dss-share"}, {"share_dir": str(tmp_path / "share")}):
+        with pytest.raises(RuntimeError, match="DSS_SHARE_BUCKET and DSS_SHARE_DIR must be set together"):
+            with TestClient(cloud_app(tmp_path, cloud_service=cloud, access_code="x" * 12,
+                                      db_path=tmp_path / "local.sqlite", **share)):
+                pass
+
+
+def test_agent_mode_needs_no_agent_token(tmp_path):
+    # api.md 3.4: per-job tokens replace DSS_AGENT_TOKEN; Cloud Run agent mode starts without it.
+    app = cloud_app(tmp_path, cloud_service="dss", access_code="x" * 12, engine_mode="agent",
+                    db_path=tmp_path / "local.sqlite", share_bucket="p-dss-share", share_dir=str(tmp_path / "share"))
+    with TestClient(app) as client:
+        assert client.get("/api/health").status_code == 200
 
 
 @pytest.mark.parametrize("cloud", ["", "dss"])
@@ -192,7 +210,7 @@ def test_open_link_ignored_off_cloud_run(tmp_path, caplog):
 
 
 def test_valid_cloud_start_and_local_sqlite_required(tmp_path):
-    config = dict(cloud_service="dss", access_code="x" * 12, engine_mode="agent", agent_token="t" * 24)
+    config = dict(cloud_service="dss", access_code="x" * 12, engine_mode="agent")
     with TestClient(cloud_app(tmp_path, db_path=tmp_path / "local.sqlite", **config)) as client:
         assert client.get("/api/health").status_code == 200
     with pytest.raises(RuntimeError, match="DSS_DB_PATH outside DSS_DATA_DIR"):
@@ -232,7 +250,8 @@ def test_env_config(tmp_path, monkeypatch):
               "DSS_DATA_DIR": str(tmp_path / "data"), "DSS_DB_PATH": str(tmp_path / "local.sqlite"),
               "DSS_STATIC_DIR": str(tmp_path / "static"), "K_SERVICE": "dss",
               "GOOGLE_OAUTH_CLIENT_ID": " 1-x.apps.googleusercontent.com ",
-              "DSS_SIGNIN_ALLOW": " @Example.com, ,Judge@Example.com,* ", "DSS_PUBLIC": "1"}
+              "DSS_SIGNIN_ALLOW": " @Example.com, ,Judge@Example.com,* ", "DSS_PUBLIC": "1",
+              "DSS_SHARE_BUCKET": "p-dss-share", "DSS_SHARE_DIR": "/share"}
     for key, value in values.items():
         monkeypatch.setenv(key, value)
     config = Config.from_env()
@@ -243,6 +262,7 @@ def test_env_config(tmp_path, monkeypatch):
     assert config.google_client_id == "1-x.apps.googleusercontent.com"
     assert config.signin_allow == ("@example.com", "judge@example.com", "*")
     assert config.public_link == "1" and config.open_link
+    assert config.share_bucket == "p-dss-share" and config.share_dir == "/share"
     assert CODE not in repr(config) and CODE not in json.dumps(config.public())
 
 

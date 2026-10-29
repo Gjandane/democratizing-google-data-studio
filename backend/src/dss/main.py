@@ -68,8 +68,11 @@ def create_app(config=None, *, model_lister=None, bigquery_factory=None):
         from dss.harness.graph import AgentHarness
         app.state.harness = AgentHarness(app.state.db, app.state.bus, app.state.models)
         app.state.agent_jobs = AgentJobs(app.state)
+        sweep_task = None
         if config.engine_mode == "agent":
+            # The startup sweep: running tickets fail, expired ones end, waiting ones resume.
             await app.state.agent_jobs.recover()
+            sweep_task = asyncio.create_task(app.state.agent_jobs.sweep_forever())
         await app.state.models.refresh()
         stop_backup = asyncio.Event()
         backup_task = (asyncio.create_task(app.state.db.periodic_backup(stop_backup))
@@ -81,6 +84,7 @@ def create_app(config=None, *, model_lister=None, bigquery_factory=None):
             try:
                 if config.engine_mode == "agent":
                     await app.state.agent_jobs.close()
+                    sweep_task.cancel()
                 tasks = tuple(app.state.engine_tasks)
                 for task in tasks:
                     task.cancel()

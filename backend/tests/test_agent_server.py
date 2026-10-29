@@ -1,14 +1,18 @@
-"""A scripted fake build agent exercises the real HTTP and Workflow lifecycle."""
+"""A scripted fake one-shot build agent exercises the real HTTP and Workflow lifecycle (api.md 3.4)."""
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
+import hashlib
 import json
+import logging
 import os
 from pathlib import Path
+import re
 import time
 
 from fastapi.testclient import TestClient
 import pytest
 
+from dss.agent.jobs import stamp
 from dss.config import Config
 from dss.db import Database, now
 from dss.main import create_app
@@ -16,12 +20,38 @@ from dss.recipe.compiler import compile_recipe
 from dss.spec.models import DashboardSpec
 from fakes import fake_models
 from test_api_contract import check, shape, FIXTURES
-from test_execute import settle
 
-TOKEN = "fake-agent-token-at-least-24"
 CODE = "fake-access-code"
-AUTH = {"X-DSS-Agent-Token": TOKEN}
+HOSTED = FIXTURES.parent / "hosted-build"
+CODE_FORMAT = re.compile(r"^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$")
 EVENTS = [json.loads(line) for line in (FIXTURES.parent / "events.sample.jsonl").read_text().splitlines()]
+TOKENS = {}  # run_id -> X-DSS-Job-Token headers of the fake agent that claimed it
+
+
+def auth(run_id):
+    return TOKENS.get(run_id, {})
+
+
+def agent_app(tmp_path, **config):
+    return create_app(Config(data_dir=tmp_path, engine_mode="agent", access_code=CODE,
+                             google_api_key="fake-google-key", gcp_project_id="deployment", **config),
+                      model_lister=fake_models)
+
+
+def make_build(client, app, tmp_path):
+    bid = client.post("/api/builds", json={"archetype": "executive", "mode": "data"}).json()["id"]
+    folder = tmp_path / "builds" / bid / "v1"
+    folder.mkdir(parents=True, exist_ok=True)
+    spec = DashboardSpec.model_validate_json(Path("tests/data/thin_spec.json").read_text())
+    spec.build_id = bid
+    (folder / "spec.json").write_text(spec.model_dump_json(), encoding="utf-8")
+    (folder / "recipe.jsonl").write_text(compile_recipe(spec, 1), encoding="utf-8", newline="\n")
+    (folder / "background_p1.png").write_bytes(b"fake-background")
+    with app.state.db.connect() as conn:
+        conn.execute("UPDATE builds SET stage='prototype' WHERE id=?", (bid,))
+    from fakes import ready_fixture
+    ready_fixture(app, bid, folder)
+    return bid, folder
 
 
 @pytest.fixture
@@ -32,50 +62,66 @@ def remote(tmp_path, monkeypatch):
     async def no_local_engine(*args):
         pytest.fail("agent mode invoked a local engine")
     monkeypatch.setattr(engine, "control_command", no_local_engine)
-    app = create_app(Config(data_dir=tmp_path, engine_mode="agent", access_code=CODE,
-                            agent_token=TOKEN, google_api_key="fake-google-key", gcp_project_id="deployment"),
-                     model_lister=fake_models)
+    app = agent_app(tmp_path)
     with TestClient(app, headers={"X-DSS-Access-Code": CODE}) as client:
-        bid = client.post("/api/builds", json={"archetype": "executive", "mode": "data"}).json()["id"]
-        folder = tmp_path / "builds" / bid / "v1"
-        folder.mkdir(parents=True, exist_ok=True)
-        spec = DashboardSpec.model_validate_json(Path("tests/data/thin_spec.json").read_text())
-        spec.build_id = bid
-        (folder / "spec.json").write_text(spec.model_dump_json(), encoding="utf-8")
-        (folder / "recipe.jsonl").write_text(compile_recipe(spec, 1), encoding="utf-8", newline="\n")
-        (folder / "background_p1.png").write_bytes(b"fake-background")
-        with app.state.db.connect() as conn:
-            conn.execute("UPDATE builds SET stage='prototype' WHERE id=?", (bid,))
-        from fakes import ready_fixture
-        ready_fixture(app, bid, folder)
+        bid, folder = make_build(client, app, tmp_path)
         yield client, app, bid, folder
 
 
-def heartbeat(client, signed_in=True):
-    response = client.post("/api/agent/heartbeat", headers=AUTH,
-        json={"chrome_running": True, "signed_in": signed_in, "agent_version": "test"})
-    assert response.status_code == 200 and response.json() == {"ok": True}
+def settle(client, app, bid=None):
+    for _ in range(300):
+        if (bid not in app.state.harness.active_builds) if bid else not app.state.engine_tasks:
+            return
+        time.sleep(.02)
+    pytest.fail("the run was not released")
 
 
-def accept(remote):
-    client, app, bid, folder = remote
-    heartbeat(client)
+def ticket(client, bid):
+    response = client.get(f"/api/builds/{bid}/job")
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def claim(client, code, status=200):
+    response = client.post("/api/agent/claim", json={"code": code, "agent_version": "test"})
+    assert response.status_code == status, response.text
+    return response
+
+
+def issue(client, bid):
     response = client.post(f"/api/builds/{bid}/run")
     assert response.status_code == 202, response.text
-    job = client.get("/api/agent/jobs/next?wait=0", headers=AUTH)
-    assert job.status_code == 200, job.text
-    return response.json()["run_id"], job.json()
+    return response.json()["run_id"]
+
+
+def accept(remote, bid=None):
+    """POST /run, then a fake agent claims the ticket's code; returns the run and its Job."""
+    client, app, default, folder = remote
+    run_id = issue(client, bid or default)
+    claimed = claim(client, ticket(client, bid or default)["code"]).json()
+    TOKENS[run_id] = {"X-DSS-Job-Token": claimed["job_token"]}
+    return run_id, claimed["job"]
 
 
 def post_events(client, run_id, events=EVENTS):
-    response = client.post(f"/api/agent/jobs/{run_id}/events", headers=AUTH, json={"events": events})
+    response = client.post(f"/api/agent/jobs/{run_id}/events", headers=auth(run_id), json={"events": events})
     assert response.status_code == 200, response.text
 
 
 def finish(client, run_id, code=0, stderr=""):
-    response = client.post(f"/api/agent/jobs/{run_id}/finished", headers=AUTH,
+    response = client.post(f"/api/agent/jobs/{run_id}/finished", headers=auth(run_id),
                            json={"exit_code": code, "stderr_tail": stderr})
     assert response.status_code == 200, response.text
+
+
+def sweep(client, app):
+    client.portal.call(app.state.agent_jobs.sweep)
+
+
+def backdate(app, run_id, column, seconds):
+    moment = stamp(datetime.now(timezone.utc) - timedelta(seconds=seconds))
+    with app.state.db.connect() as conn:
+        conn.execute(f"UPDATE agent_tickets SET {column}=? WHERE run_id=?", (moment, run_id))
 
 
 def records(app, run_id):
@@ -86,7 +132,7 @@ def records(app, run_id):
 
 def assert_failure(remote, run_id, error):
     client, app, bid, folder = remote
-    settle(client, app)
+    settle(client, app, bid)
     build = client.get(f"/api/builds/{bid}").json()
     assert build["stage"] == "prototype" and build["versions"][0]["status"] == "failed"
     assert build["report_url"] is None
@@ -97,36 +143,42 @@ def assert_failure(remote, run_id, error):
     assert len(rows) == 1 and tuple(rows[0]) == ("error", error)
 
 
-def test_offline_heartbeat_status_and_fixture_completion(remote):
+def test_ticket_claim_and_fixture_completion(remote, tmp_path):
     client, app, bid, folder = remote
-    response = client.post(f"/api/builds/{bid}/run")
-    assert response.status_code == 424 and response.json()["error"]["code"] == "agent_offline"
-    assert not app.state.engine_busy
-    assert client.get("/api/engine/status").json()["agent_last_seen"] is None
-    heartbeat(client, signed_in=False)
-    status = client.get("/api/engine/status").json()
-    assert status["mode"] == "agent" and status["agent_connected"] and not status["signed_in"]
-    app.state.agent_jobs.last_seen_clock -= 31
-    assert not client.get("/api/engine/status").json()["agent_connected"]
-    assert client.post(f"/api/builds/{bid}/run").status_code == 424
-    run_id, job = accept(remote)
-    shape(job, json.loads((FIXTURES / "agent_job.json").read_text()))
-    assert job == dict(run_id=run_id, build_id=bid, version=1, dry_run=True, timeout_s=17,
-                       files=["recipe.jsonl", "background_p1.png"])
+    run_id = issue(client, bid)
+    waiting = ticket(client, bid)
+    shape(waiting, json.loads((HOSTED / "job_ticket.waiting.json").read_text()))
+    assert waiting["state"] == "waiting" and waiting["claimed_at"] is None and waiting["run_id"] == run_id
+    assert CODE_FORMAT.fullmatch(waiting["code"]) and waiting["build_id"] == bid and waiting["version"] == 1
+    created = datetime.fromisoformat(waiting["expires_at"].replace("Z", "+00:00")) - datetime.now(timezone.utc)
+    assert timedelta(minutes=29) < created <= timedelta(minutes=30)
     response = client.post(f"/api/builds/{bid}/run")
     assert response.status_code == 409 and response.json()["error"]["code"] == "engine_busy"
-    assert client.get("/api/agent/jobs/next?wait=0", headers=AUTH).status_code == 204
+    # No global lock: another build's run gets its own ticket and code.
+    other, _ = make_build(client, app, tmp_path)
+    other_run = issue(client, other)
+    assert ticket(client, other)["code"] != waiting["code"]
+    sloppy = waiting["code"].replace("-", "").lower()
+    claimed = claim(client, sloppy).json()
+    shape(claimed, json.loads((HOSTED / "claimed_job.json").read_text()))
+    job = claimed["job"]
+    assert job == dict(run_id=run_id, build_id=bid, version=1, dry_run=True, timeout_s=17,
+                       files=["recipe.jsonl", "background_p1.png"]) and claimed["api_version"] == "3.4"
+    TOKENS[run_id] = {"X-DSS-Job-Token": claimed["job_token"]}
+    running = ticket(client, bid)
+    shape(running, json.loads((HOSTED / "job_ticket.running.json").read_text()))
+    assert running["state"] == "running" and running["claimed_at"] and running["code"] == waiting["code"]
     for name in job["files"]:
-        response = client.get(f"/api/agent/jobs/{run_id}/files/{name}", headers=AUTH)
+        response = client.get(f"/api/agent/jobs/{run_id}/files/{name}", headers=auth(run_id))
         assert response.status_code == 200 and response.content == (folder / name).read_bytes()
     screenshot = b"\x89PNG\r\n\x1a\nfixture"
-    response = client.put(f"/api/agent/jobs/{run_id}/screens/s012_failed.png", headers=AUTH, content=screenshot)
+    response = client.put(f"/api/agent/jobs/{run_id}/screens/s012_failed.png", headers=auth(run_id), content=screenshot)
     assert response.status_code == 200
     assert (folder / "screens/s012_failed.png").read_bytes() == screenshot
     post_events(client, run_id, EVENTS[:8])
     post_events(client, run_id, EVENTS[8:])
     finish(client, run_id)
-    assert not app.state.engine_busy
+    assert ticket(client, bid)["state"] == "finished"
     build = client.get(f"/api/builds/{bid}").json()
     assert build["stage"] == "done" and build["versions"][0]["status"] == "published"
     assert build["report_url"] == EVENTS[-1]["report_url"]
@@ -140,18 +192,167 @@ def test_offline_heartbeat_status_and_fixture_completion(remote):
     for method, suffix, kwargs in [("get", "files/recipe.jsonl", {}), ("post", "events", {"json": {"events": EVENTS}}),
                                    ("put", "screens/a.png", {"content": b"x"}),
                                    ("post", "finished", {"json": {"exit_code": 0, "stderr_tail": ""}})]:
-        response = getattr(client, method)(f"/api/agent/jobs/{run_id}/{suffix}", headers=AUTH, **kwargs)
+        response = getattr(client, method)(f"/api/agent/jobs/{run_id}/{suffix}", headers=auth(run_id), **kwargs)
         assert response.status_code == 404 and response.json()["error"]["code"] == "job_not_found"
+    # Only the token's SHA-256 is stored; the other build's ticket still waits for its own agent.
+    raw = (tmp_path / "dss.sqlite").read_bytes()
+    token = claimed["job_token"]
+    assert token.encode() not in raw and hashlib.sha256(token.encode()).hexdigest().encode() in raw
+    assert ticket(client, other)["state"] == "waiting" and ticket(client, other)["run_id"] == other_run
+
+
+def test_claim_misses_are_slow_and_single_use(remote):
+    client, app, bid, folder = remote
+    run_id, _ = accept(remote)
+    code = ticket(client, bid)["code"]
+    for attempt in (code, code.lower(), "ZZZZ-ZZZZ", "not a code", ""):
+        started = time.monotonic()
+        response = claim(client, attempt, 404)
+        assert response.json()["error"]["code"] == "job_code_invalid"
+        assert time.monotonic() - started >= 1
+    assert ticket(client, bid)["state"] == "running"
+    finish(client, run_id, 1)
+
+
+@pytest.mark.parametrize("method,suffix,kwargs", [
+    ("get", "files/recipe.jsonl", {}),
+    ("put", "screens/a.png", {"content": b"png"}),
+    ("post", "events", {"json": {"events": EVENTS}}),
+    ("post", "finished", {"json": {"exit_code": 0, "stderr_tail": ""}}),
+])
+def test_job_token_required_per_run(remote, tmp_path, method, suffix, kwargs):
+    client, app, bid, folder = remote
+    run_id, _ = accept(remote)
+    other, _ = make_build(client, app, tmp_path)
+    other_run, _ = accept(remote, other)
+    for headers in ({}, auth(other_run), {"X-DSS-Job-Token": "wrong"}, {"X-DSS-Access-Code": CODE},
+                    {"X-DSS-Agent-Token": auth(run_id)["X-DSS-Job-Token"]}):
+        response = getattr(client, method)(f"/api/agent/jobs/{run_id}/{suffix}", headers=headers, **kwargs)
+        assert response.status_code == 401 and response.json()["error"]["code"] == "agent_unauthorized"
+    # Unknown runs are 401 too: the token is checked before the run is looked up.
+    response = getattr(client, method)(f"/api/agent/jobs/r_missing/{suffix}", headers=auth(run_id), **kwargs)
+    assert response.status_code == 401
+    assert ticket(client, bid)["state"] == "running"
+    finish(client, run_id, 1)
+    finish(client, other_run, 1)
+
+
+def test_retired_polling_routes(remote):
+    client, app, bid, folder = remote
+    for method, path, kwargs in (("post", "heartbeat", {"json": {"chrome_running": True, "signed_in": True,
+                                                                   "agent_version": "test"}}),
+                                 ("get", "jobs/next", {})):
+        response = getattr(client, method)("/api/agent/" + path, **kwargs)
+        assert response.status_code == 404
+    status = client.get("/api/engine/status")
+    check(status, "engine_status.json")
+    assert status.json() == {"mode": "agent", "chrome_running": False, "signed_in": False,
+                             "agent_connected": False, "agent_last_seen": None}
+    assert client.get(f"/api/builds/{bid}/job").json()["error"]["code"] == "job_not_found"
+    assert client.get("/api/builds/b_000000000000/job").json()["error"]["code"] == "build_not_found"
+
+
+def test_waiting_ticket_expires_and_next_run_gets_new_code(remote):
+    client, app, bid, folder = remote
+    run_id = issue(client, bid)
+    first = ticket(client, bid)["code"]
+    sweep(client, app)
+    assert ticket(client, bid)["state"] == "waiting"
+    backdate(app, run_id, "expires_at", 1)
+    sweep(client, app)
+    assert_failure(remote, run_id, "job_expired")
+    assert ticket(client, bid)["state"] == "expired"
+    claim(client, first, 404)
+    retry, _ = accept(remote)
+    assert retry != run_id and ticket(client, bid)["code"] != first
+    finish(client, retry, 1)
+
+
+def test_running_ticket_times_out_without_events(remote):
+    client, app, bid, folder = remote
+    run_id, job = accept(remote)
+    limit = job["timeout_s"] + 60
+    backdate(app, run_id, "last_event_at", limit - 5)
+    sweep(client, app)
+    post_events(client, run_id, [EVENTS[0]])  # an event restarts the clock
+    backdate(app, run_id, "last_event_at", limit - 5)
+    sweep(client, app)
+    assert ticket(client, bid)["state"] == "running"
+    backdate(app, run_id, "last_event_at", limit)
+    sweep(client, app)
+    assert_failure(remote, run_id, "agent_timeout")
+    assert ticket(client, bid)["state"] == "finished"
+    response = client.post(f"/api/agent/jobs/{run_id}/events", headers=auth(run_id), json={"events": EVENTS})
+    assert response.status_code == 404 and response.json()["error"]["code"] == "job_not_found"
+    retry, _ = accept(remote)
+    finish(client, retry, 1)
+
+
+def test_restart_keeps_waiting_ticket_and_fails_running_one(tmp_path, monkeypatch):
+    monkeypatch.setenv("DSS_ENGINE_TIMEOUT_S", "17")
+    app = agent_app(tmp_path)
+    with TestClient(app, headers={"X-DSS-Access-Code": CODE}) as client:
+        waiting_bid, folder = make_build(client, app, tmp_path)
+        running_bid, _ = make_build(client, app, tmp_path)
+        waiting_run = issue(client, waiting_bid)
+        code = ticket(client, waiting_bid)["code"]
+        running_run, _ = accept((client, app, running_bid, None))
+    app = agent_app(tmp_path)
+    with TestClient(app, headers={"X-DSS-Access-Code": CODE}) as client:
+        assert_failure((client, app, running_bid, None), running_run, "agent_timeout")
+        assert ticket(client, running_bid)["state"] == "finished"
+        response = client.post(f"/api/agent/jobs/{running_run}/finished", headers=auth(running_run),
+                               json={"exit_code": 0, "stderr_tail": ""})
+        assert response.status_code == 404
+        assert client.get(f"/api/builds/{waiting_bid}").json()["stage"] == "build"
+        claimed = claim(client, code).json()
+        assert claimed["job"]["run_id"] == waiting_run
+        TOKENS[waiting_run] = {"X-DSS-Job-Token": claimed["job_token"]}
+        assert client.get(f"/api/agent/jobs/{waiting_run}/files/recipe.jsonl",
+                          headers=auth(waiting_run)).status_code == 200
+        post_events(client, waiting_run)
+        finish(client, waiting_run)
+        settle(client, app)
+        assert client.get(f"/api/builds/{waiting_bid}").json()["stage"] == "done"
+        with app.state.db.connect() as conn:
+            rows = conn.execute("SELECT status FROM traces WHERE run_id=?", (waiting_run,)).fetchall()
+        assert [row[0] for row in rows] == ["ok"]
+
+
+def test_codes_and_tokens_never_logged_or_traced(remote, caplog):
+    caplog.set_level(logging.DEBUG)
+    client, app, bid, folder = remote
+    run_id, _ = accept(remote)
+    code, token = ticket(client, bid)["code"], auth(run_id)["X-DSS-Job-Token"]
+    post_events(client, run_id)
+    finish(client, run_id)
+    settle(client, app)
+    with app.state.db.connect() as conn:
+        stored = json.dumps([dict(row) for row in conn.execute("SELECT * FROM traces")] +
+                            [dict(row) for row in conn.execute("SELECT * FROM events")])
+    for secret in (code, code.replace("-", ""), token):
+        assert secret not in caplog.text and secret not in stored and secret not in client.get("/api/traces").text
+
+
+def test_local_mode_has_no_jobs(tmp_path):
+    app = create_app(Config(data_dir=tmp_path), model_lister=fake_models)
+    with TestClient(app) as client:
+        bid = client.post("/api/builds", json={"archetype": "executive", "mode": "data"}).json()["id"]
+        response = client.get(f"/api/builds/{bid}/job")
+        assert response.status_code == 404 and response.json()["error"]["code"] == "agent_mode_off"
+        response = client.post("/api/agent/claim", json={"code": "AAAA-AAAA", "agent_version": "test"})
+        assert response.status_code == 404 and response.json()["error"]["code"] == "agent_mode_off"
 
 
 @pytest.mark.parametrize("url", ["https://evil.example/report", "https://datastudio.google.com.evil.example/r",
     "http://datastudio.google.com/r", "https://user@lookerstudio.google.com/r", "https://[invalid", 12])
-def test_invalid_url_never_persisted_and_releases_lock(remote, url):
+def test_invalid_url_never_persisted_and_releases_build(remote, url):
     client, app, bid, folder = remote
     run_id, _ = accept(remote)
     event = {**EVENTS[-1], "report_url": url}
     post_events(client, run_id, [event])
     assert_failure(remote, run_id, "invalid_report_url")
+    assert ticket(client, bid)["state"] == "finished"
     assert not (folder / "events.jsonl").read_text()
     run_id, _ = accept(remote)
     finish(client, run_id, 1)
@@ -180,81 +381,6 @@ def test_no_finish_event_is_failed(remote):
     assert client.get(f"/api/builds/{bid}").json()["stage"] == "prototype"
 
 
-def test_timeout_and_late_agent_then_retry(remote, monkeypatch):
-    client, app, bid, folder = remote
-    monkeypatch.setenv("DSS_ENGINE_TIMEOUT_S", "0")
-    import dss.agent.jobs as jobs
-    monkeypatch.setattr(jobs, "TIMEOUT_GRACE_S", .12)
-    run_id, _ = accept(remote)
-    settle(client, app)
-    assert_failure(remote, run_id, "agent_timeout")
-    assert client.post(f"/api/agent/jobs/{run_id}/events", headers=AUTH, json={"events": EVENTS}).status_code == 404
-    assert client.get("/api/agent/jobs/next?wait=0", headers=AUTH).status_code == 204
-    monkeypatch.setenv("DSS_ENGINE_TIMEOUT_S", "17")
-    retry, _ = accept(remote)
-    finish(client, retry, 1)
-
-
-def test_events_refresh_timeout_but_heartbeats_do_not(remote, monkeypatch):
-    client, app, bid, folder = remote
-    monkeypatch.setenv("DSS_ENGINE_TIMEOUT_S", "0")
-    import dss.agent.jobs as jobs
-    monkeypatch.setattr(jobs, "TIMEOUT_GRACE_S", .4)
-    run_id, _ = accept(remote)
-    time.sleep(.25)
-    post_events(client, run_id, [EVENTS[0]])
-    time.sleep(.25)
-    assert app.state.engine_busy
-    heartbeat(client)
-    settle(client, app)
-    assert_failure(remote, run_id, "agent_timeout")
-
-
-def test_queued_job_also_times_out(remote, monkeypatch):
-    client, app, bid, folder = remote
-    import dss.agent.jobs as jobs
-    monkeypatch.setattr(jobs, "TIMEOUT_GRACE_S", .1)
-    monkeypatch.setenv("DSS_ENGINE_TIMEOUT_S", "0")
-    heartbeat(client)
-    run_id = client.post(f"/api/builds/{bid}/run").json()["run_id"]
-    assert_failure(remote, run_id, "agent_timeout")
-    assert client.get("/api/agent/jobs/next?wait=0", headers=AUTH).status_code == 204
-
-
-def test_long_poll_and_two_agents_do_not_block_requests(remote):
-    client, app, bid, folder = remote
-    with ThreadPoolExecutor(2) as pool:
-        first = pool.submit(client.get, "/api/agent/jobs/next?wait=.4", headers=AUTH)
-        second = pool.submit(client.get, "/api/agent/jobs/next?wait=.4", headers=AUTH)
-        time.sleep(.05)
-        assert not first.done() and not second.done()
-        started = time.monotonic()
-        heartbeat(client)
-        assert client.get("/api/health").status_code == 200
-        assert time.monotonic() - started < .3
-        response = client.post(f"/api/builds/{bid}/run")
-        assert response.status_code == 202
-        responses = [first.result(timeout=3), second.result(timeout=3)]
-    assert sorted(response.status_code for response in responses) == [200, 204]
-    finish(client, response.json()["run_id"], 1)
-    assert client.get("/api/agent/jobs/next?wait=26", headers=AUTH).status_code == 422
-
-
-@pytest.mark.parametrize("method,suffix,kwargs", [
-    ("get", "jobs/next?wait=0", {}),
-    ("post", "heartbeat", {"json": {"chrome_running": True, "signed_in": True, "agent_version": "test"}}),
-    ("get", "jobs/missing/files/recipe.jsonl", {}),
-    ("put", "jobs/missing/screens/a.png", {"content": b"png"}),
-    ("post", "jobs/missing/events", {"json": {"events": EVENTS}}),
-    ("post", "jobs/missing/finished", {"json": {"exit_code": 0, "stderr_tail": ""}}),
-])
-def test_token_required_and_access_code_is_not_agent_auth(remote, method, suffix, kwargs):
-    client, *_ = remote
-    for headers in ({}, {"X-DSS-Agent-Token": CODE}, {"X-DSS-Agent-Token": "wrong-token"}):
-        response = getattr(client, method)("/api/agent/" + suffix, headers=headers, **kwargs)
-        assert response.status_code == 401 and response.json()["error"]["code"] == "agent_unauthorized"
-
-
 @pytest.mark.parametrize("suffix", ["%2e%2e/dss.sqlite", "%2e%2e", "screens/x.png", "bad%5cname.png", "not-listed.png"])
 def test_file_boundaries(remote, suffix):
     client, app, bid, folder = remote
@@ -262,7 +388,7 @@ def test_file_boundaries(remote, suffix):
     for method, segment in (("get", "files"), ("put", "screens")):
         if segment == "screens" and suffix == "not-listed.png":
             continue  # Any plain PNG name is allowed for screenshots.
-        response = getattr(client, method)(f"/api/agent/jobs/{run_id}/{segment}/{suffix}", headers=AUTH)
+        response = getattr(client, method)(f"/api/agent/jobs/{run_id}/{segment}/{suffix}", headers=auth(run_id))
         assert response.status_code == 400 and response.json()["error"]["code"] == "invalid_name"
     finish(client, run_id, 1)
 
@@ -292,17 +418,18 @@ def test_all_recipe_inputs_in_order_and_bad_inputs_fail_before_lock(remote):
     ready_fixture(app, bid, folder)
     response = client.post(f"/api/builds/{bid}/run")
     assert response.status_code == 400 and response.json()["error"]["code"] == "invalid_name"
-    assert not app.state.engine_busy
+    assert not app.state.engine_tasks and ticket(client, bid)["state"] == "finished"
 
 
 def test_secrets_redacted_from_events_and_stderr(remote, caplog):
     client, app, bid, folder = remote
     run_id, _ = accept(remote)
-    text = f"{TOKEN} {CODE} fake-google-key"
+    token = auth(run_id)["X-DSS-Job-Token"]
+    text = f"{token} {CODE} fake-google-key"
     post_events(client, run_id, [{**EVENTS[2], "message": text}, EVENTS[-1]])
     finish(client, run_id, 0, text)
     serialized = json.dumps(records(app, run_id)) + (folder / "events.jsonl").read_text() + caplog.text
-    for secret in (TOKEN, CODE, "fake-google-key"):
+    for secret in (token, CODE, "fake-google-key"):
         assert secret not in serialized
     assert "[redacted]" in serialized
 
@@ -327,14 +454,12 @@ def test_status_contract_variants(tmp_path, monkeypatch, mode, fixture):
     async def fake_check(*args):
         return 0, '{"chrome_running": true, "signed_in": true}'
     monkeypatch.setattr(engine, "control_command", fake_check)
-    app = create_app(Config(data_dir=tmp_path, engine_mode=mode, agent_token=TOKEN), model_lister=fake_models)
+    app = create_app(Config(data_dir=tmp_path, engine_mode=mode), model_lister=fake_models)
     with TestClient(app) as client:
-        if mode == "agent":
-            heartbeat(client)
         check(client.get("/api/engine/status"), fixture)
         if mode == "local":
-            for method, path in (("get", "jobs/next"), ("post", "heartbeat"), ("put", "jobs/x/screens/a.png"), ("get", "unknown")):
-                response = getattr(client, method)("/api/agent/" + path, headers=AUTH)
+            for method, path in (("post", "claim"), ("put", "jobs/x/screens/a.png"), ("get", "unknown")):
+                response = getattr(client, method)("/api/agent/" + path, headers={"X-DSS-Job-Token": "x"})
                 assert response.status_code == 404 and response.json()["error"]["code"] == "agent_mode_off"
 
 
@@ -349,31 +474,31 @@ def test_startup_recovers_interrupted_job_once(tmp_path):
         conn.execute("INSERT INTO events VALUES(?,?,?,?,?,?)", ("e_test", bid, run_id, "run.started",
                      json.dumps({"run_id": run_id, "node": "execute"}), now()))
     for _ in range(2):
-        app = create_app(Config(data_dir=tmp_path, engine_mode="agent", agent_token=TOKEN), model_lister=fake_models)
+        app = create_app(Config(data_dir=tmp_path, engine_mode="agent"), model_lister=fake_models)
         with TestClient(app) as client:
             assert_failure((client, app, bid, tmp_path), run_id, "agent_timeout")
-            assert client.get("/api/agent/jobs/next?wait=0", headers=AUTH).status_code == 204
+            assert client.get(f"/api/builds/{bid}/job").json()["error"]["code"] == "job_not_found"
 
 
-def test_shutdown_cancels_job_and_wakes_long_poll(remote):
+def test_shutdown_leaves_live_ticket_for_next_start(remote):
     client, app, bid, folder = remote
     run_id, _ = accept(remote)
     async def close():
-        poll = asyncio.create_task(app.state.agent_jobs.next(25))
-        await asyncio.sleep(.01)
         await app.state.agent_jobs.close()
-        assert await asyncio.wait_for(poll, .5) is None
         tasks = tuple(app.state.engine_tasks)
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
     client.portal.call(close)
-    assert not app.state.engine_busy and not app.state.harness.active_builds
-    assert client.get(f"/api/builds/{bid}").json()["stage"] == "prototype"
+    assert not app.state.harness.active_builds and not app.state.engine_tasks
+    # The ticket, stage and version wait for recover() on the next start (restart test).
+    assert ticket(client, bid)["state"] == "running"
+    build = client.get(f"/api/builds/{bid}").json()
+    assert build["stage"] == "build" and build["versions"][0]["status"] == "building"
 
 
 def job_recipe(client, run_id):
-    response = client.get(f"/api/agent/jobs/{run_id}/files/recipe.jsonl", headers=AUTH)
+    response = client.get(f"/api/agent/jobs/{run_id}/files/recipe.jsonl", headers=auth(run_id))
     assert response.status_code == 200
     return response.content.decode("utf-8")
 
@@ -402,12 +527,11 @@ def test_refresh_failure_queues_no_job(remote):
     client, app, bid, folder = remote
     previous, good = (folder / "recipe.jsonl").read_bytes(), (folder / "spec.json").read_text()
     add_images(folder, None)  # an image without a path cannot compile
-    heartbeat(client)
     response = client.post(f"/api/builds/{bid}/run")
     assert response.status_code == 409 and response.json()["error"]["code"] == "feasibility_blocked"
-    assert client.get("/api/agent/jobs/next?wait=0", headers=AUTH).status_code == 204
+    assert client.get(f"/api/builds/{bid}/job").status_code == 404
     assert not app.state.agent_jobs.running and not app.state.engine_tasks
-    assert not app.state.engine_busy and bid not in app.state.harness.active_builds
+    assert bid not in app.state.harness.active_builds
     assert client.get(f"/api/builds/{bid}").json()["stage"] == "prototype"
     assert (folder / "recipe.jsonl").read_bytes() == previous
     (folder / "spec.json").write_text(good, encoding="utf-8")
@@ -474,7 +598,7 @@ def test_nested_images_package_to_plain_deduplicated_names(remote):
     assert files[0] == "recipe.jsonl" and len(files) == len(set(f.casefold() for f in files)) == 6
     assert all(PLAIN.fullmatch(name) and name not in (".", "..") for name in files)
     assert files[1] == "background_p1.png" and "logo.png" in files
-    downloaded = {name: client.get(f"/api/agent/jobs/{run_id}/files/{name}", headers=AUTH) for name in files}
+    downloaded = {name: client.get(f"/api/agent/jobs/{run_id}/files/{name}", headers=auth(run_id)) for name in files}
     assert all(response.status_code == 200 for response in downloaded.values())
     shipped, original = downloaded["recipe.jsonl"].content.decode("utf-8"), canonical
     assert shipped.endswith("\n") and len(shipped.split("\n")) == len(original.split("\n"))
@@ -545,13 +669,12 @@ def test_bad_image_paths_reject_before_queueing(remote, tmp_path, bad, code):
     add_images(folder, "logo.png", bad)
     from fakes import ready_fixture
     ready_fixture(app, bid, folder)
-    heartbeat(client)
     response = client.post(f"/api/builds/{bid}/run")
     assert response.status_code == (400 if code == "invalid_name" else 422), response.text
     assert response.json()["error"]["code"] == code
-    assert client.get("/api/agent/jobs/next?wait=0", headers=AUTH).status_code == 204
+    assert client.get(f"/api/builds/{bid}/job").status_code == 404
     assert not app.state.agent_jobs.running and not app.state.agent_jobs.jobs and not app.state.engine_tasks
-    assert not app.state.engine_busy and bid not in app.state.harness.active_builds
+    assert bid not in app.state.harness.active_builds
     build = client.get(f"/api/builds/{bid}").json()
     assert build["stage"] == "prototype" and build["versions"][0]["status"] != "building"
     (folder / "spec.json").write_text(good, encoding="utf-8")

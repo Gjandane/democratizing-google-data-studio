@@ -1,29 +1,28 @@
-"""Agent-only transport, authenticated independently of the shared access code."""
-from fastapi import APIRouter, Depends, Request, Response, Query
+"""One-shot agent transport (api.md 3.4): a claimed code's per-job token, never the access code."""
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from dss.agent.jobs import safe_file
-from dss.api.session import matches
 from dss.harness.guardrails import RunError
 
 
-async def require_agent(request: Request):
-    config = request.app.state.config
-    if config.engine_mode != "agent":
+async def require_agent_mode(request: Request):
+    if request.app.state.config.engine_mode != "agent":
         raise RunError("agent_mode_off", "Build agent mode is disabled", 404)
-    token = config.agent_token.get_secret_value()
-    if not token or not matches(request.headers.get("x-dss-agent-token", ""), token):
-        raise RunError("agent_unauthorized", "Build agent token required", 401)
 
 
-router = APIRouter(prefix="/api/agent", dependencies=[Depends(require_agent)])
+async def require_job(run_id: str, request: Request):
+    request.app.state.agent_jobs.authorize(run_id, request.headers.get("x-dss-job-token", ""))
 
 
-class Heartbeat(BaseModel):
-    chrome_running: bool
-    signed_in: bool
-    agent_version: str
+router = APIRouter(prefix="/api/agent", dependencies=[Depends(require_agent_mode)])
+job_routes = [Depends(require_job)]
+
+
+class Claim(BaseModel):
+    code: str = Field(max_length=64)
+    agent_version: str = Field(max_length=64)
 
 
 class Events(BaseModel):
@@ -35,19 +34,12 @@ class Finished(BaseModel):
     stderr_tail: str
 
 
-@router.post("/heartbeat")
-async def heartbeat(body: Heartbeat, request: Request):
-    request.app.state.agent_jobs.heartbeat(body.chrome_running, body.signed_in)
-    return {"ok": True}
+@router.post("/claim")
+async def claim(body: Claim, request: Request):
+    return await request.app.state.agent_jobs.claim(body.code)
 
 
-@router.get("/jobs/next")
-async def next_job(request: Request, wait: float = Query(default=25, ge=0, le=25)):
-    data = await request.app.state.agent_jobs.next(wait)
-    return data if data else Response(status_code=204)
-
-
-@router.get("/jobs/{run_id}/files/{name:path}")
+@router.get("/jobs/{run_id}/files/{name:path}", dependencies=job_routes)
 async def download(run_id: str, name: str, request: Request):
     job = request.app.state.agent_jobs.get(run_id)
     safe_file(job.folder, name)
@@ -61,13 +53,13 @@ async def download(run_id: str, name: str, request: Request):
     return FileResponse(source)
 
 
-@router.post("/jobs/{run_id}/events")
+@router.post("/jobs/{run_id}/events", dependencies=job_routes)
 async def events(run_id: str, body: Events, request: Request):
     await request.app.state.agent_jobs.events(run_id, body.events)
     return {"ok": True}
 
 
-@router.put("/jobs/{run_id}/screens/{file:path}")
+@router.put("/jobs/{run_id}/screens/{file:path}", dependencies=job_routes)
 async def screen(run_id: str, file: str, request: Request):
     manager = request.app.state.agent_jobs
     job = manager.get(run_id)
@@ -85,7 +77,7 @@ async def screen(run_id: str, file: str, request: Request):
     return {"ok": True}
 
 
-@router.post("/jobs/{run_id}/finished")
+@router.post("/jobs/{run_id}/finished", dependencies=job_routes)
 async def finished(run_id: str, body: Finished, request: Request):
     # stderr is deliberately not persisted or logged: it can contain credentials.
     await request.app.state.agent_jobs.finish(run_id, body.exit_code)
@@ -94,4 +86,5 @@ async def finished(run_id: str, body: Finished, request: Request):
 
 @router.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def unknown():
+    # Includes the retired heartbeat and jobs/next routes (api.md 3.4).
     raise RunError("job_not_found", "Agent route not found", 404)

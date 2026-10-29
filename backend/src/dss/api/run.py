@@ -71,11 +71,23 @@ async def recipe(build_id: str, request: Request):
     return json.loads(result["reply"])
 
 
+@router.get("/{build_id}/job")
+def job(build_id: str, request: Request):
+    state = request.app.state
+    if state.config.engine_mode != "agent":
+        raise RunError("agent_mode_off", "Build agent mode is disabled", 404)
+    if not state.db.build_exists(build_id):
+        raise RunError("build_not_found", "Build not found", 404)
+    return state.agent_jobs.ticket(build_id)
+
+
 @router.post("/{build_id}/run", status_code=202)
 async def run(build_id: str, request: Request):
     state = request.app.state
     build, folder = mutation_current(state, build_id)
-    if state.engine_busy:
+    agent_mode = state.config.engine_mode == "agent"
+    # Agent mode: one live ticket per build, builds don't wait on each other (api.md 3.4).
+    if state.agent_jobs.live(build_id) if agent_mode else state.engine_busy:
         raise RunError("engine_busy", "Another engine run is in progress", 409)
     require_prototype(build)
     if build_id in state.harness.active_builds:
@@ -83,25 +95,29 @@ async def run(build_id: str, request: Request):
     gate(state, build_id, folder)
     if not (folder / "recipe.jsonl").is_file():
         raise RunError("wrong_stage", "Compile the recipe before running it", 409, {"stage": build["stage"]})
-    agent_mode = state.config.engine_mode == "agent"
-    if agent_mode and not state.agent_jobs.connected:
-        raise RunError("agent_offline", "Start the build agent before building", 424)
     # Revisions and replans replace spec.json without recompiling. Refresh synchronously before
     # any reservation: no await separates the checks above from the lock, and a failure starts
     # nothing and leaves stage, locks and the previous recipe as they were.
     refresh(folder, build["current_version"], db=state.db, build_id=build_id)
     run_id = new_id("r")
     job = state.agent_jobs.prepare(run_id, build_id, folder, build["current_version"]) if agent_mode else None
+    if job:
+        state.agent_jobs.issue(job)
     with state.db.connect() as conn:
         conn.execute("UPDATE versions SET status='building' WHERE build_id=? AND n=?", (build_id, build["current_version"]))
         conn.execute("UPDATE builds SET stage='build',updated_at=? WHERE id=?", (now(), build_id))
-    state.engine_busy = True
+    if not job:
+        state.engine_busy = True
+    launch(state, build_id, folder, build["current_version"], run_id, job)
+    return {"run_id": run_id}
+
+
+def launch(state, build_id, folder, version, run_id, job):
+    """Run the execute Workflow in the background; also resumes a waiting ticket at startup."""
     state.harness.active_builds.add(build_id)
-    if job:
-        await state.agent_jobs.enqueue(job)
     async def perform(actual_run_id):
         await state.harness.emit(build_id, actual_run_id, "stage.changed", {"stage": "build"})
-        return await execute(state, build_id, actual_run_id, folder, build["current_version"])
+        return await execute(state, build_id, actual_run_id, folder, version)
     async def background():
         try:
             await state.harness.run("execute", build_id, perform, run_id=run_id, reserved=True)
@@ -112,9 +128,9 @@ async def run(build_id: str, request: Request):
                 if job:
                     await state.agent_jobs.release(job)
             finally:
-                state.engine_busy = False
+                if not job:
+                    state.engine_busy = False
                 state.harness.active_builds.discard(build_id)
     task = asyncio.create_task(background())
     state.engine_tasks.add(task)
     task.add_done_callback(state.engine_tasks.discard)
-    return {"run_id": run_id}

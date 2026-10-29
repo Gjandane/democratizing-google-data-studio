@@ -63,6 +63,13 @@ CREATE TABLE IF NOT EXISTS synthetic_generations (
  spec_json TEXT NOT NULL, assumptions_json TEXT NOT NULL,
  generator_version TEXT, sha256 TEXT, bytes INTEGER, bq_location TEXT, PRIMARY KEY(build_id, generation_key));
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS agent_tickets (
+ run_id TEXT PRIMARY KEY, build_id TEXT NOT NULL REFERENCES builds(id), version INTEGER NOT NULL,
+ code TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('waiting','running','finished','expired')),
+ created_at TEXT NOT NULL, expires_at TEXT NOT NULL, claimed_at TEXT, token_sha256 TEXT,
+ last_event_at TEXT, job_json TEXT NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS agent_tickets_live_code ON agent_tickets(code) WHERE state='waiting';
+CREATE INDEX IF NOT EXISTS agent_tickets_build ON agent_tickets(build_id);
 CREATE TABLE IF NOT EXISTS consolidation (
  id INTEGER PRIMARY KEY CHECK(id=1), last_run_at TEXT, chats_since INTEGER NOT NULL DEFAULT 0);
 INSERT OR IGNORE INTO consolidation(id,chats_since) VALUES(1,0);

@@ -1,23 +1,59 @@
-"""Single-instance FIFO and the execute node's remote engine transport."""
+"""One-shot job tickets (api.md 3.4) and the execute node's remote engine transport."""
 import asyncio
-from collections import deque
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 import hashlib
+import hmac
 import json
+import logging
 import os
 from pathlib import Path
 import re
-import time
+import secrets
+import sqlite3
 
-from dss.db import new_id, now
+from dss.db import new_id
 from dss.harness.guardrails import RunError
 from dss.harness.nodes.execute import EngineEvents, environment
 from dss.harness.nodes.publish import publish
 from dss.harness.tracing import Trace
 
-HEARTBEAT_TTL_S = 30
+logger = logging.getLogger(__name__)
+API_VERSION = "3.4"
+TICKET_TTL_S = 30 * 60
 TIMEOUT_GRACE_S = 60
+SWEEP_INTERVAL_S = 15
+MISS_DELAY_S = 1
+ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # A-Z and 2-9 without I, O, 0, 1
 PLAIN = re.compile(r"[A-Za-z0-9._-]+")
+# Compared when a run has no token hash, so a miss costs the same as a wrong token.
+NO_HASH = hashlib.sha256(b"no job token").hexdigest()
+
+
+def stamp(moment=None):
+    """Ticket times: fixed width, so SQLite compares them as text."""
+    return (moment or datetime.now(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def parse_stamp(value):
+    return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+
+
+def new_code():
+    raw = "".join(secrets.choice(ALPHABET) for _ in range(8))
+    return f"{raw[:4]}-{raw[4:]}"
+
+
+def normalize_code(value):
+    """Case-insensitive, spaces and dashes dropped; None when it can't be a code."""
+    raw = re.sub(r"[\s-]", "", value).upper()
+    if len(raw) != 8 or any(char not in ALPHABET for char in raw):
+        return None
+    return f"{raw[:4]}-{raw[4:]}"
+
+
+def digest(token):
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def safe_file(folder, name):
@@ -89,70 +125,108 @@ class Job:
     parser: EngineEvents
     completion: asyncio.Future
     settled: asyncio.Future
-    last_activity: float = field(default_factory=time.monotonic)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     active: bool = True
     published: bool = False
 
 
 class AgentJobs:
+    """Tickets live in SQLite (they survive a restart); the Job and its Workflow live here."""
+
     def __init__(self, state):
         self.state = state
-        self.jobs = {}
-        self.running = {}
-        self.queue = deque()
-        self.changed = asyncio.Condition()
+        self.jobs = {}  # run_id -> Job while its routes still answer
+        self.running = {}  # run_id -> Job until the run's background releases it
         self.closed = False
-        self.last_seen = None
-        self.last_seen_clock = None
-        self.chrome_running = self.signed_in = False
 
-    @property
-    def connected(self):
-        return self.last_seen_clock is not None and time.monotonic() - self.last_seen_clock < HEARTBEAT_TTL_S
-
-    def heartbeat(self, chrome_running, signed_in):
-        self.last_seen, self.last_seen_clock = now(), time.monotonic()
-        self.chrome_running, self.signed_in = chrome_running, signed_in
-
-    def prepare(self, run_id, build_id, folder, version):
+    def prepare(self, run_id, build_id, folder, version, data=None):
         try:
             inputs = package(folder)
         except (OSError, ValueError, TypeError, RuntimeError):  # RuntimeError: symlink loop
             raise RunError("invalid_recipe", "Recipe inputs are missing or invalid", 422) from None
-        env = environment()
-        data = dict(run_id=run_id, build_id=build_id, version=version,
-                    dry_run=env.get("DSS_ENGINE_DRY_RUN") == "1",
-                    timeout_s=int(env.get("DSS_ENGINE_TIMEOUT_S") or 600), files=list(inputs))
+        if data is None:
+            env = environment()
+            data = dict(run_id=run_id, build_id=build_id, version=version,
+                        dry_run=env.get("DSS_ENGINE_DRY_RUN") == "1",
+                        timeout_s=int(env.get("DSS_ENGINE_TIMEOUT_S") or 600), files=list(inputs))
+        elif list(inputs) != data["files"]:  # a resumed ticket must ship what it promised
+            raise RunError("invalid_recipe", "Recipe inputs changed", 422)
         loop = asyncio.get_running_loop()
         return Job(data, folder, inputs, EngineEvents(self.state, folder), loop.create_future(), loop.create_future())
 
-    async def enqueue(self, job):
-        async with self.changed:
-            self.jobs[job.data["run_id"]] = job
-            self.running[job.data["run_id"]] = job
-            self.queue.append(job.data["run_id"])
-            self.changed.notify_all()
-
-    async def next(self, wait):
-        async with self.changed:
+    def issue(self, job):
+        """Persist a waiting ticket with a fresh code; no await, so the caller's checks still hold."""
+        data, created = job.data, datetime.now(timezone.utc)
+        for attempt in range(8):
             try:
-                async with asyncio.timeout(wait):
-                    while not self.closed:
-                        while self.queue:
-                            job = self.jobs.get(self.queue.popleft())
-                            if job and job.active:
-                                return job.data
-                        await self.changed.wait()
-            except TimeoutError:
-                pass
-        return None
+                with self.state.db.connect() as conn:
+                    conn.execute("INSERT INTO agent_tickets(run_id,build_id,version,code,state,created_at,expires_at,job_json) "
+                                 "VALUES(?,?,?,?,'waiting',?,?,?)",
+                                 (data["run_id"], data["build_id"], data["version"], new_code(), stamp(created),
+                                  stamp(created + timedelta(seconds=TICKET_TTL_S)), json.dumps(data)))
+                break
+            except sqlite3.IntegrityError:  # the code is live on another ticket
+                if attempt == 7:
+                    raise
+        self.jobs[data["run_id"]] = self.running[data["run_id"]] = job
+
+    def live(self, build_id):
+        with self.state.db.connect() as conn:
+            return conn.execute("SELECT 1 FROM agent_tickets WHERE build_id=? AND state IN ('waiting','running')",
+                                (build_id,)).fetchone() is not None
+
+    def ticket(self, build_id):
+        with self.state.db.connect() as conn:
+            row = conn.execute("SELECT run_id,build_id,version,code,state,expires_at,claimed_at FROM agent_tickets "
+                               "WHERE build_id=? ORDER BY rowid DESC LIMIT 1", (build_id,)).fetchone()
+        if not row:
+            raise RunError("job_not_found", "This build has no job", 404)
+        return dict(row)
+
+    async def claim(self, code):
+        normalized, token, row = normalize_code(code), secrets.token_urlsafe(32), None
+        if normalized:
+            moment = stamp()
+            with self.state.db.connect() as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                row = conn.execute("SELECT run_id,job_json FROM agent_tickets WHERE code=? AND state='waiting' "
+                                   "AND expires_at>?", (normalized, moment)).fetchone()
+                if row and row["run_id"] in self.jobs:
+                    conn.execute("UPDATE agent_tickets SET state='running',claimed_at=?,last_event_at=?,token_sha256=? "
+                                 "WHERE run_id=?", (moment, moment, digest(token), row["run_id"]))
+                else:
+                    row = None
+        if row is None:
+            await asyncio.sleep(MISS_DELAY_S)
+            raise RunError("job_code_invalid", "Unknown, used or expired job code", 404)
+        job = self.jobs[row["run_id"]]
+        job.parser.secrets += (token,)  # an echoed token never reaches events.jsonl or SSE
+        return {"job": json.loads(row["job_json"]), "job_token": token, "api_version": API_VERSION}
+
+    def authorize(self, run_id, token):
+        """Before the run is looked up: an unknown run is 401 like a wrong token."""
+        with self.state.db.connect() as conn:
+            row = conn.execute("SELECT token_sha256 FROM agent_tickets WHERE run_id=?", (run_id,)).fetchone()
+        stored = row["token_sha256"] if row else None
+        matched = hmac.compare_digest(digest(token or ""), stored or NO_HASH)
+        if not (matched and stored and token):
+            raise RunError("agent_unauthorized", "Job token required", 401)
 
     def get(self, run_id):
         job = self.jobs.get(run_id)
         if not job or not job.active:
             raise RunError("job_not_found", "Job not found", 404)
         return job
+
+    def transition(self, run_id, old, new, condition="", *args):
+        with self.state.db.connect() as conn:
+            return conn.execute(f"UPDATE agent_tickets SET state=? WHERE run_id=? AND state=?{condition}",
+                                (new, run_id, old, *args)).rowcount == 1
+
+    def close_ticket(self, run_id):
+        with self.state.db.connect() as conn:
+            conn.execute("UPDATE agent_tickets SET state='finished' WHERE run_id=? AND state IN ('waiting','running')",
+                         (run_id,))
 
     def complete(self, job, exit_code, error=None):
         # All callers hold job.lock; no await between removing and completing.
@@ -166,13 +240,16 @@ class AgentJobs:
         job = self.get(run_id)
         async with job.lock:
             self.get(run_id)
-            job.last_activity = time.monotonic()
+            with self.state.db.connect() as conn:
+                conn.execute("UPDATE agent_tickets SET last_event_at=? WHERE run_id=? AND state='running'",
+                             (stamp(), run_id))
             try:
                 for value in events:
                     event = job.parser.parse(value)
                     if event and event.get("event") == "op_finished":
                         await self.state.harness.emit(job.data["build_id"], run_id, "build.op", event)
             except RunError as error:
+                self.close_ticket(run_id)
                 self.complete(job, 1, error)
         if not job.active:
             await asyncio.shield(job.settled)
@@ -181,6 +258,7 @@ class AgentJobs:
         job = self.get(run_id)
         async with job.lock:
             self.get(run_id)
+            self.close_ticket(run_id)
             self.complete(job, exit_code)
         await asyncio.shield(job.settled)
 
@@ -188,19 +266,13 @@ class AgentJobs:
         # A very fast agent can finish before the Workflow reaches this node.
         job = self.running[run_id]
         try:
-            while not job.completion.done():
-                remaining = job.last_activity + job.data["timeout_s"] + TIMEOUT_GRACE_S - time.monotonic()
-                try:
-                    await asyncio.wait_for(asyncio.shield(job.completion), max(0, remaining))
-                except TimeoutError:
-                    async with job.lock:
-                        if job.active and time.monotonic() >= job.last_activity + job.data["timeout_s"] + TIMEOUT_GRACE_S:
-                            self.complete(job, 1, RunError("agent_timeout", "Build agent timed out", 504))
-            result, error = job.completion.result()
+            result, error = await asyncio.shield(job.completion)
         except asyncio.CancelledError:
-            result = {"status": "failed", "report_url": None}
-            await publish(self.state, job.data["build_id"], run_id, job.data["version"], result)
-            job.published = True
+            if not self.closed:
+                self.close_ticket(run_id)
+                await publish(self.state, job.data["build_id"], run_id, job.data["version"],
+                              {"status": "failed", "report_url": None})
+            job.published = True  # at shutdown the ticket and version wait for the next start
             raise
         await publish(self.state, job.data["build_id"], run_id, job.data["version"], result)
         job.published = True
@@ -208,10 +280,82 @@ class AgentJobs:
             raise error
         return json.dumps(result)
 
-    async def recover(self):
-        """Finalize interrupted persisted runs; never reissue their lost jobs."""
+    async def sweep(self):
+        """Expire waiting tickets past expires_at; fail running ones silent for timeout_s + 60 s."""
+        moment = datetime.now(timezone.utc)
         with self.state.db.connect() as conn:
-            interrupted = conn.execute("SELECT build_id,n FROM versions WHERE status='building'").fetchall()
+            rows = conn.execute("SELECT run_id,build_id,version,state,expires_at,last_event_at,job_json "
+                                "FROM agent_tickets WHERE state IN ('waiting','running') ORDER BY rowid").fetchall()
+        for row in rows:
+            if row["state"] == "waiting":
+                if parse_stamp(row["expires_at"]) <= moment:
+                    await self.fail(row, "expired", RunError("job_expired", "The job code expired before a build agent claimed it", 410),
+                                    " AND expires_at=?", row["expires_at"])
+            else:
+                limit = json.loads(row["job_json"])["timeout_s"] + TIMEOUT_GRACE_S
+                if parse_stamp(row["last_event_at"]) + timedelta(seconds=limit) <= moment:
+                    await self.fail(row, "finished", RunError("agent_timeout", "Build agent timed out", 504),
+                                    " AND last_event_at=?", row["last_event_at"])
+
+    async def fail(self, row, new, error, condition="", *args):
+        run_id = row["run_id"]
+        if job := self.jobs.get(run_id):
+            async with job.lock:  # events refresh last_event_at under this lock
+                if self.transition(run_id, row["state"], new, condition, *args) and job.active:
+                    self.complete(job, 1, error)
+        elif self.transition(run_id, row["state"], new, condition, *args):
+            await self.finalize(row["build_id"], run_id, row["version"], error.code)
+
+    async def sweep_forever(self):
+        while True:
+            await asyncio.sleep(SWEEP_INTERVAL_S)
+            try:
+                await self.sweep()
+            except Exception:
+                logger.warning("Job ticket sweep failed; will retry")
+
+    async def finalize(self, build_id, run_id, version, error):
+        """End a run whose Workflow is gone (a restart); replaces the interrupted run's cancelled trace."""
+        with self.state.db.connect() as conn:
+            conn.execute("DELETE FROM traces WHERE run_id=? AND status='error' AND error='cancelled'", (run_id,))
+            building = conn.execute("SELECT 1 FROM versions WHERE build_id=? AND n=? AND status='building'",
+                                    (build_id, version)).fetchone()
+            traced = conn.execute("SELECT 1 FROM traces WHERE run_id=?", (run_id,)).fetchone()
+        if building:
+            await publish(self.state, build_id, run_id, version, {"status": "failed", "report_url": None})
+        if not traced:
+            Trace(self.state.db, run_id, build_id, "execute").save("error", error)
+            await self.state.harness.emit(build_id, run_id, "run.finished", {
+                "run_id": run_id, "node": "execute", "status": "error", "error": error})
+
+    async def recover(self):
+        """At startup: running tickets fail (their instance is gone), expired ones end, waiting
+        ones become claimable again; other interrupted runs fail and are never reissued."""
+        from dss.api.run import launch
+        with self.state.db.connect() as conn:
+            tickets = conn.execute("SELECT * FROM agent_tickets WHERE state IN ('waiting','running') ORDER BY rowid").fetchall()
+        moment = stamp()
+        for row in tickets:
+            run_id, bid, version = row["run_id"], row["build_id"], row["version"]
+            if row["state"] == "running":
+                await self.fail(row, "finished", RunError("agent_timeout", "Build agent timed out", 504))
+                continue
+            if row["expires_at"] <= moment:
+                await self.fail(row, "expired", RunError("job_expired", "The job code expired", 410))
+                continue
+            folder = self.state.config.data_dir / "builds" / bid / f"v{version}"
+            try:
+                job = self.prepare(run_id, bid, folder, version, json.loads(row["job_json"]))
+            except RunError as error:
+                await self.fail(row, "finished", error)
+                continue
+            with self.state.db.connect() as conn:
+                conn.execute("DELETE FROM traces WHERE run_id=? AND status='error' AND error='cancelled'", (run_id,))
+            self.jobs[run_id] = self.running[run_id] = job
+            launch(self.state, bid, folder, version, run_id, job)
+        with self.state.db.connect() as conn:
+            interrupted = conn.execute("SELECT build_id,n FROM versions v WHERE status='building' AND NOT EXISTS "
+                "(SELECT 1 FROM agent_tickets t WHERE t.build_id=v.build_id AND t.version=v.n AND t.state='waiting')").fetchall()
         for row in interrupted:
             bid, version = row["build_id"], row["n"]
             with self.state.db.connect() as conn:
@@ -228,12 +372,14 @@ class AgentJobs:
                 "run_id": run_id, "node": "execute", "status": "error", "error": "agent_timeout"})
 
     async def release(self, job):
-        """Runs in the request's background finally, even if the Workflow fails."""
+        """Runs in the run's background finally, even if the Workflow fails."""
         async with job.lock:
             if job.active:
+                if not self.closed:
+                    self.close_ticket(job.data["run_id"])
                 self.complete(job, 1)
         try:
-            if not job.published:
+            if not job.published and not self.closed:
                 await publish(self.state, job.data["build_id"], job.data["run_id"], job.data["version"],
                               {"status": "failed", "report_url": None})
         finally:
@@ -242,7 +388,7 @@ class AgentJobs:
                 job.settled.set_result(None)
 
     async def close(self):
-        async with self.changed:
-            self.closed = True
-            self.changed.notify_all()
+        """Shutdown: live tickets stay in the database for the next start (recover)."""
+        self.closed = True
+
 

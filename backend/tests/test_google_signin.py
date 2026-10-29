@@ -257,11 +257,11 @@ def test_code_and_header_unchanged_with_google_on(tmp_path, verifier):
 
 def test_agent_routes_ignore_google_cookies(tmp_path, verifier):
     app = create_app(Config(data_dir=tmp_path / "data", access_code=CODE, google_client_id=CLIENT,
-                            engine_mode="agent", agent_token="t" * 24), model_lister=fake_models)
+                            engine_mode="agent"), model_lister=fake_models)
     with TestClient(app) as client:
         sign_in(client, "tok-gmail")
         assert client.get("/api/builds").status_code == 200
-        response = client.post("/api/agent/heartbeat", json={"chrome_running": False, "signed_in": False})
+        response = client.post("/api/agent/jobs/r_123456789abc/finished", json={"exit_code": 0, "stderr_tail": ""})
         assert response.status_code == 401 and response.json()["error"]["code"] == "agent_unauthorized"
 
 

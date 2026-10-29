@@ -66,9 +66,9 @@ async def control_command(command, timeout):
 async def status(request: Request):
     state = request.app.state
     if state.config.engine_mode == "agent":
-        jobs = state.agent_jobs
-        return {"mode": "agent", "chrome_running": jobs.chrome_running, "signed_in": jobs.signed_in,
-                "agent_connected": jobs.connected, "agent_last_seen": jobs.last_seen}
+        # api.md 3.4: one-shot agents send no heartbeat; the Build stage reads JobTicket instead.
+        return {"mode": "agent", "chrome_running": False, "signed_in": False,
+                "agent_connected": False, "agent_last_seen": None}
     if state.engine_busy:
         data = getattr(state, "engine_status", {"chrome_running": False, "signed_in": False})
     else:

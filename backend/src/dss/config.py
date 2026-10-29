@@ -30,7 +30,12 @@ class Config(BaseModel):
     db_path: Path | None = None
     static_dir: Path | None = None
     access_code: SecretStr = SecretStr("")
+    # Retired by api.md 3.4 (per-job tokens): the server never checks it; kept only as a secret
+    # to redact and for the polling client until task 29.2.
     agent_token: SecretStr = SecretStr("")
+    # Share data (conventions.md 1.7): the bucket name and the folder where it is mounted.
+    share_bucket: str = ""
+    share_dir: str = ""
     # Google sign-in at the gate (api.md 3.3): the OAuth web client id (public) and who may enter.
     google_client_id: str = ""
     signin_allow: tuple[str, ...] = ()
@@ -66,7 +71,7 @@ class Config(BaseModel):
                  "agent_token": "DSS_AGENT_TOKEN", "engine_mode": "DSS_ENGINE_MODE",
                  "cloud_service": "K_SERVICE", "consolidate_every": "DSS_CONSOLIDATE_EVERY",
                  "google_client_id": "GOOGLE_OAUTH_CLIENT_ID", "signin_allow": "DSS_SIGNIN_ALLOW",
-                 "public_link": "DSS_PUBLIC"}
+                 "public_link": "DSS_PUBLIC", "share_bucket": "DSS_SHARE_BUCKET", "share_dir": "DSS_SHARE_DIR"}
         values = {field: env[name] for field, name in names.items() if env.get(name) is not None}
         for field in ("data_dir", "db_path", "static_dir"):
             if values.get(field):
@@ -97,8 +102,8 @@ class Config(BaseModel):
         if self.cloud_service:
             if not self.open_link and len(code) < 12:
                 raise RuntimeError("Cloud Run requires DSS_ACCESS_CODE of at least 12 characters")
-            if self.engine_mode == "agent" and len(self.agent_token.get_secret_value()) < 24:
-                raise RuntimeError("Cloud Run agent mode requires DSS_AGENT_TOKEN of at least 24 characters")
+        if bool(self.share_bucket) != bool(self.share_dir):
+            raise RuntimeError("DSS_SHARE_BUCKET and DSS_SHARE_DIR must be set together (or both empty)")
 
 
 class SettingsStore:

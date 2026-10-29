@@ -221,15 +221,15 @@ def no_engine(monkeypatch):
 
 @pytest.fixture
 def agent_client(tmp_path, no_engine):
-    """Hosted agent mode: no installed engine and no agent heartbeat."""
-    app = create_app(Config(data_dir=tmp_path, engine_mode='agent', agent_token='t' * 24), model_lister=fake_models)
+    """Hosted agent mode: no installed engine and no claimed job."""
+    app = create_app(Config(data_dir=tmp_path, engine_mode='agent'), model_lister=fake_models)
     with TestClient(app) as client:
         with app.state.db.connect() as conn:
             conn.execute("INSERT INTO builds(id,title,archetype,mode,stage,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",
                          ('b_123456789abc', 'Golden', 'executive', 'data', 'prototype', now(), now()))
         folder = tmp_path / 'builds' / 'b_123456789abc' / 'v1'
         folder.mkdir(parents=True)
-        assert not app.state.agent_jobs.connected
+        assert not app.state.agent_jobs.jobs
         yield client, app, folder
 
 
@@ -272,7 +272,7 @@ def test_recipe_api_uses_current_spec(agent_client, spec):
     with app.state.db.connect() as conn:
         traces = conn.execute('SELECT node,status FROM traces WHERE build_id=?', ('b_123456789abc',)).fetchall()
         assert [tuple(row) for row in traces] == [('recipe', 'ok'), ('recipe', 'ok')]
-    assert not app.state.agent_jobs.jobs and not app.state.agent_jobs.queue
+    assert not app.state.agent_jobs.jobs and not app.state.agent_jobs.running
 
 
 @pytest.mark.parametrize('failure', ['compile', 'preview', 'sort', 'direction'])
