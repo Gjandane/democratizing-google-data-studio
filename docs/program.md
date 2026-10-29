@@ -13,7 +13,8 @@ Written 2026-10-18.
   scope past 2026-10-23 01:05 MPST (change 2026-10-23; earlier 2026-10-20 and 2026-10-19 01:05).
 - Hosted on Cloud Run in this version (change 2026-10-19): the app runs as one Cloud Run service
   behind Google sign-in (change 2026-10-29; the shared access code stays for scripts); the Data Studio build runs through a build agent on the user's
-  machine, because the engine needs the signed-in Chrome profile.
+  machine, because the engine needs the signed-in Chrome profile. Hosted v1 goes up to the
+  recipe; the hosted build through the agent is v2 (change 2026-10-29 hosted scope).
 
 ## Parts
 | Part | Folder | Purpose | Target | Provides | Consumes |
@@ -52,7 +53,7 @@ Written 2026-10-18.
   consolidation after every 5 builds that reach `done` (worker model), one trace per run.
 - Goal: deployed on Cloud Run (contracts/conventions.md, Cloud deployment): one service, one
   instance, Google sign-in at the gate (code for scripts), state on a GCS volume, secrets in Secret Manager, the engine run by
-  a local build agent; deployed with one script (`bash deploy/deploy.sh`).
+  a local build agent (v2; hosted v1 stops at the recipe, change 2026-10-29 hosted scope); deployed with one script (`bash deploy/deploy.sh`).
 - Non-goal: per-user accounts, roles or data isolation (POC): Google sign-in only opens the one
   shared history (change 2026-10-29).
 - Non-goal: the engine in the cloud (headless Chrome with a stored Google session): the Google
@@ -84,7 +85,8 @@ Written 2026-10-18.
 4. **Hosted (must-have after flow 1):** the user opens the Cloud Run URL and signs in with Google
    (frontend, backend) -> flow 1 runs in the hosted app -> on Build, the backend queues a job ->
    `dss-agent` on the user's machine pulls it and runs `dsengine` with the signed-in Chrome (backend,
-   engine) -> events stream back to the hosted Build stage -> the dashboard link shows.
+   engine) -> events stream back to the hosted Build stage -> the dashboard link shows. v1 hosted: up to the
+   recipe, Build answers `424 agent_offline`; the agent half is v2 (change 2026-10-29 hosted scope).
 
 ## Contracts
 | Contract | Version | Provider | Consumers | Conformance check |
@@ -105,8 +107,8 @@ Written 2026-10-18.
   of five dashboard sources (CSV upload, research mode, screenshot + synthetic data, BigQuery,
   GCS) -> README and the first GitHub push -> Cloud Run deploy and hosted acceptance -> final push.
 - Start everything locally: `./start.ps1` (Windows) or `./start.sh`: backend on 8000, frontend on 5173.
-- Hosted: the Cloud Run URL plus Google sign-in (any Google account by default); builds need `uv run --project backend dss-agent`
-  running on the user's machine.
+- Hosted: the Cloud Run URL plus Google sign-in (any Google account by default); v1 goes up to the recipe (Data Studio builds run
+  locally; hosted builds through `dss-agent` are v2, change 2026-10-29 hosted scope).
 - Ships: all code, the planning docs (docs/, AGENTS.md, CLAUDE.md: they show the process), the
   submission deck draft `deck/AI-Builder-Cup-Submission.pptx` and `.pdf` as built by release 1.3
   (no further deck work: change 2026-10-20 final phases), README (pitch, features, capabilities,
@@ -205,16 +207,15 @@ phases" below.
   (flow 1), then a second version reaches `done` (flow 3).
 - `uv run --project integration python integration/e2e_flow1.py --live`: same, with the real
   engine and the signed-in Chrome profile; prints a `https://datastudio.google.com/` link.
-- `uv run --project integration python integration/e2e_flow1.py --server <Cloud Run URL> --live`:
-  with `dss-agent` running locally, flow 1 at the deployed service (access code from `.env`) prints
-  a `https://datastudio.google.com/` link; with `dss-agent --dry-run` the same run reaches `done`
-  without touching Data Studio.
+- `uv run --project integration python integration/e2e_flow1.py --server <Cloud Run URL> --until recipe`:
+  flow 1 at the deployed service (access code from `.env`) compiles a recipe, and `POST /run` answers
+  `424 agent_offline` (no agent; hosted builds are v2, change 2026-10-29 hosted scope).
 
 - Manual acceptance (release 2.4 and 2.6): the user builds one dashboard per source through the local UI
   (CSV upload, research mode, screenshot + synthetic data, BigQuery table, CSV in GCS); each row in
   docs/acceptance.md has a Data Studio link and the user's PASS.
-- Required image/capability acceptance: release 2.5 (local) and 4.3 (hosted) run `integration/e2e_references.py --live`
-  locally and with `--server <Cloud Run URL>`; scenario oracle is dashboard-intent.md.
+- Required image/capability acceptance: release 2.5 (local) and 4.3 (hosted) run `integration/e2e_references.py`, `--live`
+  locally and `--server <Cloud Run URL> --until recipe` hosted; scenario oracle is dashboard-intent.md.
 
 ## Research facts (2026-10-18)
 - Data Studio API (`datastudio.googleapis.com/v1`) only searches assets and manages permissions:
@@ -307,3 +308,4 @@ phases" below.
 | 2026-10-28 | Reference analysis gate (api.md 3.2, dashboard-intent.md 1.3, synthetic-data.md 1.3): a recreate upload gets a Flash analysis (each item native component with a catalog type, or static art, with box and reason) that the user approves or edits (split, type, note) before design/confirm, blueprint, recipe or run (`409 reference_unapproved`); approved native items replace image observations as requirements, static items are consented art; Argon blueprint and brief get the image plus the approved items; `BlueprintRow.reference_item`; defaults reference_interpretation Flash high with 1 repair, native_planning thinking medium; the observation path (extraction, reconciliation, unlabeled-control offers, approved drops) is deleted; style mode has no gate; backend 26.1-26.6 (26.6 replaces 25.11), frontend 17.1-17.3, release 2.6 gated on both | keep observations with native_planning medium (fastest; edge cases stay); gate at design/confirm with field bindings; keep the old path behind a flag | backend 25.7-25.11 blocked on observation edge cases settled by harness-only drops/offers; one explicit user decision replaces them; Flash is cheaper for the analysis; Argon high timed out twice at 1,200 s where medium answered in 79 s | change 2026-10-28 (user request and cards) |
 | 2026-10-29 | Google sign-in at the hosted gate (api.md 3.3, conventions 1.5): `POST /api/session {google_id_token}` verified with google-auth, `DSS_SIGNIN_ALLOW` (empty = any Google account; `@domain` via `hd`, or emails) so a domain lock after the hackathon is one env change and a redeploy; signed 24 h cookie keyed by the code; the code and header stay for scripts and e2e drivers; agent token unchanged; backend 27.1, frontend 18.1, release 4.1 gated on both | IAP on Cloud Run (the local build agent would need Google ID tokens too; lifts the IAP non-goal); code only | user wants Google sign-in on the hosted link; in-app keeps SSE, iframe and agent paths unchanged | change 2026-10-29 (user, release 4.1 block, cards) |
 | 2026-10-29 | Release 2.6 accepted as PASS with findings; W1-W7 (engine area auto-fields and box placement, `bar` date grain, backend legends, HTML flake, scorecard pick) deferred to the parts' Later lists; 2.6 reopened only to fix check_contracts' ReferenceSet schema; GitHub and Cloud Run next | plan engine/backend/contract fixes now, gate 4.3 on them | user: finish the GitHub upload and Cloud Run deployment first; the report is usable with recorded findings | change 2026-10-29 (user, release 2.6 block) |
+| 2026-10-29 | Hosted v1 scope: the Cloud Run app goes from Google sign-in to the compiled recipe; Build answers `424 agent_offline` (the contract's existing stop, no contract change); Data Studio builds stay local; release 4.2/4.3 run `--until recipe` hosted, 4.3 skips the narrowed-allowlist step hosted, 4.4's README says so; one always-on instance kept | hosted builds through the owner's `dss-agent` (v1 plan); scale to zero (`--min-instances 0`) | user: the local agent is v2; no cold starts for judges, runs after 202 and the DB backup keep CPU | change 2026-10-29 hosted scope (user, release audit cards) |

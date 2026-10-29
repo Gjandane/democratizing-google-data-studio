@@ -52,9 +52,9 @@ docs/img/                README screenshots from 2.4/2.6, cropped (no email, ava
 - Numbers in README come only from deck/data/bench-*.json (e2e runs), with the run date.
 - Links, exactly: GitHub https://github.com/Gjandane/democratizing-google-data-studio ; hosted app: never in
   a tracked file (`DSS_AGENT_SERVER` in .env; shared privately with the judges; Google sign-in;
-  builds need the owner's `dss-agent` online).
+  hosted v1 stops at the recipe; Data Studio builds run locally, hosted builds are v2).
 - README diagrams: deck/img d5 (node graph), d4 (harness, OKF not RAG), d8 (Google Cloud).
-- README claims a feature on a target only after its acceptance passed there (local 2.4-2.6, hosted 4.2-4.3).
+- README claims a feature on a target only after its acceptance passed there (local 2.4-2.6; hosted 4.2-4.3, up to the recipe).
 
 ## Never do
 - Never edit engine/, backend/, frontend/ or contracts/; a fix there blocks the task.

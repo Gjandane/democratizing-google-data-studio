@@ -24,8 +24,8 @@ agent do the work.
 So, v2 must deliver:
 - Per-visitor builds: the report, its data source and its data belong to (or are readable by)
   the visitor's Google account, not the owner's.
-- No dependency on the owner's computer: v1 builds only while the owner's `dss-agent` and signed-in
-  Chrome run.
+- No dependency on the owner's computer: v1 builds only on the owner's machine (local app and
+  signed-in Chrome); the hosted v1 stops at the recipe.
 - A zero-Python agent on the visitor's machine, paired with their signed-in app session.
 - Per-user isolation: history, engine lock/queue, data, settings and spend.
 
@@ -34,7 +34,7 @@ So, v2 must deliver:
   staged workflow, BigQuery intake, compiler, API, `dss-agent`), frontend (React/Vite), release
   (e2e drivers, Dockerfile, `deploy/deploy.sh`, README, deck). Contracts in `contracts/`
   (recipe 1.3, api 3.3, conventions 1.5, dashboard-intent 1.3, synthetic-data 1.3).
-- Release plan at handoff: phases 1-3 done; 4.1 deploy, 4.2 hosted e2e, 4.3 hosted acceptance,
+- Release plan at handoff: phases 1-3 done; 4.1 deploy, 4.2 hosted e2e, 4.3 hosted acceptance (both up to the recipe),
   4.4 README + final push still to do. Tag v1 (e.g. `v1.0`) after 4.4; v2 starts from that tag.
 - v1 hosted behavior (contracts/conventions.md, Cloud deployment and Build agent):
   - One Cloud Run service `dss-frontend` (backend + built frontend, no engine), one instance,
@@ -42,9 +42,10 @@ So, v2 must deliver:
   - In-app Google sign-in (basic scopes, identity only; frontend 18.1, backend 27.1); access code
     for scripts. Any Google account unless `DSS_SIGNIN_ALLOW` narrows it.
   - Everyone shares one history, one engine lock, the owner's Gemini key and BigQuery project.
-  - Builds run only through the owner's local `dss-agent` (`uv run --project backend dss-agent`,
-    one shared `DSS_AGENT_TOKEN`), which runs the engine against the owner's `.chrome-profile`.
-    Agent offline -> the app stops at the recipe.
+  - Hosted v1 stops at the recipe (change 2026-10-29 hosted scope): no agent connects, Build answers
+    `424 agent_offline`. `dss-agent` against the hosted URL (backend 5.2/5.3, one shared
+    `DSS_AGENT_TOKEN`, the owner's `.chrome-profile`) is built but never accepted hosted, and the
+    hosted Build panel still shows its command, which visitors can't run without the token.
   - The report lands in the owner's Data Studio; nothing shares it with the visitor, so they most
     likely can't open the `report_url` unless the owner shares it by hand.
 
