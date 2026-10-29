@@ -858,3 +858,127 @@ def test_configuration_resolves_from_backend_whatever_the_cwd(tmp_path, monkeypa
         assert error.value.code == 2
     assert client.main(["run", "--server", "ftp://example.com", "--job", "ABCD-EFGH"]) == 2
     assert "ABCD" not in "".join(capsys.readouterr())
+
+
+# A faked dsengine for the setup step: Chrome is up once `browser` ran (or the test says so).
+CHECK_ENGINE = r'''
+import json, os, sys
+with open(os.environ["DSS_TEST_ENGINE_LOG"], "a") as log:
+    log.write(json.dumps({"kind": sys.argv[1], "cwd": os.getcwd()}) + "\n")
+up = os.environ["DSS_TEST_CHROME_UP"]
+if sys.argv[1] == "browser":
+    open(up, "w").close()
+    sys.exit(0)
+print(json.dumps({"chrome_running": os.path.exists(up), "signed_in": os.environ.get("DSS_TEST_SIGNED_IN") == "1"}))
+'''
+
+
+@pytest.fixture
+def checker(tmp_path, monkeypatch, visitor):
+    """The visitor's engine for `dss-agent check`; returns the log of its commands."""
+    script = tmp_path / "check_engine.py"
+    script.write_text(CHECK_ENGINE, encoding="utf-8")
+    monkeypatch.setenv("DSS_TEST_ENGINE_LOG", str(tmp_path / "engine.log"))
+    monkeypatch.setenv("DSS_TEST_CHROME_UP", str(tmp_path / "chrome-up"))
+    monkeypatch.setenv("DSS_TEST_SIGNED_IN", "1")
+    monkeypatch.setattr(client, "BROWSER_WAIT_S", .05)
+    visitor(script)
+    return tmp_path / "engine.log"
+
+
+def new_check(server):
+    response = server.api.post("/api/agent-checks")
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def agent_check(server, code):
+    return client.main(["check", "--server", server.url, "--code", code])
+
+
+def item_lines(out):
+    return [line for line in out.splitlines() if line.startswith("[")]
+
+
+def test_check_starts_chrome_checks_again_and_passes(server, checker, tmp_path, capsys, caplog):
+    created = new_check(server)
+    assert agent_check(server, created["code"]) == 0
+    log = notes(checker)
+    assert [entry["kind"] for entry in log] == ["check", "browser", "check"]
+    assert {Path(entry["cwd"]) for entry in log} == {client.BACKEND_DIR}
+    out = capsys.readouterr().out
+    assert item_lines(out) == ["[ok] Server reached", "[ok] Versions match", "[ok] Chrome running", "[ok] Signed in"]
+    checked = server.api.get(f"/api/agent-checks/{created['check_id']}").json()
+    assert checked["state"] == "passed" and checked["result"] == {
+        "agent_version": client.Agent("http://127.0.0.1:1", None, tmp_path, []).version,
+        "api_version_ok": True, "chrome_running": True, "signed_in": True}
+    # The code is used up: a second run says so and exits 1, Chrome already up.
+    assert agent_check(server, created["code"]) == 1
+    again = capsys.readouterr().out
+    assert client.CHECK_CODE_INVALID in again and [entry["kind"] for entry in notes(checker)][3:] == ["check"]
+    print(out + again)  # back to capsys for the secret check
+    assert_kept_secret([created["code"]], capsys, caplog, tmp_path / "data")
+
+
+def test_check_signed_out_exits_1_naming_login(server, checker, tmp_path, monkeypatch, capsys, caplog):
+    monkeypatch.setenv("DSS_TEST_SIGNED_IN", "0")
+    (tmp_path / "chrome-up").touch()
+    created = new_check(server)
+    assert agent_check(server, created["code"]) == 1
+    assert [entry["kind"] for entry in notes(checker)] == ["check"]  # Chrome was running: no browser
+    out = capsys.readouterr().out
+    lines = item_lines(out)
+    assert lines[:3] == ["[ok] Server reached", "[ok] Versions match", "[ok] Chrome running"]
+    assert len(lines) == 4 and lines[3].startswith("[x] Signed in") and "dsengine login" in lines[3]
+    checked = server.api.get(f"/api/agent-checks/{created['check_id']}").json()
+    assert checked["state"] == "failed" and checked["result"]["signed_in"] is False
+    print(out)
+    assert_kept_secret([created["code"]], capsys, caplog, tmp_path / "data")
+
+
+def test_check_version_mismatch_exits_2(server, checker, tmp_path, monkeypatch, capsys, caplog):
+    monkeypatch.setattr(server_jobs, "API_VERSION", "9.9")  # the server's; the agent keeps its own
+    created = new_check(server)
+    assert agent_check(server, created["code"]) == 2
+    out = capsys.readouterr().out
+    lines = item_lines(out)
+    assert len(lines) == 4 and lines[1].startswith("[x] Versions match") and client.UPDATE in lines[1]
+    checked = server.api.get(f"/api/agent-checks/{created['check_id']}").json()
+    assert checked["state"] == "failed" and checked["result"]["api_version_ok"] is False
+    print(out)
+    assert_kept_secret([created["code"]], capsys, caplog, tmp_path / "data")
+
+
+def test_check_unreachable_server_exits_1(tmp_path, fast, monkeypatch, capsys):
+    monkeypatch.setattr(client, "RETRY_BUDGET_S", .3)
+    agent = client.Agent("http://127.0.0.1:1", None, tmp_path, [sys.executable, str(FAKE)])
+    def refuse(request):
+        raise httpx.ConnectError("refused")
+    monkeypatch.setattr(agent, "http", lambda: httpx.Client(base_url=agent.server, transport=httpx.MockTransport(refuse)))
+    assert agent.check("ABCD-EFGH") == 1
+    out, err = capsys.readouterr()
+    lines = item_lines(out)
+    assert len(lines) == 4 and lines[0].startswith("[x] Server reached") and lines[1].startswith("[?] Versions match")
+    assert lines[2:] == ["[ok] Chrome running", "[ok] Signed in"] and "ABCD" not in out + err
+
+
+@pytest.mark.parametrize("response,code", [
+    (httpx.Response(200, text="<!doctype html>"), 2), (error("agent_mode_off"), 2), (error("job_not_found"), 2),
+    (httpx.Response(401), 2), (error("job_code_invalid"), 1)])
+def test_check_misconfigured_server_exits(tmp_path, monkeypatch, capsys, response, code):
+    agent = client.Agent("http://127.0.0.1:1", None, tmp_path, [sys.executable, str(FAKE)])
+    monkeypatch.setattr(agent, "http", lambda: httpx.Client(base_url=agent.server,
+                                                            transport=httpx.MockTransport(lambda request: response)))
+    assert agent.check("ABCD-EFGH") == code
+    out, err = capsys.readouterr()
+    assert len(item_lines(out)) == 4 and "ready" not in out and "ABCD" not in out + err
+
+
+def test_check_usage_never_echoes_the_code(server, checker, capsys):
+    created = new_check(server)
+    for argv in (["check", "--server", server.url], ["check", "--code", created["code"]],
+                 ["check", "--server", server.url, "--code", created["code"], "--job", created["code"]]):
+        assert client.main(argv) == 2
+    out, err = capsys.readouterr()
+    assert out.count(client.CHECK_USAGE) == 3 and created["code"] not in out + err
+    assert server.api.get(f"/api/agent-checks/{created['check_id']}").json()["state"] == "waiting"

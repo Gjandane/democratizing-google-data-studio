@@ -737,3 +737,155 @@ def test_shared_data_job_completes_with_gcs_header(tmp_path, monkeypatch):
         build = client.get(f"/api/builds/{bid}").json()
         assert build["stage"] == "done" and build["versions"][0]["status"] == "published"
         assert (target / "data.csv").is_file()
+
+
+def new_check(client):
+    response = client.post("/api/agent-checks")
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def post_check(client, code, status=200, **values):
+    body = {"code": code, "agent_version": "0.1.0", "api_version": "3.4", "chrome_running": True, "signed_in": True}
+    response = client.post("/api/agent/check", json={**body, **values})
+    assert response.status_code == status, response.text
+    return response.json()
+
+
+def assert_slow_miss(call, *args):
+    started = time.monotonic()
+    assert call(*args, status=404).json()["error"]["code"] == "job_code_invalid"
+    assert time.monotonic() - started >= 1
+
+
+def post_check_response(client, code, status=200, **values):
+    body = {"code": code, "agent_version": "0.1.0", "api_version": "3.4", "chrome_running": True, "signed_in": True}
+    response = client.post("/api/agent/check", json={**body, **values})
+    assert response.status_code == status, response.text
+    return response
+
+
+def hosted_fixture(name):
+    return json.loads((HOSTED / name).read_text(encoding="utf-8"))
+
+
+def test_agent_check_passes_once(remote):
+    """api.md 3.4 Checks: a waiting check, one passing answer, then GET shows the result."""
+    client, app, bid, folder = remote
+    waiting = new_check(client)
+    shape(waiting, hosted_fixture("agent_check.waiting.json"))
+    assert CODE_FORMAT.fullmatch(waiting["code"]) and re.fullmatch(r"c_[0-9a-f]{12}", waiting["check_id"])
+    assert waiting["state"] == "waiting" and waiting["checked_at"] is None and waiting["result"] is None
+    assert client.get(f"/api/agent-checks/{waiting['check_id']}").json() == waiting
+    # Read like a claim's code: lower case, a space instead of the dash.
+    assert post_check(client, waiting["code"].lower().replace("-", " ")) == {"state": "passed", "api_version": "3.4"}
+    passed = client.get(f"/api/agent-checks/{waiting['check_id']}").json()
+    shape(passed, hosted_fixture("agent_check.passed.json"))
+    assert passed["state"] == "passed" and CHECKED.fullmatch(passed["checked_at"]) and passed["code"] == waiting["code"]
+    assert passed["result"] == {"agent_version": "0.1.0", "api_version_ok": True, "chrome_running": True,
+                                "signed_in": True}
+    assert_slow_miss(post_check_response, client, waiting["code"])  # used up
+    # The page side is gated like any UI route; the agent's side takes no access code.
+    with TestClient(app) as anonymous:
+        assert anonymous.post("/api/agent-checks").status_code == 401
+        assert anonymous.get(f"/api/agent-checks/{waiting['check_id']}").status_code == 401
+        assert anonymous.post("/api/agent/check", json={}).json()["error"]["code"] == "invalid_request"
+
+
+CHECKED = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ")
+
+
+@pytest.mark.parametrize("values,result", [
+    ({"signed_in": False}, {"api_version_ok": True, "chrome_running": True, "signed_in": False}),
+    ({"chrome_running": False}, {"api_version_ok": True, "chrome_running": False, "signed_in": True}),
+    ({"api_version": "9.9"}, {"api_version_ok": False, "chrome_running": True, "signed_in": True}),
+])
+def test_agent_check_fails_on_any_item(remote, values, result):
+    client, app, bid, folder = remote
+    created = new_check(client)
+    assert post_check(client, created["code"], **values) == {"state": "failed", "api_version": "3.4"}
+    failed = client.get(f"/api/agent-checks/{created['check_id']}").json()
+    shape(failed, hosted_fixture("agent_check.failed.json"))
+    assert failed["state"] == "failed" and failed["result"] == {"agent_version": "0.1.0", **result}
+
+
+def test_check_and_job_codes_never_cross(remote):
+    """One namespace: a check code claims no job and a job code answers no check."""
+    client, app, bid, folder = remote
+    check = new_check(client)
+    issue(client, bid)
+    job_code = ticket(client, bid)["code"]
+    assert job_code != check["code"]
+    assert_slow_miss(post_check_response, client, job_code)
+    assert_slow_miss(claim, client, check["code"])
+    assert_slow_miss(post_check_response, client, "ZZZZ-ZZZZ")
+    assert_slow_miss(post_check_response, client, "not a code")
+    assert ticket(client, bid)["state"] == "waiting"
+    assert client.get(f"/api/agent-checks/{check['check_id']}").json()["state"] == "waiting"
+    # A live code on either side can't be issued on the other.
+    with app.state.db.connect() as conn, pytest.raises(sqlite3.IntegrityError):
+        conn.execute("INSERT INTO agent_checks(check_id,code,state,created_at,expires_at) "
+                     "VALUES('c_000000000001',?,'waiting','x','x')", (job_code,))
+    with app.state.db.connect() as conn, pytest.raises(sqlite3.IntegrityError):
+        conn.execute("INSERT INTO agent_tickets(run_id,build_id,version,code,state,created_at,expires_at,job_json) "
+                     "VALUES('r_000000000001',?,1,?,'waiting','x','x','{}')", (bid, check["code"]))
+    # The misses used nothing up: each code still does its own job.
+    claimed = claim(client, job_code).json()
+    TOKENS[claimed["job"]["run_id"]] = {"X-DSS-Job-Token": claimed["job_token"]}
+    assert post_check(client, check["code"])["state"] == "passed"
+    finish(client, claimed["job"]["run_id"], 1)
+
+
+def test_creating_a_check_skips_a_live_job_code(remote, monkeypatch):
+    client, app, bid, folder = remote
+    from dss.agent import jobs
+    issue(client, bid)
+    codes = iter([ticket(client, bid)["code"], "AAAA-BBBB"])
+    monkeypatch.setattr(jobs, "new_code", lambda: next(codes))
+    assert new_check(client)["code"] == "AAAA-BBBB"
+
+
+def test_waiting_check_expires(remote):
+    client, app, bid, folder = remote
+    first, second = new_check(client), new_check(client)
+    past = stamp(datetime.now(timezone.utc) - timedelta(seconds=1))
+    with app.state.db.connect() as conn:
+        conn.execute("UPDATE agent_checks SET expires_at=?", (past,))
+    sweep(client, app)
+    with app.state.db.connect() as conn:
+        assert {row[0] for row in conn.execute("SELECT state FROM agent_checks")} == {"expired"}
+    expired = client.get(f"/api/agent-checks/{first['check_id']}").json()
+    assert expired["state"] == "expired" and expired["result"] is None and expired["checked_at"] is None
+    assert_slow_miss(post_check_response, client, second["code"])
+    # Between sweeps a read already reports the expiry, and the code answers nothing.
+    third = new_check(client)
+    with app.state.db.connect() as conn:
+        conn.execute("UPDATE agent_checks SET expires_at=? WHERE check_id=?", (past, third["check_id"]))
+    assert_slow_miss(post_check_response, client, third["code"])
+    assert client.get(f"/api/agent-checks/{third['check_id']}").json()["state"] == "expired"
+
+
+def test_unknown_check_and_local_mode(remote, tmp_path):
+    client, app, bid, folder = remote
+    response = client.get("/api/agent-checks/c_000000000000")
+    assert response.status_code == 404 and response.json()["error"]["code"] == "check_not_found"
+    local_app = create_app(Config(data_dir=tmp_path / "local"), model_lister=fake_models)
+    with TestClient(local_app) as local:
+        response = local.post("/api/agent-checks")
+        assert response.status_code == 404 and response.json()["error"]["code"] == "agent_mode_off"
+        response = local.post("/api/agent/check", json={"code": "AAAA-AAAA", "agent_version": "t", "api_version": "3.4",
+                                                         "chrome_running": True, "signed_in": True})
+        assert response.status_code == 404 and response.json()["error"]["code"] == "agent_mode_off"
+        assert local.get("/api/agent-checks/c_000000000000").json()["error"]["code"] == "check_not_found"
+
+
+def test_check_codes_never_logged_or_traced(remote, caplog):
+    caplog.set_level(logging.DEBUG)
+    client, app, bid, folder = remote
+    check = new_check(client)
+    post_check(client, check["code"])
+    with app.state.db.connect() as conn:
+        stored = json.dumps([dict(row) for row in conn.execute("SELECT * FROM traces")] +
+                            [dict(row) for row in conn.execute("SELECT * FROM events")])
+    for secret in (check["code"], check["code"].replace("-", "")):
+        assert secret not in caplog.text and secret not in stored and secret not in client.get("/api/traces").text

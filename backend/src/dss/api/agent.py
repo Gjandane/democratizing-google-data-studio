@@ -1,7 +1,7 @@
 """One-shot agent transport (api.md 3.4): a claimed code's per-job token, never the access code."""
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool
 
 from dss.agent.jobs import safe_file
 from dss.harness.guardrails import RunError
@@ -18,11 +18,21 @@ async def require_job(run_id: str, request: Request):
 
 router = APIRouter(prefix="/api/agent", dependencies=[Depends(require_agent_mode)])
 job_routes = [Depends(require_job)]
+# The page's side of the setup step: gated by the access code like every other UI route.
+checks = APIRouter(prefix="/api/agent-checks")
 
 
 class Claim(BaseModel):
     code: str = Field(max_length=64)
     agent_version: str = Field(max_length=64)
+
+
+class Check(BaseModel):
+    code: str = Field(max_length=64)
+    agent_version: str = Field(max_length=64)
+    api_version: str = Field(max_length=64)
+    chrome_running: StrictBool
+    signed_in: StrictBool
 
 
 class Events(BaseModel):
@@ -37,6 +47,22 @@ class Finished(BaseModel):
 @router.post("/claim")
 async def claim(body: Claim, request: Request):
     return await request.app.state.agent_jobs.claim(body.code)
+
+
+@router.post("/check")
+async def check(body: Check, request: Request):
+    return await request.app.state.agent_jobs.answer_check(
+        body.code, body.agent_version, body.api_version, body.chrome_running, body.signed_in)
+
+
+@checks.post("", status_code=201, dependencies=[Depends(require_agent_mode)])
+def create_check(request: Request):
+    return request.app.state.agent_jobs.create_check()
+
+
+@checks.get("/{check_id}")
+def read_check(check_id: str, request: Request):
+    return request.app.state.agent_jobs.check(check_id)
 
 
 @router.get("/jobs/{run_id}/files/{name:path}", dependencies=job_routes)

@@ -335,6 +335,22 @@ def test_hosted_build_job_contract(agent_client, spec):
     assert client.get(f"/api/builds/{spec.build_id}/job").json()["state"] == "finished"
 
 
+@pytest.mark.parametrize("signed_in,fixture", [(True, "agent_check.passed.json"), (False, "agent_check.failed.json")])
+def test_agent_check_contract(agent_client, signed_in, fixture):
+    """api.md 3.4 Checks: AgentCheck waiting, then passed or failed, and the agent's answer."""
+    client, app, _ = agent_client
+    created = client.post("/api/agent-checks")
+    assert created.status_code == 201, created.text
+    shape(created.json(), hosted("agent_check.waiting.json"))
+    answer = client.post("/api/agent/check", json={"code": created.json()["code"], "agent_version": "0.1.0",
+                                                   "api_version": "3.4", "chrome_running": True, "signed_in": signed_in})
+    expected = hosted(fixture)
+    assert answer.json() == {"state": expected["state"], "api_version": "3.4"}
+    checked = client.get(f"/api/agent-checks/{created.json()['check_id']}").json()
+    shape(checked, expected)
+    assert checked["state"] == expected["state"] and checked["result"] == expected["result"]
+
+
 @pytest.mark.parametrize('stored_stage', ['interview', 'plan', 'context'])
 def test_build_2_contract_hides_storage_and_reads_migrated_stages(thin, stored_stage):
     client, app, bid, _ = thin

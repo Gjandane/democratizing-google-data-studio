@@ -1,9 +1,11 @@
-"""dss-agent run: claims one hosted build by its code, runs it on this machine's engine, then exits."""
+"""dss-agent run: claims one hosted build by its code, runs it on this machine's engine, then exits.
+dss-agent check: the setup step's connection check (api.md 3.4 Checks), reported on its check code."""
 import argparse
 from collections import deque
 from importlib.metadata import PackageNotFoundError, version as package_version
 import json
 import logging
+import os
 import queue
 import re
 import shutil
@@ -33,8 +35,12 @@ RUN_ID, BUILD_ID = re.compile(r"r_[0-9a-f]{12}"), re.compile(r"b_[0-9a-f]{12}")
 NAME = re.compile(r"[A-Za-z0-9._-]+")
 ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{0,63}")
 USAGE = "usage: dss-agent run --server <URL> --job <CODE> [--dry-run]"
+CHECK_USAGE = "usage: dss-agent check --server <URL> --code <CODE>"
 CODE_INVALID = "That code was used or has expired. Click Build again for a new code."
+CHECK_CODE_INVALID = "That check code was used or has expired. Start the setup step again for a new code."
 UPDATE = "Rerun the setup command with -Update"
+CHECK_TIMEOUT_S, BROWSER_TIMEOUT_S = 30, 60
+BROWSER_CHECKS, BROWSER_WAIT_S = 3, 1  # Chrome may need a moment before its debugging port answers
 logger = logging.getLogger(__name__)
 
 
@@ -63,6 +69,23 @@ def describe(error):
 
 def say(message):
     print(message, flush=True)
+
+
+def control(args, timeout, capture):
+    """One short dsengine command (check or browser) with cwd=backend/; returns (exit code, stdout).
+    A check that outlives its timeout is stopped with its tree. The browser command's Chrome must
+    outlive it, so its output goes nowhere (no inherited pipe to wait on) and a slow one is left alone."""
+    process = subprocess.Popen(args, cwd=BACKEND_DIR, stdin=subprocess.DEVNULL,
+                               stdout=subprocess.PIPE if capture else subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               text=True, encoding="utf-8", errors="replace", start_new_session=os.name != "nt")
+    try:
+        output, _ = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        if capture:
+            terminate_tree(process)
+            process.communicate(timeout=CHECK_TIMEOUT_S)
+        raise
+    return process.returncode, output
 
 
 def report_link(url):
@@ -249,6 +272,78 @@ class Agent:
             return error.code
         finally:
             self.stop.set()
+
+    def check(self, code):
+        """The setup step's check: Chrome (started if it isn't running) and sign-in from `dsengine
+        check`, then the server's verdict on the check code. One line per item with its fix; exits
+        0 only when the server says passed, 2 on another API version, else 1."""
+        machine = self.engine_check()
+        if not machine["chrome_running"]:
+            try:
+                control(self.command + ["browser"], BROWSER_TIMEOUT_S, capture=False)
+            except (OSError, subprocess.SubprocessError):
+                logger.warning("dsengine browser did not finish")
+            for attempt in range(BROWSER_CHECKS):
+                if attempt:
+                    time.sleep(BROWSER_WAIT_S)
+                if (machine := self.engine_check())["chrome_running"]:
+                    break
+        reached, answer, problem, exit_code = True, None, None, 1
+        try:
+            http = self.http()
+            try:
+                response = self.call(http, "POST", "/check", json={
+                    "code": code, "agent_version": self.version, "api_version": API_VERSION, **machine})
+            finally:
+                self.release(http)
+            try:
+                answer = response.json()
+            except ValueError:
+                pass
+            if not (isinstance(answer, dict) and answer.get("state") in ("passed", "failed")
+                    and isinstance(answer.get("api_version"), str)):
+                answer, problem, exit_code = None, "The server's answer is not a check result; check the server URL", 2
+        except Stopped:
+            say("Stopped")
+            return 1
+        except JobGone:  # an /api/agent route the server doesn't have
+            problem, exit_code = "The server does not take check codes; check the server URL", 2
+        except JobError as error:
+            problem = CHECK_CODE_INVALID if str(error) == "job_code_invalid" else f"The server refused the check ({error})"
+        except AgentExit as error:
+            # Code 2: the server answered but is not an agent-mode app (401, agent_mode_off).
+            reached, problem, exit_code = error.code == 2, str(error), error.code
+        finally:
+            self.stop.set()
+        say("[ok] Server reached" if reached else f"[x] Server reached: {problem}. Check the --server URL "
+            "and this computer's connection, then rerun the setup command")
+        server_api = answer["api_version"] if answer else None
+        if server_api is None:
+            say("[?] Versions match: unknown until the server takes the check")
+        elif server_api == API_VERSION:
+            say("[ok] Versions match")
+        else:
+            exit_code = 2
+            say(f"[x] Versions match: this agent speaks API {API_VERSION}, the server {server_api[:16]}. {UPDATE}")
+        say("[ok] Chrome running" if machine["chrome_running"] else
+            "[x] Chrome running: start it with `dsengine browser`, then rerun the setup command")
+        say("[ok] Signed in" if machine["signed_in"] else
+            "[x] Signed in: sign in with `dsengine login` (or rerun the setup command, which runs it)")
+        if reached and problem:
+            say(problem)
+        if answer and answer["state"] == "passed" and exit_code != 2:
+            say("This computer is ready: go back to the page and click Build.")
+            return 0
+        return exit_code
+
+    def engine_check(self):
+        """`dsengine check` as two booleans; anything but its JSON on exit 0 reads as neither."""
+        try:
+            code, output = control(self.command + ["check"], CHECK_TIMEOUT_S, capture=True)
+            value = json.loads(output) if code == 0 else {}
+        except (OSError, ValueError, subprocess.SubprocessError):
+            value = {}
+        return {key: isinstance(value, dict) and value.get(key) is True for key in ("chrome_running", "signed_in")}
 
     def claim(self, http, code):
         try:
@@ -475,9 +570,13 @@ class Agent:
 
 
 class Parser(argparse.ArgumentParser):
+    def __init__(self, *args, line=USAGE, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.line = line
+
     def error(self, message):
-        # argparse would echo the offending values, which may be the job code.
-        say(USAGE)
+        # argparse would echo the offending values, which may be the job or check code.
+        say(self.line)
         raise SystemExit(2)
 
 
@@ -493,20 +592,27 @@ def main(argv=None):
     run.add_argument("--server", required=True, help="the hosted app's URL")
     run.add_argument("--job", required=True, help="the code the Build stage shows")
     run.add_argument("--dry-run", action="store_true", help="add --dry-run to the engine run (rehearsals)")
+    check = commands.add_parser("check", usage=CHECK_USAGE.removeprefix("usage: "), line=CHECK_USAGE,
+                                help="check this machine and its connection for the setup step")
+    check.add_argument("--server", required=True, help="the hosted app's URL")
+    check.add_argument("--code", required=True, help="the check code the setup step shows")
     try:
-        args = parser.parse_args(argv)
+        args, extra = parser.parse_known_args(argv)
     except SystemExit as error:
         return error.code
-    if args.command != "run":
+    if extra:  # the usage of the command that was typed, never the extra values
+        say(CHECK_USAGE if args.command == "check" else USAGE)
+        return 2
+    if args.command not in ("run", "check"):
         say(USAGE)  # the bare form was the retired polling agent
         return 2
     try:
-        agent = Agent.from_env(args.server, args.dry_run)
+        agent = Agent.from_env(args.server, getattr(args, "dry_run", False))
     except AgentExit as error:
         say(str(error))
         return error.code
     try:
-        return agent.run(args.job)
+        return agent.run(args.job) if args.command == "run" else agent.check(args.code)
     except KeyboardInterrupt:
         say("Stopped")
         return 130

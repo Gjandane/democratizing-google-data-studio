@@ -70,6 +70,17 @@ CREATE TABLE IF NOT EXISTS agent_tickets (
  last_event_at TEXT, job_json TEXT NOT NULL);
 CREATE UNIQUE INDEX IF NOT EXISTS agent_tickets_live_codes ON agent_tickets(code) WHERE state IN ('waiting','running');
 CREATE INDEX IF NOT EXISTS agent_tickets_build ON agent_tickets(build_id);
+CREATE TABLE IF NOT EXISTS agent_checks (
+ check_id TEXT PRIMARY KEY, code TEXT NOT NULL,
+ state TEXT NOT NULL CHECK(state IN ('waiting','passed','failed','expired')),
+ created_at TEXT NOT NULL, expires_at TEXT NOT NULL, checked_at TEXT, result_json TEXT);
+CREATE UNIQUE INDEX IF NOT EXISTS agent_checks_live_codes ON agent_checks(code) WHERE state='waiting';
+CREATE TRIGGER IF NOT EXISTS agent_checks_code_namespace BEFORE INSERT ON agent_checks
+ WHEN EXISTS (SELECT 1 FROM agent_tickets WHERE code=new.code AND state IN ('waiting','running')) BEGIN
+ SELECT RAISE(ABORT, 'code is live on a job ticket'); END;
+CREATE TRIGGER IF NOT EXISTS agent_tickets_code_namespace BEFORE INSERT ON agent_tickets
+ WHEN EXISTS (SELECT 1 FROM agent_checks WHERE code=new.code AND state='waiting') BEGIN
+ SELECT RAISE(ABORT, 'code is live on an agent check'); END;
 CREATE TABLE IF NOT EXISTS consolidation (
  id INTEGER PRIMARY KEY CHECK(id=1), last_run_at TEXT, chats_since INTEGER NOT NULL DEFAULT 0);
 INSERT OR IGNORE INTO consolidation(id,chats_since) VALUES(1,0);

@@ -1,4 +1,4 @@
-"""One-shot job tickets (api.md 3.4) and the execute node's remote engine transport."""
+"""One-shot job tickets and agent checks (api.md 3.4), and the execute node's remote engine transport."""
 import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -286,9 +286,63 @@ class AgentJobs:
             raise error
         return json.dumps(result)
 
+    def create_check(self):
+        """A waiting agent check with a fresh code from the job-code namespace (api.md 3.4 Checks)."""
+        check_id, created = new_id("c"), datetime.now(timezone.utc)
+        for attempt in range(8):
+            try:
+                with self.state.db.connect() as conn:
+                    conn.execute("INSERT INTO agent_checks(check_id,code,state,created_at,expires_at) "
+                                 "VALUES(?,?,'waiting',?,?)", (check_id, new_code(), stamp(created),
+                                                               stamp(created + timedelta(seconds=TICKET_TTL_S))))
+                break
+            except sqlite3.IntegrityError:  # the code is live on another check or a ticket
+                if attempt == 7:
+                    raise
+        return self.check(check_id)
+
+    def check(self, check_id):
+        moment = stamp()
+        with self.state.db.connect() as conn:
+            # Read as the sweep would leave it, so a page polling between sweeps sees the expiry.
+            conn.execute("UPDATE agent_checks SET state='expired' WHERE check_id=? AND state='waiting' AND expires_at<=?",
+                         (check_id, moment))
+            row = conn.execute("SELECT check_id,code,expires_at,state,checked_at,result_json FROM agent_checks "
+                               "WHERE check_id=?", (check_id,)).fetchone()
+        if not row:
+            raise RunError("check_not_found", "Agent check not found", 404)
+        data = dict(row)
+        result = data.pop("result_json")
+        data["result"] = json.loads(result) if result else None
+        return data
+
+    async def answer_check(self, code, agent_version, api_version, chrome_running, signed_in):
+        """Record an agent's check on its waiting check code once; a miss costs 1 s like a claim's."""
+        result = {"agent_version": agent_version, "api_version_ok": api_version == API_VERSION,
+                  "chrome_running": chrome_running, "signed_in": signed_in}
+        state = "passed" if result["api_version_ok"] and chrome_running and signed_in else "failed"
+        normalized, matched = normalize_code(code), False
+        if normalized:
+            moment = stamp()
+            with self.state.db.connect() as conn:
+                matched = conn.execute("UPDATE agent_checks SET state=?,checked_at=?,result_json=? "
+                                       "WHERE code=? AND state='waiting' AND expires_at>?",
+                                       (state, moment, json.dumps(result), normalized, moment)).rowcount == 1
+        if not matched:
+            await asyncio.sleep(MISS_DELAY_S)
+            raise RunError("job_code_invalid", "Unknown, used or expired check code", 404)
+        return {"state": state, "api_version": API_VERSION}
+
+    def expire_checks(self, moment):
+        with self.state.db.connect() as conn:
+            conn.execute("UPDATE agent_checks SET state='expired' WHERE state='waiting' AND expires_at<=?",
+                         (stamp(moment),))
+
     async def sweep(self):
-        """Expire waiting tickets past expires_at; fail running ones silent for timeout_s + 60 s."""
+        """Expire waiting tickets past expires_at; fail running ones silent for timeout_s + 60 s.
+        Waiting checks past expires_at expire too."""
         moment = datetime.now(timezone.utc)
+        self.expire_checks(moment)
         with self.state.db.connect() as conn:
             rows = conn.execute("SELECT run_id,build_id,version,state,expires_at,last_event_at,job_json "
                                 "FROM agent_tickets WHERE state IN ('waiting','running') ORDER BY rowid").fetchall()
@@ -338,6 +392,7 @@ class AgentJobs:
         """At startup: running tickets fail (their instance is gone), expired ones end, waiting
         ones become claimable again; other interrupted runs fail and are never reissued."""
         from dss.api.run import launch
+        self.expire_checks(datetime.now(timezone.utc))
         with self.state.db.connect() as conn:
             tickets = conn.execute("SELECT * FROM agent_tickets WHERE state IN ('waiting','running') ORDER BY rowid").fetchall()
         moment = stamp()

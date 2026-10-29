@@ -128,6 +128,7 @@ def create_app(config=None, *, model_lister=None, bigquery_factory=None):
     app.include_router(engine.router)
     app.include_router(engine.trace_router)
     app.include_router(agent.router)
+    app.include_router(agent.checks)
     app.include_router(hosting.router)
     if environment().get("DSS_DEV") == "1":
         app.include_router(dev.router)

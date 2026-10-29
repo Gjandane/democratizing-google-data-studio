@@ -2449,3 +2449,15 @@ assert min(timings) < .1
 - Gotchas: none
 - Left open: P3 cancel mid-export leaves an orphan CSV - src/dss/api/run.py; P3 second Run during export answers 409 wrong_stage, not engine_busy - src/dss/api/run.py; P3 POST /versions copies `share/` records into the next version - src/dss/api/builds.py; P3 discard after a failed second prepare untested - src/dss/api/run.py. Old share folders are never deleted (bucket lifecycle is the release part's).
 - Next: Task 29.5. Start by reading api.md 3.4 Checks and the 29.1 code generator in agent/jobs.py.
+
+## 2026-10-30: Task 29.5 Agent connection check for the setup step
+- Status: done
+- Plan check: off
+- What changed: db.py table agent_checks + BEFORE INSERT triggers sharing the live-code namespace with agent_tickets; jobs.py AgentJobs.create_check/check/answer_check/expire_checks (sweep and recover expire waiting checks); api/agent.py `POST /api/agent/check` and router `checks` (`POST /api/agent-checks`, `GET /api/agent-checks/{id}`); main.py includes it (outside Files: the /api/agent prefix can't host it); client.py `dss-agent check --server --code`.
+- Checks: `uv run pytest tests/test_agent_server.py tests/test_agent_client.py tests/test_api_contract.py` PASS (171 passed); Test (all) `uv run pytest` PASS (2367 passed, 17 deselected), rerun after review fixes.
+- Decisions: GET also expires a waiting check past expires_at (page sees it between sweeps); create retries 8x on IntegrityError like issue(); POST /agent/check bools are StrictBool; client: `dsengine check` 30 s (tree killed on timeout), `dsengine browser` 60 s with output to DEVNULL and never killed (Chrome must outlive it), then up to 3 checks 1 s apart; lines `[ok]|[x]|[?] <item>`; exit 2 also for agent_mode_off/401/non-JSON answer; extra args print the typed command's usage (parse_known_args); AGENTS.md heredoc gotcha extended.
+- Digest: table agent_checks(check_id,code,state,created_at,expires_at,checked_at,result_json); AgentJobs.create_check()/check(id)/answer_check(code,agent_version,api_version,chrome_running,signed_in); api/agent.py `checks` router; client Agent.check(code)->0/1/2, CHECK_USAGE.
+- Tried and failed: none
+- Gotchas: none beyond AGENTS.md
+- Left open: P3 a missing or broken engine reads as "Chrome not running"/"sign in" instead of "rerun the setup command" - src/dss/agent/client.py
+- Next: all plan tasks done; final audit with the architect.
