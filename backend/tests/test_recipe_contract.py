@@ -13,7 +13,7 @@ from dss.db import now
 from dss.harness.guardrails import RunError
 from dss.harness.nodes.compile import perform
 from dss.main import create_app
-from dss.recipe.compiler import compile_recipe, preview, print_line
+from dss.recipe.compiler import compile_recipe, preview, print_line, share_header
 from dss.render.prototype import aggregate_sql
 from dss.spec.models import DashboardSpec, Sort, TYPES as ALL_TYPES
 from dss.spec.validate import validate_spec
@@ -243,6 +243,23 @@ def test_preview_matches_recorded_engine_print():
     text = ''.join(json.dumps(line, sort_keys=True, separators=(',', ':'), ensure_ascii=False) + '\n'
                    for line in RECORDED['edge']['recipe'])
     assert [op['line'] for op in preview(text)] == RECORDED['edge']['lines']
+
+
+def test_gcs_fixture_and_shared_header_match_contract_14(spec):
+    fixture = (ROOT.parent / 'contracts/fixtures/recipe.gcs.sample.jsonl').read_text(encoding='utf-8')
+    assert validate_lines(fixture)[0]['datasource']['connector'] == 'googleCloudStorage'
+    text = compile_recipe(spec, 3)
+    assert text.encode('utf-8') == GOLDEN.read_bytes()  # local runs keep the canonical bytes
+    path = 'test-dss-share/0123456789abcdef0123456789abcdef/data.csv'
+    shared = share_header(text, path)
+    lines = validate_lines(shared)
+    assert lines[0]['datasource'] == {'connector': 'googleCloudStorage', 'path_type': 'FILE', 'path': path}
+    assert {k: v for k, v in lines[0].items() if k != 'datasource'} == {
+        k: v for k, v in json.loads(text.split('\n', 1)[0]).items() if k != 'datasource'}
+    assert shared.split('\n', 1)[1] == text.split('\n', 1)[1]
+    for bad in ('gs://bucket/x/data.csv', 'Bucket/x/data.csv', 'bucket/x/data.txt', 'bucket'):
+        with pytest.raises(ValueError):
+            share_header(text, bad)
 
 
 @pytest.mark.parametrize('value', [True, 1.5, [1], [{'field': 'x'}]])

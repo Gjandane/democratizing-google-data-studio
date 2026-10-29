@@ -2437,3 +2437,15 @@ assert min(timings) < .1
 - Gotchas: none
 - Left open: none
 - Next: Task 29.4. Start by `status --task 29.4`.
+
+## 2026-10-30: Task 29.4 Share data CSV and the GCS recipe header
+- Status: done
+- Plan check: off
+- What changed: new src/dss/data/share.py (cell/query/write/export/discard/recorded); `POST /run` with `Config.share_data` reserves the build, runs `share.export` in a thread, then re-prepares the job; compiler `share_header(text, path)` swaps only the header to googleCloudStorage (ops keep bytes, header validated); agent/jobs.py `package(folder, shared)` + `prepare` reads the run's share record (outside Files, per the task's If: packaging lives there; a resumed ticket keeps its header); tests/test_share_data.py, contract + lifecycle tests.
+- Checks: `uv run pytest tests/test_share_data.py tests/test_recipe_contract.py tests/test_agent_server.py` PASS 113 (collection errors before the src change); Test (all) `uv run pytest` PASS 2346 passed, 17 deselected; manual live: `share.export` on build b_26a2f60c564f v2 (ecommerce_sales.csv) view: COUNT(*) 2000 = 2000 exported rows/CSV records, 10 columns, no .tmp (run through share.export directly, not through `POST /run`, to avoid a live ticket in the real DB).
+- Decisions: 100 MB = 100,000,000 bytes incl. header; `total_rows` precheck plus streaming row count; record `<version>/share/<run_id>.json` {folder,path,rows,bytes} (no route serves it); export in asyncio.to_thread while the build sits in harness.active_builds; bucket checked via the 1.4 header pattern before querying; prepare once before export (input check) and again after; csv default dialect (CRLF); failures log only the exception type.
+- Digest: share.export(factory,config,table,recipe,folder,run_id,share_dir,bucket)->{folder,path,rows,bytes}; share.recorded(folder,run_id)->path|None; compiler.share_header(text,path); jobs.package(folder,shared=None); errors share_too_large 422, share_export_failed 503.
+- Tried and failed: none
+- Gotchas: none
+- Left open: P3 cancel mid-export leaves an orphan CSV - src/dss/api/run.py; P3 second Run during export answers 409 wrong_stage, not engine_busy - src/dss/api/run.py; P3 POST /versions copies `share/` records into the next version - src/dss/api/builds.py; P3 discard after a failed second prepare untested - src/dss/api/run.py. Old share folders are never deleted (bucket lifecycle is the release part's).
+- Next: Task 29.5. Start by reading api.md 3.4 Checks and the 29.1 code generator in agent/jobs.py.

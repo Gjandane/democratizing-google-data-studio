@@ -12,11 +12,13 @@ import re
 import secrets
 import sqlite3
 
+from dss.data import share
 from dss.db import new_id
 from dss.harness.guardrails import RunError
 from dss.harness.nodes.execute import EngineEvents, environment
 from dss.harness.nodes.publish import publish
 from dss.harness.tracing import Trace
+from dss.recipe.compiler import share_header
 
 logger = logging.getLogger(__name__)
 API_VERSION = "3.4"
@@ -77,16 +79,19 @@ def recipe_input(root, name):
     return target
 
 
-def package(folder):
+def package(folder, shared=None):
     """Plain transport names for every recipe input, and a private recipe copy that uses them.
 
     Plain names travel unchanged; nested (or case-colliding) ones get a name derived from their
     version-relative path, so it is stable across runs and distinct for same-basename assets.
     Lines without a renamed input keep their canonical bytes; the version folder is untouched.
+    `shared` (a run's share data CSV path) swaps only the copy's header to googleCloudStorage.
     """
     root = folder.resolve()
     recipe = safe_file(folder, "recipe.jsonl")
     text = recipe.read_bytes().decode("utf-8")  # no newline translation
+    if shared:
+        text = share_header(text, shared)
     lines = text.split("\n")  # LF only: U+2028 may sit inside a line
     end = [lines.pop()] if lines[-1] == "" else []
     inputs, names, used = {"recipe.jsonl": None}, {recipe: "recipe.jsonl"}, {"recipe.jsonl"}
@@ -141,8 +146,9 @@ class AgentJobs:
 
     def prepare(self, run_id, build_id, folder, version, data=None):
         try:
-            inputs = package(folder)
-        except (OSError, ValueError, TypeError, RuntimeError):  # RuntimeError: symlink loop
+            # A resumed ticket finds its run's share record too, so it ships the same header.
+            inputs = package(folder, share.recorded(folder, run_id))
+        except (OSError, ValueError, TypeError, KeyError, RuntimeError):  # RuntimeError: symlink loop
             raise RunError("invalid_recipe", "Recipe inputs are missing or invalid", 422) from None
         if data is None:
             env = environment()

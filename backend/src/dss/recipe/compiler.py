@@ -106,8 +106,24 @@ def compile_recipe(spec: DashboardSpec, version: int) -> str:
     except ValidationError:
         # Never expose raw spec values through a provider/JSON Schema diagnostic.
         raise ValueError('Compiled recipe does not match recipe contract 1.0') from None
-    return ''.join(json.dumps(line, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                              allow_nan=False) + "\n" for line in lines)
+    return ''.join(_line(line) for line in lines)
+
+
+def _line(value) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False) + "\n"
+
+
+def share_header(text: str, path: str) -> str:
+    """A compiled recipe with the 1.4 `googleCloudStorage` header for one shared CSV
+    (`<bucket>/<folder>/data.csv`, no gs://); every op line keeps its bytes."""
+    first, rest = text.split("\n", 1)
+    header = json.loads(first)
+    header["datasource"] = dict(connector="googleCloudStorage", path_type="FILE", path=path)
+    try:
+        _recipe_validators()[0].validate(header)
+    except ValidationError:
+        raise ValueError('Shared recipe header does not match recipe contract 1.4') from None
+    return _line(header) + rest
 
 
 # `dsengine print` convention (contracts/api.md), recorded in tests/data/recipe_preview.json:

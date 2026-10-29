@@ -1,7 +1,9 @@
 import asyncio
 import json
+from pathlib import Path
 from fastapi import APIRouter, Request
 from dss.api.prototype import current, mutation_current, read_spec
+from dss.data import share
 from dss.db import new_id, now
 from dss.harness.guardrails import RunError
 from dss.harness.nodes.execute import execute
@@ -97,10 +99,13 @@ async def run(build_id: str, request: Request):
         raise RunError("wrong_stage", "Compile the recipe before running it", 409, {"stage": build["stage"]})
     # Revisions and replans replace spec.json without recompiling. Refresh synchronously before
     # any reservation: no await separates the checks above from the lock, and a failure starts
-    # nothing and leaves stage, locks and the previous recipe as they were.
+    # nothing and leaves stage, locks and the previous recipe as they were. The share export's
+    # await comes after it reserves the build.
     refresh(folder, build["current_version"], db=state.db, build_id=build_id)
     run_id = new_id("r")
     job = state.agent_jobs.prepare(run_id, build_id, folder, build["current_version"]) if agent_mode else None
+    if job and state.config.share_data:
+        job = await shared(state, build_id, folder, build["current_version"], run_id)
     if job:
         state.agent_jobs.issue(job)
     with state.db.connect() as conn:
@@ -110,6 +115,28 @@ async def run(build_id: str, request: Request):
         state.engine_busy = True
     launch(state, build_id, folder, build["current_version"], run_id, job)
     return {"run_id": run_id}
+
+
+async def shared(state, build_id, folder, version, run_id):
+    """Share data (api.md 3.4): export the view, then repackage the job with the GCS header.
+
+    The build stays reserved while the export runs off the event loop, so no other action
+    changes its spec meanwhile; a failure issues no ticket and leaves the stage unchanged.
+    """
+    config, share_dir = state.config, Path(state.config.share_dir)
+    state.harness.active_builds.add(build_id)
+    try:
+        table = read_spec(folder, db=state.db, build_id=build_id).datasource.table
+        recipe = (folder / "recipe.jsonl").read_bytes().decode("utf-8")
+        await asyncio.to_thread(share.export, state.bigquery_factory, state.settings.get(), table, recipe,
+                                folder, run_id, share_dir, config.share_bucket)
+        try:
+            return state.agent_jobs.prepare(run_id, build_id, folder, version)
+        except BaseException:
+            share.discard(folder, run_id, share_dir)
+            raise
+    finally:
+        state.harness.active_builds.discard(build_id)
 
 
 def launch(state, build_id, folder, version, run_id, job):

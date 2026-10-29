@@ -709,3 +709,31 @@ def test_bad_image_paths_reject_before_queueing(remote, tmp_path, bad, code):
     assert job["files"] == ["recipe.jsonl", "background_p1.png"]
     finish(client, run_id, 1)
     settle(client, app)
+
+
+def test_shared_data_job_completes_with_gcs_header(tmp_path, monkeypatch):
+    """With share data the agent downloads the GCS-header recipe and the run publishes as usual."""
+    from test_share_data import BUCKET, Warehouse, exports
+    monkeypatch.setenv("DSS_ENGINE_DRY_RUN", "1")
+    share_dir = tmp_path / "share"
+    share_dir.mkdir()
+    app = create_app(Config(data_dir=tmp_path / "data", engine_mode="agent", access_code=CODE,
+                            google_api_key="fake-google-key", gcp_project_id="deployment",
+                            share_bucket=BUCKET, share_dir=str(share_dir)),
+                     model_lister=fake_models, bigquery_factory=Warehouse())
+    with TestClient(app, headers={"X-DSS-Access-Code": CODE}) as client:
+        bid, folder = make_build(client, app, tmp_path / "data")
+        canonical = (folder / "recipe.jsonl").read_text(encoding="utf-8")
+        run_id, job = accept((client, app, bid, folder))
+        assert job["files"] == ["recipe.jsonl", "background_p1.png"]
+        [target] = exports(share_dir)
+        header, ops = job_recipe(client, run_id).split("\n", 1)
+        assert json.loads(header)["datasource"] == {
+            "connector": "googleCloudStorage", "path_type": "FILE", "path": f"{BUCKET}/{target.name}/data.csv"}
+        assert ops == canonical.split("\n", 1)[1]
+        post_events(client, run_id)
+        finish(client, run_id)
+        settle(client, app, bid)
+        build = client.get(f"/api/builds/{bid}").json()
+        assert build["stage"] == "done" and build["versions"][0]["status"] == "published"
+        assert (target / "data.csv").is_file()

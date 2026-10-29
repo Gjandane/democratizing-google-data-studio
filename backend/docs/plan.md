@@ -978,7 +978,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Size: S
   - Done when: `uv run pytest tests/test_hosting.py tests/test_api_contract.py` passes with tests (failing before): local mode `GET /api/hosting` equals ../contracts/fixtures/hosted-build/hosting.local.json; with `K_SERVICE`, `DSS_PUBLIC=1`, agent mode and both `DSS_SHARE_*` set it equals hosting.open.json; agent mode without `DSS_PUBLIC` -> `public: false` and `locked_sources: []`; with `public`, `POST /api/builds/{id}/sources` for `gcs` and for `bigquery` -> `403 source_locked` with `detail.kind`, and the GCS and BigQuery fakes record no call; CSV upload, research and synthetic sources still succeed; with an access code set, `/api/hosting` needs it like other routes; then `uv run pytest` passes.
   - Review focus: ../contracts/api.md 3.4 `Hosting` and `403 source_locked`; the lock runs before any GCS or BigQuery call.
-- [ ] 29.4 Share data CSV and the GCS recipe header
+- [x] 29.4 Share data CSV and the GCS recipe header
   - Goal: with `Hosting.share_data`, `POST /run` writes the version's view rows as one CSV on the share dir and compiles the job's recipe with the `googleCloudStorage` header (../contracts/api.md 3.4 Share data, ../contracts/recipe.md 1.4), so a visitor's Data Studio account reads the data without the owner's BigQuery.
   - Spec: docs/architecture.md#Hosted one-shot builds
   - Files: src/dss/data/share.py (new), src/dss/api/run.py, src/dss/recipe/compiler.py, tests/test_share_data.py (new), tests/test_recipe_contract.py, tests/test_agent_server.py, docs/progress.md
