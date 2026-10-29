@@ -2,7 +2,7 @@
 type: UI Selector Set
 title: Linking API entry
 description: Live spike observations for creating a report.
-timestamp: 2026-10-21
+timestamp: 2026-10-29
 selectors:
   document: body
   review_dialog: 'role=dialog[name="Review data access"s]'
@@ -36,3 +36,14 @@ Controls can render after the dialog becomes visible. Poll the scoped checkbox
 and button within the existing deadline; check a visible unchecked checkbox,
 and click only once Acknowledge is enabled. A checkbox-free dialog may also
 enable its button later. Never use a disabled-button click as the readiness wait.
+
+GCS CSV source (2026-10-29, recipe 1.4, task 14.1): the create link with
+`ds.ds0.connector=googleCloudStorage&ds.ds0.pathType=FILE&ds.ds0.path=<bucket>/<path>.csv`
+and the template opens the editor with no `GCP_PROJECT_ID`. The account could
+already read the bucket: only the usual create-time "Review data access" dialog
+appeared, no "Authorize" prompt, so the prompt's name and selectors are still
+unobserved (task 14.2 covers setup). Inferred types from a 10-column CSV:
+`YYYY-MM-DD` -> Date (`type_datetime`), country names -> Geo (`type_geo`),
+integers and `95.00` decimals -> Number (`type_numeric`), other strings -> Text.
+Every CSV column is a dimension chip; only Record Count is a metric chip, and
+`sum`/`avg` aggregation in charts works on the Number columns.

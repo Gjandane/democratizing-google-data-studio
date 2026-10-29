@@ -3,10 +3,10 @@
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from jsonschema import Draft202012Validator
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 ENGINE_ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_PATH = ENGINE_ROOT.parent / "contracts" / "recipe.schema.json"
@@ -28,13 +28,20 @@ class Datasource(BaseModel):
     table_id: str
 
 
+class GcsDatasource(BaseModel):
+    # Recipe 1.4: one CSV file read with the opening account's credentials.
+    connector: Literal["googleCloudStorage"]
+    path_type: Literal["FILE"]
+    path: str
+
+
 class Header(BaseModel):
     recipe_version: Literal["1.0"]
     build_id: str
     version: int
     report_name: str
     canvas: Canvas
-    datasource: Datasource
+    datasource: Annotated[Datasource | GcsDatasource, Field(discriminator="connector")]
 
 
 class Operation(BaseModel):

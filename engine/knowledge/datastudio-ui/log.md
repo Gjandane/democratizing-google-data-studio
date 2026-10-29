@@ -6,6 +6,12 @@ timestamp: 2026-10-18
 selectors: {}
 ---
 
+- 2026-10-29 task 14.1: added `field_type_icon` (a Data panel chip's
+  `semantic-type-icon` mat-icon; its `data-mat-icon-name` is `type_text`,
+  `type_numeric`, `type_datetime` (calendar, Date) or `type_geo`) after dumping
+  the chips of a GCS CSV source. A `googleCloudStorage` FILE create link opened
+  the editor with the usual "Review data access" dialog and no GCS authorization
+  prompt (account already able to read the bucket); `linking.md` notes it.
 - 2026-10-24 task 13.3: added `fixed_size_list_control` (Add a control menu
   item "Fixed-size list"), `component_fixed_size_list_control` (same
   `dimension-filter` as the dropdown), `control_mode_dropdown` /

@@ -249,7 +249,7 @@ tasks and require a separately specified scope/contract revision. Task statuses 
   - Review focus: one control path shared with `dropdown` (insert menu entry differs only); field read back, not assumed; selectors only from knowledge/datastudio-ui.
 
 ## Phase 14: Local agent per judge (change 2026-10-29)
-- [ ] 14.1 GCS CSV data source header
+- [x] 14.1 GCS CSV data source header
   - Goal: recipe 1.4's `googleCloudStorage` header opens a report on a CSV file in GCS through the Linking API, with no `GCP_PROJECT_ID`, so a hosted build runs in a visitor's account from the public-read share CSV; this is also the spike for how Data Studio types CSV fields.
   - Spec: ../contracts/recipe.md#Recipe file; docs/architecture.md#Linking API URL
   - Files: src/dsengine/recipe.py, src/dsengine/linking.py, src/dsengine/ops/report.py, tests/test_linking.py, tests/test_contract.py, tests/live/test_gcs_source.py (new), tests/live/recipes/gcs_basic.jsonl (new), knowledge/datastudio-ui/*.md, knowledge/datastudio-ui/log.md, docs/progress.md

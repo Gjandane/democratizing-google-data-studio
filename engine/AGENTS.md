@@ -33,6 +33,7 @@ Run from this folder (`engine/`) in bash.
 - Decisions and task status live in docs/, never in a tool's memory. If a saved memory disagrees with these docs, the docs win.
 
 ## Known gotchas
+- `tests/live/test_gcs_source.py` needs root .env `DSS_TEST_GCS_PATH` = `<bucket>/<path>.csv` (no `gs://`, no spaces) naming a CSV with the sample's columns, readable by the Data Studio account; check it exists with `gcloud storage ls gs://<path>` (gcloud's active account can differ from Chrome's) (2026-10-29, task 14.1).
 Environment quirks stay here; editor/code conventions live in
 `docs/architecture.md#Live editor conventions` and the essentials.
 - Git Bash is at `C:/Program Files/Git/bin/bash.exe` (outside PATH); use PowerShell for the blueprint script if the shell wrapper misquotes its absolute Windows path.

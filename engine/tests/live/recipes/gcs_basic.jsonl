@@ -1,0 +1,8 @@
+{"recipe_version":"1.0","build_id":"b_000000000014","version":1,"report_name":"Engine GCS CSV","canvas":{"width":1200,"height":900},"datasource":{"connector":"googleCloudStorage","path_type":"FILE","path":"example-bucket/folder/data.csv"}}
+{"id":"s001","op":"open_report"}
+{"id":"s002","op":"add_chart","component_id":"p1_kpi_revenue","chart_type":"scorecard","x":24,"y":24,"w":260,"h":120,"dimensions":[],"metrics":[{"field":"revenue","agg":"sum"}],"title":"Revenue"}
+{"id":"s003","op":"add_chart","component_id":"p1_revenue_by_month","chart_type":"time_series","x":24,"y":168,"w":1152,"h":300,"dimensions":[],"date_dimension":"order_date","metrics":[{"field":"revenue","agg":"sum"}],"sort":{"field":"order_date","order":"asc"},"title":"Revenue by month","options":{"date_granularity":"month"}}
+{"id":"s004","op":"add_chart","component_id":"p1_revenue_by_region","chart_type":"bar","x":24,"y":492,"w":560,"h":380,"dimensions":["region"],"metrics":[{"field":"revenue","agg":"sum"}],"sort":{"field":"revenue","order":"desc"},"title":"Revenue by region","options":{"orientation":"vertical","stacked":false}}
+{"id":"s005","op":"add_chart","component_id":"p1_category_detail","chart_type":"table","x":608,"y":492,"w":568,"h":380,"dimensions":["category"],"metrics":[{"field":"quantity","agg":"sum"},{"field":"revenue","agg":"sum"}],"sort":{"field":"revenue","order":"desc"},"title":"Category detail","options":{"rows_per_page":10}}
+{"id":"s006","op":"save_report"}
+{"id":"s007","op":"get_link"}

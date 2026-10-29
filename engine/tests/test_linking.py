@@ -180,3 +180,30 @@ def test_cli_chrome_error_is_event_and_stderr(monkeypatch, capsys):
     output = capsys.readouterr()
     assert json.loads(output.out)["event"] == "log"
     assert "DSS_CDP_PORT" in output.err
+
+
+GCS_SAMPLE = SAMPLE.with_name("recipe.gcs.sample.jsonl")
+GCS_URL = (PREFIX + "Revenue&ds.ds0.connector=googleCloudStorage&ds.ds0.pathType=FILE"
+           "&ds.ds0.path=my-bucket%2Fshare%20dir%2F%E6%9D%B1%2Fdata.csv")
+
+
+@pytest.fixture
+def gcs_header():
+    value = load_recipe(GCS_SAMPLE).header.model_copy(deep=True)
+    value.report_name = "Revenue"
+    value.datasource.path = "my-bucket/share dir/東/data.csv"
+    return value
+
+
+@pytest.mark.parametrize("billing", [None, "", "billing-project"])
+def test_gcs_url_never_reads_billing_project(gcs_header, monkeypatch, billing):
+    # Recipe 1.4: a visitor's machine has no GCP_PROJECT_ID; it is never added.
+    monkeypatch.delenv("GCP_PROJECT_ID", raising=False)
+    monkeypatch.delenv("DSS_TEMPLATE_REPORT_ID", raising=False)
+    assert build_url(gcs_header, project_id=billing) == GCS_URL
+
+
+def test_gcs_url_appends_template_last(gcs_header, monkeypatch):
+    monkeypatch.delenv("GCP_PROJECT_ID", raising=False)
+    monkeypatch.setenv("DSS_TEMPLATE_REPORT_ID", "template /&")
+    assert build_url(gcs_header) == GCS_URL + "&c.reportId=template%20%2F%26"

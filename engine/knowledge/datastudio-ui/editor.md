@@ -38,6 +38,7 @@ selectors:
   sort_descending: 'role=radio[name=/Descending/]'
   field_buttons: '.all-chips-panel [role="button"]'
   field_chips: '[role="button"][aria-label]'
+  field_type_icon: 'semantic-type-icon mat-icon[data-mat-icon-name]'
   field_picker: '.cdk-overlay-pane:has(ng2-selector-dialog), .cdk-overlay-pane:has-text("No results")'
   field_picker_search: 'role=searchbox[name="Text box to search Data Studio"]'
   field_picker_empty: 'text="No results"'

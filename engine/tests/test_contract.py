@@ -275,3 +275,43 @@ def test_field_controls_need_a_field_in_validate(tmp_path, control_type):
     assert result.returncode == 2
     assert result.stdout == ""
     assert result.stderr.strip().endswith(f"line 3: {control_type} requires a field"), result.stderr
+
+
+GCS_SAMPLE = CONTRACTS / "fixtures" / "recipe.gcs.sample.jsonl"
+
+
+def test_gcs_sample_validates_and_dry_runs(monkeypatch):
+    monkeypatch.delenv("GCP_PROJECT_ID", raising=False)
+    result = run_cli("validate", "../contracts/fixtures/recipe.gcs.sample.jsonl")
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+    result = run_cli("run", "../contracts/fixtures/recipe.gcs.sample.jsonl", "--dry-run")
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+    events = [json.loads(line) for line in result.stdout.splitlines()]
+    schema = json.loads((CONTRACTS / "recipe.schema.json").read_text(encoding="utf-8"))
+    validator = Draft202012Validator({**schema, "$ref": "#/$defs/event"},
+                                    format_checker=FormatChecker())
+    for event in events:
+        validator.validate(event)
+    ops = [json.loads(line) for line in GCS_SAMPLE.read_text(encoding="utf-8").splitlines()][1:]
+    assert [(e["event"], e.get("op_id"), e.get("status")) for e in events] == [
+        ("run_started", None, None),
+        *[pair for op in ops for pair in (("op_started", op["id"], None),
+                                          ("op_finished", op["id"], "skipped"))],
+        ("run_finished", None, "ok")]
+    assert (events[-1]["ok"], events[-1]["failed"], events[-1]["skipped"]) == (0, 0, len(ops))
+
+
+@pytest.mark.parametrize("change", [
+    {"path": "gs://example-dss-share/0123456789abcdef0123456789abcdef/data.csv"},
+    {"path_type": "PREFIX"},
+])
+def test_gcs_header_rejects_other_paths(tmp_path, change):
+    records = [json.loads(line) for line in GCS_SAMPLE.read_text(encoding="utf-8").splitlines()]
+    records[0]["datasource"].update(change)
+    path = tmp_path / "invalid.jsonl"
+    path.write_text("\n".join(json.dumps(record) for record in records), encoding="utf-8")
+    result = run_cli("validate", path)
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert "gs://" not in result.stderr
