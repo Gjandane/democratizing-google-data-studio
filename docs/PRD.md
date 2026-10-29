@@ -157,7 +157,8 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
 - A per-visitor build agent (pairing code, guided setup command) and a Chrome extension bridge:
   considered and not chosen (change 2026-10-29 cloud engine); v2 material (docs/v2-handoff.md).
   OAuth access to a visitor's Data Studio can't build reports (the Looker Studio API manages
-  assets only, Workspace admins only; checked 2026-10-29): the copy link replaces it.
+  assets only, Workspace admins only; checked 2026-10-29): the copy link replaces it. Signing
+  judges in to Google inside the cloud browser was declined too (user card 2026-10-29).
 - Builds that got a BigQuery or GCS source during the 4.1 open window keep it in the shared
   history; their live builds fail (the demo account can't read those tables). No refusal on
   their later actions (audit 2026-10-29, P2).
