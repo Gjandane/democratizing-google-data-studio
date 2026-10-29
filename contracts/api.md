@@ -1,5 +1,5 @@
 # Contract: backend HTTP API (REST + SSE)
-Version 3.4 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
+Version 3.5 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
 (recipe ops with ids, stage rules, engine_busy, shared fixtures). 1.1 (2026-10-19) Cloud Run:
 Access (session endpoints, `access_required`), engine status `mode`/agent fields, Agent endpoints,
 errors `access_denied`, `login_on_agent`, `agent_offline`, `agent_timeout`; fixtures
@@ -71,6 +71,9 @@ mode; `Session` adds optional `locked_sources` (present only when non-empty);
 `POST /api/builds/{id}/sources` answers `403 source_locked` for a locked kind. Existing fixtures
 stay valid; new fixtures in contracts/fixtures/cloud-engine/ (outside the api/ inventory until
 backend 29.1 and frontend 19.1 implement 3.4).
+3.5 (2026-10-29, change copy to my Data Studio, user request; additive): `Version` and `Build`
+add optional `copy_url` (contracts/conventions.md 1.8, Copy link), present only when the
+backend exported that version's data; new fixture cloud-engine/build.done.copy.json.
 Requirements and feasibility follow contracts/dashboard-intent.md 1.3.
 Provider: backend. Consumers: frontend, release. Base: `http://localhost:8000/api` (the frontend
 uses relative `/api`, proxied by Vite; contracts/conventions.md). JSON bodies, UTF-8. Errors use
@@ -95,11 +98,14 @@ Source     = { id: string, kind: "upload"|"gcs"|"bigquery"|"research"|"synthetic
                bq_table: string /* project.dataset.table */, row_count: int, columns: Column[] }
 DocRef     = { path: string /* relative to the version's docs/ */, title: string, type: string }
 Version    = { n: int, status: "draft"|"building"|"published"|"failed", report_url: string|null,
-               created_at: string }
+               created_at: string,
+               copy_url?: string /* 3.5: Linking API URL that copies this version's report into the
+               opener's own Data Studio, its data from a public CSV; absent unless exported */ }
 Build      = { id: string, title: string, archetype: Archetype, mode: Mode, stage: Stage,
                created_at: string, updated_at: string, sources: Source[], docs: DocRef[],
                spec_version: int|null, current_version: int, versions: Version[],
                report_url: string|null,
+               copy_url?: string /* 3.5: the current version's copy_url, when it has one */,
                notes: string|null /* the user's "about this data" text, 2.0 */,
                artifacts: { context: ArtifactState, outline: ArtifactState, design: ArtifactState,
                             blueprint: ArtifactState } /* 2.0 */ }

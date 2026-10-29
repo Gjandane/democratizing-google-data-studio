@@ -1,0 +1,162 @@
+{
+  "id": "b_9c8d7e6f5a4b",
+  "title": "Support tickets ops view",
+  "archetype": "operational",
+  "mode": "data",
+  "stage": "done",
+  "created_at": "2026-10-18T09:00:00Z",
+  "updated_at": "2026-10-18T08:10:00Z",
+  "sources": [
+    {
+      "id": "s_a1b2c3d4e5f6",
+      "kind": "upload",
+      "name": "ecommerce_sales.csv",
+      "bq_table": "my-gcp-project.dss_demo.src_b_3f9a0c12d4e5_ecommerce_sales",
+      "row_count": 2000,
+      "columns": [
+        {
+          "name": "order_id",
+          "type": "string",
+          "sample": [
+            "O-00001",
+            "O-00002",
+            "O-00003"
+          ]
+        },
+        {
+          "name": "order_date",
+          "type": "date",
+          "sample": [
+            "2026-01-03",
+            "2026-01-03",
+            "2026-01-04"
+          ]
+        },
+        {
+          "name": "region",
+          "type": "string",
+          "sample": [
+            "APAC",
+            "EMEA",
+            "AMER"
+          ]
+        },
+        {
+          "name": "country",
+          "type": "geo",
+          "sample": [
+            "Philippines",
+            "Germany",
+            "United States"
+          ]
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "sample": [
+            "Electronics",
+            "Home",
+            "Apparel"
+          ]
+        },
+        {
+          "name": "product_name",
+          "type": "string",
+          "sample": [
+            "Wireless Mouse",
+            "Desk Lamp",
+            "Hoodie"
+          ]
+        },
+        {
+          "name": "customer_segment",
+          "type": "string",
+          "sample": [
+            "Consumer",
+            "SMB",
+            "Enterprise"
+          ]
+        },
+        {
+          "name": "quantity",
+          "type": "number",
+          "sample": [
+            "2",
+            "1",
+            "3"
+          ]
+        },
+        {
+          "name": "unit_price",
+          "type": "number",
+          "sample": [
+            "24.99",
+            "39.5",
+            "45"
+          ]
+        },
+        {
+          "name": "revenue",
+          "type": "number",
+          "sample": [
+            "49.98",
+            "39.5",
+            "135"
+          ]
+        }
+      ]
+    }
+  ],
+  "docs": [
+    {
+      "path": "data-profile.md",
+      "title": "Data profile",
+      "type": "BigQuery Table"
+    },
+    {
+      "path": "context.md",
+      "title": "Business and data context",
+      "type": "Business and Data Context"
+    },
+    {
+      "path": "outline.md",
+      "title": "Dashboard outline",
+      "type": "Dashboard Outline"
+    },
+    {
+      "path": "design.md",
+      "title": "Design preferences",
+      "type": "Design Preferences"
+    },
+    {
+      "path": "blueprint.md",
+      "title": "Technical blueprint",
+      "type": "Technical Blueprint"
+    },
+    {
+      "path": "feasibility.md",
+      "title": "Feasibility",
+      "type": "Feasibility Assessment"
+    }
+  ],
+  "spec_version": 1,
+  "current_version": 1,
+  "versions": [
+    {
+      "n": 1,
+      "status": "published",
+      "report_url": "https://datastudio.google.com/reporting/00000000-0000-0000-0000-000000000000",
+      "created_at": "2026-10-18T07:30:00Z",
+      "copy_url": "https://datastudio.google.com/reporting/create?c.reportId=1a2b3c4d-0000-4000-8000-00000000abcd&c.mode=edit&r.reportName=Support+tickets+ops+view&ds.*.connector=googleCloudStorage&ds.*.pathType=FOLDER&ds.*.path=my-gcp-project-dss-share%2F3f9a0c12d4e5a6b7c8d9e0f1a2b3c4d5"
+    }
+  ],
+  "report_url": "https://datastudio.google.com/reporting/00000000-0000-0000-0000-000000000000",
+  "notes": "Orders from our web shop. Revenue is already net of discounts. The sales director reviews it monthly.",
+  "artifacts": {
+    "context": "confirmed",
+    "outline": "confirmed",
+    "design": "confirmed",
+    "blueprint": "confirmed"
+  },
+  "copy_url": "https://datastudio.google.com/reporting/create?c.reportId=1a2b3c4d-0000-4000-8000-00000000abcd&c.mode=edit&r.reportName=Support+tickets+ops+view&ds.*.connector=googleCloudStorage&ds.*.pathType=FOLDER&ds.*.path=my-gcp-project-dss-share%2F3f9a0c12d4e5a6b7c8d9e0f1a2b3c4d5"
+}

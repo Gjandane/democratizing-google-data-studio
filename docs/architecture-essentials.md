@@ -59,7 +59,9 @@ docs/img/                README screenshots from 2.4/2.6, cropped (no email, ava
   --disable-dev-shm-usage --disk-cache-size=33554432`, `DSS_CHROME_PROFILE=/tmp/chrome-profile`, secret `DSS_GOOGLE_SESSION`
   mounted at `/secrets/google-session/session.json` (`DSS_GOOGLE_SESSION_FILE`), `--memory 4Gi`;
   grants `DSS_BOT_EMAIL` BigQuery Data Viewer on `BQ_DATASET` + Job User; `--engine-mode agent`
-  redeploys 4.1's setup (rollback). The demo account's session comes from
+  redeploys 4.1's setup (rollback). Copy link (conventions 1.8): bucket `<project>-dss-share`
+  (uniform access, `allUsers` Object Viewer, 14-day delete), `DSS_SHARE_BUCKET`, runtime SA
+  Storage Object User on it. The demo account's session comes from
   `data/session-export.json` (engine 14.1), never tracked.
   Commands and checks refer to secrets as unexpanded `$VARS`, never literal values.
 - Diagrams: one HTML page per diagram on a 1840x800 canvas, white background, black text, Google
@@ -84,8 +86,8 @@ docs/img/                README screenshots from 2.4/2.6, cropped (no email, ava
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
 | contracts/recipe.md | 1.4 | consumes (validates fixtures) | `uv run --project integration python integration/check_contracts.py` |
-| contracts/api.md | 3.4 | consumes (e2e, local and deployed) | `uv run --project integration python integration/e2e_flow1.py` |
-| contracts/conventions.md | 1.7 | consumes | `uv run --project integration python integration/check_contracts.py` (every env name is in .env.example) |
+| contracts/api.md | 3.5 | consumes (e2e, local and deployed) | `uv run --project integration python integration/e2e_flow1.py` |
+| contracts/conventions.md | 1.8 | consumes | `uv run --project integration python integration/check_contracts.py` (every env name is in .env.example) |
 | contracts/dashboard-intent.md | 1.1 | consumes | `uv run --project integration python integration/check_contracts.py`; tasks 2.5 and 4.4 end-to-end |
 | contracts/synthetic-data.md | 1.1 | consumes | release 2.5, 2.6 and 4.4 |
 

@@ -91,14 +91,15 @@ Written 2026-10-18.
    synthetic data (BigQuery and GCS locked) -> on Build, the backend runs `dsengine` in the
    container as the demo account (backend, engine) -> events stream to the Build stage -> the
    report is shared "anyone with the link can edit" and the link shows; the visitor opens it in
-   their own Data Studio session (change 2026-10-29 cloud engine).
+   their own Data Studio session (change 2026-10-29 cloud engine), or saves a copy into their own
+   account with the copy link (its data a public CSV; change 2026-10-29 copy to my Data Studio).
 
 ## Contracts
 | Contract | Version | Provider | Consumers | Conformance check |
 |---|---|---|---|---|
-| contracts/conventions.md | 1.7 | program | engine, backend, frontend, release | release: `uv run --project integration python integration/check_contracts.py` (the one root `.env.example` has every name); manual: each part's config reads these names, ports and paths |
+| contracts/conventions.md | 1.8 | program | engine, backend, frontend, release | release: `uv run --project integration python integration/check_contracts.py` (the one root `.env.example` has every name); manual: each part's config reads these names, ports and paths |
 | contracts/recipe.md | 1.4 | backend (recipe), engine (events) | engine, backend, release | engine: `uv run pytest tests/test_contract.py`; backend: `uv run pytest tests/test_recipe_contract.py` |
-| contracts/api.md | 3.4 | backend | frontend, release | backend: `uv run pytest tests/test_api_contract.py`; frontend: `npm test -- contract`; both against contracts/fixtures/api/ and, from backend 25.1 / frontend 16.1, contracts/fixtures/stage-settings/ |
+| contracts/api.md | 3.5 | backend | frontend, release | backend: `uv run pytest tests/test_api_contract.py`; frontend: `npm test -- contract`; both against contracts/fixtures/api/ and, from backend 25.1 / frontend 16.1, contracts/fixtures/stage-settings/ |
 | contracts/dashboard-intent.md | 1.3 | backend | frontend, release | backend: capability/reference/feasibility tests; frontend: contract and reference tests; release: tasks 2.5 and 4.4 |
 | contracts/synthetic-data.md | 1.3 | backend | frontend, release | backend synthetic tests, frontend 11.1-11.2, release 2.5, 2.6 and 4.4 |
 
@@ -212,6 +213,9 @@ phases" below.
   (`share_report`, locked sources; `Needs: engine 14.2`), frontend 19.1 (cloud Build panel, locked
   sources), engine 14.2 (`share_report`, live in the demo profile) after 14.1. Then release 4.3
   (cloud deploy + hosted live e2e; needs all of them), 4.4 (hosted acceptance), 4.5 (README, push).
+  Copy link (change 2026-10-29 copy to my Data Studio): backend 29.3 after 29.2 and frontend 19.2
+  after 19.1, both offline; release 4.2 checks the copy by hand and the user decides on it
+  separately (a no-go drops 29.3 and 19.2 only); 4.3 needs both.
   No-go at 4.2 -> the user's fallback: hosted stops at the recipe on the 4.1 revision; the
   architect removes 4.3's cloud steps and the parts' cloud-engine tasks, keeping 29.2's source
   lock (every open deploy sets it). The service scales to zero (user 2026-10-29), 4.1 included. Engine tasks share the one
@@ -330,3 +334,4 @@ phases" below.
 | 2026-10-29 | Open hosted link (conventions 1.6): `DSS_PUBLIC=1` on Cloud Run, with the code and the Google client id empty, runs the service ungated; agent token unchanged; backend 28.1 (fail-closed opt-in), release 4.1 gated on it (deploy.sh open and gated modes), 4.2/4.4 wording; frontend unchanged (the gate opens on `required: false`) | OAuth client in a separate billing-free project with External branding (no code change); access code shared with the link; switch the existing branding to External | user: anyone with the link gets in; the project's branding is limited to one domain; an explicit flag so a missing secret never opens the service | change 2026-10-29 open hosted link (user cards) |
 | 2026-10-29 | Cloud engine (conventions 1.7, api 3.4, recipe 1.4): on Cloud Run the backend runs the engine in the container (`DSS_ENGINE_MODE=cloud`, Chromium under Xvfb) as a dedicated demo Gmail account whose session is exported on the owner's machine and imported (never a sign-in in the cloud); recipes end with `share_report` (anyone with the link: Editor); `DSS_LOCKED_SOURCES=bigquery,gcs` on the open link; one engine lock (busy message, no queue); a Cloud Run job spike first (release 4.2, go/no-go); engine 14.1-14.2, backend 29.1-29.2, frontend 19.1, release 4.2-4.5 (old 4.2-4.4 renumbered) | a build agent on each visitor's PC with a guided setup command and pairing, report data as a public CSV in GCS (judges would download uv and the repo); a Chrome extension bridge (engine rewrite, store review); a VM; the owner's PC as the agent | user: judges download nothing and get the finished link they can edit in their own Data Studio; a dedicated account limits what an imported session can lose; an open link must not read the owner's tables; fallback if Google won't keep the session: hosted stops at the recipe | change 2026-10-29 cloud engine (user cards) |
 | 2026-10-29 | Scale to zero and delta-audit fixes for the cloud engine: `--min-instances 0 --max-instances 1` (4.1 and 4.3), a build cut by a stopped instance fails at startup (backend 29.1); source lock on every open deploy in any mode; session files carry `exported_at`; lock before `check`; Secret Accessor on the session secret; Chrome disk cache capped; spike re-checks after 12 h; the close removes the demo account's BigQuery roles; paths under the root data/ | always-on instance (no cold start, about USD 40 to Nov 8); a Cloud Run job per build (parallel, but new backend work) | user: pay only when it is used; audit: 6 P1 and 7 P2 findings, all fixed in the docs, P2-7 to Later | change 2026-10-29 cloud engine (delta audit, user cards) |
+| 2026-10-29 | Copy to my Data Studio (conventions 1.8, api 3.5): after a published run the backend writes the view to a public-read CSV folder (`DSS_SHARE_BUCKET`, random path, 14-day delete) and returns `copy_url`, a Linking API URL with the report as template and the CSV as a `googleCloudStorage` source; the visitor's click copies it into their own account with their credentials; backend 29.3, frontend 19.2, checked in release 4.2, deployed in 4.3 | OAuth access to the visitor's Data Studio (no Google API builds reports; the Looker Studio API is Workspace-admin only, checked 2026-10-29); per-visitor BigQuery grants; Editor link only | user: the dashboard should land in the judge's own account with no install | change 2026-10-29 copy to my Data Studio (user card) |

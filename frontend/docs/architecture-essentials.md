@@ -65,8 +65,8 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
 ## Contracts
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
-| ../contracts/api.md | 3.4 | consumes | `npm test -- contract` (fixtures/api/ and, from 16.1, fixtures/stage-settings/; from 19.1, fixtures/cloud-engine/) |
-| ../contracts/conventions.md | 1.7 | consumes | manual: port 5173, `/api` proxy to 8000 (1.6 `DSS_PUBLIC` is backend-only; the gate already opens on `required: false`; 1.7 cloud engine shows through api.md 3.4) |
+| ../contracts/api.md | 3.5 | consumes | `npm test -- contract` (fixtures/api/ and, from 16.1, fixtures/stage-settings/; from 19.1, fixtures/cloud-engine/) |
+| ../contracts/conventions.md | 1.8 | consumes | manual: port 5173, `/api` proxy to 8000 (1.6 `DSS_PUBLIC` is backend-only; the gate already opens on `required: false`; 1.7 cloud engine shows through api.md 3.4) |
 | ../contracts/dashboard-intent.md | 1.3 | consumes | `npm test -- contract` |
 | ../contracts/synthetic-data.md | 1.3 | consumes | `npm test -- synthetic` |
 

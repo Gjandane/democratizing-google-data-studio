@@ -36,7 +36,9 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
    against it live to a Data Studio link (change 2026-10-29 cloud engine): the engine runs in the
    container as a dedicated demo Google account (session exported once on the owner's machine),
    each report is shared as "anyone with the link can edit", so a judge opens it in their own Data
-   Studio session; BigQuery and GCS sources are locked hosted (README says so). A spike on Cloud
+   Studio session, or saves a copy into their own account (Linking API copy link, its data a
+   public CSV at a random path; change 2026-10-29 copy to my Data Studio); BigQuery and GCS
+   sources are locked hosted (README says so). A spike on Cloud
    Run (4.2) decides go/no-go; the user's fallback is the agent-mode revision that stops at the
    recipe.
 
@@ -152,9 +154,10 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
   backend item (backend/docs/PRD.md Later). The bench `server_url: "hosted"` mask moved into 4.2/4.3.
 - Hosted Data Studio builds through `dss-agent` against the Cloud Run URL (backend 5.2/5.3):
   replaced by the cloud engine (change 2026-10-29); agent mode stays only as the rollback.
-- A per-visitor build agent (pairing code, guided setup command, report data as a public CSV in
-  GCS read by the visitor's own account) and a Chrome extension bridge: considered and not chosen
-  (change 2026-10-29 cloud engine); v2 material (docs/v2-handoff.md).
+- A per-visitor build agent (pairing code, guided setup command) and a Chrome extension bridge:
+  considered and not chosen (change 2026-10-29 cloud engine); v2 material (docs/v2-handoff.md).
+  OAuth access to a visitor's Data Studio can't build reports (the Looker Studio API manages
+  assets only, Workspace admins only; checked 2026-10-29): the copy link replaces it.
 - Builds that got a BigQuery or GCS source during the 4.1 open window keep it in the shared
   history; their live builds fail (the demo account can't read those tables). No refusal on
   their later actions (audit 2026-10-29, P2).

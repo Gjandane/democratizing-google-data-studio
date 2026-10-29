@@ -2378,3 +2378,7 @@ assert min(timings) < .1
 
 ## 2026-10-29: Audit (delta, change cloud engine)
 - Applied here: 29.1 takes the engine lock before `check`/`browser`, runs the startup `browser` under the lock, and fails versions left `building` at startup (scale to zero, conventions 1.7); PRD non-goal "no engine in the cloud" amended; architecture.md Cloud engine bullet updated; restamped.
+
+## 2026-10-29: Change copy to my Data Studio (program root)
+- What changed: conventions 1.8 (`DSS_SHARE_BUCKET`), api 3.5 (`copy_url`); architecture.md Cloud mode "Copy link" bullet and a decision row; new task 29.3 Copy link to the visitor's Data Studio (M); essentials pin api 3.5, conventions 1.8.
+- Why: a visitor copies the finished report into their own account; its data source reads a public CSV with their credentials.

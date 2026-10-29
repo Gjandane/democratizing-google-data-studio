@@ -1,5 +1,5 @@
 # Conventions (shared by every part)
-Version 1.7 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
+Version 1.8 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
 (added DSS_ALLOWED_TYPES, DSS_CONSOLIDATE_EVERY, DSS_ENGINE_TIMEOUT_S, background_p<n>.png, engine lock).
 1.1 (2026-10-19) Cloud Run deployment: one hosted service, access code, local build agent, DB backup
 (added PORT, DSS_STATIC_DIR, DSS_ACCESS_CODE, DSS_ENGINE_MODE, DSS_AGENT_SERVER,
@@ -28,6 +28,9 @@ as a dedicated demo Google account, so visitors download nothing and get a finis
 Studio. Agent mode stays for the owner's machine and is the rollback (hosted stops at the recipe).
 Revised the same day by its delta audit and the user: scale to zero (`--min-instances 0`), the
 source lock on every open deploy, a fourth secret, cache cap, session file `exported_at`.
+1.8 (2026-10-29, change copy to my Data Studio, user request) added `DSS_SHARE_BUCKET`: each
+published version's data goes to a public-read CSV so a visitor's own copy of the report (Linking
+API, their credentials) can read it; section Cloud deployment (Copy link).
 Only the architect at the program root edits this file. Parts read it; they never edit it.
 
 ## Ports and URLs
@@ -76,6 +79,7 @@ values. Names:
 | `DSS_CHROME_ARGS` | (empty) | engine | 1.7: extra Chrome flags, space-separated (container: `--no-sandbox --disable-dev-shm-usage --disk-cache-size=33554432`; /tmp is memory on Cloud Run) |
 | `DSS_REPORT_SHARE` | (empty = no sharing op) | backend | 1.7: `link_viewer` or `link_editor`: the compiler appends `share_report` with that access to every recipe (contracts/recipe.md 1.4); Cloud Run sets `link_editor` |
 | `DSS_LOCKED_SOURCES` | (empty) | backend | 1.7: comma list of the `Source.kind` values `gcs` and `bigquery` that the API refuses (`403 source_locked`, contracts/api.md 3.4); any other value refuses to start; Cloud Run sets `bigquery,gcs` on every deploy with `DSS_PUBLIC=1`, in any engine mode (an open link must not read the owner's tables or buckets) |
+| `DSS_SHARE_BUCKET` | (empty = no copy link) | backend | 1.8: bucket for the public-read data CSVs behind `copy_url` (contracts/api.md 3.5); Cloud Run: `<GCP_PROJECT_ID>-dss-share` (uniform access, `allUsers` Object Viewer, objects deleted after 14 days); never the state bucket |
 | `DSS_BOT_EMAIL` | (empty) | release (deploy) | 1.7: the demo Google account's email; the deploy grants it BigQuery Data Viewer on `BQ_DATASET` and Job User on the project; only in `.env`, never in a tracked file |
 | `DSS_AGENT_SERVER` | (empty) | agent, release (deploy) | base URL of the hosted app the agent pulls jobs from (`https://<service>-<hash>.<region>.run.app`); 1.5: also the deploy's URL guard and the e2e `--server`; only in `.env`, never in a tracked file |
 | `GCP_PROJECT_NUMBER` | (empty) | release (deploy) | 1.5: the project number the deploy guard expects from `gcloud projects describe`; only in `.env`, never in a tracked file |
@@ -197,6 +201,15 @@ backend stores them in SQLite. The API key is write-only through the API: it is 
   and synthetic stay. Rollback: the agent-mode revision (hosted stops at the recipe; sources stay
   locked). Closing after judging also removes the demo account's BigQuery roles: its reports'
   data sources keep reading with its credentials after a sign-out.
+- Copy link (1.8): with `DSS_SHARE_BUCKET` set, after a run publishes a version the backend
+  writes the version's view as CSV under `gs://<DSS_SHARE_BUCKET>/<32 random hex>/` (header =
+  view column names) and sets `copy_url`: a Linking API create URL with the published report as
+  template (`c.reportId`) whose data source is that folder through the `googleCloudStorage`
+  connector. The visitor opens it signed in as themselves; Data Studio copies the report into
+  their account (saved on "Edit and share") and its data source reads the CSV with their
+  credentials, so it needs no BigQuery access. The CSV is public to anyone holding its path
+  (unguessable, deleted after 14 days); the runtime service account has Storage Object User on
+  that bucket. Closing after judging deletes the bucket.
 
 ## Errors
 - HTTP errors: status 4xx/5xx with body `{"error": {"code": "<snake_case>", "message": "<what

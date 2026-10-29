@@ -666,3 +666,6 @@ context. Task status lives in docs/plan.md, not here.
 
 ## 2026-10-29: Audit (delta, change cloud engine)
 - Nothing changed here: 19.1 stands as planned.
+
+## 2026-10-29: Change copy to my Data Studio (program root)
+- What changed: api 3.5 (optional `copy_url`, fixture cloud-engine/build.done.copy.json), conventions 1.8; new task 19.2 Save a copy to my Data Studio (S); essentials pins.

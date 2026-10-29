@@ -58,7 +58,7 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
   native Data Studio objects drawn by code.
 - No Dockerfile or deploy script here (the release part owns them). The engine in the cloud was a
   non-goal until change 2026-10-29 cloud engine: cloud mode runs it in the Cloud Run container
-  (docs/architecture.md#Cloud mode); still no automated Google sign-in.
+  (docs/architecture.md#Cloud engine); still no automated Google sign-in.
 - No accounts: Google sign-in checks who may enter (`DSS_SIGNIN_ALLOW`), it stores no users.
 - No LangGraph (ADK 2.0 Workflow only).
 - No CI; tests cover the core flow and the contracts only.

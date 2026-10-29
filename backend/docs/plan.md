@@ -952,10 +952,10 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: no path opens the API unless `DSS_PUBLIC` is exactly `1` on Cloud Run; agent routes untouched.
 
 ## Phase 29: Cloud engine (change 2026-10-29)
-Change 2026-10-29 cloud engine (user cards): on Cloud Run the backend runs the engine in the container as a dedicated demo Google account, every recipe shares the report with anyone holding the link, and the open link can't read the owner's BigQuery tables or GCS objects (../contracts/conventions.md 1.7, ../contracts/api.md 3.4, ../contracts/recipe.md 1.4).
+Change 2026-10-29 cloud engine (user cards): on Cloud Run the backend runs the engine in the container as a dedicated demo Google account, every recipe shares the report with anyone holding the link, and the open link can't read the owner's BigQuery tables or GCS objects (../contracts/conventions.md 1.7, ../contracts/api.md 3.4, ../contracts/recipe.md 1.4); 29.3 adds the copy link (conventions 1.8, api 3.5, change 2026-10-29 copy to my Data Studio).
 - [ ] 29.1 Cloud engine mode
-  - Goal: `DSS_ENGINE_MODE=cloud` runs the engine in the container as local mode does, keeps Chrome up, reports its state and refuses the in-cloud sign-in, per docs/architecture.md#Cloud mode (Cloud engine bullet).
-  - Spec: docs/architecture.md#Cloud mode
+  - Goal: `DSS_ENGINE_MODE=cloud` runs the engine in the container as local mode does, keeps Chrome up, reports its state and refuses the in-cloud sign-in, per docs/architecture.md#Cloud engine.
+  - Spec: docs/architecture.md#Cloud engine
   - Files: src/dss/config.py, src/dss/main.py, src/dss/api/engine.py, src/dss/api/run.py, src/dss/api/settings.py, src/dss/harness/nodes/execute.py, tests/fake_engine.py, tests/test_cloud_engine.py, tests/test_api_contract.py
   - Depends on: 28.1
   - Size: M
@@ -963,11 +963,19 @@ Change 2026-10-29 cloud engine (user cards): on Cloud Run the backend runs the e
   - Review focus: one engine code path for local and cloud (no copy of the subprocess runner); `check` and `browser` never block the event loop; the lock is released on every path; no session file path or cookie content in logs.
   - If: the engine runner lives in another module than the Files name -> edit that one and say so; never touch the agent job queue.
 - [ ] 29.2 Report sharing op and locked sources
-  - Goal: the compiler appends `share_report` when `DSS_REPORT_SHARE` is set, and `DSS_LOCKED_SOURCES` refuses BigQuery/GCS sources with `403 source_locked` and lists them in the session, per docs/architecture.md#Cloud mode (Cloud engine bullet) and ../contracts/api.md 3.4.
-  - Spec: docs/architecture.md#Cloud mode
+  - Goal: the compiler appends `share_report` when `DSS_REPORT_SHARE` is set, and `DSS_LOCKED_SOURCES` refuses BigQuery/GCS sources with `403 source_locked` and lists them in the session, per docs/architecture.md#Cloud engine and ../contracts/api.md 3.4.
+  - Spec: docs/architecture.md#Cloud engine
   - Files: src/dss/config.py, src/dss/recipe/compiler.py, src/dss/api/builds.py, src/dss/api/session.py, tests/test_cloud_engine.py, tests/test_compiler.py, tests/test_recipe_contract.py, tests/test_api_contract.py
   - Depends on: 29.1
   - Size: S
   - Needs: engine 14.2
   - Done when: `uv run pytest tests/test_cloud_engine.py tests/test_compiler.py tests/test_recipe_contract.py tests/test_api_contract.py` passes with tests (failing before): with `DSS_REPORT_SHARE=link_editor` the compiled recipe for the sample build has exactly one `share_report` `{access: "link_editor"}` right after `save_report` and before `get_link`, ids increasing, and the recipe validates against ../contracts/recipe.schema.json; empty -> no `share_report` (the existing recipe fixtures unchanged); `DSS_REPORT_SHARE=public` refuses to start; with `DSS_LOCKED_SOURCES=bigquery,gcs` and the code empty, `GET /api/session` equals ../contracts/fixtures/cloud-engine/session.locked.json, `POST /sources {kind:"bigquery"}` and `{kind:"gcs"}` answer `403` with the shape of ../contracts/fixtures/cloud-engine/error.source_locked.json (`detail.kind` set) and never call BigQuery or GCS (the fakes record no call), upload, research and synthetic sources still work; with it empty `GET /api/session` still equals ../contracts/fixtures/api/session.json; `DSS_LOCKED_SOURCES=upload` refuses to start; then `uv run pytest` passes.
   - Review focus: the lock check comes before any URI parsing or GCP call; `share_report` placement is fixed by code, never by a model.
+- [ ] 29.3 Copy link to the visitor's Data Studio
+  - Goal: with `DSS_SHARE_BUCKET` set, a published run exports the version's view to a public-read CSV folder and sets `copy_url` (../contracts/api.md 3.5), so a visitor copies the report into their own Data Studio, per docs/architecture.md#Cloud engine (Copy link bullet).
+  - Spec: docs/architecture.md#Cloud engine
+  - Files: src/dss/config.py, src/dss/data/bigquery.py, src/dss/harness/nodes/execute.py, src/dss/harness/nodes/publish.py, src/dss/api/builds.py, tests/test_copy_link.py, tests/test_api_contract.py
+  - Depends on: 29.2
+  - Size: M
+  - Done when: `uv run pytest tests/test_copy_link.py tests/test_api_contract.py` passes with tests (failing before) using a fake BigQuery/GCS: with `DSS_SHARE_BUCKET=b` a fake engine run ending `ok` with `report_url` `https://datastudio.google.com/reporting/<id>/page/p_1` exports the version's view once under `gs://b/<32 hex>/` before `build.finished` is emitted, and `GET /api/builds/{id}` then carries `copy_url` on the version and the Build, matching the shape of ../contracts/fixtures/cloud-engine/build.done.copy.json (`c.reportId=<id>`, `c.mode=edit`, `ds.*.connector=googleCloudStorage`, `ds.*.pathType=FOLDER`, the folder path URL-encoded); a second version gets a different folder; a `partial` run exports too, a `failed` one doesn't; an export error or a fake 121 s export logs one warning, leaves no `copy_url` and the run still ends `done`; with `DSS_SHARE_BUCKET` empty nothing is exported and every existing api/ fixture test passes unchanged; the folder name comes from `secrets`, never from the build id; then `uv run pytest` passes.
+  - Review focus: the export never delays or fails a run beyond its 120 s cap; no other bucket is written; `copy_url` built by code from parsed parts, URL-encoded.
