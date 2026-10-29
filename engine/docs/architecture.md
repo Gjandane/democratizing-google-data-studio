@@ -103,44 +103,10 @@ engine/
   blank report is `ds0` or needs a template.
 - Oracle: unit tests with exact expected URLs, including the encoding cases.
 
-### Cloud session and sharing
-- Change 2026-10-29 cloud engine.
-- Problem: on Cloud Run (../contracts/conventions.md 1.7) the engine runs in a Linux container as
-  a dedicated demo Google account that nobody can sign in there; visitors need the finished report
-  shared to them.
-- Session export (`dsengine session export --out <file>`, recipe.md 1.4): attach over CDP to the
-  running dedicated profile; `signed_in` false -> exit 3; else write the profile's cookies whose
-  domain ends in `google.com` as Playwright `storage_state` JSON plus `exported_at`
-  (`{"exported_at": "...Z", "cookies": [...], "origins": []}`) to a temp file renamed onto
-  `<file>`; print only the cookie count. The owner runs it from engine/ with a second profile
-  signed in as the demo account (`DSS_CHROME_PROFILE=../data/chrome-profile-bot`,
-  `DSS_CDP_PORT=9223`, `--out ../data/session-export.json`: the repo root's git-ignored data/),
-  never the profile used for local builds. Signing that profile out later revokes the exported
-  cookies too: the owner leaves it signed in until the close.
-- Session import: only when `DSS_GOOGLE_SESSION_FILE` is set. After Chrome starts and `check`
-  reads not signed in, add the cookies of the newest of `<DSS_DATA_DIR>/session/google.json` and
-  `DSS_GOOGLE_SESSION_FILE` (by `exported_at`; an unreadable file is skipped with a stderr line) through the
-  CDP context (`add_cookies`), reload, and re-check; still signed out -> the same with the other
-  file; then the run exits 3 (`not_signed_in`), as today. "Newest" means the later `exported_at`
-  inside the file (a mounted secret's mtime is not its export time). Refresh, only when
-  `DSS_GOOGLE_SESSION_FILE` is set: after a run that reached `save_report`, export to
-  `<DSS_DATA_DIR>/session/google.json` (temp + rename; a failure is a `log` warning, never a failed run).
-- Linux container: Chrome path from `DSS_CHROME_PATH` (Playwright's Chromium there; it is
-  launched as a plain process with the CDP port, not by Playwright, as everywhere), extra flags
-  from `DSS_CHROME_ARGS` (split on spaces, appended), the display from the container's Xvfb.
-  The window size and 100% zoom rules of Live editor conventions hold unchanged.
-- `share_report` (recipe.md 1.4): Share -> the dialog's general access -> "Anyone with the link"
-  (Data Studio's wording may be "Unlisted"; the selector file records it) with role Viewer or
-  Editor from `access`, then Done/Save; verify by reopening the dialog and reading the setting
-  back; selectors only from `knowledge/datastudio-ui/share.md`. Its failure fails the run.
-- Oracle: offline tests with the fake driver (cookie filtering, newest-file choice, refresh after
-  `save_report`, `share_report` validation and placement); live: a fresh empty profile becomes
-  signed in from an exported file; a run with `share_report` gives a link a private window opens.
-
 ## External APIs and services
 | Service | Used for | Auth | Limits and failure handling |
 |---|---|---|---|
-| Data Studio web editor | building the report | the user's signed-in Chrome profile (Cloud Run: the demo account's imported session) | UI changes break selectors -> op failed + screenshot; fix in knowledge/ |
+| Data Studio web editor | building the report | the user's signed-in Chrome profile | UI changes break selectors -> op failed + screenshot; fix in knowledge/ |
 | Linking API (URL) | opening a report with the data source | same session | no API key; saving needs the edit-mode save click |
 | BigQuery (via Data Studio) | the report's data | owner's credentials of the signed-in account | public tables billed to `GCP_PROJECT_ID` |
 
@@ -258,4 +224,3 @@ These conventions consolidate the verified build decisions and selector traps fr
 | 2026-10-22 | Scorecard value sized from the box (prototype rule), `rename_page` op, palette colors applied to the swatches a chart has | new recipe font-size argument; accept "Untitled Page"; skip palettes longer than the swatch list | user flagged scorecard size on release 2.4; all 16 palette ops of b_a8ace098d03b were skipped; additive op keeps recipe_version 1.0 files valid | change report quality (user choice), tasks 11.1-11.3 |
 | 2026-10-23 | `date_granularity` sets a time series' date type in the chart, through the shared Data type menu path | infer the grain from the field name; change the field type in the data source; set Missing data to line breaks | a DATE_TRUNC bucket is a DATE column that Data Studio draws per day, spikes on the 1st and zeros between (release 2.5, b_36f20b42159c s015); a chart-level type changes only that chart | change live report defects (program root) |
 | 2026-10-24 | Recipe 1.3: `area`, `fixed_size_list`, `stacked_percent`; breakdown series colors through "Select series", skipped (never timed out) when no swatch | slider control (number fields only); recipe-side color skip | release 2.6's reference recreation needs Data Studio's native area chart, fixed-size list and 100% stacked bar; s011 timed out on a breakdown's series list (b_697880743b4f) | change reference fidelity (program root, user choice) |
-| 2026-10-29 | Cloud session: export the demo account's Google cookies on the owner's machine, import them into the container's profile when signed out, refresh after each saved run; `share_report` op (recipe 1.4) | sign in inside the container (Google refuses automated sign-ins, and it would need a password); headless with a stored profile copy (profile files are OS-encrypted) | user: visitors download nothing; a cookie file is portable, a profile isn't | change 2026-10-29 cloud engine (program root) |

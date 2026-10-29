@@ -184,43 +184,6 @@ Files per version: `data/builds/<id>/v<n>/` (../contracts/conventions.md).
 - Oracle: tests/test_cloud_mode.py, tests/test_agent_server.py, tests/test_agent_client.py (plan
   tasks 5.1-5.3), tests/test_google_signin.py (27.1, the verifier stubbed, no network); every earlier test passes with the code empty and `DSS_ENGINE_MODE=local`.
 
-### Cloud engine
-- Problem: on Cloud Run the hosted service builds in Data Studio itself, as a demo account, and
-  the visitor gets a link they can edit and a copy link for their own account (change 2026-10-29
-  cloud engine and copy to my Data Studio). Cloud mode above still applies.
-- Cloud engine (change 2026-10-29 cloud engine, ../contracts/conventions.md 1.7, api.md 3.4):
-  `DSS_ENGINE_MODE=cloud` runs `DSS_ENGINE_CMD` in the container exactly as local mode does (same
-  subprocess, lock, event parser and screens), plus: startup fails any version left `building` by
-  a stopped instance (scale to zero, conventions 1.7: `build.finished(failed)`, stage back to
-  `prototype`, the existing failed-run path) and launches `DSS_ENGINE_CMD browser` in the
-  background under the engine lock (never delaying `/api/health`; a `POST /run` meanwhile waits
-  for it or answers `409 engine_busy`); `POST /run` takes the lock first (busy -> `409 engine_busy`
-  without touching Chrome), then `check` (off the event loop) restarts Chrome with `browser` when
-  `chrome_running` is false, and `signed_in: false` answers `424 engine_not_signed_in` and
-  releases the lock; `GET /api/engine/status` caches `check` for
-  at most 30 s and never runs it while a build holds the lock (it reports the last result);
-  `POST /api/engine/login` -> `409 login_in_cloud`; the settings lock covers cloud mode as agent
-  mode. `cloud` without `K_SERVICE` is allowed (tests, rehearsals). Compiler: when
-  `DSS_REPORT_SHARE` is `link_viewer` or `link_editor`, every recipe gets `share_report` with that
-  access between `save_report` and `get_link` (recipe 1.4; ids stay increasing); any other
-  non-empty value refuses to start. Sources: `DSS_LOCKED_SOURCES` (only `gcs`, `bigquery`; else
-  refuse to start) makes `POST /sources` answer `403 source_locked` before the URI is read, and
-  `GET /api/session` adds `locked_sources` (sorted) only when non-empty.
-- Copy link (change 2026-10-29 copy to my Data Studio, ../contracts/conventions.md 1.8, api.md
-  3.5): with `DSS_SHARE_BUCKET` set, when a run ends `ok` or `partial` with a `report_url`, and
-  before `build.finished` is emitted, the backend writes the version's view (the recipe header's
-  table) as CSV under `gs://<DSS_SHARE_BUCKET>/<secrets.token_hex(16)>/`: BigQuery `EXPORT DATA`
-  with a wildcard URI and `header=true`, or a query streamed through the existing
-  `AuthorizedSession` (no new dependency); DATE as `YYYY-MM-DD`, DATETIME/TIMESTAMP as
-  `YYYY-MM-DD HH:MM:SS` (UTC), numbers unformatted, booleans `true`/`false`, columns named as the
-  view's. Then `copy_url` = `https://datastudio.google.com/reporting/create?c.reportId=<id>&c.mode=edit&r.reportName=<url-encoded build title>&ds.*.connector=googleCloudStorage&ds.*.pathType=FOLDER&ds.*.path=<url-encoded bucket/folder>`,
-  `<id>` parsed from `report_url` (`/reporting/<id>`); stored on the version and mirrored on the
-  Build. Export over 120 s, over 100 MB, or any error: log one warning, no `copy_url`, the run's
-  status unchanged. A new version gets its own folder; nothing is overwritten. Release 4.2's spike
-  may change the alias (`ds.*` vs `ds.ds0`) or a format rule; it records that here.
-- Oracle: tests/test_cloud_engine.py (29.1-29.2) and tests/test_copy_link.py (29.3), with
-  tests/fake_engine.py as the engine and fakes for BigQuery and GCS.
-
 ### Build consistency
 Final-audit corrections (2026-10-19):
 - Recipe preview must work without an engine installation or agent connection. Backend code
@@ -2262,5 +2225,3 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-28 | Recreate reference_extract normalizes common style color/font forms and falls back per field to the build's design-prefill preset, so style values never reject a recreate extraction; style mode still rejects an unrecoverable style value; observations stay strict; offline 25.10 precedes live 25.11 | treat style-pattern rejections as one-rerun transients; repair plus a rerun allowance; preset fallback in style mode too | 25.10 run 2 rejected a whole recreate answer on 8 style-only `pattern` issues; the same inputs extracted cleanly before | change 2026-10-28 (user card) |
 | 2026-10-28 | Recreate references go through a Flash analysis (native catalog component or static art per item) and one user approval gate before design/confirm, blueprint, recipe and run; approved native items are the requirements, static items consented art; Argon blueprint and brief get the image plus the approved items; the observation path (reconciliation, completion, unlabeled-control offers, approved drops) is deleted; native_planning default medium; 25.11 superseded by 26.6 | keep observations with medium planning; gate at design/confirm with field bindings; old path behind a flag | 24.7-25.11 blocked on observation edge cases settled by harness-only approvals; one explicit user decision replaces them; high planning timed out twice at 1,200 s, medium answered in 79 s | change 2026-10-28 (user request and cards; api.md 3.2, dashboard-intent.md 1.3) |
 | 2026-10-29 | Open hosted link: `DSS_PUBLIC=1` (Cloud Run only) is the one opt-in past the fail-closed start; it needs the code and the Google client id empty, so the open service runs the existing no-gate path; agent token rule unchanged | drop the fail-closed rule; a public flag that keeps a code or client id; Google sign-in through an OAuth-only project | user: anyone with the link gets in (the project's OAuth branding is locked to one domain); an explicit flag keeps a missing secret from opening the service by accident | change 2026-10-29 open hosted link (user cards; conventions 1.6) |
-| 2026-10-29 | Cloud engine: on Cloud Run the backend runs the engine itself (`DSS_ENGINE_MODE=cloud`) in the container as a dedicated demo Google account (session imported, never a sign-in in the cloud); recipes end with `share_report` (`DSS_REPORT_SHARE=link_editor`) so visitors open the finished report in their own Data Studio session; BigQuery/GCS sources locked on the open link (`DSS_LOCKED_SOURCES`); one engine lock for every visitor; agent mode kept as the rollback | a build agent on each visitor's PC (pairing, public CSV in GCS); the owner's PC as the agent; a VM | user: visitors download nothing and get the finished link; a dedicated account limits what an imported session can lose; an open link must not read the owner's tables | change 2026-10-29 cloud engine (user cards) |
-| 2026-10-29 | Copy link: after a published run, the version's view goes to a public-read CSV folder (`DSS_SHARE_BUCKET`, random path) and `copy_url` is a Linking API URL that copies the report into the opener's own Data Studio with the CSV as its data source (their credentials, no BigQuery access needed) | OAuth to the visitor's Data Studio (no API builds reports; the Looker Studio API is Workspace-admin only); per-visitor BigQuery grants; keep only the shared Editor link | user: the dashboard should land in the judge's own account; no install, no sign-in to the app | change 2026-10-29 copy to my Data Studio (user card) |

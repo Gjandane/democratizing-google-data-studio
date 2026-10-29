@@ -4,10 +4,6 @@ Written 2026-10-29 by the release architect, at the user's request, while v1 fin
 Not a plan: v2 gets its own interview. Open the v2 session at the new repo's root and run
 `/blueprint-solution-architect` (new version, program mode); this file is its starting brief.
 Facts marked **verify** come from memory, not a check; confirm them before relying on them.
-Update (change 2026-10-29 cloud engine): v1 now builds hosted dashboards in the Cloud Run container
-as a demo Google account and shares each report as "anyone with the link can edit"; "where v1
-ends" below predates it. Verified 2026-10-29: the Linking API supports a `googleCloudStorage`
-data source (`ds.<alias>.connector`, `pathType`, `path`), with the clicking user's credentials.
 
 ## Contents
 1. v2 goal

@@ -1,5 +1,5 @@
 # Contract: backend HTTP API (REST + SSE)
-Version 3.5 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
+Version 3.3 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
 (recipe ops with ids, stage rules, engine_busy, shared fixtures). 1.1 (2026-10-19) Cloud Run:
 Access (session endpoints, `access_required`), engine status `mode`/agent fields, Agent endpoints,
 errors `access_denied`, `login_on_agent`, `agent_offline`, `agent_timeout`; fixtures
@@ -64,16 +64,6 @@ browser when `GOOGLE_OAUTH_CLIENT_ID` is set: `POST /api/session` also takes
 `{google_id_token}`, `Session` adds `google_client_id` and `user`, errors
 `403 signin_not_allowed` and `400 google_signin_off`; the code, its header and the agent token
 are unchanged. Fixtures: api/session.json, new api/session.google.json.
-3.4 (2026-10-29, change cloud engine, user request; additive): `EngineStatus.mode` adds `cloud`
-(contracts/conventions.md 1.7: the backend runs the engine in the Cloud Run container as the demo
-account); `POST /api/engine/login` answers `409 login_in_cloud` there; settings lock as in agent
-mode; `Session` adds optional `locked_sources` (present only when non-empty);
-`POST /api/builds/{id}/sources` answers `403 source_locked` for a locked kind. Existing fixtures
-stay valid; new fixtures in contracts/fixtures/cloud-engine/ (outside the api/ inventory until
-backend 29.1 and frontend 19.1 implement 3.4).
-3.5 (2026-10-29, change copy to my Data Studio, user request; additive): `Version` and `Build`
-add optional `copy_url` (contracts/conventions.md 1.8, Copy link), present only when the
-backend exported that version's data; new fixture cloud-engine/build.done.copy.json.
 Requirements and feasibility follow contracts/dashboard-intent.md 1.3.
 Provider: backend. Consumers: frontend, release. Base: `http://localhost:8000/api` (the frontend
 uses relative `/api`, proxied by Vite; contracts/conventions.md). JSON bodies, UTF-8. Errors use
@@ -98,14 +88,11 @@ Source     = { id: string, kind: "upload"|"gcs"|"bigquery"|"research"|"synthetic
                bq_table: string /* project.dataset.table */, row_count: int, columns: Column[] }
 DocRef     = { path: string /* relative to the version's docs/ */, title: string, type: string }
 Version    = { n: int, status: "draft"|"building"|"published"|"failed", report_url: string|null,
-               created_at: string,
-               copy_url?: string /* 3.5: Linking API URL that copies this version's report into the
-               opener's own Data Studio, its data from a public CSV; absent unless exported */ }
+               created_at: string }
 Build      = { id: string, title: string, archetype: Archetype, mode: Mode, stage: Stage,
                created_at: string, updated_at: string, sources: Source[], docs: DocRef[],
                spec_version: int|null, current_version: int, versions: Version[],
                report_url: string|null,
-               copy_url?: string /* 3.5: the current version's copy_url, when it has one */,
                notes: string|null /* the user's "about this data" text, 2.0 */,
                artifacts: { context: ArtifactState, outline: ArtifactState, design: ArtifactState,
                             blueprint: ArtifactState } /* 2.0 */ }
@@ -123,9 +110,8 @@ Settings   = { stages: StageProfiles, fallback_model: string, review_briefs: boo
                unknown model id; the UI shows each on its field */ }   /* 3.0; types in Stage settings */
 Session    = { required: boolean /* DSS_ACCESS_CODE is set */, ok: boolean /* this request carries a valid code or session cookie */,
                google_client_id: string|null /* 3.3: GOOGLE_OAUTH_CLIENT_ID when Google sign-in is on; else null */,
-               user: string|null /* 3.3: the email of a Google session cookie; null for the code or no session */,
-               locked_sources?: ("gcs"|"bigquery")[] /* 3.4: DSS_LOCKED_SOURCES; the key is absent when none is locked */ }
-EngineStatus = { mode: "local"|"agent"|"cloud" /* 3.4: cloud */, chrome_running: boolean, signed_in: boolean,
+               user: string|null /* 3.3: the email of a Google session cookie; null for the code or no session */ }
+EngineStatus = { mode: "local"|"agent", chrome_running: boolean, signed_in: boolean,
                agent_connected: boolean /* a heartbeat in the last 30 s; false in local mode */,
                agent_last_seen: string|null }
 Job        = { run_id: string, build_id: string, version: int, dry_run: boolean, timeout_s: int,
@@ -169,13 +155,13 @@ folder; otherwise `400 invalid_name`.
 | `GET /api/session` | — | `Session` |
 | `POST /api/session` | `{code: string}` or (3.3) `{google_id_token: string}` | `200 Session` with `Set-Cookie: dss_session=...`; wrong code or invalid token -> `401 access_denied`; 3.3: `403 signin_not_allowed`, `400 google_signin_off` (Access) |
 | `GET /api/settings` | — | `Settings` |
-| `PUT /api/settings` | `SettingsUpdate` (Stage settings), plus `google_api_key?: string` (write-only) | `Settings`; any validation issue -> `422 invalid_settings` and nothing is saved. Agent mode and 3.4 cloud mode (Cloud Run): `google_api_key` or a GCP field -> `403 settings_locked` |
+| `PUT /api/settings` | `SettingsUpdate` (Stage settings), plus `google_api_key?: string` (write-only) | `Settings`; any validation issue -> `422 invalid_settings` and nothing is saved. Agent mode (Cloud Run): `google_api_key` or a GCP field -> `403 settings_locked` |
 | `GET /api/settings/capabilities` | — | `SettingsCapabilities` (3.0) |
 | `GET /api/builds` | — | `BuildSummary[]`, newest `updated_at` first |
 | `POST /api/builds` | `{title?: string, archetype: Archetype, mode: Mode}` | `201 Build` (stage `connect`) |
 | `GET /api/builds/{id}` | — | `Build` |
 | `POST /api/builds/{id}/sources/upload` | multipart, field `files` (one or more `.csv`) | `201 {sources: Source[]}` |
-| `POST /api/builds/{id}/sources` | `{kind: "gcs"\|"bigquery", uri: string}` (`gs://bucket/path.csv` or `project.dataset.table`) | `201 Source`; 3.4: a kind in `DSS_LOCKED_SOURCES` -> `403 source_locked` (`detail.kind`), checked before the URI is read |
+| `POST /api/builds/{id}/sources` | `{kind: "gcs"\|"bigquery", uri: string}` (`gs://bucket/path.csv` or `project.dataset.table`) | `201 Source` |
 | `POST /api/builds/{id}/style-images` | multipart, field `files` (png/jpg) | `202 {run_id}` (stretch) |
 | `POST /api/builds/{id}/research` | `{prompt: string}` | `202 {run_id}` (stretch; mode `research`) |
 | `GET /api/builds/{id}/messages` | — | `Message[]`, oldest first (assistant explanations, refusals and revise outcomes; 2.0 has no free-text chat input) |
@@ -190,8 +176,8 @@ folder; otherwise `400 invalid_name`.
 | `GET /api/builds/{id}/files/{name}` | — | a file from the current version folder (`background_p<n>.png`, `screens/<file>`) |
 | `GET /api/builds/{id}/events` | — | `text/event-stream` (below) |
 | `GET /api/traces` | query `build_id?` | `Trace[]`, newest first |
-| `GET /api/engine/status` | — | `EngineStatus` (agent mode: `chrome_running` and `signed_in` come from the agent's last heartbeat; 3.4 cloud mode: from `dsengine check` in the container, cached at most 30 s and never run during a build) |
-| `POST /api/engine/login` | — | `202 {run_id}`; opens the sign-in window. Agent mode: `409 login_on_agent` (run `dsengine login` on the agent's machine); 3.4 cloud mode: `409 login_in_cloud` (the demo account's session is imported at deploy; the owner re-exports it) |
+| `GET /api/engine/status` | — | `EngineStatus` (agent mode: `chrome_running` and `signed_in` come from the agent's last heartbeat) |
+| `POST /api/engine/login` | — | `202 {run_id}`; opens the sign-in window. Agent mode: `409 login_on_agent` (run `dsengine login` on the agent's machine) |
 
 ## Staged workflow endpoints (added in 2.0)
 The workflow is connect -> context -> outline -> design -> blueprint -> prototype -> build -> done.
@@ -364,9 +350,7 @@ call failed); `503 gcp_not_configured` (no `gcp_project_id`). The UI sends the u
 on both 503s. Cloud Run: `401 access_required` (the UI shows the access-code gate);
 `401 access_denied` (wrong code or Google token); 3.3: `403 signin_not_allowed` (the gate names
 the email and offers another Google account); `409 login_on_agent`; `424 agent_offline` (the UI shows how to
-start the build agent); 3.4: `409 login_in_cloud` (the Build stage says the build browser is
-signed out and building is unavailable for now); `403 source_locked` (the Connect stage shows
-that source as not available on the hosted demo); `403 settings_locked` (Settings shows the field as fixed by the
+start the build agent); `403 settings_locked` (Settings shows the field as fixed by the
 deployment); `413` from Cloud Run (an HTML page, not the JSON shape) on uploads over 32 MB: the UI
 checks file size first and maps any 413 to "Files over 32 MB can't be uploaded to the hosted app";
 `400 invalid_name`. 3.0: `422 invalid_settings` (`detail.issues`: ValidationIssue[] with paths

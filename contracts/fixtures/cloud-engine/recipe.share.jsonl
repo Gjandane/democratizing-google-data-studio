@@ -1,5 +1,0 @@
-{"recipe_version": "1.0", "build_id": "b_3f9a0c12d4e5", "version": 1, "report_name": "Sales overview (executive)", "canvas": {"width": 1200, "height": 900}, "datasource": {"connector": "bigQuery", "project_id": "my-gcp-project", "dataset_id": "dss_demo", "table_id": "dash_b_3f9a0c12d4e5_v1"}}
-{"id": "s001", "op": "open_report"}
-{"id": "s002", "op": "save_report"}
-{"id": "s003", "op": "share_report", "access": "link_editor"}
-{"id": "s004", "op": "get_link"}

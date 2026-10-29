@@ -1,5 +1,5 @@
 # Conventions (shared by every part)
-Version 1.8 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
+Version 1.6 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
 (added DSS_ALLOWED_TYPES, DSS_CONSOLIDATE_EVERY, DSS_ENGINE_TIMEOUT_S, background_p<n>.png, engine lock).
 1.1 (2026-10-19) Cloud Run deployment: one hosted service, access code, local build agent, DB backup
 (added PORT, DSS_STATIC_DIR, DSS_ACCESS_CODE, DSS_ENGINE_MODE, DSS_AGENT_SERVER,
@@ -21,16 +21,6 @@ scripts. Cloud deployment: Access bullet, fail-closed rule, shared-history wordi
 1.6 (2026-10-29, change open hosted link, user request) added `DSS_PUBLIC`: `1` on Cloud Run runs
 the service with no gate (empty code, no Google sign-in; anyone with the URL gets in); the
 fail-closed rule now has that one explicit opt-in. Access, Secrets bullets.
-1.7 (2026-10-29, change cloud engine, user request) the engine runs inside the Cloud Run container
-as a dedicated demo Google account, so visitors download nothing and get a finished report link:
-`DSS_ENGINE_MODE=cloud`; added `DSS_GOOGLE_SESSION_FILE`, `DSS_CHROME_ARGS`, `DSS_REPORT_SHARE`,
-`DSS_LOCKED_SOURCES`, `DSS_BOT_EMAIL`; sections Build agent, Engine use, Cloud deployment, Data
-Studio. Agent mode stays for the owner's machine and is the rollback (hosted stops at the recipe).
-Revised the same day by its delta audit and the user: scale to zero (`--min-instances 0`), the
-source lock on every open deploy, a fourth secret, cache cap, session file `exported_at`.
-1.8 (2026-10-29, change copy to my Data Studio, user request) added `DSS_SHARE_BUCKET`: each
-published version's data goes to a public-read CSV so a visitor's own copy of the report (Linking
-API, their credentials) can read it; section Cloud deployment (Copy link).
 Only the architect at the program root edits this file. Parts read it; they never edit it.
 
 ## Ports and URLs
@@ -74,13 +64,7 @@ values. Names:
 | `DSS_PUBLIC` | (empty = gated) | backend | 1.6: read only when `K_SERVICE` is set (Cloud Run). `1` = open hosted link: the backend starts with `DSS_ACCESS_CODE` and `GOOGLE_OAUTH_CLIENT_ID` empty and gates nothing (contracts/api.md, Access, empty code); `1` with either of them set refuses to start; any other non-empty value refuses to start. Cloud Run: a plain env var, set from `.env` by `bash deploy/deploy.sh` |
 | `DSS_SIGNIN_ALLOW` | (empty = any Google account) | backend | 1.5: who may sign in with Google: empty or `*` = any verified Google account; otherwise a comma list of `@domain` (the token's Workspace `hd` claim) and exact emails. Cloud Run: a plain env var, changed by editing `.env` and rerunning `bash deploy/deploy.sh` |
 | `DSS_AGENT_TOKEN` | (empty) | backend, agent | secret token for `/api/agent/*` (header `X-DSS-Agent-Token`), at least 24 characters; never shown in the UI. Cloud Run: from Secret Manager |
-| `DSS_ENGINE_MODE` | `local` | backend | `local` = the backend runs `DSS_ENGINE_CMD` itself; `agent` = builds are queued for a build agent; 1.7 `cloud` = on Cloud Run the backend runs `DSS_ENGINE_CMD` itself in the container, as the demo Google account (Cloud deployment) |
-| `DSS_GOOGLE_SESSION_FILE` | (empty) | engine | 1.7: a Google session file (`dsengine session export`, contracts/recipe.md 1.4) imported into the profile when it is not signed in. Cloud Run: secret `DSS_GOOGLE_SESSION` mounted as a file at `/secrets/google-session/session.json`. Holds the demo account's cookies: a secret |
-| `DSS_CHROME_ARGS` | (empty) | engine | 1.7: extra Chrome flags, space-separated (container: `--no-sandbox --disable-dev-shm-usage --disk-cache-size=33554432`; /tmp is memory on Cloud Run) |
-| `DSS_REPORT_SHARE` | (empty = no sharing op) | backend | 1.7: `link_viewer` or `link_editor`: the compiler appends `share_report` with that access to every recipe (contracts/recipe.md 1.4); Cloud Run sets `link_editor` |
-| `DSS_LOCKED_SOURCES` | (empty) | backend | 1.7: comma list of the `Source.kind` values `gcs` and `bigquery` that the API refuses (`403 source_locked`, contracts/api.md 3.4); any other value refuses to start; Cloud Run sets `bigquery,gcs` on every deploy with `DSS_PUBLIC=1`, in any engine mode (an open link must not read the owner's tables or buckets) |
-| `DSS_SHARE_BUCKET` | (empty = no copy link) | backend | 1.8: bucket for the public-read data CSVs behind `copy_url` (contracts/api.md 3.5); Cloud Run: `<GCP_PROJECT_ID>-dss-share` (uniform access, `allUsers` Object Viewer, objects deleted after 14 days); never the state bucket |
-| `DSS_BOT_EMAIL` | (empty) | release (deploy) | 1.7: the demo Google account's email; the deploy grants it BigQuery Data Viewer on `BQ_DATASET` and Job User on the project; only in `.env`, never in a tracked file |
+| `DSS_ENGINE_MODE` | `local` | backend | `local` = the backend runs `DSS_ENGINE_CMD` itself; `agent` = builds are queued for a build agent (Cloud Run) |
 | `DSS_AGENT_SERVER` | (empty) | agent, release (deploy) | base URL of the hosted app the agent pulls jobs from (`https://<service>-<hash>.<region>.run.app`); 1.5: also the deploy's URL guard and the e2e `--server`; only in `.env`, never in a tracked file |
 | `GCP_PROJECT_NUMBER` | (empty) | release (deploy) | 1.5: the project number the deploy guard expects from `gcloud projects describe`; only in `.env`, never in a tracked file |
 | `DSS_DB_PATH` | (empty = `<DSS_DATA_DIR>/dss.sqlite`) | backend | live SQLite file; when it is outside `DSS_DATA_DIR`, the backend keeps a backup at `<DSS_DATA_DIR>/dss.sqlite` (Cloud deployment) |
@@ -115,12 +99,11 @@ backend stores them in SQLite. The API key is write-only through the API: it is 
 
 ## Engine use
 - One engine run at a time on this machine (one Chrome profile): the backend holds a global lock;
-  a second `POST /run` gets `409 engine_busy`. In agent mode the lock covers the one build agent;
-  in cloud mode (1.7) it covers the container's one Chrome, shared by every visitor.
+  a second `POST /run` gets `409 engine_busy`. In agent mode the lock covers the one build agent.
 
 ## Build agent
-- Agent mode: the engine runs on the agent's machine with its signed-in Chrome profile (1.7: on
-  Cloud Run the hosted service runs it itself instead; Cloud deployment, Cloud engine). In `DSS_ENGINE_MODE=agent` the hosted backend queues each build as a job; the
+- The engine never runs in the cloud: it needs the signed-in Chrome profile, which stays on the
+  user's machine. In `DSS_ENGINE_MODE=agent` the hosted backend queues each build as a job; the
   build agent (`uv run --project backend dss-agent`, from the repo root, provided by the backend)
   runs on the user's machine, long-polls the job, downloads the recipe and its files into
   `data/agent/<build_id>/v<n>/`, runs `DSS_ENGINE_CMD run` exactly as the local backend does, and
@@ -142,8 +125,8 @@ backend stores them in SQLite. The API key is write-only through the API: it is 
 ## Cloud deployment
 - One Cloud Run service (name `dss-frontend`, region `GCP_REGION`, execution environment gen2) runs one
   container image built from the root `Dockerfile`: the backend plus the built frontend
-  (`DSS_STATIC_DIR`), Playwright Chromium for `background_p<n>.png`, and (1.7) the engine.
-  `DSS_ENGINE_MODE=cloud` (1.7; `agent` = the rollback). Startup probe on `GET /api/health`. Never `DSS_DEV`.
+  (`DSS_STATIC_DIR`), Playwright Chromium for `background_p<n>.png`, no engine.
+  `DSS_ENGINE_MODE=agent`. Startup probe on `GET /api/health`. Never `DSS_DEV`.
 - Fail closed: when `K_SERVICE` is set (Cloud Run), the backend refuses to start if
   `DSS_ACCESS_CODE` is shorter than 12 characters or, in agent mode, `DSS_AGENT_TOKEN` is shorter
   than 24. Anywhere, `GOOGLE_OAUTH_CLIENT_ID` without `DSS_ACCESS_CODE` refuses to start (1.5).
@@ -154,12 +137,9 @@ backend stores them in SQLite. The API key is write-only through the API: it is 
   is External and In production (basic scopes need no Google verification; in Testing only
   listed test users get in). Open link (1.6): with `DSS_PUBLIC=1` there is no gate at all, so
   every visitor shares one history and spends the owner's Gemini and BigQuery.
-- At most one instance (1.7, user: scale to zero, `--min-instances 0 --max-instances 1`): the
-  instance starts on the first request and stops after Cloud Run's idle period; CPU stays
-  allocated while it is up (`--no-cpu-throttling`, builds continue after the `202`), request
-  timeout 3600 s (SSE and long polls). A cold start (image pull, app import) delays the first
-  visit after idle; SQLite comes back from the `/data` backup. A build still `building` when the
-  instance stopped is failed at the next startup (1.7).
+- One instance only (`--min-instances 1 --max-instances 1`), CPU always allocated
+  (`--no-cpu-throttling`, agent runs continue after the `202`), request timeout 3600 s (SSE and
+  long polls).
 - State: a GCS bucket mounted as a Cloud Run volume at `/data` (`DSS_DATA_DIR=/data`). SQLite never
   opens a file on the bucket: `DSS_DB_PATH=/tmp/dss.sqlite`; at startup the backend restores it from
   `/data/dss.sqlite` when the local file is missing; every 30 s when anything was written, and at
@@ -167,49 +147,19 @@ backend stores them in SQLite. The API key is write-only through the API: it is 
   `/tmp/dss.bak`, which is copied to `/data/dss.sqlite.tmp` and renamed over `/data/dss.sqlite`.
   At most 30 s of writes can be lost on a crash.
 - Secrets: `GOOGLE_API_KEY`, `DSS_ACCESS_CODE` and `DSS_AGENT_TOKEN` come from Secret Manager as env
-  vars (1.7: `DSS_GOOGLE_SESSION` as a mounted file, `DSS_GOOGLE_SESSION_FILE`); never in the image, the repo, the deploy script's output or the deck. With `DSS_PUBLIC=1`
+  vars; never in the image, the repo, the deploy script's output or the deck. With `DSS_PUBLIC=1`
   the service gets no `DSS_ACCESS_CODE` (1.6).
-- Settings: on Cloud Run (agent and cloud mode) the API key and GCP values are fixed by the deployment;
+- Settings: on Cloud Run (agent mode) the API key and GCP values are fixed by the deployment;
   `PUT /api/settings` may change only model settings: stage profiles, fallback model and brief
   review (contracts/api.md 3.0).
 - The runtime service account has BigQuery Data Editor and BigQuery Job User on `GCP_PROJECT_ID`,
-  Secret Manager Secret Accessor on the secrets it mounts (1.7: four, with `DSS_GOOGLE_SESSION`), and Storage Object User on the state bucket;
+  Secret Manager Secret Accessor on the three secrets, and Storage Object User on the state bucket;
   BigQuery on Cloud Run uses it as ADC. The Google account signed into the agent's Chrome
   profile must be able to read `BQ_DATASET` (a project owner or BigQuery Data Viewer + Job User),
   so the report's data source can read the views.
 - Uploads through Cloud Run are limited to 32 MB per request (Cloud Run answers `413` itself).
-- Shared by everyone who gets in (Google sign-in, the code, or the open link): one history and one engine lock; in
-  agent mode builds need the owner's `dss-agent` online, otherwise the hosted app stops at the
-  recipe (Build shows the agent panel); in cloud mode (1.7) the container builds.
-- Cloud engine (1.7, `DSS_ENGINE_MODE=cloud`, replaces agent mode on the hosted service): the
-  image also holds the engine (`/app/engine`, `DSS_ENGINE_CMD` pointing at it), Playwright
-  Chromium (`DSS_CHROME_PATH`) and a virtual display (Xvfb, so Chrome renders headful with nobody
-  watching); `DSS_CHROME_ARGS=--no-sandbox --disable-dev-shm-usage --disk-cache-size=33554432`. The Chrome profile lives on
-  local disk (`DSS_CHROME_PROFILE=/tmp/chrome-profile`), never on the bucket; the session comes
-  from `DSS_GOOGLE_SESSION_FILE` (secret `DSS_GOOGLE_SESSION`, exported once on the owner's machine
-  from a profile signed in as the demo account) or the refreshed `/data/session/google.json`
-  (each carries `exported_at`; a renewal deletes the refreshed copy). The runtime service account
-  gets Secret Accessor on `DSS_GOOGLE_SESSION`. The backend starts Chrome (`DSS_ENGINE_CMD browser`) at startup and again before a run when
-  `check` says it isn't running; Google sign-in is never automated and never happens in the
-  container (`POST /api/engine/login` -> `409 login_in_cloud`). Settings are locked as in agent
-  mode. `--memory 4Gi --cpu 2`. The demo account is a dedicated Gmail account with nothing else
-  in it; it needs BigQuery Data Viewer on `BQ_DATASET` and Job User on the project
-  (`DSS_BOT_EMAIL`). Reports land in the demo account and `share_report` (`DSS_REPORT_SHARE=link_editor`)
-  gives anyone with the link edit access, so a visitor opens it in their own Data Studio session
-  ("Shared with me"); the data source reads with the demo account's credentials. Sources
-  `bigquery` and `gcs` are locked (`DSS_LOCKED_SOURCES`, on every open deploy); upload, research
-  and synthetic stay. Rollback: the agent-mode revision (hosted stops at the recipe; sources stay
-  locked). Closing after judging also removes the demo account's BigQuery roles: its reports'
-  data sources keep reading with its credentials after a sign-out.
-- Copy link (1.8): with `DSS_SHARE_BUCKET` set, after a run publishes a version the backend
-  writes the version's view as CSV under `gs://<DSS_SHARE_BUCKET>/<32 random hex>/` (header =
-  view column names) and sets `copy_url`: a Linking API create URL with the published report as
-  template (`c.reportId`) whose data source is that folder through the `googleCloudStorage`
-  connector. The visitor opens it signed in as themselves; Data Studio copies the report into
-  their account (saved on "Edit and share") and its data source reads the CSV with their
-  credentials, so it needs no BigQuery access. The CSV is public to anyone holding its path
-  (unguessable, deleted after 14 days); the runtime service account has Storage Object User on
-  that bucket. Closing after judging deletes the bucket.
+- Shared by everyone who gets in (Google sign-in or the code): one history and one engine lock; builds need the owner's
+  `dss-agent` online, otherwise the hosted app stops at the recipe (Build shows the agent panel).
 
 ## Errors
 - HTTP errors: status 4xx/5xx with body `{"error": {"code": "<snake_case>", "message": "<what
@@ -226,4 +176,4 @@ backend stores them in SQLite. The API key is write-only through the API: it is 
 - Local mode: the Google account signed into the engine's Chrome profile must be the same account
   as the Application Default Credentials the backend uses for BigQuery (`gcloud auth
   application-default login`), so the report's data source can read the views. Cloud Run: see
-  Cloud deployment (agent mode: the agent's account; cloud mode, 1.7: the demo account).
+  Cloud deployment.

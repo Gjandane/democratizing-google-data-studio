@@ -1,7 +1,0 @@
-{
-  "required": false,
-  "ok": true,
-  "google_client_id": null,
-  "user": null,
-  "locked_sources": ["bigquery", "gcs"]
-}

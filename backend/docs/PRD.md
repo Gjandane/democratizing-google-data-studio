@@ -56,9 +56,7 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 - No LLM-generated recipe text, and no LLM HTML outside the sanitized designed page layer
   (goal 9; lifted for that layer by change 2026-10-22). Components, charts and their data stay
   native Data Studio objects drawn by code.
-- No Dockerfile or deploy script here (the release part owns them). The engine in the cloud was a
-  non-goal until change 2026-10-29 cloud engine: cloud mode runs it in the Cloud Run container
-  (docs/architecture.md#Cloud engine); still no automated Google sign-in.
+- No Dockerfile or deploy script here (the release part owns them); no engine in the cloud.
 - No accounts: Google sign-in checks who may enter (`DSS_SIGNIN_ALLOW`), it stores no users.
 - No LangGraph (ADK 2.0 Workflow only).
 - No CI; tests cover the core flow and the contracts only.
