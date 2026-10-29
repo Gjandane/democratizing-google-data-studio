@@ -665,3 +665,16 @@ context. Task status lives in docs/plan.md, not here.
 - Tasks affected: new 19.1 api.md 3.4 types, guards and mocks (fixtures/hosted-build/), 19.2 hosted Build job command and states, Connect lock. The 5.1 agent panel is superseded. No change requests open.
 - Delta audit (blueprint-reviewer, opus high, across the four parts and contracts): 0 P0/P1, 8 P2 + ~12 P3, all accepted by the user on cards and applied (cross-account GCS read check in release 4.5; 4.1's agent probe valid before and after backend 29.1; setup tested in the scriptblock form with a GitHub-shaped zip; 14.2 checks UI language and zoom; the Build panel restores its ticket after a reload and shows a failed hosted run; 4.6 expects `agent_timeout` for a claimed run; setup scripts pushed before the redeploy; stale contract lines, AGENTS.md command/fixture lines, 28.1's agent-token clauses and Review focus lines).
 - Revised the same day (user card, setup step): new task 19.3 setup step with the agent connection check; docs/implementation-notes.md gains the Setup step bullet.
+
+
+## 2026-10-30: Task 19.1 Contract 3.4 types, guards, client and mocks
+- Status: done
+- Plan check: off
+- What changed: types.ts JobTicket, ClaimedJob, Hosting + exact guards, HOSTED_ERROR_CODES; client getHosting/getJob; mock hosting (VITE_MOCK_HOSTED=1|failed, setMockHosting), one ticket per build, agent_timeout failure; agent_offline path removed; AGENTS.md lists fixtures/hosted-build/.
+- Checks: `npm test -- contract` PASS 123/123; `npm run typecheck` PASS; `git grep -n agent_offline src` empty; Test (all) `npm test` PASS 25 files, 567 tests.
+- Decisions: AgentCheck fixtures listed but unguarded (type is 19.3's). Outside Files for the agent_offline removal: BuildStage.tsx, EnginePanel.tsx (offlineSignal prop gone), agent-status.test.tsx (its retired 424 test removed). Mock ticket = waiting fixture with the real run_id/build_id/version, expires_at now+30 min; claim after 8 s dev / 1 s tests, ops 1 s later in tests; hosted runs skip the signed_in check and the global engine lock; 409 engine_busy while the build's ticket waits/runs. Hosted engine status is agent mode, all false/null. agent_timeout shows as run.finished.error "agent_timeout: ..." (mock choice; build.finished has no error field). Review: no findings.
+- Digest: types.ts JobTicket{run_id,build_id,version,code,state,expires_at,claimed_at}, Hosting, ClaimedJob, is* guards, HOSTED_ERROR_CODES; api.getHosting(), api.getJob(buildId); mock setMockHosting('local'|'open'|'failed'), VITE_MOCK_HOSTED=1|failed; claim after 1 s in tests
+- Tried and failed: none
+- Gotchas: until 19.2, VITE_MOCK_HOSTED=1 shows the agent offline and Build disabled (EnginePanel still reads agent_connected).
+- Left open: none
+- Next: Task 19.2. Start by `status --task 19.2`; replace the agent-mode EnginePanel with the job ticket panel.

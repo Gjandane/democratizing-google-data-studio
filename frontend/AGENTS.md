@@ -16,7 +16,7 @@ Run from this folder (`frontend/`) in bash.
 - docs/progress.md: the latest entry, plus the entries of tasks yours depends on.
 - The doc sections your task's `Spec:` names (`status` prints them): what your code must do, in full.
 - docs/PRD.md: goals and non-goals; open it when a requirement is unclear.
-- ../contracts/api.md, ../contracts/fixtures/api/, ../contracts/fixtures/stage-settings/, ../contracts/conventions.md (read-only): the interfaces and shared fixtures this part consumes; read the one your task touches.
+- ../contracts/api.md, ../contracts/fixtures/api/, ../contracts/fixtures/stage-settings/, ../contracts/fixtures/hosted-build/, ../contracts/conventions.md (read-only): the interfaces and shared fixtures this part consumes; read the one your task touches.
 
 ## Rules
 - This folder is the frontend part of Democratizing Google Data Studio. The other parts (engine `../engine/`, backend `../backend/`, release at `..`) are separate projects: their docs, rules and commits don't apply here; never read, edit or report on their files. From the program root's AGENTS.md, only the program block applies. The exception is the contracts above: read them, never edit them.

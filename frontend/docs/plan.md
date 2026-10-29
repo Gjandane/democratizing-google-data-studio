@@ -340,7 +340,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: one gate component; GIS loaded only on the gate; no token retained; code path unchanged.
 
 ## Phase 19: Local agent per judge (change 2026-10-29)
-- [ ] 19.1 Contract 3.4 types, guards, client and mocks
+- [x] 19.1 Contract 3.4 types, guards, client and mocks
   - Goal: per ../contracts/api.md 3.4, `Hosting`, `JobTicket` and `ClaimedJob` types with exact guards, client functions for `GET /api/hosting` and `GET /api/builds/{id}/job`, the new error codes, and mocks that serve ../contracts/fixtures/hosted-build/ (hosted mode behind `VITE_MOCK_HOSTED=1`); `agent_offline` handling is removed.
   - Files: src/api/types.ts, src/api/client.ts, src/mocks/*.ts, tests/contract.test.ts, AGENTS.md
   - Depends on: 18.1

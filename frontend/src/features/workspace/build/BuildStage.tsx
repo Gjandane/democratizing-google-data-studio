@@ -66,7 +66,6 @@ function ResultCard({ run }: { run: BuildRun }) {
 export function BuildStage({ build, run: streamRun, referencesReady = true, feasibilityReady = true }: { build: Build; run: BuildRun; referencesReady?: boolean; feasibilityReady?: boolean }) {
   const [engine, setEngine] = useState<EngineStatus | null>(null);
   const [engineKey, setEngineKey] = useState(0);
-  const [offlineSignal, setOfflineSignal] = useState(0);
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [generating, setGenerating] = useState(false);
   const [recipeError, setRecipeError] = useState<string | null>(null);
@@ -135,13 +134,6 @@ export function BuildStage({ build, run: streamRun, referencesReady = true, feas
     } catch (error) {
       if (!mounted.current) return;
       setStarting(false);
-      // The agent panel already says what to do about an offline agent.
-      if (error instanceof ApiError && error.code === 'agent_offline') {
-        // Turn Build off in this render: the panel's own report arrives an effect later.
-        setEngine((current) => current && { ...current, mode: 'agent', agent_connected: false });
-        setOfflineSignal((n) => n + 1);
-        return;
-      }
       setStartError(messageOf(error, "Couldn't start the build. Try again."));
       if (error instanceof ApiError && error.status === 424) setEngineKey((n) => n + 1);
     }
@@ -159,7 +151,7 @@ export function BuildStage({ build, run: streamRun, referencesReady = true, feas
       <SampleDataBanner sources={build.sources}>
         This dashboard is built from invented rows, and Data Studio shows it with the same label.
       </SampleDataBanner>
-      <EnginePanel refreshKey={engineKey} offlineSignal={offlineSignal} onEngine={setEngine} />
+      <EnginePanel refreshKey={engineKey} onEngine={setEngine} />
       <fieldset disabled={(!referencesReady || !feasibilityReady) || reviewLock !== null} className="min-w-0"><RecipePanel recipe={recipe} run={run} generating={generating} error={recipeError} onGenerate={generate} /></fieldset>
       <LiveViewPanel frame={run.frame} running={run.running} />
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">

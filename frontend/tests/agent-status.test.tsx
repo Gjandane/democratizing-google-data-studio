@@ -80,20 +80,6 @@ describe('build agent status (agent mode)', () => {
     await waitFor(() => expect(buildButton().disabled).toBe(false));
   });
 
-  it('424 agent_offline from POST /run shows the offline panel', async () => {
-    setMockEngine(agent);
-    const run = vi.spyOn(api, 'runBuild');
-    await renderBuild('Build agent connected');
-    await waitFor(() => expect(buildButton().disabled).toBe(false));
-    // The agent stops between the status check and the click.
-    setMockEngine({ agent_connected: false });
-    fireEvent.click(buildButton());
-    await screen.findByText('Build agent offline');
-    await expect(run.mock.results[0]!.value).rejects.toMatchObject({ status: 424, code: 'agent_offline' });
-    expect(screen.getByText(agentCommand(window.location.origin))).toBeTruthy();
-    expect(buildButton().disabled).toBe(true);
-  });
-
   it('local mode still shows the sign-in button', async () => {
     setMockEngine({ signed_in: false });
     await renderBuild('Not signed in to Google');

@@ -766,7 +766,7 @@ export interface EngineStatus {
   mode: EngineMode;
   chrome_running: boolean;
   signed_in: boolean;
-  /** A heartbeat in the last 30 s; false in local mode. */
+  /** A heartbeat in the last 30 s; false in local mode, and always false in agent mode since 3.4 (no heartbeat). */
   agent_connected: boolean;
   agent_last_seen: string | null;
 }
@@ -793,6 +793,59 @@ export interface Job {
   /** "recipe.jsonl" first, then every file the recipe's ops name. */
   files: string[];
 }
+
+export const JOB_TICKET_STATES = ['waiting', 'running', 'finished', 'expired'] as const;
+export type JobTicketState = (typeof JOB_TICKET_STATES)[number];
+
+/** GET /api/builds/{id}/job (api.md 3.4, agent mode): the one-shot job of the build's latest run. */
+export interface JobTicket {
+  run_id: string;
+  build_id: string;
+  version: number;
+  /** One-time job code, "XXXX-XXXX" from A-Z and 2-9 without I, O, 0, 1. */
+  code: string;
+  state: JobTicketState;
+  /** Creation + 30 min; a waiting ticket expires then. */
+  expires_at: string;
+  claimed_at: string | null;
+}
+
+/** 200 body of POST /api/agent/claim (api.md 3.4; the frontend only checks the fixture). */
+export interface ClaimedJob {
+  job: Job;
+  /** Per-job bearer token for that job's routes. */
+  job_token: string;
+  api_version: string;
+}
+
+/** The source kinds an open link locks (api.md 3.4, `403 source_locked`). */
+export const LOCKABLE_SOURCE_KINDS = ['gcs', 'bigquery'] as const;
+export type LockableSourceKind = (typeof LOCKABLE_SOURCE_KINDS)[number];
+
+/** GET /api/hosting (api.md 3.4). */
+export interface Hosting {
+  mode: EngineMode;
+  /** DSS_PUBLIC=1 on Cloud Run. */
+  public: boolean;
+  /** Both when public, else []. */
+  locked_sources: LockableSourceKind[];
+  /** Agent mode with a share bucket: the build's data goes to a public-read CSV the report reads. */
+  share_data: boolean;
+  api_version: string;
+}
+
+/** Error codes added by api.md 3.4 (hosted builds); the 424 for an offline polling agent is retired. */
+export const HOSTED_ERROR_CODES = [
+  'source_locked',
+  'share_too_large',
+  'share_export_failed',
+  'job_not_found',
+  'job_code_invalid',
+  'job_expired',
+  'agent_timeout',
+  'agent_mode_off',
+] as const;
+export type HostedErrorCode = (typeof HOSTED_ERROR_CODES)[number];
 
 export interface Health {
   status: 'ok';
@@ -1377,6 +1430,23 @@ export const isJob = shape<Job>({
   dry_run: isBoolean,
   timeout_s: isInt,
   files: arrayOf(isString),
+});
+export const isJobTicket = shape<JobTicket>({
+  run_id: isString,
+  build_id: isString,
+  version: isInt,
+  code: isString,
+  state: oneOf(JOB_TICKET_STATES),
+  expires_at: isString,
+  claimed_at: nullable(isString),
+});
+export const isClaimedJob = shape<ClaimedJob>({ job: isJob, job_token: isString, api_version: isString });
+export const isHosting = shape<Hosting>({
+  mode: oneOf(ENGINE_MODES),
+  public: isBoolean,
+  locked_sources: arrayOf(oneOf(LOCKABLE_SOURCE_KINDS)),
+  share_data: isBoolean,
+  api_version: isString,
 });
 
 export const isApiErrorBody = shape<ApiErrorBody>({

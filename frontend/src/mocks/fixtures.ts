@@ -44,6 +44,12 @@ import eventsReviewSse from '../../../contracts/fixtures/stage-settings/events.r
 import runCallsJson from '../../../contracts/fixtures/stage-settings/run_calls.json';
 import settingsJson from '../../../contracts/fixtures/stage-settings/settings.json';
 import tracesJson from '../../../contracts/fixtures/api/traces.json';
+// contracts/fixtures/hosted-build/ (api.md 3.4).
+import claimedJobJson from '../../../contracts/fixtures/hosted-build/claimed_job.json';
+import hostingLocalJson from '../../../contracts/fixtures/hosted-build/hosting.local.json';
+import hostingOpenJson from '../../../contracts/fixtures/hosted-build/hosting.open.json';
+import jobTicketRunningJson from '../../../contracts/fixtures/hosted-build/job_ticket.running.json';
+import jobTicketWaitingJson from '../../../contracts/fixtures/hosted-build/job_ticket.waiting.json';
 import {
   arrayOf,
   isAssessment,
@@ -52,12 +58,15 @@ import {
   isBuild,
   isBuildCost,
   isBuildSummary,
+  isClaimedJob,
   isContext,
   isDesignPages,
   isDesign,
   isEngineStatus,
   isGenerationRequest,
   isGenerationStatus,
+  isHosting,
+  isJobTicket,
   isMessage,
   isOutline,
   isProposal,
@@ -155,6 +164,14 @@ export const fixtures = /* @__PURE__ */ (() => ({
   invalidSettings: checked(isApiErrorBody, invalidSettingsJson, 'stage-settings/error.invalid_settings.json'),
   /** A prototype run that pauses for a brief review (brief.review, then run.finished ok). */
   eventsReview: checkedEvents(eventsReviewSse, 'stage-settings/events.review.sse'),
+  // contracts/fixtures/hosted-build/ (api.md 3.4)
+  /** Local mode: nothing locked, no shared data. */
+  hostingLocal: checked(isHosting, hostingLocalJson, 'hosted-build/hosting.local.json'),
+  /** The open link: agent mode, GCS and BigQuery locked, data shared. */
+  hostingOpen: checked(isHosting, hostingOpenJson, 'hosted-build/hosting.open.json'),
+  jobTicketWaiting: checked(isJobTicket, jobTicketWaitingJson, 'hosted-build/job_ticket.waiting.json'),
+  jobTicketRunning: checked(isJobTicket, jobTicketRunningJson, 'hosted-build/job_ticket.running.json'),
+  claimedJob: checked(isClaimedJob, claimedJobJson, 'hosted-build/claimed_job.json'),
 }))();
 
 /** A deep copy, so mock state never mutates the imported fixture. */

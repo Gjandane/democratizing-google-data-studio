@@ -31,6 +31,9 @@ import {
   isGenerationStatus,
   isGenerator,
   isJob,
+  isClaimedJob,
+  isHosting,
+  isJobTicket,
   isMessage,
   isProposal,
   isRecipe,
@@ -47,7 +50,7 @@ import {
   toBuildEvent,
   type Guard,
 } from '../src/api/types';
-import { createMockApi, resetMockState, setMockAssessment, setMockDesignPages, setMockRunFailure } from '../src/mocks/api';
+import { createMockApi, resetMockState, setMockAssessment, setMockDesignPages, setMockHosting, setMockRunFailure } from '../src/mocks/api';
 import { openMockBuildEvents } from '../src/mocks/events';
 import { fixtures } from '../src/mocks/fixtures';
 import { parseSse } from '../src/mocks/sse';
@@ -1149,5 +1152,163 @@ describe('mock stage settings and brief review (api.md 3.0)', () => {
     expect((await api.getBuild(id)).stage).toBe('blueprint');
     const { review } = await api.getDesignPages(id);
     expect(review).toMatchObject({ review_id: (paused?.data as { review_id: string }).review_id, action: 'prototype', revision: 1 });
+  });
+});
+
+// contracts/fixtures/hosted-build/ (api.md 3.4).
+const rawHosted = import.meta.glob<string>('../../contracts/fixtures/hosted-build/*', { eager: true, query: '?raw', import: 'default' });
+const hostedFixture: Record<string, string> = Object.fromEntries(
+  Object.entries(rawHosted).map(([path, body]) => [path.slice(path.lastIndexOf('/') + 1), body]),
+);
+const hostedJson = (name: string): unknown => JSON.parse(hostedFixture[name] ?? 'null');
+
+const hostedGuards: Record<string, Guard<unknown>> = {
+  'hosting.local.json': isHosting,
+  'hosting.open.json': isHosting,
+  'job_ticket.waiting.json': isJobTicket,
+  'job_ticket.running.json': isJobTicket,
+  'claimed_job.json': isClaimedJob,
+};
+/** The setup step's AgentCheck fixtures: guarded by task 19.3, which adds that type. */
+const agentCheckFixtures = ['agent_check.waiting.json', 'agent_check.passed.json', 'agent_check.failed.json'];
+
+describe('hosted-build fixtures match the contract (api.md 3.4)', () => {
+  it('has a check for every hosted-build fixture file', () => {
+    expect(Object.keys(hostedFixture).sort()).toEqual([...Object.keys(hostedGuards), ...agentCheckFixtures].sort());
+  });
+
+  it.each(Object.keys(hostedGuards))('hosted-build/%s', (name) => {
+    expect(problemsOf(hostedGuards[name]!, hostedJson(name), name)).toEqual([]);
+  });
+
+  it('a JobTicket without code or with an unknown state fails', () => {
+    const ticket = hostedJson('job_ticket.waiting.json') as Record<string, unknown>;
+    const { code: _code, ...missing } = ticket;
+    expect(problemsOf(isJobTicket, missing)).toEqual(['$.code: missing']);
+    expect(problemsOf(isJobTicket, { ...ticket, state: 'queued' })).toEqual([
+      '$.state: expected one of waiting | running | finished | expired, got "queued"',
+    ]);
+    expect(problemsOf(isJobTicket, { ...ticket, claimed_at: 0 })).toEqual(['$.claimed_at: expected a string']);
+    expect(problemsOf(isJobTicket, { ...ticket, token: 'x' })).toEqual(['$.token: not in the contract']);
+  });
+
+  it('a Hosting with an unknown locked source, or a missing field, fails', () => {
+    const hosting = hostedJson('hosting.open.json') as Record<string, unknown>;
+    expect(problemsOf(isHosting, { ...hosting, locked_sources: ['gcs', 'upload'] })).toEqual([
+      '$.locked_sources[1]: expected one of gcs | bigquery, got "upload"',
+    ]);
+    expect(problemsOf(isHosting, { ...hosting, mode: 'cloud' })).toEqual(['$.mode: expected one of local | agent, got "cloud"']);
+    const { share_data: _share, ...missing } = hosting;
+    expect(problemsOf(isHosting, missing)).toEqual(['$.share_data: missing']);
+  });
+
+  it('a ClaimedJob checks its job exactly', () => {
+    const claimed = hostedJson('claimed_job.json') as { job: Record<string, unknown> };
+    expect(problemsOf(isClaimedJob, { ...claimed, job: { ...claimed.job, token: 'x' } })).toEqual(['$.job.token: not in the contract']);
+  });
+
+  it('no source handles the retired offline-agent error', () => {
+    const sources = import.meta.glob<string>('../src/**/*.{ts,tsx}', { eager: true, query: '?raw', import: 'default' });
+    for (const [file, text] of Object.entries(sources)) expect(text, file).not.toMatch(/agent_offline/);
+  });
+});
+
+describe('the HTTP client speaks the hosted-build contract (api.md 3.4)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function stubFetch(status: number, body: string) {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response(body, { status, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  it('gets the hosting and a build job with exact paths, failing closed on other shapes', async () => {
+    let fetchMock = stubFetch(200, hostedFixture['hosting.open.json'] ?? '');
+    await expect(httpApi.getHosting()).resolves.toEqual(hostedJson('hosting.open.json'));
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith('/api/hosting', { method: 'GET' });
+    fetchMock = stubFetch(200, hostedFixture['job_ticket.running.json'] ?? '');
+    await expect(httpApi.getJob('b/1')).resolves.toEqual(hostedJson('job_ticket.running.json'));
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith('/api/builds/b%2F1/job', { method: 'GET' });
+
+    stubFetch(200, JSON.stringify({ ...(hostedJson('hosting.local.json') as object), locked_sources: ['upload'] }));
+    await expect(httpApi.getHosting()).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+    stubFetch(200, JSON.stringify({ ...(hostedJson('job_ticket.waiting.json') as object), state: 'queued' }));
+    await expect(httpApi.getJob('b/1')).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+    stubFetch(404, JSON.stringify({ error: { code: 'job_not_found', message: 'No job.', detail: {} } }));
+    await expect(httpApi.getJob('b/1')).rejects.toMatchObject({ status: 404, code: 'job_not_found' });
+  });
+});
+
+describe('mock hosting and one-shot jobs (api.md 3.4)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+    resetMockState();
+  });
+
+  it('answers GET /api/hosting with hosting.local.json, or hosting.open.json with VITE_MOCK_HOSTED=1', async () => {
+    resetMockState();
+    await expect(createMockApi().getHosting()).resolves.toEqual(hostedJson('hosting.local.json'));
+    await expect(createMockApi().getJob(fixtures.build.id)).rejects.toMatchObject({ status: 404, code: 'agent_mode_off' });
+    vi.stubEnv('VITE_MOCK_HOSTED', '1');
+    resetMockState();
+    await expect(createMockApi().getHosting()).resolves.toEqual(hostedJson('hosting.open.json'));
+    // 3.4: agent mode has no heartbeat.
+    expect(await createMockApi().getEngineStatus()).toMatchObject({ mode: 'agent', agent_connected: false, agent_last_seen: null });
+    await expect(createMockApi().getJob(fixtures.build.id)).rejects.toMatchObject({ status: 404, code: 'job_not_found' });
+    vi.stubEnv('VITE_MOCK_HOSTED', 'failed');
+    resetMockState();
+    await expect(createMockApi().getHosting()).resolves.toEqual(hostedJson('hosting.open.json'));
+  });
+
+  it('after POST /run in hosted mode serves the waiting ticket, then the running one, then finishes', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    setMockHosting('open');
+    const api = createMockApi();
+    const id = fixtures.build.id;
+    const settle = async <T,>(promise: Promise<T>) => {
+      await vi.advanceTimersByTimeAsync(0);
+      return promise;
+    };
+    const { run_id } = await settle(api.runBuild(id));
+    const expires_at = new Date(Date.now() + 30 * 60_000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+
+    const waiting = await settle(api.getJob(id));
+    expect(waiting).toEqual({ ...(hostedJson('job_ticket.waiting.json') as object), run_id, expires_at });
+    // One ticket per build: a second Build while it waits is refused.
+    const busy = expect(api.runBuild(id)).rejects.toMatchObject({ status: 409, code: 'engine_busy' });
+    await vi.advanceTimersByTimeAsync(0);
+    await busy;
+
+    await vi.advanceTimersByTimeAsync(1000);
+    const running = await settle(api.getJob(id));
+    expect(running).toEqual({ ...(hostedJson('job_ticket.running.json') as object), run_id, expires_at, claimed_at: running.claimed_at });
+    expect(isJobTicket(running) && running.claimed_at !== null).toBe(true);
+
+    await vi.runAllTimersAsync();
+    expect((await settle(api.getJob(id))).state).toBe('finished');
+    expect((await settle(api.getBuild(id))).stage).toBe('done');
+  });
+
+  it('with VITE_MOCK_HOSTED=failed a claimed job ends with build.finished failed and agent_timeout', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    vi.stubEnv('VITE_MOCK_HOSTED', 'failed');
+    resetMockState();
+    const api = createMockApi();
+    const id = fixtures.build.id;
+    const seen: { name: string; data: unknown }[] = [];
+    const close = openMockBuildEvents(id, { onEvent: (event) => void seen.push({ name: event.name, data: event.data }) });
+    const accepted = api.runBuild(id);
+    await vi.runAllTimersAsync();
+    const { run_id } = await accepted;
+    close();
+    expect(seen.find((e) => e.name === 'build.finished')?.data).toEqual({ status: 'failed', report_url: null, version: fixtures.build.current_version });
+    expect(seen.find((e) => e.name === 'run.finished')?.data).toMatchObject({ run_id, node: 'execute', status: 'error', error: expect.stringMatching(/^agent_timeout: /) });
+    const ticket = api.getJob(id);
+    await vi.runAllTimersAsync();
+    expect(await ticket).toMatchObject({ run_id, state: 'finished' });
+    const build = api.getBuild(id);
+    await vi.runAllTimersAsync();
+    expect((await build).stage).toBe('prototype');
   });
 });

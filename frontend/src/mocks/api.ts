@@ -40,6 +40,8 @@ import {
   type Build,
   type BuildSummary,
   type EngineStatus,
+  type Hosting,
+  type JobTicket,
   type Message,
   type OpFinished,
   type RunAccepted,
@@ -63,8 +65,18 @@ const LATENCY_MS = isTest ? 0 : 250;
 const STEP_MS = isTest ? 0 : 400;
 /** Delay between the ops of a build run, slow enough to watch them tick. */
 const BUILD_STEP_MS = isTest ? 0 : 1200;
+/** Hosted mode: how long a job waits before the visitor's agent claims it, long enough to read the code. */
+const CLAIM_MS = isTest ? 1000 : 8000;
+/** Hosted mode: from the claim to the first op; in tests 1 s, so fake timers can stop in each ticket state. */
+const CLAIM_TO_OPS_MS = isTest ? 1000 : 0;
 
 export type MockBuildOutcome = 'ok' | 'partial' | 'failed';
+/**
+ * How the mock is hosted (api.md 3.4): `local`, `open` (the open link: agent mode, a one-shot job
+ * per build) or `failed` (open, and every claimed job ends with `agent_timeout`).
+ * The dev server picks it with VITE_MOCK_HOSTED (`1` or `failed`).
+ */
+export type MockHosted = 'local' | 'open' | 'failed';
 /** A 503 the mock answers on every action of that kind, whatever the settings say. */
 export type MockServiceFault = 'llm_unavailable' | 'gcp_not_configured' | null;
 /** The staged workflow's runs (api.md 2.0 `node` values). */
@@ -114,6 +126,12 @@ interface MockState {
   traces: Trace[];
   engine: EngineStatus;
   engineBusy: boolean;
+  /** GET /api/hosting; agent mode runs builds as one-shot jobs (3.4). */
+  hosting: Hosting;
+  /** Hosted mode: claimed jobs fail with `agent_timeout`. */
+  hostedFailure: boolean;
+  /** Agent mode: the ticket of each build's latest run. */
+  tickets: Map<string, JobTicket>;
   buildOutcome: MockBuildOutcome;
   screencast: boolean;
   serviceFault: MockServiceFault;
@@ -122,6 +140,22 @@ interface MockState {
   /** Blueprint drafts block the ratio KPI row (q2), as blueprint.blocked.json does. */
   blueprintBlocked: boolean;
   nextSeq: number;
+}
+
+function hostedFromEnv(): MockHosted {
+  const value = import.meta.env.VITE_MOCK_HOSTED;
+  return value === 'failed' ? 'failed' : value === '1' ? 'open' : 'local';
+}
+
+/** The hosting, engine status and failure switch of a hosted mode. */
+function hostedState(hosted: MockHosted): Pick<MockState, 'hosting' | 'engine' | 'hostedFailure'> {
+  if (hosted === 'local') return { hosting: clone(fixtures.hostingLocal), engine: clone(fixtures.engineStatusLocal), hostedFailure: false };
+  return {
+    hosting: clone(fixtures.hostingOpen),
+    // 3.4: agent mode has no heartbeat, so the agent fields are false/null.
+    engine: { mode: 'agent', chrome_running: false, signed_in: false, agent_connected: false, agent_last_seen: null },
+    hostedFailure: hosted === 'failed',
+  };
 }
 
 function seed(): MockState {
@@ -150,8 +184,9 @@ function seed(): MockState {
     designPages: new Map(),
     approvedReviews: new Map(),
     traces: clone(fixtures.traces),
-    engine: clone(fixtures.engineStatusLocal),
+    ...hostedState(hostedFromEnv()),
     engineBusy: false,
+    tickets: new Map(),
     buildOutcome: 'ok',
     screencast: true,
     serviceFault: null,
@@ -178,6 +213,12 @@ export function resetMockState(): void {
  */
 export function setMockEngine(status: Partial<EngineStatus>): void {
   state.engine = { ...state.engine, ...status };
+}
+
+/** Switches local or hosted mode (hosting, engine status, tickets dropped). For tests and the dev server. */
+export function setMockHosting(hosted: MockHosted): void {
+  Object.assign(state, hostedState(hosted));
+  state.tickets.clear();
 }
 
 /** Turns the access-code gate on or off; `{required: true, ok: false}` also ends a session. For tests and the dev server. */
@@ -383,13 +424,13 @@ function announce(build: Build): void {
   emit(build.id, { name: 'build.updated', data: { build: clone(build) } });
 }
 
-/** Plays `steps` one STEP_MS apart. */
-function schedule(steps: Array<() => void>, stepMs = STEP_MS): void {
+/** Plays `steps` one STEP_MS apart, with `holdMs` more between the first and the second. */
+function schedule(steps: Array<() => void>, stepMs = STEP_MS, holdMs = 0): void {
   steps.forEach((step, i) => {
     const timer = setTimeout(() => {
       runTimers.delete(timer);
       step();
-    }, stepMs * (i + 1));
+    }, stepMs * (i + 1) + (i > 0 ? holdMs : 0));
     runTimers.add(timer);
   });
 }
@@ -399,7 +440,7 @@ function startRun(
   build: Build,
   node: string,
   steps: (runId: string) => Array<() => void> = () => [],
-  options: { stepMs?: number; failure?: () => { error: string | null } | null; finishInSteps?: boolean } = {},
+  options: { stepMs?: number; holdMs?: number; failure?: () => { error: string | null } | null; finishInSteps?: boolean } = {},
 ): RunAccepted {
   const run_id = nextId('r');
   const buildId = build.id;
@@ -446,6 +487,7 @@ function startRun(
           ]),
     ],
     options.stepMs,
+    options.holdMs,
   );
   return { run_id };
 }
@@ -1751,11 +1793,15 @@ export function createMockApi(): ApiClient {
       respond(() => {
         requireNoReview(findBuild(id));
         const build = findBuild(id);
-        if (state.engineBusy) throw new ApiError(409, 'engine_busy', 'Another build is running in Data Studio. Wait for it to finish, then try again.');
-        if (agentMode() && !state.engine.agent_connected) {
-          throw new ApiError(424, 'agent_offline', "The build agent isn't connected. Start it on the machine with Chrome, then build again.");
+        // Agent mode (3.4): one ticket per build, so builds don't wait on each other.
+        const hosted = state.hosting.mode === 'agent';
+        const ticket = state.tickets.get(id);
+        if (hosted && (ticket?.state === 'waiting' || ticket?.state === 'running')) {
+          throw new ApiError(409, 'engine_busy', 'This build already has a build code. Run it on your computer, or wait for the build to finish.');
         }
-        if (!state.engine.signed_in) {
+        if (!hosted && state.engineBusy) throw new ApiError(409, 'engine_busy', 'Another build is running in Data Studio. Wait for it to finish, then try again.');
+        // Hosted builds sign in on the visitor's machine, inside the job.
+        if (!hosted && !state.engine.signed_in) {
           throw new ApiError(424, 'engine_not_signed_in', agentMode() ? "Run dsengine login on the agent's machine, then build again." : 'Sign in to Google first, then build again.');
         }
         requireStage(build, ['prototype'], 'Build from the Prototype stage.');
@@ -1763,12 +1809,14 @@ export function createMockApi(): ApiClient {
         // dashboard-intent.md 1.3: a pre-2.0 build's recipe and run are not gated.
         if (!isLegacy(build)) requireReferenceApproved(build);
         const version = build.versions.find((v) => v.n === build.current_version);
-        state.engineBusy = true;
+        if (!hosted) state.engineBusy = true;
         setStage(build, 'build');
         if (version) version.status = 'building';
-        const outcome = state.buildOutcome;
-        const ops = fixtures.recipe.ops;
-        const failedAt = outcome === 'failed' ? 0 : outcome === 'partial' ? ops.length - 1 : -1;
+        // A hosted failure: the agent claims the job, reports one op, then goes silent.
+        const timedOut = hosted && state.hostedFailure;
+        const outcome = timedOut ? 'failed' : state.buildOutcome;
+        const ops = timedOut ? fixtures.recipe.ops.slice(0, 1) : fixtures.recipe.ops;
+        const failedAt = timedOut ? -1 : outcome === 'failed' ? 0 : outcome === 'partial' ? ops.length - 1 : -1;
         const failMessage =
           outcome === 'failed' ? "Data Studio didn't open the report: sign-in expired" : 'style panel: colors control not found';
         const opEvent = (op: (typeof ops)[number], i: number): OpFinished => {
@@ -1784,8 +1832,15 @@ export function createMockApi(): ApiClient {
             duration_ms: status === 'ok' ? 1200 : 0,
           };
         };
-        const runError = outcome === 'failed' ? "The engine stopped before the dashboard was saved. Sign in to Google again, then build again." : null;
-        return startRun(
+        const runError = timedOut
+          ? "agent_timeout: The build agent stopped reporting. Check its window on your computer, then build again for a new code."
+          : outcome === 'failed' ? "The engine stopped before the dashboard was saved. Sign in to Google again, then build again." : null;
+        // Only the run's own ticket changes: a newer run's ticket is left alone.
+        const updateTicket = (run_id: string, patch: Partial<JobTicket>) => {
+          const current = state.tickets.get(id);
+          if (current?.run_id === run_id) Object.assign(current, patch);
+        };
+        const accepted = startRun(
           build,
           'execute',
           (run_id) => [
@@ -1794,7 +1849,8 @@ export function createMockApi(): ApiClient {
               if (state.screencast) emit(id, { name: 'build.frame', data: { data: mockFrame(op.line, i) } });
             }),
             () => {
-              state.engineBusy = false;
+              if (hosted) updateTicket(run_id, { state: 'finished' });
+              else state.engineBusy = false;
               if (outcome === 'failed') {
                 if (version) version.status = 'draft';
                 emit(id, { name: 'build.finished', data: { status: 'failed', report_url: null, version: build.current_version } });
@@ -1812,8 +1868,15 @@ export function createMockApi(): ApiClient {
               announce(build);
             },
           ],
-          { stepMs: BUILD_STEP_MS, finishInSteps: true },
+          // Hosted: the ops start once the visitor's agent has claimed the job.
+          { stepMs: BUILD_STEP_MS, holdMs: hosted ? CLAIM_MS + CLAIM_TO_OPS_MS : 0, finishInSteps: true },
         );
+        if (hosted) {
+          const expires = new Date(Date.now() + 30 * 60_000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+          state.tickets.set(id, { ...clone(fixtures.jobTicketWaiting), run_id: accepted.run_id, build_id: id, version: build.current_version, expires_at: expires });
+          schedule([() => updateTicket(accepted.run_id, { state: 'running', claimed_at: now() })], CLAIM_MS);
+        }
+        return accepted;
       }),
 
     createVersion: (id) =>
@@ -1863,6 +1926,17 @@ export function createMockApi(): ApiClient {
       }),
 
     getEngineStatus: () => respond(() => state.engine),
+
+    getHosting: () => respond(() => clone(state.hosting)),
+
+    getJob: (id) =>
+      respond(() => {
+        findBuild(id);
+        if (state.hosting.mode !== 'agent') throw new ApiError(404, 'agent_mode_off', 'Builds run on this machine: there is no build code.');
+        const ticket = state.tickets.get(id);
+        if (!ticket) throw new ApiError(404, 'job_not_found', 'This build has no build code yet. Build to get one.');
+        return clone(ticket);
+      }),
 
     engineLogin: () =>
       respond(() => {

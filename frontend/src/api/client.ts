@@ -35,6 +35,10 @@ import {
   type Proposal,
   type EngineStatus,
   type Health,
+  type Hosting,
+  isHosting,
+  isJobTicket,
+  type JobTicket,
   type Message,
   type Blueprint,
   type Context,
@@ -181,6 +185,10 @@ export interface ApiClient {
   getBuildCost(buildId: string): Promise<BuildCost>;
   getEngineStatus(): Promise<EngineStatus>;
   engineLogin(): Promise<RunAccepted>;
+  /** How this deployment runs builds and which sources it locks (3.4). */
+  getHosting(): Promise<Hosting>;
+  /** Agent mode: the ticket of the build's latest run; `404 job_not_found` without one, `404 agent_mode_off` in local mode (3.4). */
+  getJob(buildId: string): Promise<JobTicket>;
 }
 
 const UNREACHABLE = "Can't reach the backend. Start it on port 8000, then try again.";
@@ -262,6 +270,8 @@ const UNREADABLE = {
   references: "Couldn't read the saved references. Try again.",
   calls: "Couldn't read this run's model calls. Try again.",
   cost: "Couldn't read the cost estimate. Try again.",
+  hosting: "Couldn't read how this app is hosted: the backend may predate API 3.4. Update it, then reload.",
+  job: "Couldn't read the build code. Try again.",
   build: "Couldn't read this build: the backend may predate API 2.0. Update it, then try again.",
 };
 
@@ -369,6 +379,8 @@ export const httpApi: ApiClient = {
   getBuildCost: (id) => checkedJson('GET', buildPath(id, '/cost'), isBuildCost, UNREADABLE.cost),
   getEngineStatus: () => json('GET', '/engine/status'),
   engineLogin: () => json('POST', '/engine/login'),
+  getHosting: () => checkedJson('GET', '/hosting', isHosting, UNREADABLE.hosting),
+  getJob: (id) => checkedJson('GET', buildPath(id, '/job'), isJobTicket, UNREADABLE.job),
 };
 
 export const isMockMode = import.meta.env.VITE_MOCK === '1';

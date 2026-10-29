@@ -119,8 +119,6 @@ function AgentStatus({ engine, polling, onCheck }: { engine: EngineStatus; polli
 interface EnginePanelProps {
   /** A change re-checks the status without the loading state. */
   refreshKey: number;
-  /** A change means `POST /run` answered `424 agent_offline`: show the agent as offline at once. */
-  offlineSignal?: number;
   /** The latest status, or null while unknown. */
   onEngine: (engine: EngineStatus | null) => void;
 }
@@ -130,7 +128,7 @@ interface EnginePanelProps {
  * window, then the panel polls until the engine reports signed in. Agent mode (hosted app): the
  * build agent's connection and sign-in, with the command that starts the agent.
  */
-export function EnginePanel({ refreshKey, offlineSignal = 0, onEngine }: EnginePanelProps) {
+export function EnginePanel({ refreshKey, onEngine }: EnginePanelProps) {
   const [load, setLoad] = useState<Load>({ status: 'loading' });
   const [polling, setPolling] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -180,16 +178,6 @@ export function EnginePanel({ refreshKey, offlineSignal = 0, onEngine }: EngineP
   useEffect(() => {
     check(refreshKey === 0);
   }, [check, refreshKey]);
-
-  // The backend refused a build because the agent is gone: trust that over the last status.
-  useEffect(() => {
-    if (offlineSignal === 0) return;
-    seq.current++;
-    setLoad((current) =>
-      current.status === 'ready' ? { status: 'ready', engine: { ...current.engine, mode: 'agent', agent_connected: false } } : current,
-    );
-    setPolling(true);
-  }, [offlineSignal]);
 
   useEffect(() => {
     if (load.status === 'ready') report.current(load.engine);
