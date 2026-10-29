@@ -36,6 +36,8 @@ class Config(BaseModel):
     signin_allow: tuple[str, ...] = ()
     engine_mode: Literal["local", "agent"] = "local"
     cloud_service: str = ""
+    # DSS_PUBLIC (conventions.md 1.6): "1" on Cloud Run opens the hosted link; ignored off Cloud Run.
+    public_link: str = ""
     consolidate_every: int = Field(default=5, ge=1)
     # The planner designs each page around its components (architecture.md#Designed pages).
     # A Config attribute only: no env name, no API setting. Off: today's code layout and kits.
@@ -63,7 +65,8 @@ class Config(BaseModel):
                  "static_dir": "DSS_STATIC_DIR", "access_code": "DSS_ACCESS_CODE",
                  "agent_token": "DSS_AGENT_TOKEN", "engine_mode": "DSS_ENGINE_MODE",
                  "cloud_service": "K_SERVICE", "consolidate_every": "DSS_CONSOLIDATE_EVERY",
-                 "google_client_id": "GOOGLE_OAUTH_CLIENT_ID", "signin_allow": "DSS_SIGNIN_ALLOW"}
+                 "google_client_id": "GOOGLE_OAUTH_CLIENT_ID", "signin_allow": "DSS_SIGNIN_ALLOW",
+                 "public_link": "DSS_PUBLIC"}
         values = {field: env[name] for field, name in names.items() if env.get(name) is not None}
         for field in ("data_dir", "db_path", "static_dir"):
             if values.get(field):
@@ -78,11 +81,21 @@ class Config(BaseModel):
                 "google_api_key_set": bool(self.google_api_key.get_secret_value()),
                 "issues": stage_settings.issues(self.model_dump(include={'stages', 'fallback_model', 'review_briefs'}))}
 
+    @property
+    def open_link(self):
+        return bool(self.cloud_service) and self.public_link == "1"
+
     def validate_start(self):
-        if self.google_client_id and not self.access_code.get_secret_value():
+        code = self.access_code.get_secret_value()
+        if self.cloud_service and self.public_link:
+            if self.public_link != "1":
+                raise RuntimeError("DSS_PUBLIC must be 1 (open link) or empty (gated)")
+            if code or self.google_client_id:
+                raise RuntimeError("DSS_PUBLIC=1 requires DSS_ACCESS_CODE and GOOGLE_OAUTH_CLIENT_ID to be empty")
+        if self.google_client_id and not code:
             raise RuntimeError("GOOGLE_OAUTH_CLIENT_ID requires DSS_ACCESS_CODE (it keys the session cookie)")
         if self.cloud_service:
-            if len(self.access_code.get_secret_value()) < 12:
+            if not self.open_link and len(code) < 12:
                 raise RuntimeError("Cloud Run requires DSS_ACCESS_CODE of at least 12 characters")
             if self.engine_mode == "agent" and len(self.agent_token.get_secret_value()) < 24:
                 raise RuntimeError("Cloud Run agent mode requires DSS_AGENT_TOKEN of at least 24 characters")

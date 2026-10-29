@@ -941,7 +941,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: `aud` checked against the configured client id; domains by `hd` only; constant-time compares; agent routes untouched; no network in tests.
 
 ## Phase 28: Open hosted link (change 2026-10-29)
-- [ ] 28.1 Open-link opt-in on Cloud Run
+- [x] 28.1 Open-link opt-in on Cloud Run
   - Goal: per ../contracts/conventions.md 1.6, `DSS_PUBLIC=1` lets the backend start on Cloud Run with no access code and no Google client id and serve the API ungated; every other fail-closed case stays as it is.
   - Spec: docs/architecture.md#Cloud mode
   - Files: src/dss/config.py, src/dss/main.py, tests/test_cloud_mode.py, docs/progress.md

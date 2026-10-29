@@ -2377,3 +2377,15 @@ assert min(timings) < .1
 - Tasks affected: 28.1 (agent-token clauses dropped; 29.1 retires that rule), new 29.1 one-shot job tickets, 29.2 `dss-agent run`, 29.3 hosting info and source lock, 29.4 share CSV + GCS header (`Needs: engine 14.1`). Spec: docs/architecture.md#Hosted one-shot builds (new). No change requests open.
 - Delta audit (blueprint-reviewer, opus high, across the four parts and contracts): 0 P0/P1, 8 P2 + ~12 P3, all accepted by the user on cards and applied (cross-account GCS read check in release 4.5; 4.1's agent probe valid before and after backend 29.1; setup tested in the scriptblock form with a GitHub-shaped zip; 14.2 checks UI language and zoom; the Build panel restores its ticket after a reload and shows a failed hosted run; 4.6 expects `agent_timeout` for a claimed run; setup scripts pushed before the redeploy; stale contract lines, AGENTS.md command/fixture lines, 28.1's agent-token clauses and Review focus lines).
 - Revised the same day (user card, setup step): new task 29.5 agent connection check (api.md 3.4 Checks, `dss-agent check`); docs/architecture.md#Hosted one-shot builds gains its bullet.
+
+## 2026-10-29: Task 28.1 Open-link opt-in on Cloud Run
+- Status: done
+- Plan check: off
+- What changed: config.py: `public_link` (env `DSS_PUBLIC`), `open_link` property (`K_SERVICE` set and `DSS_PUBLIC` exactly `"1"`); `validate_start` on Cloud Run exits for any other non-empty `DSS_PUBLIC`, or `1` with a code or client id, and skips the 12-char code rule only when `open_link`. main.py lifespan logs one warning when open. tests/test_cloud_mode.py: open start, fail-closed cases, off-Cloud-Run ignore, env mapping.
+- Checks: `uv run pytest tests/test_cloud_mode.py` PASS 30 passed (7 failed with the source change stashed); Test (all) `uv run pytest` 2305 passed, 1 failed (`test_feasibility.py::test_decision_recompute_budget`, timing gate; known flake), rerun alone 1 passed and `tests/test_feasibility.py` 192 passed.
+- Decisions: field is `public_link` (`public` collides with `Config.public()`). No strip: `" 1"` exits. Check order: DSS_PUBLIC rules first, then Google-needs-code, then code length, so existing messages are unchanged. Open path = existing empty-code path; middleware/session/agent routes untouched.
+- Digest: `Config.public_link: str` (env DSS_PUBLIC), `Config.open_link -> bool` (cloud_service and public_link == "1") in src/dss/config.py; validate_start enforces conventions 1.6; main.py warns "API is open" once at startup.
+- Tried and failed: none
+- Gotchas: none
+- Left open: P3 no test pins the agent-token rule on the open link (rule retired in 29.1) - tests/test_cloud_mode.py
+- Next: Task 29.1. Start by `status` and recall docs/architecture.md#Hosted one-shot builds; 29.3 consumes `Config.open_link` for the source lock.

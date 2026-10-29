@@ -47,6 +47,8 @@ def create_app(config=None, *, model_lister=None, bigquery_factory=None):
     @asynccontextmanager
     async def lifespan(app):
         config.validate_start()
+        if config.open_link:
+            logger.warning("DSS_PUBLIC=1: the API is open to anyone with the link (no access gate)")
         db_path = config.db_path or (Path(tempfile.gettempdir()) / "dss.sqlite" if config.cloud_service
                                      else config.data_dir / "dss.sqlite")
         if config.cloud_service and db_path.resolve().is_relative_to(config.data_dir.resolve()):

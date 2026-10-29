@@ -157,6 +157,40 @@ def test_google_signin_needs_access_code(tmp_path, cloud):
     assert not (tmp_path / "data").exists()
 
 
+def test_open_link_starts_ungated_and_warns_once(tmp_path, caplog):
+    app = cloud_app(tmp_path, cloud_service="dss", public_link="1", db_path=tmp_path / "local.sqlite")
+    with caplog.at_level("WARNING", logger="dss.main"):
+        with TestClient(app) as client:
+            assert client.get("/api/session").json() == {"required": False, "ok": True,
+                                                         "google_client_id": None, "user": None}
+            assert client.get("/api/builds").status_code == 200
+    warnings = [r for r in caplog.records if r.name == "dss.main" and "API is open" in r.getMessage()]
+    assert len(warnings) == 1 and warnings[0].levelname == "WARNING"
+
+
+@pytest.mark.parametrize("public,code,client_id,error", [
+    ("1", CODE, "", "DSS_PUBLIC=1 requires"),
+    ("1", "", "1-x.apps.googleusercontent.com", "DSS_PUBLIC=1 requires"),
+    ("yes", "", "", "DSS_PUBLIC must be 1"),
+    ("", "", "", "DSS_ACCESS_CODE of at least 12"),
+])
+def test_open_link_fail_closed(tmp_path, public, code, client_id, error):
+    app = cloud_app(tmp_path, cloud_service="dss", public_link=public, access_code=code,
+                    google_client_id=client_id, db_path=tmp_path / "local.sqlite")
+    with pytest.raises(RuntimeError, match=error):
+        with TestClient(app):
+            pass
+    assert not (tmp_path / "data").exists()
+
+
+def test_open_link_ignored_off_cloud_run(tmp_path, caplog):
+    with caplog.at_level("WARNING", logger="dss.main"):
+        with TestClient(cloud_app(tmp_path, public_link="1", access_code=CODE)) as client:
+            assert client.get("/api/session").json()["required"] is True
+            assert client.get("/api/builds").status_code == 401
+    assert "API is open" not in caplog.text
+
+
 def test_valid_cloud_start_and_local_sqlite_required(tmp_path):
     config = dict(cloud_service="dss", access_code="x" * 12, engine_mode="agent", agent_token="t" * 24)
     with TestClient(cloud_app(tmp_path, db_path=tmp_path / "local.sqlite", **config)) as client:
@@ -198,7 +232,7 @@ def test_env_config(tmp_path, monkeypatch):
               "DSS_DATA_DIR": str(tmp_path / "data"), "DSS_DB_PATH": str(tmp_path / "local.sqlite"),
               "DSS_STATIC_DIR": str(tmp_path / "static"), "K_SERVICE": "dss",
               "GOOGLE_OAUTH_CLIENT_ID": " 1-x.apps.googleusercontent.com ",
-              "DSS_SIGNIN_ALLOW": " @Example.com, ,Judge@Example.com,* "}
+              "DSS_SIGNIN_ALLOW": " @Example.com, ,Judge@Example.com,* ", "DSS_PUBLIC": "1"}
     for key, value in values.items():
         monkeypatch.setenv(key, value)
     config = Config.from_env()
@@ -208,6 +242,7 @@ def test_env_config(tmp_path, monkeypatch):
     assert config.db_path == tmp_path / "local.sqlite" and config.static_dir == tmp_path / "static"
     assert config.google_client_id == "1-x.apps.googleusercontent.com"
     assert config.signin_allow == ("@example.com", "judge@example.com", "*")
+    assert config.public_link == "1" and config.open_link
     assert CODE not in repr(config) and CODE not in json.dumps(config.public())
 
 
