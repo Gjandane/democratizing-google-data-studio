@@ -217,6 +217,9 @@ async def upload_sources(build_id: str, request: Request, files: list[UploadFile
 
 @router.post("/{build_id}/sources", status_code=201)
 async def connect_source(build_id: str, body: SourceCreate, request: Request):
+    require_build(request.app.state.db, build_id)
+    if body.kind in request.app.state.config.locked_sources:
+        raise RunError("source_locked", "GCS and BigQuery sources need the local app", 403, {"kind": body.kind})
     if body.kind == "gcs":
         _, path = bq.gcs_uri(body.uri)
         name = path.rsplit("/", 1)[-1]

@@ -2425,3 +2425,15 @@ assert min(timings) < .1
 - Gotchas: client.main's logging.basicConfig is a no-op under pytest (caplog owns root); user-facing lines use print (capsys), progress uses logging.
 - Left open: P3 POST /claim retried on network errors can burn a committed claim (prints CODE_INVALID, ticket stays running until timeout_s+60) - src/dss/agent/client.py
 - Next: Task 29.3. Start by `status --task 29.3`.
+
+## 2026-10-29: Task 29.3 Hosting info and the source lock on the open link
+- Status: done
+- Plan check: off
+- What changed: new src/dss/api/hosting.py `GET /api/hosting` (gated by AccessMiddleware like other /api routes); Config.locked_sources / Config.share_data properties; builds.connect_source answers `403 source_locked` (`detail.kind`) after require_build, before URI parsing and intake (no BigQuery factory or GCS read); main.py includes the router; tests/test_hosting.py; two Hosting contract tests in test_api_contract.py.
+- Checks: `uv run pytest tests/test_hosting.py tests/test_api_contract.py` PASS (75 passed; test_hosting 9 failed before the change, 3 regression guards passed); Test (all) `uv run pytest` PASS (2335 passed, 17 deselected, 25m48s).
+- Decisions: Hosting reads `app.state.config` (startup env, not Settings overlay); missing build -> 404 before the lock; the lock also precedes URI validation (invalid gs URI on the open link -> 403, not 422).
+- Digest: `GET /api/hosting` -> {mode, public, locked_sources, share_data, api_version} in src/dss/api/hosting.py; `Config.locked_sources -> list[str]` (["gcs","bigquery"] iff open_link), `Config.share_data -> bool` (agent mode + both DSS_SHARE_*).
+- Tried and failed: none
+- Gotchas: none
+- Left open: none
+- Next: Task 29.4. Start by `status --task 29.4`.

@@ -296,6 +296,18 @@ def hosted(name):
     return json.loads((FIXTURES.parent / "hosted-build" / name).read_text(encoding="utf-8"))
 
 
+def test_hosting_contract_local(thin):
+    """api.md 3.4 `Hosting` in local mode equals its fixture."""
+    client = thin[0]
+    assert client.get("/api/hosting").json() == hosted("hosting.local.json")
+
+
+def test_hosting_contract_agent(agent_client):
+    client, app, _ = agent_client
+    shape(client.get("/api/hosting").json(), hosted("hosting.open.json"))
+    assert client.get("/api/hosting").json()["mode"] == "agent"
+
+
 def test_hosted_build_job_contract(agent_client, spec):
     """api.md 3.4: JobTicket (waiting, running), ClaimedJob and the agent-mode EngineStatus."""
     client, app, folder = agent_client

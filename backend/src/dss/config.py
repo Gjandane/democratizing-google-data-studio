@@ -90,6 +90,15 @@ class Config(BaseModel):
     def open_link(self):
         return bool(self.cloud_service) and self.public_link == "1"
 
+    @property
+    def locked_sources(self):
+        # api.md 3.4: visitors' own machines can't read the owner's GCS or BigQuery.
+        return ["gcs", "bigquery"] if self.open_link else []
+
+    @property
+    def share_data(self):
+        return self.engine_mode == "agent" and bool(self.share_bucket) and bool(self.share_dir)
+
     def validate_start(self):
         code = self.access_code.get_secret_value()
         if self.cloud_service and self.public_link:
