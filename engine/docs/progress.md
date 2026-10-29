@@ -567,3 +567,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: no GCS "Authorize" prompt appeared (account could already read the bucket), so its name/selectors are unobserved.
 - Left open: P3 GCS authorization prompt unhandled; open_report would time out with "editor did not become ready", not the setup-command message - src/dsengine/ops/report.py (for 14.2).
 - Next: Task 14.2. Start by `recall 14.2`; observe the GCS Authorize prompt with an account that hasn't authorized GCS, and add the setup-command failure to open_report.
+
+## 2026-10-29: Task 14.2 `dsengine login` waits until Data Studio is ready
+- Status: done
+- Plan check: off
+- What changed: chrome.py `login` now waits after sign-in for a usable home (`_home_state`), prints one line telling the person to finish the first-run dialog, then checks UI language and page zoom (`_ui_problems`); exit 3 on timeout or unsupported UI. New knowledge/datastudio-ui/home.md (+index, log). New tests/test_chrome.py. cli.py unchanged (already maps False to exit 3).
+- Checks: `uv run pytest tests/test_chrome.py` PASS 12 (6 failed before); `uv run pytest` PASS 306 passed, 23 deselected; live login on signed-in profile exit 0; manual fresh scratch profile (port 9333, deleted after): login exit 0, `check` printed `signed_in: true`; user saw no first-run dialog (account already accepted).
+- Decisions: zoom = outerWidth/innerWidth, problem if off 1 by >5%; language from `<html lang>`, empty counts as English, en-* accepted; translated home counts as loaded so the language line prints at once; `first_run_dialog` matches any visible modal; probe tab never reloaded while waiting, kept open on timeout after sign-in; no GCS authorization wait (14.1 observed none).
+- Digest: chrome.py `_home_state(page, selectors)->"dialog"|"ready"|"loading"`, `_ui_problems(page)->list[str]`, `_english(lang)`; selectors `studio_home`, `first_run_dialog` in knowledge/datastudio-ui/home.md; login False -> exit 3.
+- Tried and failed: none
+- Gotchas: the real first-run terms dialog is still unobserved live (needs a Google account that never opened Data Studio); its selector is a generic visible-modal match.
+- Left open: P2 `first_run_dialog` unverified live - knowledge/datastudio-ui/home.md; P3 en-GB accepted but unverified against English selectors - src/dsengine/chrome.py
+- Next: none in this part's plan (27/27).

@@ -224,29 +224,91 @@ def check(config: ChromeConfig) -> dict[str, bool]:
     return {"chrome_running": True, "signed_in": signed_in}
 
 
+def _home_state(page, selectors):
+    """Return dialog, ready or loading; the person completes any dialog, never the engine."""
+    if page.locator(selectors["first_run_dialog"]).filter(visible=True).count():
+        return "dialog"
+    if page.locator(selectors["studio_home"]).filter(visible=True).count():
+        return "ready"
+    # The home selector is English text, so a translated home never matches it:
+    # treat it as ready and let the UI check name its language.
+    return "ready" if not _english(page.evaluate("document.documentElement.lang")) else "loading"
+
+
+def _english(lang):
+    lang = (lang or "").lower()
+    return not lang or lang.split("-")[0] == "en"
+
+
+def _ui_problems(page):
+    """What the person must change for English selectors and 100% placement zoom."""
+    state = page.evaluate("({lang: document.documentElement.lang, outer: outerWidth, inner: innerWidth})")
+    problems = []
+    lang = (state.get("lang") or "").lower()
+    if not _english(lang):
+        problems.append(f"Data Studio shows language '{lang}': set your Google account language to "
+                        "English (myaccount.google.com > Personal info > Language)")
+    # outerWidth is in screen pixels and innerWidth in CSS pixels, so their ratio
+    # is Chrome's page zoom (plus ~1% of window frame), whatever the display scale.
+    zoom = state["outer"] / state["inner"] if state.get("inner") else 1.0
+    if abs(zoom - 1) > 0.05:
+        problems.append(f"Chrome zoom is about {round(zoom * 100)}%: set it to 100% in the dedicated "
+                        "Chrome window (Ctrl+0, Settings > Appearance > Page zoom)")
+    return problems
+
+
 def login(config: ChromeConfig, timeout: float = 300) -> bool:
+    from dsengine.selectors import SelectorError, load_selectors
+
+    try:
+        selectors = load_selectors()
+    except SelectorError as exc:
+        raise ChromeError(str(exc)) from None
     ensure_browser(config, ACCOUNTS_URL)
     print("Sign in manually in the dedicated Chrome window. Waiting up to 5 minutes.", file=sys.stderr, flush=True)
     with attached(config) as context:
         page = context.new_page()
         probe = None
+        signed_in = told = timed_out = False
         try:
             page.goto(ACCOUNTS_URL, wait_until="domcontentloaded", timeout=20000)
             deadline = time.monotonic() + timeout
             next_check = 0.0
             while time.monotonic() < deadline:
                 if time.monotonic() >= next_check:
-                    if _has_google_session(context):
+                    if not signed_in and _has_google_session(context):
                         if probe is None:
                             probe = context.new_page()
-                        if _studio_signed_in(probe, context):
+                        signed_in = _studio_signed_in(probe, context)
+                        if signed_in:
                             print("Data Studio sign-in confirmed.", file=sys.stderr, flush=True)
-                            return True
+                    # Poll the loaded home without reloading it, so the person's
+                    # first-run dialog keeps what they entered.
+                    state = _home_state(probe, selectors) if signed_in else None
+                    if state == "ready":
+                        problems = _ui_problems(probe)
+                        if problems:
+                            print("; ".join(problems) + "; then run dsengine login again.",
+                                  file=sys.stderr, flush=True)
+                            return False
+                        print("Data Studio is ready.", file=sys.stderr, flush=True)
+                        return True
+                    if state == "dialog" and not told:
+                        probe.bring_to_front()
+                        print("In the dedicated Chrome window's Data Studio tab, choose your country, "
+                              "accept the Data Studio terms of service, click Continue and answer any follow-up dialog.",
+                              file=sys.stderr, flush=True)
+                        told = True
                     next_check = time.monotonic() + 3
                 page.wait_for_timeout(250)
+            timed_out = True
         finally:
-            if probe is not None:
+            # Keep the login and first-run tabs available on timeout for the person.
+            if probe is not None and not (timed_out and signed_in):
                 probe.close()
-            # Keep the login tab available on timeout for the user's manual sign-in.
-        print("Sign-in timed out; complete it manually, then run dsengine check.", file=sys.stderr)
+        if signed_in:
+            print("Data Studio setup timed out; finish it in Chrome, then run dsengine login again.",
+                  file=sys.stderr)
+        else:
+            print("Sign-in timed out; complete it manually, then run dsengine check.", file=sys.stderr)
         return False

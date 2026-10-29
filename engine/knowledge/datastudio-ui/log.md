@@ -6,6 +6,11 @@ timestamp: 2026-10-18
 selectors: {}
 ---
 
+- 2026-10-29 task 14.2: added home.md with `studio_home` (the home's "Reports and
+  Data Apps" toggle) and `first_run_dialog` (any visible dialog/alertdialog/
+  mat-dialog-container) after an aria snapshot of the signed-in home. The first-run
+  terms dialog itself was not observed (account already accepted). `<html lang>` was
+  `en`; outerWidth/innerWidth 1454/1440 at 100% zoom with devicePixelRatio 2.
 - 2026-10-29 task 14.1: added `field_type_icon` (a Data panel chip's
   `semantic-type-icon` mat-icon; its `data-mat-icon-name` is `type_text`,
   `type_numeric`, `type_datetime` (calendar, Date) or `type_geo`) after dumping
