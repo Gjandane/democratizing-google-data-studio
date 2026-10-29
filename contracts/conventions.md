@@ -103,7 +103,7 @@ backend stores them in SQLite. The API key is write-only through the API: it is 
 
 ## IDs and time
 - Build: `b_` + 12 lowercase hex chars (`b_3f9a0c12d4e5`). Chat message: `m_` + 12 hex. Run:
-  `r_` + 12 hex. Comment: `k_` + 12 hex. Source: `s_` + 12 hex.
+  `r_` + 12 hex. Comment: `k_` + 12 hex. Source: `s_` + 12 hex. Agent check (1.7): `c_` + 12 hex.
 - Spec component and decoration IDs: lowercase snake case, unique within a spec, prefixed by the
   page (`p1_kpi_revenue`, `p1_band_header`).
 - Recipe op IDs: `s` + 3-digit sequence (`s001`).
@@ -136,10 +136,20 @@ backend stores them in SQLite. The API key is write-only through the API: it is 
   signs in to Google and accepts Data Studio's first-run terms in that Chrome window), then runs
   `dss-agent run --server <URL> --job <CODE>`. Rerunning it with the next code reuses the install
   and the sign-in. No `.env`, Git or GCP project is needed on that machine.
+- Setup step (1.7, revised before any build, user card): the Build stage first offers "Set up this
+  computer" with a check code; the same script with `-Check <CODE>` / `--check <CODE>` instead of
+  `-Job` does the install and sign-in, then runs `dss-agent check --server <URL> --code <CODE>`,
+  which runs `dsengine check` (starting Chrome with the profile if it isn't running), posts the
+  result (contracts/api.md 3.4, `POST /api/agent/check`), prints one line per item (server
+  reached, versions match, Chrome running, signed in) with what to fix, and exits 0 only when all
+  pass. The page then shows the agent as ready; the job command afterwards skips install and
+  login.
 - Setup command (1.7; the frontend shows it, release's scripts take it; `<origin>` is the app's
   `window.location.origin`, `<CODE>` the ticket's code), exactly:
   PowerShell: `& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Gjandane/democratizing-google-data-studio/main/agent-setup/setup.ps1))) -Server <origin> -Job <CODE>`
   bash: `curl -fsSL https://raw.githubusercontent.com/Gjandane/democratizing-google-data-studio/main/agent-setup/setup.sh | bash -s -- --server <origin> --job <CODE>`
+  The setup step's commands are the same with `-Check <CODE>` / `--check <CODE>` in place of
+  `-Job <CODE>` / `--job <CODE>` (the check's code).
   Optional: `-Update` / `--update` (fresh repo zip), `-DryRun` / `--dry-run` (passed to the agent;
   skips `dsengine login`), `-Source <zip path or URL>` / `--source` (tests of an unpushed tree),
   `-Home <folder>` / `--home` (another install folder, tests).

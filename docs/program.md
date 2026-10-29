@@ -93,7 +93,8 @@ Written 2026-10-18.
    Cloud Run URL (open link, no sign-in) -> flow 1 with a CSV upload, research or screenshot +
    synthetic data (frontend, backend) -> on Build the backend exports the view to a public-read CSV
    and issues a one-shot job with a code (backend) -> the Build stage shows one setup command with
-   the code (frontend) -> the judge runs it: it installs the agent once, signs them in once in a
+   the code (frontend; first a "Set up this computer" step whose check command installs the
+   agent, signs them in and shows "Agent ready" on the page) -> the judge runs it: it installs the agent once, signs them in once in a
    dedicated Chrome profile, claims the job and runs `dsengine` against the CSV (release scripts,
    backend agent, engine) -> events stream back to the hosted Build stage -> the link to the report
    in the judge's own Data Studio shows; a new version needs the next code.
@@ -214,12 +215,13 @@ phases" below.
   agent, data as a public-read CSV, scale to zero. Order: engine 14.1 (GCS header, live, signed-in
   Chrome) and 14.2 (login waits for Data Studio) in engine/; backend 28.1 -> 29.1 (one-shot jobs)
   -> 29.2 (`dss-agent run`) and 29.3 (hosting info, source lock) -> 29.4 (share CSV + GCS header,
-  `Needs: engine 14.1`) in backend/, offline; frontend 19.1 (3.4 types) -> 19.2 (Build job
-  command, Connect lock) in frontend/ against fixtures/hosted-build/, in parallel with backend.
+  `Needs: engine 14.1`) -> 29.5 (agent connection check, setup step) in backend/, offline;
+  frontend 19.1 (3.4 types) -> 19.2 (Build job command, Connect lock) -> 19.3 (setup step with the
+  check) in frontend/ against fixtures/hosted-build/, in parallel with backend.
   Release: 4.1 (deploy, now scale to zero), 4.2 and 4.3 (up to the recipe) unchanged in purpose;
-  then 4.4 agent setup scripts and their push (`Needs: backend 29.2; engine 14.2`; first, so the
+  then 4.4 agent setup scripts and their push (`Needs: backend 29.2; backend 29.5; engine 14.2`; first, so the
   live URL never shows a command whose script 404s), 4.5 redeploy for judge builds (`Needs:`
-  backend 29.1-29.4, frontend 19.2; with a cross-account GCS read check), 4.6 judge-path acceptance with a
+  backend 29.1-29.5, frontend 19.3; with a cross-account GCS read check), 4.6 judge-path acceptance with a
   second Google account (STOP), 4.7 README hosted section and final push (old 4.4).
 
 ## Integration checks
@@ -336,5 +338,6 @@ phases" below.
 | 2026-10-29 | Release 2.6 accepted as PASS with findings; W1-W7 (engine area auto-fields and box placement, `bar` date grain, backend legends, HTML flake, scorecard pick) deferred to the parts' Later lists; 2.6 reopened only to fix check_contracts' ReferenceSet schema; GitHub and Cloud Run next | plan engine/backend/contract fixes now, gate 4.3 on them | user: finish the GitHub upload and Cloud Run deployment first; the report is usable with recorded findings | change 2026-10-29 (user, release 2.6 block) |
 | 2026-10-29 | Hosted v1 scope: the Cloud Run app goes from Google sign-in to the compiled recipe; Build answers `424 agent_offline` (the contract's existing stop, no contract change); Data Studio builds stay local; release 4.2/4.3 run `--until recipe` hosted, 4.3 skips the narrowed-allowlist step hosted, 4.4's README says so; one always-on instance kept | hosted builds through the owner's `dss-agent` (v1 plan); scale to zero (`--min-instances 0`) | user: the local agent is v2; no cold starts for judges, runs after 202 and the DB backup keep CPU | change 2026-10-29 hosted scope (user, release audit cards) |
 | 2026-10-29 | Local agent per judge (api.md 3.4, recipe.md 1.4, conventions.md 1.7): Build issues a one-shot job with a one-time code; the copied setup command (PowerShell tested, bash untested) installs uv, the repo zip and a dedicated Chrome profile, signs the visitor in once, then `dss-agent run --server --job` claims that job with a per-job token, runs dsengine and exits; the report lands in the visitor's account; the polling agent, heartbeat, shared agent token and `424 agent_offline` go; scale to zero (min 0, max 1) | per-browser pairing with a connected polling agent (kept the instance billed while any agent ran); a downloaded bundle with no report back (hosted Build stays blind); engine in Cloud Run as a demo account, sign-in inside a cloud browser, a VM, a Chrome extension, OAuth to Data Studio (declined earlier: no create API, branding limited to one domain) | user: judges build in their own accounts, the recipe is already the whole build, so nothing needs to keep asking | change 2026-10-29 local agent per judge (user cards) |
+| 2026-10-29 | Setup step before the first Build: a one-time check code; the setup script's `-Check` mode installs, signs in and runs `dss-agent check`, which reports server reached, versions match, Chrome running and signed in; the page shows "Agent ready"; Build is not gated on it | one combined command (problems show only at build time); check printed in the terminal only | user card 2026-10-29: set the software up first, then see the connection work | change 2026-10-29 local agent per judge (setup step) |
 | 2026-10-29 | Hosted data path: with `DSS_SHARE_BUCKET`, `POST /run` writes the view's rows as one CSV to `gs://<project>-dss-share/<32 hex>/data.csv` (bucket mounted at `/share`, stdlib csv, cap 1M rows / 100 MB) and the recipe header uses `googleCloudStorage` FILE; `allUsers` gets only `storage.objects.get` (no listing); objects live until the link is closed; GCS and BigQuery sources locked on the open link, a visitor's own BigQuery/GCS data and uploads over 32 MB are Later | BigQuery CUSTOM_QUERY billed to the visitor's project with a dataset share to the runtime SA; OAuth BigQuery read scope; EXPORT DATA (sharded files need FOLDER mode); 14-day lifecycle; signed-URL direct uploads | the visitor's account can't read the owner's BigQuery; the Data Studio GCS connector reads with the viewer's credentials; one file and no new dependency | change 2026-10-29 local agent per judge (user cards) |
 | 2026-10-29 | Open hosted link (conventions 1.6): `DSS_PUBLIC=1` on Cloud Run, with the code and the Google client id empty, runs the service ungated; agent token unchanged; backend 28.1 (fail-closed opt-in), release 4.1 gated on it (deploy.sh open and gated modes), 4.2/4.4 wording; frontend unchanged (the gate opens on `required: false`) | OAuth client in a separate billing-free project with External branding (no code change); access code shared with the link; switch the existing branding to External | user: anyone with the link gets in; the project's branding is limited to one domain; an explicit flag so a missing secret never opens the service | change 2026-10-29 open hosted link (user cards) |

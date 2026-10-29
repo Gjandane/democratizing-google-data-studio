@@ -10,6 +10,14 @@
   `google.accounts.id.initialize({client_id, callback})` and `renderButton`, and posts the
   callback's `credential` as `{google_id_token}`; no code field then. Type the small GIS surface
   you use in a local .d.ts; tests stub `window.google`. Never store the token.
+- Setup step (api.md 3.4 Checks, frontend 19.3): in agent mode Build first shows "Set up this
+  computer": `POST /api/agent-checks`, the conventions 1.7 setup-step commands with `-Check
+  <code>` (same two tabs and Chrome line as the job panel), then poll `GET /api/agent-checks/{id}`
+  every 3 s while `waiting`; `passed` shows "Agent ready on this computer" (check items ticked);
+  `failed` lists each failed item with its fix and offers Check again (a new code); `expired`
+  offers a new code. A passed check is remembered for the tab in sessionStorage as a boolean
+  only (never the code), so the step folds into a one-line "Agent ready" after a reload. Build
+  stays enabled throughout ("Already set up? Build in Data Studio").
 - Agent mode (api.md 3.4, change 2026-10-29): Build in Data Studio is enabled (no agent to wait
   for); after `POST /run`, `GET /api/builds/{id}/job` gives the ticket; poll it every 3 s while
   `waiting` (stop on `running`, `finished`, `expired` or unmount) and follow the run on the event

@@ -1,0 +1,13 @@
+{
+  "check_id": "c_00000000000a",
+  "code": "P3WN-8HJD",
+  "expires_at": "2026-10-29T09:30:00Z",
+  "state": "passed",
+  "checked_at": "2026-10-29T09:06:40Z",
+  "result": {
+    "agent_version": "0.1.0",
+    "api_version_ok": true,
+    "chrome_running": true,
+    "signed_in": true
+  }
+}

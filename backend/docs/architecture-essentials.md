@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:ae7a09a3fe09 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:e0b1210f17fc (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 docs/architecture.md wins.
 

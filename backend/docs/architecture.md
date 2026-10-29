@@ -211,6 +211,15 @@ Files per version: `data/builds/<id>/v<n>/` (../contracts/conventions.md).
   mid-job -> kill the engine, delete the job folder, exit 1. Network errors: retry with backoff up
   to 60 s, then exit non-zero. Never prints, logs or writes the code or the token (argv carries
   the code; it dies at claim).
+- Agent connection check (task 29.5, ../contracts/api.md 3.4 Checks): `POST /api/agent-checks`
+  inserts a check row (check_id, code from the job-code generator and namespace, `waiting`,
+  `expires_at` +30 min); `POST /api/agent/check` matches a waiting, unexpired check code (misses
+  sleep 1 s, `job_code_invalid`), stores `result` with `api_version_ok` computed server-side and
+  `state` passed/failed, and uses up the code; the 15 s sweep expires waiting checks. `dss-agent
+  check --server --code` runs `dsengine check` via `DSS_ENGINE_CMD`, and if Chrome isn't running
+  starts it with `dsengine browser` and checks again, posts the result, prints one line per item
+  with its fix, and exits 0 only when passed (1 failed, 2 on a version mismatch, the same text as
+  `run`). Nothing gates on a check.
 - Hosting info and source lock (task 29.3): `GET /api/hosting` from config (`public` =
   `K_SERVICE` set and `DSS_PUBLIC=1`; `share_data` = agent mode with both `DSS_SHARE_*` set).
   With `public`, `POST /sources {gcs|bigquery}` answers `403 source_locked` before touching

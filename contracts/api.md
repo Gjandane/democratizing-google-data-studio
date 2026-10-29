@@ -76,6 +76,10 @@ share data path: `422 share_too_large`, `503 share_export_failed`; errors `404 j
 `job_expired`. Every other shape and route is unchanged. Fixtures: new folder
 contracts/fixtures/hosted-build/ (hosting.open.json, hosting.local.json, job_ticket.waiting.json,
 job_ticket.running.json, claimed_job.json); fixtures/api/ unchanged.
+Revised the same day before any build (user card, setup step): an agent connection check, so a
+visitor sets the agent up once and the page shows it ready before the first Build: type
+`AgentCheck`, `POST /api/agent-checks`, `GET /api/agent-checks/{check_id}`, `POST /api/agent/check`,
+error `404 check_not_found`; fixtures hosted-build/agent_check.{waiting,passed,failed}.json.
 Requirements and feasibility follow contracts/dashboard-intent.md 1.3.
 Provider: backend. Consumers: frontend, release. Base: `http://localhost:8000/api` (the frontend
 uses relative `/api`, proxied by Vite; contracts/conventions.md). JSON bodies, UTF-8. Errors use
@@ -135,6 +139,11 @@ JobTicket  = { run_id: string, build_id: string, version: int,
                state: "waiting"|"running"|"finished"|"expired",
                expires_at: string /* creation + 30 min; a waiting ticket expires then */,
                claimed_at: string|null }   /* 3.4, agent mode */
+AgentCheck = { check_id: string /* "c_" + 12 hex */, code: string /* one-time, as JobTicket.code */,
+               state: "waiting"|"passed"|"failed"|"expired",
+               expires_at: string /* creation + 30 min */, checked_at: string|null,
+               result: { agent_version: string, api_version_ok: boolean, chrome_running: boolean,
+                         signed_in: boolean } | null /* passed = all three true */ }   /* 3.4 */
 ClaimedJob = { job: Job, job_token: string /* per-job bearer token for that job's routes */,
                api_version: string /* "3.4" */ }   /* 3.4 */
 Hosting    = { mode: "local"|"agent", public: boolean /* DSS_PUBLIC=1 on Cloud Run */,
@@ -200,6 +209,8 @@ folder; otherwise `400 invalid_name`.
 | `POST /api/builds/{id}/run` | — | `202 {run_id}`; stage -> `build`, then `done` (also after `partial`); after `failed` the stage returns to `prototype`. One engine run at a time on the machine: else `409 engine_busy`. Agent mode (3.4): issues a `JobTicket` (`GET .../job`) for a one-shot agent; a build whose ticket is `waiting` or `running` -> `409 engine_busy`; builds don't wait on each other. With `share_data`: the view is exported first (Agent endpoints, Share data); `422 share_too_large` and `503 share_export_failed` start no job and leave the stage as it was |
 | `GET /api/builds/{id}/job` | — | 3.4, agent mode: the `JobTicket` of the build's latest run; `404 job_not_found` when it has none; local mode `404 agent_mode_off` |
 | `GET /api/hosting` | — | 3.4: `Hosting` (gated like every other route) |
+| `POST /api/agent-checks` | — | 3.4, agent mode: `201 AgentCheck` (`waiting`, a new one-time code for the setup command); local mode `404 agent_mode_off` |
+| `GET /api/agent-checks/{check_id}` | — | 3.4: `AgentCheck`; unknown -> `404 check_not_found` |
 | `POST /api/builds/{id}/versions` | — | `201 Build`: new version from the latest spec and its four confirmed artifacts; stage -> `prototype` |
 | `GET /api/builds/{id}/files/{name}` | — | a file from the current version folder (`background_p<n>.png`, `screens/<file>`) |
 | `GET /api/builds/{id}/events` | — | `text/event-stream` (below) |
@@ -356,6 +367,7 @@ its code; there is no polling agent, heartbeat or shared agent token.
 
 | Method and path | Body | Response |
 |---|---|---|
+| `POST /api/agent/check` | `{code: string, agent_version: string, api_version: string, chrome_running: boolean, signed_in: boolean}` (no auth) | `200 {state: "passed"\|"failed", api_version: string}`; records the result on that `AgentCheck` (`api_version_ok` = the agent's equals the server's) and uses up the code; unknown, used or expired -> `404 job_code_invalid` after a 1 s delay |
 | `POST /api/agent/claim` | `{code: string, agent_version: string}` (no auth) | `200 ClaimedJob`; the code is read case-insensitively with spaces and dashes dropped; unknown, used or expired -> `404 job_code_invalid` after a 1 s delay |
 | `GET /api/agent/jobs/{run_id}/files/{name}` | — | the bytes of one file listed in `Job.files` |
 | `POST /api/agent/jobs/{run_id}/events` | `{events: object[]}` (engine stdout events, in order, one or more) | `{ok: true}`; each `op_finished` is relayed as `build.op` |
@@ -373,6 +385,11 @@ its code; there is no polling agent, heartbeat or shared agent token.
   `Job.timeout_s + 60` s fails with error `agent_timeout`. Tickets and token hashes live in the
   database, so they survive a restart; at startup a `running` ticket fails with `agent_timeout`,
   a `waiting` one stays claimable until it expires.
+- Checks (setup step): check codes and job codes share one alphabet and one namespace (a live code
+  is either), so a check code never claims a job and a job code never answers a check. A
+  `waiting` check expires at `expires_at` (`state: "expired"`). Checks live in the database like
+  tickets. A check proves the agent reaches the server and its machine is ready; it gates nothing
+  (Build stays available).
 - Share data (3.4): with `Hosting.share_data`, `POST /run` writes the version's view rows as one
   CSV (header = the view's column names; DATE as `YYYY-MM-DD`, DATETIME and TIMESTAMP as
   `YYYY-MM-DD HH:MM:SS` UTC) to `gs://<DSS_SHARE_BUCKET>/<32 random hex>/data.csv` and compiles
