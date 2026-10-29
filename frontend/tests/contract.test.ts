@@ -32,6 +32,7 @@ import {
   isGenerator,
   isJob,
   isClaimedJob,
+  isAgentCheck,
   isHosting,
   isJobTicket,
   isMessage,
@@ -48,9 +49,10 @@ import {
   specFieldErrors,
   SYNTHETIC_LIMIT_BYTES,
   toBuildEvent,
+  type AgentCheck,
   type Guard,
 } from '../src/api/types';
-import { createMockApi, resetMockState, setMockAssessment, setMockDesignPages, setMockHosting, setMockRunFailure } from '../src/mocks/api';
+import { createMockApi, resetMockState, setMockAssessment, setMockAgentCheckOutcome, setMockDesignPages, setMockHosting, setMockRunFailure } from '../src/mocks/api';
 import { openMockBuildEvents } from '../src/mocks/events';
 import { fixtures } from '../src/mocks/fixtures';
 import { parseSse } from '../src/mocks/sse';
@@ -1168,13 +1170,14 @@ const hostedGuards: Record<string, Guard<unknown>> = {
   'job_ticket.waiting.json': isJobTicket,
   'job_ticket.running.json': isJobTicket,
   'claimed_job.json': isClaimedJob,
+  'agent_check.waiting.json': isAgentCheck,
+  'agent_check.passed.json': isAgentCheck,
+  'agent_check.failed.json': isAgentCheck,
 };
-/** The setup step's AgentCheck fixtures: guarded by task 19.3, which adds that type. */
-const agentCheckFixtures = ['agent_check.waiting.json', 'agent_check.passed.json', 'agent_check.failed.json'];
 
 describe('hosted-build fixtures match the contract (api.md 3.4)', () => {
   it('has a check for every hosted-build fixture file', () => {
-    expect(Object.keys(hostedFixture).sort()).toEqual([...Object.keys(hostedGuards), ...agentCheckFixtures].sort());
+    expect(Object.keys(hostedFixture).sort()).toEqual(Object.keys(hostedGuards).sort());
   });
 
   it.each(Object.keys(hostedGuards))('hosted-build/%s', (name) => {
@@ -1190,6 +1193,19 @@ describe('hosted-build fixtures match the contract (api.md 3.4)', () => {
     ]);
     expect(problemsOf(isJobTicket, { ...ticket, claimed_at: 0 })).toEqual(['$.claimed_at: expected a string']);
     expect(problemsOf(isJobTicket, { ...ticket, token: 'x' })).toEqual(['$.token: not in the contract']);
+  });
+
+  it('an AgentCheck with an unknown state, an extra key or a bad result fails', () => {
+    const check = hostedJson('agent_check.passed.json') as Record<string, unknown>;
+    expect(problemsOf(isAgentCheck, { ...check, state: 'running' })).toEqual([
+      '$.state: expected one of waiting | passed | failed | expired, got "running"',
+    ]);
+    expect(problemsOf(isAgentCheck, { ...check, token: 'x' })).toEqual(['$.token: not in the contract']);
+    const { code: _code, ...missing } = check;
+    expect(problemsOf(isAgentCheck, missing)).toEqual(['$.code: missing']);
+    expect(problemsOf(isAgentCheck, { ...check, result: { ...(check.result as object), extra: true } })).toEqual(['$.result.extra: not in the contract']);
+    expect(problemsOf(isAgentCheck, { ...check, result: { ...(check.result as object), signed_in: 'yes' } })).toEqual(['$.result.signed_in: expected a boolean']);
+    expect(problemsOf(isAgentCheck, { ...check, checked_at: 0 })).toEqual(['$.checked_at: expected a string']);
   });
 
   it('a Hosting with an unknown locked source, or a missing field, fails', () => {
@@ -1237,6 +1253,20 @@ describe('the HTTP client speaks the hosted-build contract (api.md 3.4)', () => 
     stubFetch(404, JSON.stringify({ error: { code: 'job_not_found', message: 'No job.', detail: {} } }));
     await expect(httpApi.getJob('b/1')).rejects.toMatchObject({ status: 404, code: 'job_not_found' });
   });
+
+  it('creates and reads a setup check with exact paths, failing closed on other shapes', async () => {
+    let fetchMock = stubFetch(201, hostedFixture['agent_check.waiting.json'] ?? '');
+    await expect(httpApi.createAgentCheck()).resolves.toEqual(hostedJson('agent_check.waiting.json'));
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith('/api/agent-checks', { method: 'POST' });
+    fetchMock = stubFetch(200, hostedFixture['agent_check.failed.json'] ?? '');
+    await expect(httpApi.getAgentCheck('c/1')).resolves.toEqual(hostedJson('agent_check.failed.json'));
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith('/api/agent-checks/c%2F1', { method: 'GET' });
+
+    stubFetch(200, JSON.stringify({ ...(hostedJson('agent_check.waiting.json') as object), state: 'running' }));
+    await expect(httpApi.getAgentCheck('c/1')).rejects.toMatchObject({ status: 502, code: 'invalid_response' });
+    stubFetch(404, JSON.stringify({ error: { code: 'check_not_found', message: 'No check.', detail: {} } }));
+    await expect(httpApi.getAgentCheck('c/1')).rejects.toMatchObject({ status: 404, code: 'check_not_found' });
+  });
 });
 
 describe('mock hosting and one-shot jobs (api.md 3.4)', () => {
@@ -1250,6 +1280,7 @@ describe('mock hosting and one-shot jobs (api.md 3.4)', () => {
     resetMockState();
     await expect(createMockApi().getHosting()).resolves.toEqual(hostedJson('hosting.local.json'));
     await expect(createMockApi().getJob(fixtures.build.id)).rejects.toMatchObject({ status: 404, code: 'agent_mode_off' });
+    await expect(createMockApi().createAgentCheck()).rejects.toMatchObject({ status: 404, code: 'agent_mode_off' });
     vi.stubEnv('VITE_MOCK_HOSTED', '1');
     resetMockState();
     await expect(createMockApi().getHosting()).resolves.toEqual(hostedJson('hosting.open.json'));
@@ -1288,6 +1319,49 @@ describe('mock hosting and one-shot jobs (api.md 3.4)', () => {
     await vi.runAllTimersAsync();
     expect((await settle(api.getJob(id))).state).toBe('finished');
     expect((await settle(api.getBuild(id))).stage).toBe('done');
+  });
+
+  it('serves a setup check: waiting with a fresh code each time, then the outcome after 5 s', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    setMockHosting('open');
+    const api = createMockApi();
+    const settle = async <T,>(promise: Promise<T>) => {
+      await vi.advanceTimersByTimeAsync(0);
+      return promise;
+    };
+    const first = await settle(api.createAgentCheck());
+    const waiting = hostedJson('agent_check.waiting.json') as AgentCheck;
+    expect(first).toMatchObject({ code: waiting.code, state: 'waiting', checked_at: null, result: null });
+    expect(first.check_id).toMatch(/^c_[0-9a-f]{12}$/);
+    expect(Date.parse(first.expires_at) - Date.now()).toBeGreaterThan(30 * 60_000 - 1000);
+    expect(Date.parse(first.expires_at) - Date.now()).toBeLessThanOrEqual(30 * 60_000);
+    const second = await settle(api.createAgentCheck());
+    expect(second.code).not.toBe(first.code);
+    expect(second.code).toMatch(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/);
+    expect(second.check_id).not.toBe(first.check_id);
+
+    await vi.advanceTimersByTimeAsync(4999);
+    expect((await settle(api.getAgentCheck(first.check_id))).state).toBe('waiting');
+    await vi.advanceTimersByTimeAsync(1);
+    const passed = await settle(api.getAgentCheck(first.check_id));
+    expect(passed).toMatchObject({ state: 'passed', result: (hostedJson('agent_check.passed.json') as AgentCheck).result });
+    expect(passed.checked_at).not.toBeNull();
+    const unknown = expect(api.getAgentCheck('c_ffffffffffff')).rejects.toMatchObject({ status: 404, code: 'check_not_found' });
+    await vi.advanceTimersByTimeAsync(0);
+    await unknown;
+
+    setMockAgentCheckOutcome('failed');
+    const failing = await settle(api.createAgentCheck());
+    await vi.advanceTimersByTimeAsync(5000);
+    expect((await settle(api.getAgentCheck(failing.check_id))).result).toEqual((hostedJson('agent_check.failed.json') as AgentCheck).result);
+    setMockAgentCheckOutcome('expired');
+    const lapsing = await settle(api.createAgentCheck());
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(await settle(api.getAgentCheck(lapsing.check_id))).toMatchObject({ state: 'expired', result: null });
+    setMockAgentCheckOutcome('waiting');
+    const staying = await settle(api.createAgentCheck());
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect((await settle(api.getAgentCheck(staying.check_id))).state).toBe('waiting');
   });
 
   it('with VITE_MOCK_HOSTED=failed a claimed job ends with build.finished failed and agent_timeout', async () => {

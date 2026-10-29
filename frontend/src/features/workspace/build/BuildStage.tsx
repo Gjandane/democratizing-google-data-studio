@@ -11,6 +11,7 @@ import { useHosting } from './hosting';
 import { JobPanel, type JobStatus } from './JobPanel';
 import { LiveViewPanel } from './LiveViewPanel';
 import { RecipePanel } from './RecipePanel';
+import { SetupPanel } from './SetupPanel';
 import { useReviewLock } from '../briefs/reviewLock';
 
 const messageOf = (error: unknown, fallback: string) => (error instanceof ApiError ? error.message : fallback);
@@ -173,6 +174,7 @@ export function BuildStage({ build, run: streamRun, referencesReady = true, feas
       <SampleDataBanner sources={build.sources}>
         This dashboard is built from invented rows, and Data Studio shows it with the same label.
       </SampleDataBanner>
+      {agent && build.stage !== 'done' && !run.running && !starting && <SetupPanel />}
       {agent ? (
         <JobPanel
           buildId={buildId}

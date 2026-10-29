@@ -37,7 +37,9 @@ import {
   type Health,
   type Hosting,
   isHosting,
+  isAgentCheck,
   isJobTicket,
+  type AgentCheck,
   type JobTicket,
   type Message,
   type Blueprint,
@@ -189,6 +191,10 @@ export interface ApiClient {
   getHosting(): Promise<Hosting>;
   /** Agent mode: the ticket of the build's latest run; `404 job_not_found` without one, `404 agent_mode_off` in local mode (3.4). */
   getJob(buildId: string): Promise<JobTicket>;
+  /** Agent mode: a new setup check with a one-time code (`404 agent_mode_off` in local mode) (3.4). */
+  createAgentCheck(): Promise<AgentCheck>;
+  /** Agent mode: reads a setup check; `404 check_not_found` for an unknown one (3.4). */
+  getAgentCheck(checkId: string): Promise<AgentCheck>;
 }
 
 const UNREACHABLE = "Can't reach the backend. Start it on port 8000, then try again.";
@@ -272,6 +278,7 @@ const UNREADABLE = {
   cost: "Couldn't read the cost estimate. Try again.",
   hosting: "Couldn't read how this app is hosted: the backend may predate API 3.4. Update it, then reload.",
   job: "Couldn't read the build code. Try again.",
+  agentCheck: "Couldn't read the setup check. Try again.",
   build: "Couldn't read this build: the backend may predate API 2.0. Update it, then try again.",
 };
 
@@ -381,6 +388,8 @@ export const httpApi: ApiClient = {
   engineLogin: () => json('POST', '/engine/login'),
   getHosting: () => checkedJson('GET', '/hosting', isHosting, UNREADABLE.hosting),
   getJob: (id) => checkedJson('GET', buildPath(id, '/job'), isJobTicket, UNREADABLE.job),
+  createAgentCheck: () => checkedJson('POST', '/agent-checks', isAgentCheck, UNREADABLE.agentCheck),
+  getAgentCheck: (checkId) => checkedJson('GET', `/agent-checks/${seg(checkId)}`, isAgentCheck, UNREADABLE.agentCheck),
 };
 
 export const isMockMode = import.meta.env.VITE_MOCK === '1';

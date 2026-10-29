@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, httpApi } from '../src/api/client';
 import type { OpenBuildEvents, StreamHandlers } from '../src/api/events';
-import { ApiError, UPLOAD_LIMIT_BYTES, type Build, type BuildEvent, type JobTicket } from '../src/api/types';
+import { ApiError, UPLOAD_LIMIT_BYTES, type AgentCheck, type Build, type BuildEvent, type JobTicket } from '../src/api/types';
 import { SettingsModal } from '../src/features/settings/SettingsModal';
 import { BuildStage } from '../src/features/workspace/build/BuildStage';
 import { setupCommands } from '../src/features/workspace/build/setupCommand';
@@ -13,7 +13,10 @@ import { openMockBuildEvents } from '../src/mocks/events';
 import { dropMockJob, expireMockJob, resetMockState, setMockEngine, setMockHosting } from '../src/mocks/api';
 import { fixtures } from '../src/mocks/fixtures';
 
-beforeEach(() => resetMockState());
+beforeEach(() => {
+  resetMockState();
+  sessionStorage.clear();
+});
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -86,7 +89,8 @@ describe('hosted build (agent mode)', () => {
     await buildEnabled();
     expect(screen.queryByRole('heading', { name: 'Build agent' })).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Data Studio engine' })).toBeNull();
-    expect(screen.queryByText('Needs Google Chrome')).toBeNull();
+    // The setup step (19.3) is the one Chrome line before the first Build.
+    expect(screen.getAllByText('Needs Google Chrome')).toHaveLength(1);
     expect(screen.queryByRole('button', { name: 'Sign in to Google' })).toBeNull();
   });
 
@@ -332,6 +336,203 @@ describe('hosted build (agent mode)', () => {
     expect(window.location.href).not.toContain(CODE);
     expect(JSON.stringify({ ...localStorage })).not.toContain(CODE);
     expect(JSON.stringify({ ...sessionStorage })).not.toContain(CODE);
+  });
+});
+
+const CHECK_CODE = 'P3WN-8HJD';
+const CHECK_POWERSHELL = `& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Gjandane/democratizing-google-data-studio/main/agent-setup/setup.ps1))) -Server ${window.location.origin} -Check ${CHECK_CODE}`;
+const CHECK_BASH = `curl -fsSL https://raw.githubusercontent.com/Gjandane/democratizing-google-data-studio/main/agent-setup/setup.sh | bash -s -- --server ${window.location.origin} --check ${CHECK_CODE}`;
+
+/** A check in `state`, expiring in 30 min (the fixtures' own dates are past). */
+const checkIn = (state: AgentCheck['state'], extra: Partial<AgentCheck> = {}): AgentCheck => {
+  const base =
+    state === 'passed' ? fixtures.agentCheckPassed
+    : state === 'failed' ? fixtures.agentCheckFailed
+    : { ...fixtures.agentCheckWaiting, state };
+  return { ...base, expires_at: new Date(Date.now() + 30 * 60_000).toISOString(), ...extra };
+};
+
+describe('setup step with the agent connection check (agent mode)', () => {
+  it('shows the Chrome line and both check commands with Copy, equal to conventions 1.7 with -Check / --check', async () => {
+    vi.spyOn(api, 'createAgentCheck').mockResolvedValue(checkIn('waiting'));
+    await renderHosted();
+    expect(screen.getByRole('heading', { name: 'Set up this computer' })).toBeTruthy();
+    expect(screen.getByText('Needs Google Chrome')).toBeTruthy();
+    expect(screen.getByText(CHECK_CODE).tagName).toBe('CODE');
+    expect(setupCommands(window.location.origin, 'check', CHECK_CODE)).toEqual({ powershell: CHECK_POWERSHELL, bash: CHECK_BASH });
+    const unix = screen.getByRole('tab', { name: /macOS\/Linux/ });
+    expect(unix.textContent).toContain('untested');
+    expect(screen.getByRole('tab', { name: 'Windows (PowerShell)' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByText(CHECK_POWERSHELL).tagName).toBe('CODE');
+    expect(screen.getAllByRole('button', { name: 'Copy' })).toHaveLength(1);
+    fireEvent.click(unix);
+    expect(screen.getByText(CHECK_BASH).tagName).toBe('CODE');
+    expect(screen.getAllByRole('button', { name: 'Copy' })).toHaveLength(1);
+    expect(screen.getByText(/^Code expires in (29|30):\d\d$/)).toBeTruthy();
+    expect(screen.getByText('Already set up? Build in Data Studio.')).toBeTruthy();
+  });
+
+  it('local mode: no setup step', async () => {
+    setMockEngine({ signed_in: false });
+    await renderBuild('Not signed in to Google');
+    expect(screen.queryByRole('heading', { name: 'Set up this computer' })).toBeNull();
+    expect(screen.queryByText('Agent ready on this computer')).toBeNull();
+  });
+
+  it.each(['waiting', 'passed', 'failed', 'expired'] as const)('Build in Data Studio stays enabled with a %s check', async (state) => {
+    vi.spyOn(api, 'createAgentCheck').mockResolvedValue(checkIn(state));
+    await renderHosted();
+    await buildEnabled();
+    expect(screen.getByRole('heading', { name: 'Set up this computer' })).toBeTruthy();
+  });
+
+  describe('check states', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+    });
+    afterEach(() => vi.useRealTimers());
+    const advance = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+
+    /** Opens the Build stage on the open link with the check calls spied; time stands still. */
+    async function openSetup(create: () => AgentCheck, read?: () => AgentCheck) {
+      const createSpy = vi.spyOn(api, 'createAgentCheck').mockImplementation(async () => create());
+      const readSpy = vi.spyOn(api, 'getAgentCheck').mockImplementation(async () => (read ?? create)());
+      setMockHosting('open');
+      const loading = api.getBuild(fixtures.build.id);
+      await advance(10);
+      const build = await loading;
+      render(<HostedHolder initial={build} open={noStream} />);
+      await advance(0);
+      return { createSpy, readSpy, build };
+    }
+
+    it('reads the check every 3 s while waiting and stops on any other state', async () => {
+      let current = checkIn('waiting');
+      const { createSpy, readSpy } = await openSetup(() => current);
+      expect(createSpy).toHaveBeenCalledTimes(1);
+      expect(readSpy).toHaveBeenCalledTimes(0);
+      await advance(2999);
+      expect(readSpy).toHaveBeenCalledTimes(0);
+      await advance(1);
+      expect(readSpy).toHaveBeenCalledTimes(1);
+      await advance(3000);
+      expect(readSpy).toHaveBeenCalledTimes(2);
+      current = checkIn('passed');
+      await advance(3000);
+      expect(readSpy).toHaveBeenCalledTimes(3);
+      expect(screen.getAllByText('Agent ready on this computer').length).toBeGreaterThan(0);
+      await advance(30000);
+      expect(readSpy).toHaveBeenCalledTimes(3);
+    });
+
+    it('passed: four items ticked, and sessionStorage holds only a boolean, never the code', async () => {
+      let current = checkIn('waiting');
+      const { createSpy, build } = await openSetup(() => current);
+      current = checkIn('passed');
+      await advance(3000);
+      const items = screen.getAllByRole('listitem');
+      expect(items.map((li) => li.textContent)).toEqual(['Server reached: ok', 'Versions match: ok', 'Chrome running: ok', 'Signed in to Google: ok']);
+      expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
+      expect(Object.fromEntries(Object.entries(sessionStorage))).toEqual({ 'dss.agentReady': '1' });
+      expect(JSON.stringify(Object.entries(sessionStorage))).not.toContain(CHECK_CODE);
+      cleanup();
+
+      // A reload: the step folds to one line and asks for no new code.
+      render(<HostedHolder initial={build} open={noStream} />);
+      await advance(10);
+      expect(createSpy).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('Agent ready on this computer')).toBeTruthy();
+      expect(screen.queryByRole('heading', { name: 'Set up this computer' })).toBeNull();
+      expect(screen.queryByText(CHECK_CODE)).toBeNull();
+    });
+
+    it('failed: names each failed item with its fix; Check again asks for a new code', async () => {
+      let n = 0;
+      const { createSpy } = await openSetup(
+        () => (n++ === 0 ? checkIn('waiting') : checkIn('waiting', { check_id: 'c_00000000000b', code: 'QWER-2345' })),
+        () => checkIn('failed', { result: { agent_version: '0.1.0', api_version_ok: false, chrome_running: false, signed_in: false } }),
+      );
+      await advance(3000);
+      const items = screen.getAllByRole('listitem').map((li) => li.textContent);
+      expect(items).toEqual([
+        'Server reached: ok',
+        'Versions match: failedRerun the setup command with -Update (--update on macOS/Linux).',
+        'Chrome running: failedStart Google Chrome with the agent, then check again.',
+        "Signed in to Google: failedSign in to Google in the agent's Chrome window, then check again.",
+      ]);
+      expect(sessionStorage.getItem('dss.agentReady')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
+      await advance(0);
+      expect(createSpy).toHaveBeenCalledTimes(2);
+      expect(screen.getByText('QWER-2345')).toBeTruthy();
+    });
+
+    it('failed with only the sign-in missing says to sign in to the agent\'s Chrome window', async () => {
+      await openSetup(() => checkIn('failed'));
+      const items = screen.getAllByRole('listitem').map((li) => li.textContent);
+      expect(items[1]).toBe('Versions match: ok');
+      expect(items[3]).toBe("Signed in to Google: failedSign in to Google in the agent's Chrome window, then check again.");
+    });
+
+    it('expired: offers a new code', async () => {
+      let n = 0;
+      const { createSpy } = await openSetup(() => (n++ === 0 ? checkIn('expired') : checkIn('waiting', { code: 'QWER-2345' })));
+      expect(screen.getByText('That check code expired.')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Get a new code' }));
+      await advance(0);
+      expect(createSpy).toHaveBeenCalledTimes(2);
+      expect(screen.getByText('QWER-2345')).toBeTruthy();
+    });
+
+    it('a 404 on read counts as expired and stops the polling', async () => {
+      const { readSpy } = await openSetup(
+        () => checkIn('waiting'),
+        () => {
+          throw new ApiError(404, 'check_not_found', 'gone');
+        },
+      );
+      await advance(3000);
+      expect(readSpy).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('That check code expired.')).toBeTruthy();
+      await advance(10000);
+      expect(readSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('a code that runs out locally counts as expired', async () => {
+      await openSetup(() => checkIn('waiting', { expires_at: new Date(Date.now() + 2000).toISOString() }));
+      await advance(2100);
+      expect(screen.getByText('That check code expired.')).toBeTruthy();
+    });
+
+    it('a failed read keeps the last check and tries again', async () => {
+      let fail = true;
+      const { readSpy } = await openSetup(
+        () => checkIn('waiting'),
+        () => {
+          if (fail) throw new ApiError(500, 'server_error', 'down');
+          return checkIn('passed');
+        },
+      );
+      await advance(3000);
+      expect(screen.getByText(CHECK_CODE)).toBeTruthy();
+      fail = false;
+      await advance(3000);
+      expect(readSpy).toHaveBeenCalledTimes(2);
+      expect(screen.getAllByRole('listitem')).toHaveLength(4);
+    });
+
+    it('a failed create says so and offers Try again', async () => {
+      vi.spyOn(api, 'createAgentCheck').mockRejectedValueOnce(new ApiError(500, 'server_error', 'down')).mockResolvedValue(checkIn('waiting'));
+      setMockHosting('open');
+      const loading = api.getBuild(fixtures.build.id);
+      await advance(10);
+      render(<HostedHolder initial={await loading} open={noStream} />);
+      await advance(0);
+      expect(screen.getByRole('alert').textContent).toBe("Couldn't get a check code. Try again.");
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      await advance(0);
+      expect(screen.getByText(CHECK_CODE)).toBeTruthy();
+    });
   });
 });
 

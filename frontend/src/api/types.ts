@@ -810,6 +810,31 @@ export interface JobTicket {
   claimed_at: string | null;
 }
 
+export const AGENT_CHECK_STATES = ['waiting', 'passed', 'failed', 'expired'] as const;
+export type AgentCheckState = (typeof AGENT_CHECK_STATES)[number];
+
+/** What the setup check found on the visitor's computer (api.md 3.4 Checks). */
+export interface AgentCheckResult {
+  agent_version: string;
+  api_version_ok: boolean;
+  chrome_running: boolean;
+  signed_in: boolean;
+}
+
+/** POST /api/agent-checks, GET /api/agent-checks/{check_id} (api.md 3.4, agent mode): the setup check. */
+export interface AgentCheck {
+  /** "c_" + 12 hex. */
+  check_id: string;
+  /** One-time check code, same alphabet as a job code. */
+  code: string;
+  state: AgentCheckState;
+  /** Creation + 30 min; a waiting check expires then. */
+  expires_at: string;
+  checked_at: string | null;
+  /** Null until the agent reports; `passed` means all three flags are true. */
+  result: AgentCheckResult | null;
+}
+
 /** 200 body of POST /api/agent/claim (api.md 3.4; the frontend only checks the fixture). */
 export interface ClaimedJob {
   job: Job;
@@ -1439,6 +1464,20 @@ export const isJobTicket = shape<JobTicket>({
   state: oneOf(JOB_TICKET_STATES),
   expires_at: isString,
   claimed_at: nullable(isString),
+});
+export const isAgentCheckResult = shape<AgentCheckResult>({
+  agent_version: isString,
+  api_version_ok: isBoolean,
+  chrome_running: isBoolean,
+  signed_in: isBoolean,
+});
+export const isAgentCheck = shape<AgentCheck>({
+  check_id: isString,
+  code: isString,
+  state: oneOf(AGENT_CHECK_STATES),
+  expires_at: isString,
+  checked_at: nullable(isString),
+  result: nullable(isAgentCheckResult),
 });
 export const isClaimedJob = shape<ClaimedJob>({ job: isJob, job_token: isString, api_version: isString });
 export const isHosting = shape<Hosting>({

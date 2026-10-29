@@ -1,11 +1,10 @@
-import { Clock, Globe, Info } from 'lucide-react';
-import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { Clock, Info } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../../api/client';
 import { ApiError, type JobTicket, type Stage } from '../../../api/types';
-import { focusRing } from '../../../components/focus';
 import { Panel } from '../../../components/Panel';
-import { CopyCommand } from './CopyCommand';
 import { setupCommands } from './setupCommand';
+import { ChromeLine, SetupCommandTabs } from './setupTabs';
 
 /** How often a waiting ticket is re-read. */
 export const JOB_POLL_MS = 3000;
@@ -31,12 +30,8 @@ interface JobPanelProps {
   onStatus: (status: JobStatus) => void;
 }
 
-const TABS = ['windows', 'unix'] as const;
-type Tab = (typeof TABS)[number];
-const LABELS: Record<Tab, string> = { windows: 'Windows (PowerShell)', unix: 'macOS/Linux' };
-
-const secondsLeft = (expiresAt: string): number => Math.max(0, Math.ceil((Date.parse(expiresAt) - Date.now()) / 1000));
-const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+export const secondsLeft = (expiresAt: string): number => Math.max(0, Math.ceil((Date.parse(expiresAt) - Date.now()) / 1000));
+export const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 
 /**
  * Agent mode (api.md 3.4): the one-shot job of the build's latest run. Waiting shows the setup
@@ -46,7 +41,6 @@ const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds
 export function JobPanel({ buildId, stage, jobKey, starting, shareData, runExpired, onStatus }: JobPanelProps) {
   const [ticket, setTicket] = useState<JobTicket | null>(null);
   const [lost, setLost] = useState(false);
-  const [tab, setTab] = useState<Tab>('windows');
   /** Counts finished reads, so the poll chain re-arms after a failed one too. */
   const [round, setRound] = useState(0);
   /** Ticks the countdown. */
@@ -55,8 +49,6 @@ export function JobPanel({ buildId, stage, jobKey, starting, shareData, runExpir
   const mounted = useRef(true);
   const stageRef = useRef(stage);
   stageRef.current = stage;
-  const tabs = useRef<Record<Tab, HTMLButtonElement | null>>({ windows: null, unix: null });
-  const id = useId();
 
   useEffect(() => {
     mounted.current = true;
@@ -132,20 +124,6 @@ export function JobPanel({ buildId, stage, jobKey, starting, shareData, runExpir
     report.current({ waiting: showWaiting, lost: showLost });
   }, [showWaiting, showLost]);
 
-  const onTabKey = (event: KeyboardEvent, current: Tab) => {
-    const at = TABS.indexOf(current);
-    const next =
-      event.key === 'ArrowRight' ? TABS[(at + 1) % TABS.length]
-      : event.key === 'ArrowLeft' ? TABS[(at + TABS.length - 1) % TABS.length]
-      : event.key === 'Home' ? TABS[0]
-      : event.key === 'End' ? TABS[TABS.length - 1]
-      : null;
-    if (!next) return;
-    event.preventDefault();
-    setTab(next);
-    tabs.current[next]?.focus();
-  };
-
   if (showLost) {
     return (
       <p role="status" className="text-body text-text-muted">
@@ -172,10 +150,7 @@ export function JobPanel({ buildId, stage, jobKey, starting, shareData, runExpir
   const commands = setupCommands(window.location.origin, 'job', ticket.code);
   return (
     <Panel title="Build on your computer" bodyClassName="flex flex-col gap-3 px-4 py-3">
-      <p className="flex items-center gap-2 text-body text-text">
-        <Globe aria-hidden="true" className="size-4 shrink-0 text-text-muted" />
-        Needs Google Chrome
-      </p>
+      <ChromeLine />
       <p className="text-body text-text">Run this in a terminal on the computer signed in to Data Studio.</p>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <p className="text-body text-text-muted">
@@ -187,40 +162,7 @@ export function JobPanel({ buildId, stage, jobKey, starting, shareData, runExpir
           <span className="tabular-nums">Code expires in {clock(remaining)}</span>
         </p>
       </div>
-      <div className="flex flex-col gap-2">
-        <div role="tablist" aria-label="Operating system" className="flex gap-1 border-b border-border">
-          {TABS.map((key) => {
-            const selected = tab === key;
-            return (
-              <button
-                key={key}
-                ref={(el) => {
-                  tabs.current[key] = el;
-                }}
-                type="button"
-                role="tab"
-                id={`${id}-tab-${key}`}
-                aria-selected={selected}
-                aria-controls={`${id}-panel-${key}`}
-                tabIndex={selected ? 0 : -1}
-                onClick={() => setTab(key)}
-                onKeyDown={(event) => onTabKey(event, key)}
-                className={`-mb-px flex h-9 items-center gap-2 rounded-t-control border-b-2 px-3 text-body ${focusRing} ${
-                  selected ? 'border-primary font-semibold text-primary' : 'border-transparent text-text-muted hover:bg-surface-muted hover:text-text'
-                }`}
-              >
-                {LABELS[key]}
-                {key === 'unix' && <span className="rounded-control bg-surface-muted px-1.5 text-caption font-medium text-text-muted">untested</span>}
-              </button>
-            );
-          })}
-        </div>
-        {TABS.map((key) => (
-          <div key={key} role="tabpanel" id={`${id}-panel-${key}`} aria-labelledby={`${id}-tab-${key}`} hidden={tab !== key}>
-            <CopyCommand command={key === 'windows' ? commands.powershell : commands.bash} />
-          </div>
-        ))}
-      </div>
+      <SetupCommandTabs commands={commands} />
       {shareData && (
         <p className="flex items-start gap-2 text-label text-text-muted">
           <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0" />

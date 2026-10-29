@@ -48,6 +48,9 @@ import tracesJson from '../../../contracts/fixtures/api/traces.json';
 import claimedJobJson from '../../../contracts/fixtures/hosted-build/claimed_job.json';
 import hostingLocalJson from '../../../contracts/fixtures/hosted-build/hosting.local.json';
 import hostingOpenJson from '../../../contracts/fixtures/hosted-build/hosting.open.json';
+import agentCheckFailedJson from '../../../contracts/fixtures/hosted-build/agent_check.failed.json';
+import agentCheckPassedJson from '../../../contracts/fixtures/hosted-build/agent_check.passed.json';
+import agentCheckWaitingJson from '../../../contracts/fixtures/hosted-build/agent_check.waiting.json';
 import jobTicketRunningJson from '../../../contracts/fixtures/hosted-build/job_ticket.running.json';
 import jobTicketWaitingJson from '../../../contracts/fixtures/hosted-build/job_ticket.waiting.json';
 import {
@@ -66,6 +69,7 @@ import {
   isGenerationRequest,
   isGenerationStatus,
   isHosting,
+  isAgentCheck,
   isJobTicket,
   isMessage,
   isOutline,
@@ -171,6 +175,9 @@ export const fixtures = /* @__PURE__ */ (() => ({
   hostingOpen: checked(isHosting, hostingOpenJson, 'hosted-build/hosting.open.json'),
   jobTicketWaiting: checked(isJobTicket, jobTicketWaitingJson, 'hosted-build/job_ticket.waiting.json'),
   jobTicketRunning: checked(isJobTicket, jobTicketRunningJson, 'hosted-build/job_ticket.running.json'),
+  agentCheckWaiting: checked(isAgentCheck, agentCheckWaitingJson, 'hosted-build/agent_check.waiting.json'),
+  agentCheckPassed: checked(isAgentCheck, agentCheckPassedJson, 'hosted-build/agent_check.passed.json'),
+  agentCheckFailed: checked(isAgentCheck, agentCheckFailedJson, 'hosted-build/agent_check.failed.json'),
   claimedJob: checked(isClaimedJob, claimedJobJson, 'hosted-build/claimed_job.json'),
 }))();
 

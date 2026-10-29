@@ -122,6 +122,14 @@ describe('Build stage recipe', () => {
   });
 });
 
+describe('Build stage in local mode', () => {
+  it('shows no setup step', async () => {
+    await withRecipe();
+    expect(screen.queryByRole('heading', { name: 'Set up this computer' })).toBeNull();
+    expect(screen.queryByText('Agent ready on this computer')).toBeNull();
+  });
+});
+
 describe('Build stage result', () => {
   it('partial: link opens in a new tab and counts failed ops', async () => {
     const { fire } = await withRecipe();

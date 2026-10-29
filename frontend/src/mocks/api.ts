@@ -41,6 +41,7 @@ import {
   type BuildSummary,
   type EngineStatus,
   type Hosting,
+  type AgentCheck,
   type JobTicket,
   type Message,
   type OpFinished,
@@ -70,6 +71,11 @@ const CLAIM_MS = isTest ? 1000 : 8000;
 /** Hosted mode: from the claim to the first op; in tests 1 s, so fake timers can stop in each ticket state. */
 const CLAIM_TO_OPS_MS = isTest ? 1000 : 0;
 
+/** Hosted mode: how long a setup check waits for the agent's report. */
+const MOCK_CHECK_MS = 5000;
+
+/** What a mock setup check turns into after MOCK_CHECK_MS (`waiting`: it never does). */
+export type MockAgentCheckOutcome = 'passed' | 'failed' | 'expired' | 'waiting';
 export type MockBuildOutcome = 'ok' | 'partial' | 'failed';
 /**
  * How the mock is hosted (api.md 3.4): `local`, `open` (the open link: agent mode, a one-shot job
@@ -132,6 +138,12 @@ interface MockState {
   hostedFailure: boolean;
   /** Agent mode: the ticket of each build's latest run. */
   tickets: Map<string, JobTicket>;
+  /** Agent mode: the setup checks by id. */
+  agentChecks: Map<string, AgentCheck>;
+  /** What each new setup check becomes after MOCK_CHECK_MS. */
+  agentCheckOutcome: MockAgentCheckOutcome;
+  /** How many setup checks were created: the next code follows from it. */
+  agentCheckCount: number;
   buildOutcome: MockBuildOutcome;
   screencast: boolean;
   serviceFault: MockServiceFault;
@@ -187,6 +199,9 @@ function seed(): MockState {
     ...hostedState(hostedFromEnv()),
     engineBusy: false,
     tickets: new Map(),
+    agentChecks: new Map(),
+    agentCheckOutcome: hostedFromEnv() === 'failed' ? 'failed' : 'passed',
+    agentCheckCount: 0,
     buildOutcome: 'ok',
     screencast: true,
     serviceFault: null,
@@ -219,6 +234,21 @@ export function setMockEngine(status: Partial<EngineStatus>): void {
 export function setMockHosting(hosted: MockHosted): void {
   Object.assign(state, hostedState(hosted));
   state.tickets.clear();
+  state.agentChecks.clear();
+  state.agentCheckOutcome = hosted === 'failed' ? 'failed' : 'passed';
+}
+
+/** Agent mode: what each new setup check becomes after a few seconds. For tests and screenshots. */
+export function setMockAgentCheckOutcome(outcome: MockAgentCheckOutcome): void {
+  state.agentCheckOutcome = outcome;
+}
+
+const CHECK_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+/** The nth setup-check code: the fixture's first, then "XXXX-XXXX" from the job-code alphabet. */
+function checkCode(n: number): string {
+  if (n === 0) return fixtures.agentCheckWaiting.code;
+  const chars = Array.from({ length: 8 }, (_, i) => CHECK_CODE_ALPHABET[(n * 7 + i * 11 + n * i * 5) % CHECK_CODE_ALPHABET.length]);
+  return `${chars.slice(0, 4).join('')}-${chars.slice(4).join('')}`;
 }
 
 /**
@@ -396,7 +426,7 @@ const failureOf = (node: MockFailingNode) => () => (node in state.runFailures ? 
 
 // ---------- Helpers ----------
 
-const nextId = (prefix: 'b' | 'm' | 'r' | 's') => `${prefix}_${(state.nextSeq++).toString(16).padStart(12, '0')}`;
+const nextId = (prefix: 'b' | 'c' | 'm' | 'r' | 's') => `${prefix}_${(state.nextSeq++).toString(16).padStart(12, '0')}`;
 const now = () => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
 
 /** Runs `answer` after the latency and resolves with a copy, so callers never hold mock state. */
@@ -1967,6 +1997,41 @@ export function createMockApi(): ApiClient {
         const ticket = state.tickets.get(id);
         if (!ticket) throw new ApiError(404, 'job_not_found', 'This build has no build code yet. Build to get one.');
         return clone(ticket);
+      }),
+
+    createAgentCheck: () =>
+      respond(() => {
+        if (state.hosting.mode !== 'agent') throw new ApiError(404, 'agent_mode_off', 'Builds run on this machine: there is no setup check.');
+        const check: AgentCheck = {
+          ...clone(fixtures.agentCheckWaiting),
+          check_id: nextId('c'),
+          code: checkCode(state.agentCheckCount++),
+          expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z'),
+        };
+        state.agentChecks.set(check.check_id, check);
+        const outcome = state.agentCheckOutcome;
+        if (outcome !== 'waiting') {
+          schedule(
+            [
+              () => {
+                check.state = outcome;
+                if (outcome === 'expired') return;
+                check.checked_at = now();
+                check.result = clone((outcome === 'passed' ? fixtures.agentCheckPassed : fixtures.agentCheckFailed).result);
+              },
+            ],
+            MOCK_CHECK_MS,
+          );
+        }
+        return clone(check);
+      }),
+
+    getAgentCheck: (checkId) =>
+      respond(() => {
+        if (state.hosting.mode !== 'agent') throw new ApiError(404, 'agent_mode_off', 'Builds run on this machine: there is no setup check.');
+        const check = state.agentChecks.get(checkId);
+        if (!check) throw new ApiError(404, 'check_not_found', 'That setup check is gone. Get a new code.');
+        return clone(check);
       }),
 
     engineLogin: () =>
