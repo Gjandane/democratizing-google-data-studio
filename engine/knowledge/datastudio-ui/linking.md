@@ -47,3 +47,13 @@ unobserved (task 14.2 covers setup). Inferred types from a 10-column CSV:
 integers and `95.00` decimals -> Number (`type_numeric`), other strings -> Text.
 Every CSV column is a dimension chip; only Record Count is a metric chip, and
 `sum`/`avg` aggregation in charts works on the Number columns.
+
+No template (2026-10-31, recipe 1.5, task 15.1): the un-aliased create link
+(`ds.connector=googleCloudStorage&ds.pathType=FILE&ds.path=...`, no `c.reportId`)
+opens Data Studio's default report on the GCS CSV. Page 1 already holds three
+starter components (`components`): a text title naming the connector ("Google
+Cloud Storage"), a table (first text column + Record Count) and a bar chart
+(country + Record Count). They render with the canvas, before any recipe op.
+`open_report` clicks the empty workspace, presses Ctrl/Cmd+A then Delete (no
+confirmation), and waits until `components` is empty. No review dialog appeared
+for this already-acknowledged account.

@@ -142,3 +142,6 @@ selectors: {}
 - 2026-10-18: observed Page -> Current page settings -> STYLE, Canvas size,
   Auto/Custom options and Width (px)/Height (px) fields while validating the
   page canvas operation. Added the corresponding editor selectors.
+- 2026-10-31 task 15.1: no-template create opens the default report with three
+  starter components; `open_report` deletes them with the existing `components`
+  selector (Ctrl/Cmd+A, Delete). No selector added. Notes in linking.md.

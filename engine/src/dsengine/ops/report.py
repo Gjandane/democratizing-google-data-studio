@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import time
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
@@ -104,6 +104,28 @@ def _check_layout(page: Any) -> None:
         )
 
 
+def _default_report(ctx: OpContext) -> bool:
+    # Recipe 1.5: un-aliased ds.* params mean no template, so Data Studio's default report.
+    return "ds.connector" in parse_qs(urlsplit(ctx.open_url or "").query)
+
+
+def _clear_default_components(page: Any, ctx: OpContext, canvas: Any) -> int:
+    """Delete the default report's starter components; the recipe places every component."""
+    components = _locator(page, ctx, "components")
+    # They render together with the canvas (live 2026-10-31); allow a short settle for them.
+    settle = min(ctx.op_deadline, time.monotonic() + 2)
+    while components.count() == 0 and time.monotonic() < settle:
+        page.wait_for_timeout(250)
+    found = components.count()
+    if found:
+        _click_workspace(page, ctx, canvas)
+        page.keyboard.press("ControlOrMeta+a")
+        page.keyboard.press("Delete")
+        _poll(page, ctx, lambda: components.count() == 0,
+              "default report components were not deleted")
+    return found
+
+
 def _run_open_report(page: Any, op: Any, ctx: OpContext) -> OpResult:
     from dsengine.ops.charts import _source_fields
 
@@ -125,6 +147,11 @@ def _run_open_report(page: Any, op: Any, ctx: OpContext) -> OpResult:
     _wait_visible(canvas, ctx)
     ctx.state[op.id] = {"opened_url": page.url}
     ctx.canvas_dimensions = (ctx.recipe.header.canvas.width, ctx.recipe.header.canvas.height)
+    if _default_report(ctx):
+        cleared = _clear_default_components(page, ctx, canvas)
+        ctx.state[op.id]["cleared"] = cleared
+        ctx.events.emit("log", level="info",
+                        message=f"{op.id}: deleted {cleared} default report components")
     return OpResult()
 
 
@@ -136,6 +163,8 @@ def _verify_open_report(page: Any, op: Any, ctx: OpContext) -> None:
         raise OperationError("Data Studio editor readiness check failed")
     if urlsplit(page.url).hostname not in {"datastudio.google.com", "lookerstudio.google.com"}:
         raise OperationError("Data Studio opened an unexpected page")
+    if _default_report(ctx) and _locator(page, ctx, "components").count():
+        raise OperationError("default report still holds components the recipe didn't place")
 
 
 def _run_set_canvas(page: Any, op: Any, ctx: OpContext) -> OpResult:

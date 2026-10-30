@@ -584,3 +584,15 @@ context. Task status lives in docs/plan.md, not here.
 - What changed: plan 15.1 (new, Phase 15); architecture.md#Linking API URL alias rule + decision log; essentials Linking alias line and recipe.md 1.5 (program root change, from release 4.5).
 - Why: `build_url` always emits `ds.ds0.*`; without `DSS_TEMPLATE_REPORT_ID` (every visitor agent) Data Studio rejects it ("ds0 is not a valid data source alias"); the user verified the un-aliased GCS form on 2026-10-31.
 - Affected tasks: 15.1 only; release 4.6 waits on it (`Needs:`).
+
+## 2026-10-31: Task 15.1 Linking URL drops the `ds0` alias without a template
+- Status: done
+- Plan check: off
+- What changed: linking.build_url uses `ds.ds0.*` + `c.reportId` only with a template, else un-aliased `ds.*` (both connectors). If branch hit: the default report holds 3 starter components on page 1 (text "Google Cloud Storage", table order_id/Record Count, bar country/Record Count); report.open_report deletes them (workspace click, Ctrl/Cmd+A, Delete) and verify fails if any remain. Live GCS test runs none/configured and asserts page 1 holds only the recipe's charts before save. Notes in knowledge/datastudio-ui/linking.md + log.md.
+- Checks: `uv run pytest tests/test_linking.py` PASS 45 (13 failed before the fix); `uv run pytest -m live tests/live/test_gcs_source.py` PASS 2 (none: "deleted 3 default report components", both ok 7 failed 0); Test (all) `uv run pytest` PASS 320, 24 deselected.
+- Decisions: default report = `ds.connector` in ctx.open_url query (report._default_report), so bare-URL executor tests are untouched; starter-component settle up to 2 s (op_deadline bound); `ControlOrMeta+a` for macOS visitors; no new selector (`components`).
+- Digest: linking.build_url: no template -> `ds.connector/...` (GCS pathType/path; BQ type/projectId/datasetId/tableId/billingProjectId), no c.reportId; template -> `ds.ds0.*` + c.reportId last. report._default_report(ctx); open_report deletes default components.
+- Tried and failed: none
+- Gotchas: without a template the first add_chart fails "chart box did not match" if starter components stay (they overlap the recipe boxes).
+- Left open: P3 settle stops at the first starter component, not a stable count - src/dsengine/ops/report.py (all 3 rendered together live)
+- Next: none in the engine plan; release 4.6 (program root) uses this for hosted judge builds.
