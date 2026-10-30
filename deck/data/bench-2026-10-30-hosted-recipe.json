@@ -1,8 +1,8 @@
 {
-  "run_date": "2026-10-30T02:36:05.974908Z",
+  "run_date": "2026-10-30T20:10:32.325424Z",
   "server_url": "hosted",
   "mode": "live",
-  "build_id": "b_929f6e916b33",
+  "build_id": "b_a12b2a0d2142",
   "version2": false,
   "until": "recipe",
   "hosted_stop": "ticket",
@@ -10,28 +10,28 @@
     {
       "version": 1,
       "stage": "context",
-      "seconds": 8.5,
+      "seconds": 10.657,
       "run_ids": [
-        "r_9b51b1d7da92"
+        "r_bee6d00fb89c"
       ],
-      "input_tokens": 1716,
-      "output_tokens": 783
+      "input_tokens": 1719,
+      "output_tokens": 817
     },
     {
       "version": 1,
       "stage": "outline",
-      "seconds": 19.469,
+      "seconds": 21.656,
       "run_ids": [
-        "r_b14cf54e95ce",
-        "r_a96b4cb5bf92"
+        "r_eedfa2d3970a",
+        "r_28ae0f463b0f"
       ],
-      "input_tokens": 3983,
-      "output_tokens": 771
+      "input_tokens": 4078,
+      "output_tokens": 1104
     },
     {
       "version": 1,
       "stage": "design",
-      "seconds": 2.093,
+      "seconds": 1.704,
       "run_ids": [],
       "input_tokens": 0,
       "output_tokens": 0
@@ -39,39 +39,39 @@
     {
       "version": 1,
       "stage": "blueprint",
-      "seconds": 44.125,
+      "seconds": 20.25,
       "run_ids": [
-        "r_7d7b05766969"
+        "r_4ccf44449ce4"
       ],
-      "input_tokens": 8588,
-      "output_tokens": 3598
+      "input_tokens": 4886,
+      "output_tokens": 1458
     },
     {
       "version": 1,
       "stage": "prototype",
-      "seconds": 215.25,
+      "seconds": 165.781,
       "run_ids": [
-        "r_0320cf0f58f9"
+        "r_244a0a92010a"
       ],
-      "input_tokens": 33693,
-      "output_tokens": 6909
+      "input_tokens": 32957,
+      "output_tokens": 7013
     },
     {
       "version": 1,
       "stage": "comments",
-      "seconds": 143.172,
+      "seconds": 112.5,
       "run_ids": [
-        "r_4a53505ca562",
-        "r_0ac0d33dc5d7"
+        "r_5f85060010ea",
+        "r_516cba5c741e"
       ],
       "changed": true,
-      "input_tokens": 29468,
-      "output_tokens": 2747
+      "input_tokens": 28737,
+      "output_tokens": 2947
     },
     {
       "version": 1,
       "stage": "recipe",
-      "seconds": 0.766,
+      "seconds": 0.515,
       "run_ids": [],
       "input_tokens": 0,
       "output_tokens": 0
@@ -79,15 +79,15 @@
     {
       "version": 1,
       "stage": "hosted stop",
-      "seconds": 0.703,
+      "seconds": 2.907,
       "run_ids": [],
       "input_tokens": 0,
       "output_tokens": 0
     }
   ],
   "totals": {
-    "input_tokens": 77448,
-    "output_tokens": 14808
+    "input_tokens": 72377,
+    "output_tokens": 13339
   },
   "decisions": [],
   "report_urls": {}

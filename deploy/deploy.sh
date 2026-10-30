@@ -11,6 +11,9 @@ export MSYS2_ARG_CONV_EXCL='httpGet.;volume=;^|^'
 
 SERVICE=dss-frontend
 RUNTIME_SA_NAME=dss-runtime
+# Share bucket (conventions 1.7): allUsers get this custom role, whose only permission is
+# storage.objects.get (read by exact name, never list); roles/storage.objectViewer would list.
+SHARE_ROLE_ID=dssShareObjectGet
 
 DRY_RUN=0
 for arg in "$@"; do
@@ -57,13 +60,11 @@ GCS_BUCKET="${GCS_BUCKET#gs://}"; GCS_BUCKET="${GCS_BUCKET%%/*}"
 # DSS_PUBLIC (conventions 1.6): 1 = open link, no gate; empty = gated (Google sign-in, code for scripts).
 PUBLIC="$(env_get DSS_PUBLIC)"
 [[ -z "$PUBLIC" || "$PUBLIC" == 1 ]] || die "DSS_PUBLIC in .env must be 1 (open link) or empty (gated); refusing to deploy"
-token="$(env_get DSS_AGENT_TOKEN)"
-(( ${#token} >= 24 )) || die "DSS_AGENT_TOKEN in .env must be at least 24 characters; refusing to deploy"
 if [[ -z "$PUBLIC" ]]; then
   code="$(env_get DSS_ACCESS_CODE)"
   (( ${#code} >= 12 )) || die "DSS_ACCESS_CODE in .env must be at least 12 characters when gated; refusing to deploy"
 fi
-unset code token
+unset code
 # The guard's expected values live only in .env (the repo is public).
 EXPECTED_PROJECT_NUMBER="$(env_get GCP_PROJECT_NUMBER)"
 EXPECTED_URL="$(env_get DSS_AGENT_SERVER)"; EXPECTED_URL="${EXPECTED_URL%/}"
@@ -72,7 +73,7 @@ EXPECTED_URL="$(env_get DSS_AGENT_SERVER)"; EXPECTED_URL="${EXPECTED_URL%/}"
 if [[ -n "$PUBLIC" ]]; then
   # Open link: the backend refuses to start with a code or client id set, so neither is deployed.
   OAUTH_CLIENT_ID=""; SIGNIN_ALLOW=""
-  SECRETS=(GOOGLE_API_KEY DSS_AGENT_TOKEN)
+  SECRETS=(GOOGLE_API_KEY)
 else
   # Gated: Google sign-in is the gate, so no client id, no deploy (the dry run only warns).
   OAUTH_CLIENT_ID="$(env_get GOOGLE_OAUTH_CLIENT_ID)"
@@ -81,11 +82,13 @@ else
     (( DRY_RUN )) || die "GOOGLE_OAUTH_CLIENT_ID is empty in .env (Google sign-in is the hosted gate); refusing to deploy"
     echo "# WARNING: GOOGLE_OAUTH_CLIENT_ID is empty in .env; the real run refuses to deploy" >&2
   fi
-  SECRETS=(GOOGLE_API_KEY DSS_AGENT_TOKEN DSS_ACCESS_CODE)
+  SECRETS=(GOOGLE_API_KEY DSS_ACCESS_CODE)
 fi
 [[ "$OAUTH_CLIENT_ID$SIGNIN_ALLOW" != *"|"* ]] || die "GOOGLE_OAUTH_CLIENT_ID and DSS_SIGNIN_ALLOW may not contain '|'"
 
 STATE_BUCKET="${PROJECT}-dss-state"
+SHARE_BUCKET="${PROJECT}-dss-share"
+SHARE_ROLE="projects/${PROJECT}/roles/${SHARE_ROLE_ID}"
 RUNTIME_SA="${RUNTIME_SA_NAME}@${PROJECT}.iam.gserviceaccount.com"
 
 # --- Guard (read-only, runs in --dry-run too): the right project and the existing service ---
@@ -162,6 +165,32 @@ else
     --uniform-bucket-level-access
 fi
 
+echo "# Share bucket gs://$SHARE_BUCKET (mounted at /share; each hosted run's data as a CSV anyone with its name can read)"
+if exists gcloud storage buckets describe "gs://$SHARE_BUCKET" --project "$PROJECT"; then
+  echo "  exists"
+else
+  run gcloud storage buckets create "gs://$SHARE_BUCKET" --project "$PROJECT" --location "$REGION" \
+    --uniform-bucket-level-access
+fi
+
+echo "# Custom role $SHARE_ROLE: storage.objects.get only (never a listable role)"
+if (( ! DRY_RUN )) \
+  && role_state="$(gcloud iam roles describe "$SHARE_ROLE_ID" --project "$PROJECT" --format='value(deleted)' 2>/dev/null)"; then
+  role_state="${role_state//$'\r'/}"; role_state="${role_state:-active}"
+else
+  role_state=missing
+fi
+if [[ "$role_state" == missing ]]; then
+  run gcloud iam roles create "$SHARE_ROLE_ID" --project "$PROJECT" --title "DSS share object get" \
+    --description "Read one object by name; no list" --permissions storage.objects.get --stage GA --format=none
+else
+  # A deleted custom role keeps its id until purged: bring it back instead of creating it.
+  [[ "$role_state" == True ]] && run gcloud iam roles undelete "$SHARE_ROLE_ID" --project "$PROJECT" --format=none
+  # --permissions replaces the whole list, so the role never holds more than this one.
+  run gcloud iam roles update "$SHARE_ROLE_ID" --project "$PROJECT" --permissions storage.objects.get \
+    --stage GA --quiet --format=none
+fi
+
 echo "# Runtime service account $RUNTIME_SA"
 if exists gcloud iam service-accounts describe "$RUNTIME_SA" --project "$PROJECT"; then
   echo "  exists"
@@ -182,6 +211,15 @@ for role in roles/bigquery.dataEditor roles/bigquery.jobUser; do
 done
 run gcloud storage buckets add-iam-policy-binding "gs://$STATE_BUCKET" --project "$PROJECT" \
   --member "serviceAccount:$RUNTIME_SA" --role roles/storage.objectUser --format=none
+run gcloud storage buckets add-iam-policy-binding "gs://$SHARE_BUCKET" --project "$PROJECT" \
+  --member "serviceAccount:$RUNTIME_SA" --role roles/storage.objectUser --format=none
+show gcloud storage buckets add-iam-policy-binding "gs://$SHARE_BUCKET" --project "$PROJECT" \
+  --member allUsers --role "$SHARE_ROLE" --format=none
+if (( ! DRY_RUN )); then
+  gcloud storage buckets add-iam-policy-binding "gs://$SHARE_BUCKET" --project "$PROJECT" \
+    --member allUsers --role "$SHARE_ROLE" --format=none \
+    || die "granting allUsers $SHARE_ROLE on gs://$SHARE_BUCKET failed (public access prevention or an organization policy?); never fall back to a listable role"
+fi
 if [[ -n "$GCS_BUCKET" ]]; then
   run gcloud storage buckets add-iam-policy-binding "gs://$GCS_BUCKET" --project "$PROJECT" \
     --member "serviceAccount:$RUNTIME_SA" --role roles/storage.objectViewer --format=none
@@ -201,7 +239,7 @@ done
 # '|' delimits the env list (gcloud's ^|^ syntax): DSS_SIGNIN_ALLOW is itself a comma list.
 ENV_VARS="^|^GCP_PROJECT_ID=$PROJECT|BQ_DATASET=$BQ_DATASET|BQ_LOCATION=$BQ_LOCATION"
 ENV_VARS+="|DSS_DATA_DIR=/data|DSS_DB_PATH=/tmp/dss.sqlite|DSS_ENGINE_MODE=agent"
-ENV_VARS+="|DSS_STATIC_DIR=/app/frontend/dist"
+ENV_VARS+="|DSS_STATIC_DIR=/app/frontend/dist|DSS_SHARE_BUCKET=$SHARE_BUCKET|DSS_SHARE_DIR=/share"
 ENV_VARS+="|DSS_PUBLIC=$PUBLIC|GOOGLE_OAUTH_CLIENT_ID=$OAUTH_CLIENT_ID|DSS_SIGNIN_ALLOW=$SIGNIN_ALLOW"
 [[ -n "$GCS_BUCKET" ]] && ENV_VARS+="|GCS_BUCKET=$GCS_BUCKET"
 SECRET_REFS=""
@@ -216,7 +254,9 @@ run gcloud run deploy "$SERVICE" --source . --project "$PROJECT" --region "$REGI
   --command= --args= \
   --startup-probe "httpGet.path=/api/health,httpGet.port=8080,periodSeconds=10,timeoutSeconds=5,failureThreshold=30" \
   --clear-volumes --add-volume "name=state,type=cloud-storage,bucket=$STATE_BUCKET" \
+  --add-volume "name=share,type=cloud-storage,bucket=$SHARE_BUCKET" \
   --clear-volume-mounts --add-volume-mount "volume=state,mount-path=/data" \
+  --add-volume-mount "volume=share,mount-path=/share" \
   --set-env-vars "$ENV_VARS" --set-secrets "$SECRET_REFS"
 
 run gcloud run services update-traffic "$SERVICE" --project "$PROJECT" --region "$REGION" --to-latest
