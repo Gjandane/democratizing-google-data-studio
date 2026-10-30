@@ -97,7 +97,7 @@ tests/          offline fakes; tests/live/ marked live
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
 | ../contracts/api.md | 3.4 | provides | `uv run pytest tests/test_api_contract.py` (from 29.1 also fixtures/hosted-build/) |
-| ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.4 | provides recipes; consumes events | `uv run pytest tests/test_recipe_contract.py` (from 29.4 also fixtures/recipe.gcs.sample.jsonl) |
+| ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.5 | provides recipes; consumes events | `uv run pytest tests/test_recipe_contract.py` (from 29.4 also fixtures/recipe.gcs.sample.jsonl) |
 | ../contracts/conventions.md | 1.7 | consumes | manual: env names, ports, paths and IDs match |
 | ../contracts/dashboard-intent.md | 1.3 | provides | `uv run pytest tests/test_api_contract.py tests/test_feasibility.py` |
 | ../contracts/synthetic-data.md | 1.3 | provides | `uv run pytest tests -k synthetic` |

@@ -69,14 +69,14 @@ docs/img/                README screenshots from 2.4/2.6, cropped (no email, ava
 - Never edit engine/, backend/, frontend/ or contracts/; a fix there blocks the task.
 - Never commit `.env`, `data/`, `.chrome-profile/`, keys, the access code, the hosted URL or the project number (change 2026-10-29), or screenshots showing
   account emails or avatars.
-- Never push before the user confirms on a card (tasks 3.2, 4.4 and 4.7); never force-push or rewrite
+- Never push before the user confirms on a card (tasks 3.2, 4.4, 4.6 and 4.7); never force-push or rewrite
   history. Never deploy before the user confirms (task 4.1 STOP).
 - Never edit the cup template; never put secrets in the image, Dockerfile or deploy.sh output.
 
 ## Contracts
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
-| contracts/recipe.md | 1.4 | consumes (validates fixtures) | `uv run --project integration python integration/check_contracts.py` |
+| contracts/recipe.md | 1.5 | consumes (validates fixtures) | `uv run --project integration python integration/check_contracts.py` |
 | contracts/api.md | 3.4 | consumes (e2e, local and deployed) | `uv run --project integration python integration/e2e_flow1.py` |
 | contracts/conventions.md | 1.7 | consumes | `uv run --project integration python integration/check_contracts.py` (every env name is in .env.example) |
 | contracts/dashboard-intent.md | 1.1 | consumes | `uv run --project integration python integration/check_contracts.py`; tasks 2.5 and 4.3 end-to-end |

@@ -579,3 +579,8 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: the real first-run terms dialog is still unobserved live (needs a Google account that never opened Data Studio); its selector is a generic visible-modal match.
 - Left open: P2 `first_run_dialog` unverified live - knowledge/datastudio-ui/home.md; P3 en-GB accepted but unverified against English selectors - src/dsengine/chrome.py
 - Next: none in this part's plan (27/27).
+
+## 2026-10-31: Change Linking without a template
+- What changed: plan 15.1 (new, Phase 15); architecture.md#Linking API URL alias rule + decision log; essentials Linking alias line and recipe.md 1.5 (program root change, from release 4.5).
+- Why: `build_url` always emits `ds.ds0.*`; without `DSS_TEMPLATE_REPORT_ID` (every visitor agent) Data Studio rejects it ("ds0 is not a valid data source alias"); the user verified the un-aliased GCS form on 2026-10-31.
+- Affected tasks: 15.1 only; release 4.6 waits on it (`Needs:`).

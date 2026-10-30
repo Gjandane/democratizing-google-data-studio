@@ -2474,3 +2474,6 @@ assert min(timings) < .1
 - Mechanical: stamp PASS; lint 0 errors, 21 warnings (size).
 - Left for the user: untracked ../Dockerfile, ../.dockerignore, ../.gcloudignore, ../deploy/ belong to the release part (not touched).
 
+## 2026-10-31: Change Linking without a template
+- What changed: essentials Contracts row recipe.md 1.4 -> 1.5 (program root change). 1.5 changes only the engine's Linking URL alias rule; the backend's recipe output is unchanged.
+- Affected tasks: none.

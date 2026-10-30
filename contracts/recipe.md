@@ -1,5 +1,5 @@
 # Contract: recipe and engine events
-Version 1.4 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
+Version 1.5 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
 (`--timeout`, `error_code: timeout`, background file name); 1.1 (2026-10-22, change report quality)
 `rename_page` op, scorecard value sizing and `colors` series order stated. Header `recipe_version`
 stays "1.0" (the op is additive); 1.2 (2026-10-23, change live date buckets) `time_series` option
@@ -11,7 +11,11 @@ the backend emits them only after the engine supports them (plan gates); 1.4 (20
 local agent per judge) header `datasource` may be a `googleCloudStorage` CSV file (hosted builds in
 a visitor's own Data Studio account, who can't read the owner's BigQuery); header still "1.0", but
 engines before 1.4 reject it, so the backend emits it only after the engine supports it (plan
-gates). Fixture `contracts/fixtures/recipe.gcs.sample.jsonl`.
+gates). Fixture `contracts/fixtures/recipe.gcs.sample.jsonl`; 1.5 (2026-10-31, change Linking
+without a template) `open_report`'s Linking URL uses the `ds0` alias only with a template report
+(`DSS_TEMPLATE_REPORT_ID`); without one it uses un-aliased `ds.*` params (Data Studio rejects
+`ds.ds0` on its default report, and visitor agents have no template). No recipe or event shape
+changed; header still "1.0".
 Provider: backend writes recipes (its recipe compiler); engine writes events. Consumers: engine
 reads recipes; backend reads events; release validates both. Machine-readable schema:
 `contracts/recipe.schema.json` (JSON Schema 2020-12, `$defs`: `header`, `op`, `event`).
@@ -26,8 +30,9 @@ UTF-8 JSON Lines, one JSON object per line, no blank lines.
   "project_id": "...", "dataset_id": "...", "table_id": "dash_b_..._v1"}}`.
 - 1.4: or `"datasource": {"connector": "googleCloudStorage", "path_type": "FILE", "path":
   "<bucket>/<folder>/data.csv"}` (no `gs://`): one CSV file with a header row whose names are
-  the field names. `open_report` then uses the Linking API's `ds.ds0.connector=googleCloudStorage`,
-  `ds.ds0.pathType=FILE`, `ds.ds0.path=<path>`; Data Studio reads the file with the credentials
+  the field names. `open_report` then uses the Linking API's `ds.connector=googleCloudStorage`,
+  `ds.pathType=FILE`, `ds.path=<path>` (1.5: with a template report, `ds.ds0.connector`,
+  `ds.ds0.pathType`, `ds.ds0.path`; the same alias rule holds for `bigQuery`); Data Studio reads the file with the credentials
   of whoever opens the report, so the file must be readable by that account (the hosted share
   bucket is public-read, contracts/conventions.md). Field types are Data Studio's inference from
   the CSV; `date_granularity` still sets the date type in the chart.

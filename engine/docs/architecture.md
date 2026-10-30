@@ -107,12 +107,19 @@ engine/
   `c.reportId` when set), in that order; `GCP_PROJECT_ID` is not read. Data Studio reads the file
   with the signed-in account's credentials. Source (verified 2026-10-29):
   https://developers.google.com/looker-studio/integrate/linking-api
+- Alias (change 2026-10-31, ../contracts/recipe.md 1.5, task 15.1): the `ds0` alias is used only
+  when a template ID is set (`c.reportId` appended last, as above). With no template (the template
+  ID empty, the visitor-agent case) every data source param drops the alias: `ds.connector`,
+  `ds.pathType`, `ds.path` for GCS and `ds.connector`, `ds.type`, `ds.projectId`, `ds.datasetId`,
+  `ds.tableId`, `ds.billingProjectId` for BigQuery, same order, no `c.reportId`. Data Studio's
+  default report rejects `ds.ds0` ("ds0 is not a valid data source alias", 1.2 spike) and opens
+  the un-aliased GCS form (user check, second account, 2026-10-31).
 - Edge cases: report name with `&`, `#`, spaces, non-ASCII; missing `GCP_PROJECT_ID` with a
   `bigQuery` header (error before any browser work); a GCS path with spaces or `/` segments
   (URL-encoded); a GCS authorization prompt in the editor (never clicked by `run`: `open_report`
   fails with a message that names the setup command).
-- Approach: fixed (string building). The spike confirms whether the data source alias for a
-  blank report is `ds0` or needs a template.
+- Approach: fixed (string building). The 1.2 spike showed a blank report rejects `ds0`; from 15.1
+  the alias follows the template (rule above).
 - Oracle: unit tests with exact expected URLs, including the encoding cases.
 
 ## External APIs and services
@@ -237,3 +244,4 @@ These conventions consolidate the verified build decisions and selector traps fr
 | 2026-10-23 | `date_granularity` sets a time series' date type in the chart, through the shared Data type menu path | infer the grain from the field name; change the field type in the data source; set Missing data to line breaks | a DATE_TRUNC bucket is a DATE column that Data Studio draws per day, spikes on the 1st and zeros between (release 2.5, b_36f20b42159c s015); a chart-level type changes only that chart | change live report defects (program root) |
 | 2026-10-29 | Recipe 1.4 GCS CSV header: Linking API `googleCloudStorage` FILE source, no billing project; `login` waits until Data Studio's first-run dialog is accepted by the person | a template report with a GCS source; the engine accepting the terms | hosted builds run in a visitor's account that can't read the owner's BigQuery, on a machine with no `.env`; the engine never accepts terms or consents for the person | change 2026-10-29 local agent per judge (program root) |
 | 2026-10-24 | Recipe 1.3: `area`, `fixed_size_list`, `stacked_percent`; breakdown series colors through "Select series", skipped (never timed out) when no swatch | slider control (number fields only); recipe-side color skip | release 2.6's reference recreation needs Data Studio's native area chart, fixed-size list and 100% stacked bar; s011 timed out on a breakdown's series list (b_697880743b4f) | change reference fidelity (program root, user choice) |
+| 2026-10-31 | Linking data source params carry the `ds0` alias only with a template; no template -> un-aliased `ds.*` for both connectors | a public template report id for visitor agents; un-aliased for GCS only | the default report rejects `ds.ds0` and accepts `ds.*` (user check 2026-10-31); visitor agents have no template; one rule for both connectors | change 2026-10-31 (program root, release 4.5) |
