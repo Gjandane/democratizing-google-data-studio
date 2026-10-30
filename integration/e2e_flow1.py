@@ -3,6 +3,9 @@
 The engine mode is configured on the server. --mode labels the benchmark; it
 does not turn a live server into a dry-run server. --live labels it live, refuses a
 .env with DSS_ENGINE_DRY_RUN=1 and requires each published version's Data Studio link.
+--until recipe stops after the compiled recipe: no POST /run on a local server; on a hosted
+(non-local) --server one POST /run proves the hosted stop (424 agent_offline, or a waiting
+job ticket that is never claimed). The bench records a hosted server as "hosted", never its URL.
 """
 from __future__ import annotations
 
@@ -21,6 +24,7 @@ import httpx
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT_HOSTS = {"datastudio.google.com", "lookerstudio.google.com"}
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 NOTES = ("The sales director reviews net revenue weekly by region and category. Revenue is the revenue "
          "column; sum revenue and quantity; count distinct order_id for orders.")
 OTHER = "Which product categories sell the most units?"
@@ -145,11 +149,36 @@ class Flow:
         if not self.comment(text, target):
             raise RuntimeError(f"backend: comment on {target} did not change the spec")
 
-    def recipe_and_run(self, version: int) -> None:
+    def recipe(self, version: int) -> None:
         with self.stage(version, "recipe"):
             recipe = self.request("POST", f"/api/builds/{self.build_id}/recipe").json()
             if not recipe.get("op_count") or len(recipe.get("ops", [])) != recipe["op_count"]:
                 raise RuntimeError("backend: recipe is empty or op_count does not match ops")
+            print(f"v{version}: recipe has {recipe['op_count']} ops", flush=True)
+
+    def hosted_stop(self, version: int) -> str:
+        """POST /run with no agent: 424 agent_offline, or (api.md 3.4) a waiting ticket, never claimed."""
+        url = f"/api/builds/{self.build_id}/run"
+        with self.stage(version, "hosted stop"):
+            response = self.client.request("POST", url)
+            if response.status_code == 424:
+                try:
+                    code = response.json()["error"]["code"]
+                except (ValueError, KeyError, TypeError):
+                    code = None
+                if code == "agent_offline":
+                    return "agent_offline"
+            elif response.status_code == 202:
+                ticket = self.api("GET", "/job")  # holds the one-time code: never printed or stored
+                if ticket.get("state") == "waiting" and ticket.get("run_id") == response.json().get("run_id"):
+                    return "ticket"
+                raise RuntimeError(f"backend: POST {url}: job ticket is {ticket.get('state')!r}, expected waiting")
+            raise RuntimeError(self.redact(
+                f"backend: POST {url}: HTTP {response.status_code}, expected 424 agent_offline "
+                f"or 202 with a waiting ticket: {response.text}"))
+
+    def recipe_and_run(self, version: int) -> None:
+        self.recipe(version)
         with self.stage(version, "run") as row:
             result = self.request("POST", f"/api/builds/{self.build_id}/run").json()
             run_id = result.get("run_id")
@@ -296,7 +325,11 @@ def main() -> int:
                         default="dry-run" if env_value("DSS_ENGINE_DRY_RUN", "0") == "1" else "live")
     parser.add_argument("--live", action="store_true",
                         help="real engine: same as --mode live, plus a Data Studio link per version")
+    parser.add_argument("--until", choices=["recipe"],
+                        help="stop after the recipe (hosted server: prove the stop at POST /run)")
     args = parser.parse_args()
+    if args.until and (args.live or args.version2):
+        parser.error("--until recipe can't be combined with --live or --version2")
     if args.live:
         if env_value("DSS_ENGINE_DRY_RUN", "0") == "1":
             parser.error("--live needs DSS_ENGINE_DRY_RUN=0 in .env (restart the backend after changing it)")
@@ -305,6 +338,7 @@ def main() -> int:
     url = httpx.URL(server)
     if url.scheme not in {"http", "https"} or not url.host or url.userinfo or url.query or url.fragment or url.path not in {"", "/"}:
         parser.error("--server must be an http(s) origin without credentials, query or fragment")
+    hosted = url.host not in LOCAL_HOSTS
     access_code = env_value("DSS_ACCESS_CODE")
     secrets = [access_code, env_value("GOOGLE_API_KEY"), env_value("DSS_AGENT_TOKEN")]
     started = datetime.now(timezone.utc)
@@ -327,7 +361,14 @@ def main() -> int:
             flow.stage_blueprint()
             flow.stage_prototype()
             flow.stage_comments()
-            flow.recipe_and_run(1)
+            hosted_stop = None
+            if args.until == "recipe":
+                flow.recipe(1)
+                if hosted:
+                    hosted_stop = flow.hosted_stop(1)
+                    print(f"v1: hosted stop {hosted_stop}", flush=True)
+            else:
+                flow.recipe_and_run(1)
             if args.version2:
                 flow.stage_v2()
                 flow.recipe_and_run(2)
@@ -339,11 +380,13 @@ def main() -> int:
                     row[key] = sum(t[key] for t in traces if t["run_id"] in ids)
                     totals[key] += row[key]
             bench = {"run_date": started.isoformat().replace("+00:00", "Z"),
-                     "server_url": server, "mode": args.mode, "build_id": flow.build_id,
-                     "version2": args.version2, "stages": flow.rows, "totals": totals,
+                     "server_url": "hosted" if hosted else server, "mode": args.mode,
+                     "build_id": flow.build_id, "version2": args.version2, "until": args.until,
+                     "hosted_stop": hosted_stop, "stages": flow.rows, "totals": totals,
                      "decisions": flow.decisions,
                      "report_urls": {str(n): u for n, u in flow.reports.items()}}
-            target = ROOT / "deck/data" / f"bench-{started:%Y-%m-%d}-{args.mode}.json"
+            name = ("hosted" if hosted else args.mode) + ("-recipe" if args.until else "")
+            target = ROOT / "deck/data" / f"bench-{started:%Y-%m-%d}-{name}.json"
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(json.dumps(bench, indent=2) + "\n", encoding="utf-8")
             print("\nVersion  Stage                    Seconds    Input tokens  Output tokens  Spec changed")

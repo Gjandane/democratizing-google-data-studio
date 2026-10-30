@@ -686,3 +686,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: see AGENTS.md (411 on bodyless POST; .env leading spaces).
 - Left open: test build b_194184f72e6b "4.1 redeploy persistence check" stays in the shared hosted history (delete in the UI if unwanted); `stash@{0}` (4.1 failed attempt) is superseded: drop it yourself (`git stash drop stash@{0}`).
 - Next: Task 4.2 Deployed end-to-end up to the recipe.
+
+## 2026-10-30: Task 4.2 Deployed end-to-end up to the recipe
+- Status: partial
+- Plan check: off
+- What changed: integration/e2e_flow1.py: `--until recipe` (exit 2 with `--live`/`--version2`); `Flow.recipe(v)` split from `recipe_and_run`; `Flow.hosted_stop(v)` (non-local `--server`: one `POST /run`, accepts `424 agent_offline` or `202` + `GET .../job` `state: waiting`, ticket code never printed/stored); bench adds `until`, `hosted_stop`, `server_url: "hosted"` for non-local hosts; bench file `bench-<date>-{hosted|<mode>}[-recipe].json`.
+- Checks: `--until recipe --live` and `--until recipe --version2` exit 2 (PASS). Local `--until recipe` (dry-run) FAIL x2 and hosted `--server "$DSS_AGENT_SERVER" --until recipe` FAIL x2 at CSV upload: `422 invalid_source` "Data service failed" (one hosted rerun hit the driver's 120 s read timeout instead). Full `--version2`, Test (all), manual UI: not run.
+- Decisions: local = host in {localhost, 127.0.0.1, ::1}; hosted stop is its own stage row "hosted stop"; hosted URL deployed is already api 3.4 (`GET /api/hosting` api_version 3.4), so expect `hosted_stop: "ticket"`.
+- Tried and failed: none in code; cause is external: BigQuery `default-pipeline` load jobs start 825-960 s after creation (run 1 s), backend waits 120 s (backend src/dss/data/bigquery.py:195,301).
+- Gotchas: see AGENTS.md (BigQuery load queue; broken TCP table vs start.sh).
+- Left open: no review yet (runs after the checks pass).
+- Next: Task 4.2: check the BigQuery load delay (AGENTS.md gotcha); when loads start in < 2 min, run the Done-when checks (local --until recipe, local --version2, hosted --until recipe, Test (all)), then review, done, commit. If the delay persists, block asking backend for a longer load wait.

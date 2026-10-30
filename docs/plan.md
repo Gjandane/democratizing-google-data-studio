@@ -137,7 +137,7 @@ Later; 2.7's committed driver code (label flip, analysis approval, .env.example 
   - If: gcloud reports expired credentials -> ask the user to run `gcloud auth login` and `gcloud auth application-default login` themselves; never handle their password.
   - If: an organization policy blocks `allUsers` (allow-unauthenticated) -> stop and ask the user (the open link needs it).
   - If: resuming from the stash "blueprint: task 4.1 failed attempt 2026-10-29 05:26" -> its files are the gated path; add the open mode on top, never drop the gated path.
-- [ ] 4.2 Deployed end-to-end up to the recipe
+- [~] 4.2 Deployed end-to-end up to the recipe
   - Goal: `e2e_flow1.py --server <URL> --until recipe` runs flow 1 against the deployed open service (no gate; the driver still sends `X-DSS-Access-Code` when .env sets it, which the open service ignores) through the staged artifacts, the prototype and one comment to a compiled recipe, then proves the hosted stop: `POST /run` answers `424 agent_offline` (4.1's revision has no agent connected; the judge build comes with the 4.4 redeploy, change 2026-10-29 local agent per judge); the driver records a non-local `--server` as `server_url: "hosted"` in its bench, never the URL (from deferred 2.8, change 2026-10-29).
   - Files: integration/e2e_flow1.py, deck/data/*.json
   - Depends on: 4.1
