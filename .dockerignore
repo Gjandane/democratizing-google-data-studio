@@ -1,0 +1,26 @@
+# Build context for the root Dockerfile: only backend/, frontend/ and contracts/ are copied.
+# Mirrors .gcloudignore for local `docker build .`.
+*
+!Dockerfile
+!backend/
+!frontend/
+!contracts/
+
+**/.env
+**/.env.*
+**/.venv
+**/node_modules
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.blueprint
+**/.claude
+**/.chrome-profile
+backend/data
+backend/tests
+frontend/data
+**/*.sqlite
+**/*.sqlite-*
+frontend/dist
+frontend/screenshots
+backend/**/*.egg-info

@@ -92,3 +92,5 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Report view tab stays blank even after the waits above (seen 3x): `page.on("response")` on `batchedDataV2` proves the charts got rows, and an edit-mode `dsengine run --screencast` rerun's frames show them painted (it makes a new report; say so).
 - Build view can keep "Chrome not running" after Sign in while `GET /api/engine/status` already says `chrome_running: true, signed_in: true` (Check again doesn't help): reload the build page, Continue to build, Generate recipe again.
 - `render_diagrams.py` rerenders every deck/diagrams/*.html and rewrites unchanged PNGs with new bytes (seen on d2): `git checkout --` the deck/img PNGs your task doesn't own before staging.
+- Hosted POST with no body (`curl -X POST $URL/...`) gets `411` from Google's front end, not the app: add `-H 'Content-Length: 0'` (task 4.1's agent probe then prints 401).
+- Root `.env` values can carry leading spaces (`GCP_PROJECT_ID= ...`): ad-hoc `grep|cut` reads must strip whitespace (`tr -d '\r" '`), or gcloud rejects the project; deploy.sh's parser already strips.

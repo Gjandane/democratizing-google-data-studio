@@ -122,7 +122,7 @@ Later; 2.7's committed driver code (label flip, analysis approval, .env.example 
   - If: a secret or forbidden path shows up in history, or origin/main isn't an ancestor of HEAD -> STOP and report the commit and file; never rewrite history or force-push.
 
 ## Phase 4: Cloud Run
-- [~] 4.1 Dockerfile and deploy to `dss-frontend`
+- [x] 4.1 Dockerfile and deploy to `dss-frontend`
   - Goal: a root `Dockerfile` that builds the frontend and runs the backend on `$PORT`, and `deploy/deploy.sh` that sets up the GCP resources idempotently and deploys service `dss-frontend` in asia-southeast1 per contracts/conventions.md#Cloud deployment, replacing its static-frontend revision so the submitted URL serves the full app as an open link: `DSS_PUBLIC=1` in .env deploys with no gate, so anyone with the URL gets in (contracts/conventions.md 1.6; change 2026-10-29 open hosted link: the project's OAuth branding is limited to one domain); `DSS_PUBLIC` empty keeps the gated path (Google sign-in, code for scripts) for a later lock-down. Hosted v1 goes up to the recipe: `DSS_ENGINE_MODE=agent` with no agent connected answers `424 agent_offline` on Build; hosted Data Studio builds are v2 (change 2026-10-29 hosted scope).
   - Files: Dockerfile, .dockerignore, .gcloudignore, deploy/deploy.sh, deploy/README.md, .env.example
   - Depends on: 3.2

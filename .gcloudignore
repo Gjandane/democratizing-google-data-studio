@@ -1,0 +1,30 @@
+# What `gcloud run deploy --source .` uploads to Cloud Build: an allowlist of what the Dockerfile
+# copies. Never .env, data/, .chrome-profile/, .venv, node_modules, deck/ or .blueprint/.
+# Check: gcloud meta list-files-for-upload
+/*
+!/Dockerfile
+!/.dockerignore
+!/backend/
+!/frontend/
+!/contracts/
+
+# Inside the allowed folders
+.env
+.env.*
+.venv/
+node_modules/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.blueprint/
+.claude/
+.chrome-profile/
+/backend/data/
+/backend/tests/
+/frontend/data/
+*.sqlite
+*.sqlite-*
+/frontend/dist/
+/frontend/screenshots/
+/backend/*.egg-info/
+/backend/src/*.egg-info/
