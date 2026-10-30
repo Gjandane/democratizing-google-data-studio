@@ -720,3 +720,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: see AGENTS.md (ticket lock, hosted upload).
 - Left open: review not run yet; recreate build b_773a9bc703bb's ticket expires on its own.
 - Next: Task 4.3: `uv run --project integration python integration/e2e_references.py --server "$DSS_AGENT_SERVER" --until recipe --cases style,recreate,synthetic` (~90 min, run in background; rerun a failed case once with `--cases`); then `bash deploy/deploy.sh` (new revision), `--after-restart`, Test (all), review, done, commit. The manual walk is already approved and recorded.
+
+## 2026-10-30: Task 4.3 Hosted reference, refusal and synthetic acceptance up to the recipe
+- Status: done
+- Plan check: off
+- What changed: deck/data/bench-references-hosted.json: all 5 cases passed hosted at commit 62b5b6a (clean), `until: "recipe"`, `server_url: "hosted"`, `restart_check` passed; the driver itself is unchanged since the WIP commit.
+- Checks: hosted `--until recipe --cases style,recreate,synthetic` PASS 3/3 (rev 00003-p2f; recreate and synthetic got 202 + waiting ticket, waited out unclaimed); `bash deploy/deploy.sh` -> rev 00004-5r5; `--after-restart` PASS (same sha256, job succeeded, source kept, revision read by gcloud); rerun `--cases refusal,revenue` PASS 2/2 on 00004-5r5; all_passed true; manual walk approved earlier; Test (all) check_contracts PASS 13/13; hosted host and project number in bench: 0 hits.
+- Decisions: reran refusal and revenue so every case records a clean git revision (review P3); they ran on the new revision, the other three on 00003-p2f (each case keeps its own `cloud_run_revision`).
+- Digest: deck/data/bench-references-hosted.json: cases{refusal,revenue,style,recreate,synthetic}.passed all true, each with git_revision + cloud_run_revision; restart_check{same_checksum,new_revision,passed}; until "recipe"; server_url "hosted"; manual_click_through.
+- Tried and failed: none this session.
+- Gotchas: none new.
+- Left open: P3 restart proof can rest on a typed `--cloud-run-revision` (the bench doesn't record gcloud vs flag) - integration/e2e_references.py
+- Next: Task 4.4 Agent setup scripts and their push.
