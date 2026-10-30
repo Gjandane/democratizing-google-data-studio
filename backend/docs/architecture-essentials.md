@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:16986abec0a5 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:268a0d172389 (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 docs/architecture.md wins.
 
@@ -36,7 +36,8 @@ tests/          offline fakes; tests/live/ marked live
   60 s retry. Run recompiles the current spec; dev routes need DSS_DEV=1. Agent mode (change
   2026-10-29, api.md 3.4, from 29.1): one-shot job tickets in SQLite (code, per-job token hash, one
   live ticket per build, expiry sweep); `dss-agent run --server --job`; open link locks GCS and
-  BigQuery sources; share data = one stdlib CSV per run on the mounted share bucket with a
+  BigQuery sources; share data = one stdlib CSV per run on the mounted share bucket (3.5, 30.1:
+  sum-only numeric NULLs as 0) with a
   `googleCloudStorage` header (#Hosted one-shot builds). Agent checks share the live-code
   namespace (DB triggers); the client prints user lines, never echoes a code. Google sign-in
   (27.1): verified email + `DSS_SIGNIN_ALLOW`, HMAC `g.` cookie (24 h) valid only while the client
@@ -96,7 +97,7 @@ tests/          offline fakes; tests/live/ marked live
 ## Contracts
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|
-| ../contracts/api.md | 3.4 | provides | `uv run pytest tests/test_api_contract.py` (from 29.1 also fixtures/hosted-build/) |
+| ../contracts/api.md | 3.5 | provides | `uv run pytest tests/test_api_contract.py` (from 29.1 also fixtures/hosted-build/) |
 | ../contracts/recipe.md (+ recipe.schema.json, fixtures/) | 1.5 | provides recipes; consumes events | `uv run pytest tests/test_recipe_contract.py` (from 29.4 also fixtures/recipe.gcs.sample.jsonl) |
 | ../contracts/conventions.md | 1.7 | consumes | manual: env names, ports, paths and IDs match |
 | ../contracts/dashboard-intent.md | 1.3 | provides | `uv run pytest tests/test_api_contract.py tests/test_feasibility.py` |

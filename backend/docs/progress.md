@@ -2477,3 +2477,10 @@ assert min(timings) < .1
 ## 2026-10-31: Change Linking without a template
 - What changed: essentials Contracts row recipe.md 1.4 -> 1.5 (program root change). 1.5 changes only the engine's Linking URL alias rule; the backend's recipe output is unchanged.
 - Affected tasks: none.
+
+## 2026-10-31: Change share CSV numeric NULLs
+- What changed: ../contracts/api.md 3.4 -> 3.5 (Share data: sum-only numeric NULLs as 0; no shape or route change, `API_VERSION` stays "3.4"); architecture.md#Hosted one-shot builds (Share data) + decision log; essentials (api 3.5); plan Phase 30, task 30.1 (S, offline); PRD Later: typing beyond sum.
+- Why: release 4.6 finding H1: the share CSV writes NULL empty, so the derived `high_value_revenue` was empty in 1,949 of 2,000 rows, Data Studio's GCS source typed it Text, and page 4's pivot and table failed ("aggregation Sum is unavailable"), the same in v1 and v2.
+- Ruling (whole class, user card): a numeric column used only as `sum` (or a sort) gets 0 for NULL, exact for every sum; every other NULL stays empty. Declined for now: NULL as 0 everywhere (changes avg/count/min), engine field typing from the recipe (unproven Data Studio UI; PRD Later).
+- Affected tasks: 30.1 (new); release 4.6 `Needs: backend 30.1`, then redeploys and reruns.
+- Delta audit: none (target POC).

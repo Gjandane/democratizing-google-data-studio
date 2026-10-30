@@ -702,3 +702,7 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: frontend-design and ui-ux-pro-max skills not used by the worker (built from existing tokens/components).
 - Left open: P2 focus drops to body after Check again / Get a new code / Try again - SetupPanel.tsx; P3 poll-stop test covers passed only, not failed/expired - tests/agent-status.test.tsx; P3 per-state role=status remounts may not announce, failed items outside live region - SetupPanel.tsx; P3 failed runBuild remounts the panel and requests a new check code - BuildStage.tsx; P3 mock checkCode(1) gives HZHZ-HZHZ, StrictMode spends the fixture code - src/mocks/api.ts.
 - Next: none in this part (19.3 was the last frontend task); the architect's final audit.
+
+## 2026-10-31: Change share CSV numeric NULLs
+- What changed: essentials Contracts row api.md 3.4 -> 3.5 (program root change). 3.5 changes only the backend's share CSV values (sum-only numeric NULLs as 0); no shape or route change.
+- Affected tasks: none.

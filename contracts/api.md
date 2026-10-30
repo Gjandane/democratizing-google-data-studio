@@ -1,5 +1,5 @@
 # Contract: backend HTTP API (REST + SSE)
-Version 3.4 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
+Version 3.5 · Change log: 1.0 (2026-10-18) first version, revised by the plan audit before any build
 (recipe ops with ids, stage rules, engine_busy, shared fixtures). 1.1 (2026-10-19) Cloud Run:
 Access (session endpoints, `access_required`), engine status `mode`/agent fields, Agent endpoints,
 errors `access_denied`, `login_on_agent`, `agent_offline`, `agent_timeout`; fixtures
@@ -80,6 +80,12 @@ Revised the same day before any build (user card, setup step): an agent connecti
 visitor sets the agent up once and the page shows it ready before the first Build: type
 `AgentCheck`, `POST /api/agent-checks`, `GET /api/agent-checks/{check_id}`, `POST /api/agent/check`,
 error `404 check_not_found`; fixtures hosted-build/agent_check.{waiting,passed,failed}.json.
+3.5 (2026-10-31, change share CSV numeric NULLs, from release 4.6 finding H1, user card): Share
+data writes a numeric column's NULL as `0` when every reference to that column in the version's
+recipe is a `sum` metric or a `sort` on it (every sum is unchanged; Data Studio types an
+almost-empty CSV column Text, and Sum is then unavailable); any other NULL stays empty. No shape
+or route change: `Hosting.api_version` and the agent's version gate stay "3.4" (the agent
+protocol is unchanged, so installed agents keep working).
 Requirements and feasibility follow contracts/dashboard-intent.md 1.3.
 Provider: backend. Consumers: frontend, release. Base: `http://localhost:8000/api` (the frontend
 uses relative `/api`, proxied by Vite; contracts/conventions.md). JSON bodies, UTF-8. Errors use
@@ -392,7 +398,9 @@ its code; there is no polling agent, heartbeat or shared agent token.
   (Build stays available).
 - Share data (3.4): with `Hosting.share_data`, `POST /run` writes the version's view rows as one
   CSV (header = the view's column names; DATE as `YYYY-MM-DD`, DATETIME and TIMESTAMP as
-  `YYYY-MM-DD HH:MM:SS` UTC) to `gs://<DSS_SHARE_BUCKET>/<32 random hex>/data.csv` and compiles
+  `YYYY-MM-DD HH:MM:SS` UTC; NULL empty, except 3.5: a numeric (INT64, FLOAT64, NUMERIC,
+  BIGNUMERIC) column whose every reference in the version's recipe is a `metrics` entry with
+  `agg: sum` or a `sort` on it gets `0` for NULL) to `gs://<DSS_SHARE_BUCKET>/<32 random hex>/data.csv` and compiles
   the recipe with the `googleCloudStorage` header (contracts/recipe.md 1.4) for that file; over
   1,000,000 rows or 100 MB -> `422 share_too_large`; a failed write -> `503 share_export_failed`.
   Anyone with the file's URL can read it; the folder name is the only secret.

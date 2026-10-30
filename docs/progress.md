@@ -778,3 +778,11 @@ context. Task status lives in docs/plan.md, not here.
 - Question: How should a numeric derived field that is NULL in most rows (`high_value_revenue`, empty in 1,949/2,000 share-CSV rows) reach Data Studio's GCS CSV source as Number?
 - Options: A backend writes such NULLs as 0 or derives the field in the report (calculated field) instead of the view, with a contract line / B engine sets the field's type on the GCS source from the recipe's recorded types / Recommend: A (owner of the data shape; no extra Data Studio UI ops), then rerun 4.6 from a fresh build (install kept, `-Update` for the new engine/backend).
 - Next: architect at the program root rules on H1; then rerun task 4.6.
+
+## 2026-10-31: Change share CSV numeric NULLs
+- What changed: contracts/api.md 3.4 -> 3.5 (Share data: a numeric column used only as `sum` metrics or a sort gets `0` for NULL; no shape or route change, `Hosting.api_version` and the agent gate stay "3.4"); docs/program.md (Contracts row, roadmap bullet, decision log); backend plan 30.1 (new, S, offline), backend architecture.md#Hosted one-shot builds + decision log, PRD Later (typing beyond sum); backend, frontend and release essentials (api 3.5); release 4.6 reworked: `Needs: backend 30.1`, redeploy first (image only, STOP card), rerun on a fresh build with the install and sign-in kept, acceptance row 7 citing row 6 for setup and the scripted code checks; reopened.
+- Why: 4.6 finding H1: `high_value_revenue` (`CASE WHEN revenue >= 1000.0 THEN revenue END`) was empty in 1,949 of 2,000 share-CSV rows, Data Studio typed it Text, and s040-s043 failed in v1 and v2. Its only recipe uses were `sum`.
+- Ruling (whole class, user card): sum-only numeric NULLs as 0 (exact); every other NULL stays empty. Declined: NULL as 0 for all numeric columns (changes avg/count/min); engine field typing from recipe types (unproven Data Studio UI, backend PRD Later); accepting H1 as W8.
+- Affected tasks: backend 30.1; release 4.6 (rerun), then 4.7.
+- Change requests settled: 4.6's Question (H1) -> planned: backend 30.1, release 4.6 rerun.
+- Delta audit: none (target POC).

@@ -300,6 +300,10 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
 - None. 26.6's visual STOP was approved by the user (run 3, 2026-10-28).
 
 ## Later
+- Share CSV typing beyond sum: a numeric (or DATE) column with many NULLs used with avg, min,
+  max, count or count_distinct, or as a dimension, still reaches Data Studio's GCS source as
+  Text; fix would be recipe field types plus the engine setting the type (change 2026-10-31,
+  release 4.6 finding H1).
 - Date-grain parity: feasibility can read component options while the compiler derives
   date_granularity from datasource-field proof; KPI grain inheritance is time_series-specific,
   and two TRUNC parsers remain (P2/P3, tasks 23.1/24.1; audit 2026-10-27).

@@ -104,7 +104,7 @@ Written 2026-10-18.
 |---|---|---|---|---|
 | contracts/conventions.md | 1.7 | program | engine, backend, frontend, release | release: `uv run --project integration python integration/check_contracts.py` (the one root `.env.example` has every name); manual: each part's config reads these names, ports and paths |
 | contracts/recipe.md | 1.5 | backend (recipe), engine (events) | engine, backend, release | engine: `uv run pytest tests/test_contract.py`; backend: `uv run pytest tests/test_recipe_contract.py` (both also on fixtures/recipe.gcs.sample.jsonl from engine 14.1 / backend 29.4) |
-| contracts/api.md | 3.4 | backend | frontend, release | backend: `uv run pytest tests/test_api_contract.py`; frontend: `npm test -- contract`; both against contracts/fixtures/api/ and, from backend 25.1 / frontend 16.1, contracts/fixtures/stage-settings/, and from backend 29.1 / frontend 19.1, contracts/fixtures/hosted-build/ |
+| contracts/api.md | 3.5 | backend | frontend, release | backend: `uv run pytest tests/test_api_contract.py`; frontend: `npm test -- contract`; both against contracts/fixtures/api/ and, from backend 25.1 / frontend 16.1, contracts/fixtures/stage-settings/, and from backend 29.1 / frontend 19.1, contracts/fixtures/hosted-build/ |
 | contracts/dashboard-intent.md | 1.3 | backend | frontend, release | backend: capability/reference/feasibility tests; frontend: contract and reference tests; release: tasks 2.5 and 4.3 |
 | contracts/synthetic-data.md | 1.3 | backend | frontend, release | backend synthetic tests, frontend 11.1-11.2, release 2.5, 2.6 and 4.3 |
 
@@ -229,6 +229,13 @@ phases" below.
   live GCS run with no template; signed-in Chrome) in engine/; then release 4.6 `Needs: engine
   15.1` and pushes main first (the setup downloads main.zip; user card). No backend, frontend or
   server change: api_version stays 3.4 and the image has no engine, so no redeploy.
+- Share CSV numeric NULLs (change 2026-10-31, from release 4.6 finding H1, user card; api.md 3.5):
+  a derived `CASE WHEN ... THEN revenue END` column is empty in most share-CSV rows, Data Studio
+  types it Text and its Sum ops fail. Backend 30.1 (sum-only numeric NULLs as 0, offline) in
+  backend/; then release 4.6 `Needs: backend 30.1`, redeploys (image only, user card) and reruns
+  the judge build on a fresh build with the install and sign-in kept. Other aggs on NULL-heavy
+  numeric columns stay a known limit (backend PRD Later: engine sets the field type from the
+  recipe). No engine or frontend task; the agent's API gate stays 3.4.
 
 ## Integration checks
 - `uv run --project integration python integration/check_contracts.py`: the recipe and event
@@ -350,3 +357,4 @@ phases" below.
 | 2026-10-29 | Hosted data path: with `DSS_SHARE_BUCKET`, `POST /run` writes the view's rows as one CSV to `gs://<project>-dss-share/<32 hex>/data.csv` (bucket mounted at `/share`, stdlib csv, cap 1M rows / 100 MB) and the recipe header uses `googleCloudStorage` FILE; `allUsers` gets only `storage.objects.get` (no listing); objects live until the link is closed; GCS and BigQuery sources locked on the open link, a visitor's own BigQuery/GCS data and uploads over 32 MB are Later | BigQuery CUSTOM_QUERY billed to the visitor's project with a dataset share to the runtime SA; OAuth BigQuery read scope; EXPORT DATA (sharded files need FOLDER mode); 14-day lifecycle; signed-URL direct uploads | the visitor's account can't read the owner's BigQuery; the Data Studio GCS connector reads with the viewer's credentials; one file and no new dependency | change 2026-10-29 local agent per judge (user cards) |
 | 2026-10-29 | Open hosted link (conventions 1.6): `DSS_PUBLIC=1` on Cloud Run, with the code and the Google client id empty, runs the service ungated; agent token unchanged; backend 28.1 (fail-closed opt-in), release 4.1 gated on it (deploy.sh open and gated modes), 4.2/4.4 wording; frontend unchanged (the gate opens on `required: false`) | OAuth client in a separate billing-free project with External branding (no code change); access code shared with the link; switch the existing branding to External | user: anyone with the link gets in; the project's branding is limited to one domain; an explicit flag so a missing secret never opens the service | change 2026-10-29 open hosted link (user cards) |
 | 2026-10-31 | Linking URL uses the `ds0` alias only with a template report; without `DSS_TEMPLATE_REPORT_ID`, un-aliased `ds.*` for every connector (recipe.md 1.5, engine 15.1; release 4.6 waits on it and pushes main first) | give visitor agents a public template report id; alias only for GCS | the default report rejects `ds.ds0` (engine 1.2 spike) and accepts `ds.*` (user, second account, 2026-10-31); a shared template is one more public object to keep alive; one rule covers both connectors | change 2026-10-31 (release 4.5) |
+| 2026-10-31 | Share CSV: a numeric column's NULL becomes `0` when the recipe uses it only as `sum` (or sorts on it); other NULLs stay empty (api.md 3.5, backend 30.1; release 4.6 reruns after a redeploy) | NULL as 0 for every numeric column; recipe 1.6 field types and the engine setting a chart's field type to Number; accept as known limit W8 | exact for sum (the only use of the H1 field), backend owns the data shape, no new Data Studio UI; 0 under avg/count/min would change results; the engine path is unproven for metrics (user card) | change 2026-10-31 (release 4.6, H1) |
