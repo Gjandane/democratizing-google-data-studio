@@ -764,3 +764,17 @@ context. Task status lives in docs/plan.md, not here.
 - Affected tasks: engine 15.1 (S, live with signed-in Chrome); release 4.6 (gated, pushes main first). No backend, frontend or server change: api_version stays 3.4 and the image has no engine, so no redeploy.
 - Change requests settled: 4.5's Gotchas note (engine alias without a template) -> planned: engine 15.1, release 4.6 gate.
 - Delta audit: none (target POC).
+
+## 2026-10-31: Task 4.6 Judge-path acceptance with a second Google account
+- Status: blocked
+- Plan check: off
+- What changed: main pushed (user card; 84888d4..1cd250e, engine 15.1 on origin). docs/acceptance.md: "Hosted judge path (task 4.6)" row 6 (b_302d91fd3a0f, FAIL, finding H1); docs/img/acceptance-4.6-hosted-v1.png, -v2.png. AGENTS.md: 3 Known gotchas. One-time reminder (desktop scheduled task `close-dss-open-link`) for 2026-11-07, user card.
+- Checks: hosted UI CSV -> prototype (1 comment) -> Build setup panel PASS; setup in fresh PowerShell, user signed in 2nd account, "Agent ready" PASS; v1 and v2 `run_finished` partial ok 41 failed 4 (s040 "Data Studio aggregation Sum is unavailable", s041/s043 component not created, s042 timed out) FAIL (not W1-W7); report data = CSV (436.6K/2.0K/6.9K), source GCS PASS (user); v2 no install/login PASS; curl: finished code 404 job_code_invalid, claimed code -> only its build_id then agent_timeout, unclaimed -> job_expired PASS; Test (all) check_contracts 13/13 PASS.
+- Decisions: H1 recorded as a finding, not added to W1-W7; agent Chrome reopened by the builder only for screenshots, then closed.
+- Tried and failed: none (H1 is deterministic: same 4 failures in v1 and v2).
+- Gotchas: in AGENTS.md.
+- Left open: none
+- Blocked because: (b) needs a change to a part (backend 29.4 share CSV / engine field typing) and likely a contract (recipe.md or api.md share data) at the program root.
+- Question: How should a numeric derived field that is NULL in most rows (`high_value_revenue`, empty in 1,949/2,000 share-CSV rows) reach Data Studio's GCS CSV source as Number?
+- Options: A backend writes such NULLs as 0 or derives the field in the report (calculated field) instead of the view, with a contract line / B engine sets the field's type on the GCS source from the recipe's recorded types / Recommend: A (owner of the data shape; no extra Data Studio UI ops), then rerun 4.6 from a fresh build (install kept, `-Update` for the new engine/backend).
+- Next: architect at the program root rules on H1; then rerun task 4.6.

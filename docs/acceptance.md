@@ -69,3 +69,24 @@ Found in the run above; each names the part that owns the fix. Open until a task
 | W5 | backend | prototype background | static legends (rural/urban, map scale) not drawn on background_p1 | background_p1.png |
 | W6 | backend | prototype render | page-1 reference HTML failed validation 3x on the first run; retry passed | trace r_2051c7758120 |
 | W7 | backend | scorecard pick | KPI caption missing; two non-reference scorecards on page 1 | report page 1 |
+
+## Hosted judge path (task 4.6)
+
+The hosted open link in the builder's browser pane (fresh tab, nothing signed in), the visitor's
+setup command pasted by the user into a fresh PowerShell on this Windows machine, the dedicated
+agent Chrome signed in by the user with a second Google account that can't read the owner's
+BigQuery. Engine 15.1 (un-aliased Linking URL) on origin/main before the setup ran; fresh install
+in the default folder (`%LOCALAPPDATA%\dss-agent`), no `-Update` needed.
+
+| # | Date | Source | Input | Build id | Last stage | Checked | Verdict |
+|---|---|---|---|---|---|---|---|
+| 6 | 2026-10-31 | Hosted judge path (CSV upload, second account) | `samples/ecommerce_sales.csv` (2,000 rows); default context, outline, design, blueprint; v1 comment "Units Sold", v2 comment "Avg Unit Price" | b_302d91fd3a0f | done v1 and v2, both engine `partial` (`run_finished` ok 41, failed 4 of 45) | Setup page: "Needs Google Chrome", Windows and macOS/Linux commands; check passed (server, versions, Chrome, signed in) -> "Agent ready on this computer"; job panel with live ops and the Data Studio link; the user opened v1's report in the second account: page 1 Total Revenue 436.6K = CSV sum 436,628.79, orders 2.0K, units 6.9K; data source Google Cloud Storage (share CSV), not BigQuery; v2 ran with its own code, install marker unchanged and no sign-in; scripted: finished code -> `404 job_code_invalid`; a second build's code claimed -> only `b_0bed07389549`, then `agent_timeout` (claim +11 min, no events); a third build's code left unclaimed -> `job_expired` (`b_e1f08d260e27`, at its `expires_at` +18 s) | FAIL (finding H1) |
+
+Finding H1 (not in W1-W7; backend share CSV + engine typing, contract at the program root):
+page 4's pivot (s040) and table (s042) use the derived `high_value_revenue` (NULL below $1,000).
+The share CSV writes NULL as empty, so the column is empty in 1,949 of 2,000 rows and Data Studio
+types it Text: s040 fails "Data Studio aggregation Sum is unavailable", s042 times out, and their
+`set_style` (s041, s043) fail on the missing components. Same four failures in v1 and v2.
+
+Screenshots (page 1, report view, cropped to the canvas): `docs/img/acceptance-4.6-hosted-v1.png`,
+`docs/img/acceptance-4.6-hosted-v2.png`.

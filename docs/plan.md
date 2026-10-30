@@ -183,7 +183,7 @@ Later; 2.7's committed driver code (label flip, analysis approval, .env.example 
   - If: `gcloud run deploy` rejects a second volume flag combination -> follow the installed SDK's `--help` as 4.1 does and record the flags under Decisions.
   - If: the cross-account check shows no rows or asks for access -> stop and ask the user (Data Studio may need `storage.objects.list`, and a listable role exposes every build's CSV path).
   - Review focus: ../contracts/conventions.md 1.7 Cloud deployment (Share bucket) exactly: get-only for `allUsers`, never a listable role.
-- [ ] 4.6 Judge-path acceptance with a second Google account
+- [!] 4.6 Judge-path acceptance with a second Google account
   - Goal: the user proves the hosted judge path end to end: in a private window at the URL, the sample CSV to Build, the copied PowerShell command on this Windows machine signed in with a second Google account that can't read the owner's BigQuery (user card 2026-10-29), and the report in that account with data.
   - Files: docs/acceptance.md, docs/img/*.png
   - Depends on: 4.5
