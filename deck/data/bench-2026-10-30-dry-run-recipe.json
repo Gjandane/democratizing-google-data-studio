@@ -1,0 +1,86 @@
+{
+  "run_date": "2026-10-30T02:36:05.840613Z",
+  "server_url": "http://localhost:8000",
+  "mode": "dry-run",
+  "build_id": "b_4d73bd6621dc",
+  "version2": false,
+  "until": "recipe",
+  "hosted_stop": null,
+  "stages": [
+    {
+      "version": 1,
+      "stage": "context",
+      "seconds": 8.984,
+      "run_ids": [
+        "r_189db74e8970"
+      ],
+      "input_tokens": 1717,
+      "output_tokens": 780
+    },
+    {
+      "version": 1,
+      "stage": "outline",
+      "seconds": 18.516,
+      "run_ids": [
+        "r_8434e166e7f8",
+        "r_46154091de14"
+      ],
+      "input_tokens": 4256,
+      "output_tokens": 1205
+    },
+    {
+      "version": 1,
+      "stage": "design",
+      "seconds": 0.609,
+      "run_ids": [],
+      "input_tokens": 0,
+      "output_tokens": 0
+    },
+    {
+      "version": 1,
+      "stage": "blueprint",
+      "seconds": 66.219,
+      "run_ids": [
+        "r_bf76000666fc"
+      ],
+      "input_tokens": 5063,
+      "output_tokens": 2164
+    },
+    {
+      "version": 1,
+      "stage": "prototype",
+      "seconds": 206.14,
+      "run_ids": [
+        "r_27f8a584b4d5"
+      ],
+      "input_tokens": 34966,
+      "output_tokens": 8136
+    },
+    {
+      "version": 1,
+      "stage": "comments",
+      "seconds": 137.641,
+      "run_ids": [
+        "r_61ea0d7a0a76",
+        "r_9549f47ce3bd"
+      ],
+      "changed": true,
+      "input_tokens": 31186,
+      "output_tokens": 2853
+    },
+    {
+      "version": 1,
+      "stage": "recipe",
+      "seconds": 0.641,
+      "run_ids": [],
+      "input_tokens": 0,
+      "output_tokens": 0
+    }
+  ],
+  "totals": {
+    "input_tokens": 77188,
+    "output_tokens": 15138
+  },
+  "decisions": [],
+  "report_urls": {}
+}

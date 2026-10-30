@@ -54,9 +54,13 @@ def dumps(value) -> str:
     return json.dumps(value)
 
 
-def items_of(spec: dict) -> dict[str, dict]:
-    return {item["id"]: item for page in spec["pages"]
-            for item in page.get("components", []) + page.get("decorations", [])}
+def target_state(spec: dict, target: str):
+    """The commented item; a designed page's `design` decoration changes through the page's HTML."""
+    for page in spec["pages"]:
+        for item in page.get("components", []) + page.get("decorations", []):
+            if item["id"] == target:
+                return (item, (page.get("design") or {}).get("html")) if item.get("kind") == "design" else item
+    return None
 
 
 def components_of(spec: dict) -> list[dict]:
@@ -139,10 +143,10 @@ class Flow:
     def comment(self, text: str, target: str) -> bool:
         """One comment run; True when spec_version went up and the target item changed."""
         before_v = self.api("GET")["spec_version"]
-        before = items_of(self.api("GET", "/spec")).get(target)
+        before = target_state(self.api("GET", "/spec"), target)
         self.run("/comments", {"comments": [{"component_id": target, "text": text}]})
         after_v = self.api("GET")["spec_version"]
-        after = items_of(self.api("GET", "/spec")).get(target)
+        after = target_state(self.api("GET", "/spec"), target)
         return (after_v or 0) > (before_v or 0) and after != before
 
     def comment_checked(self, text: str, target: str) -> None:
@@ -170,7 +174,8 @@ class Flow:
                     return "agent_offline"
             elif response.status_code == 202:
                 ticket = self.api("GET", "/job")  # holds the one-time code: never printed or stored
-                if ticket.get("state") == "waiting" and ticket.get("run_id") == response.json().get("run_id"):
+                run_id = response.json().get("run_id")
+                if ticket.get("state") == "waiting" and run_id and ticket.get("run_id") == run_id:
                     return "ticket"
                 raise RuntimeError(f"backend: POST {url}: job ticket is {ticket.get('state')!r}, expected waiting")
             raise RuntimeError(self.redact(
@@ -297,10 +302,10 @@ class Flow:
             if not charts:
                 raise RuntimeError("backend: spec has no component to comment on")
             decorations = [d for p in spec["pages"] for d in p.get("decorations", [])]
-            deco = next((d for kind in ("band", "panel", "title")
+            deco = next((d for kind in ("band", "panel", "title", "design")
                          for d in decorations if d.get("kind") == kind), None)
             if deco is None:
-                raise RuntimeError("backend: spec has no band, panel or title decoration")
+                raise RuntimeError("backend: spec has no band, panel, title or design decoration")
             self.comment_checked(COMPONENT_TEXT, next(
                 (c for c in components_of(spec) if c.get("type") in CHART_TYPES), charts[0])["id"])
             self.comment_checked(DECORATION_TEXT, deco["id"])

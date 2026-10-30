@@ -697,3 +697,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: see AGENTS.md (BigQuery load queue; broken TCP table vs start.sh).
 - Left open: no review yet (runs after the checks pass).
 - Next: Task 4.2: check the BigQuery load delay (AGENTS.md gotcha); when loads start in < 2 min, run the Done-when checks (local --until recipe, local --version2, hosted --until recipe, Test (all)), then review, done, commit. If the delay persists, block asking backend for a longer load wait.
+
+## 2026-10-30: Task 4.2 Deployed end-to-end up to the recipe
+- Status: done
+- Plan check: off
+- What changed: integration/e2e_flow1.py: decoration comment falls back to the page's `design` decoration and detects its change through `page.design.html` (`target_state`); hosted ticket check needs a non-empty `run_id`. Benches deck/data/bench-2026-10-30-{dry-run-recipe,dry-run,hosted-recipe}.json.
+- Checks: local `--until recipe` (dry-run) PASS (37 ops, then 0 `/run` in backend log; rerun after review fixes PASS); local `--version2` PASS (exit 0); hosted `--server "$DSS_AGENT_SERVER" --until recipe` PASS twice (31 ops, `hosted_stop: "ticket"`, `server_url: "hosted"`, `git grep -F` finds no URL); `--until` with `--live`/`--version2` exit 2 (earlier session); Test (all) `check_contracts.py` PASS 13/13. Manual UI walk: not run (user's).
+- Decisions: hosted stop accepted as `ticket` (user card): the deployed revision serves api 3.4, where `424 agent_offline` is retired, so the Done-when's literal 424 can't happen; the UI walk will show the 3.4 build panel, not "Build agent offline". Earlier failures were BigQuery's load queue (959 -> 2 s by 02:04 UTC), not code. AGENTS.md: designed-page comment gotcha.
+- Digest: `e2e_flow1.py --until recipe [--server URL]`: local stops after recipe; non-local also POSTs /run once, accepts `424 agent_offline` or `202`+waiting ticket; bench `until`, `hosted_stop`, `server_url: "hosted"`, file `bench-<date>-{hosted|<mode>}[-recipe].json`.
+- Tried and failed: none in code; 2 local runs failed at comments before the designed-page fallback.
+- Gotchas: see AGENTS.md (designed-page comments).
+- Left open: manual UI walk at the hosted URL (user); P3 local hosts are only localhost/127.0.0.1/::1 (0.0.0.0 or a LAN IP counts as hosted) - integration/e2e_flow1.py.
+- Next: Task 4.3. Start by `status`; the bench and `--until recipe` driver are reusable for its hosted runs.
