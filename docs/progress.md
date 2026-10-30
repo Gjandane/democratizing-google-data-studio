@@ -732,3 +732,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none new.
 - Left open: P3 restart proof can rest on a typed `--cloud-run-revision` (the bench doesn't record gcloud vs flag) - integration/e2e_references.py
 - Next: Task 4.4 Agent setup scripts and their push.
+
+## 2026-10-31: Task 4.4 Agent setup scripts and their push
+- Status: done
+- Plan check: off
+- What changed: agent-setup/setup.ps1 and setup.sh: conventions 1.7 Setup (Chrome lookup as the engine's, uv only when missing, repo zip to `<home>/app`, `uv sync --no-dev --frozen`, env, login only when signed out, then `dss-agent run|check`). .gitattributes unchanged (`*.sh text eol=lf` already there).
+- Checks: PS parser 0 errors; `bash -n` 0. Backend in `DSS_ENGINE_MODE=agent` (by hand: start.sh probe misfired), e2e_flow1 --until recipe b_83ed458c0b53: -Job -DryRun -Source folder 1 rc 0 v1 ok; next code reused install rc 0 v2 ok; -Check -DryRun folder 2 rc 1, check `failed` signed_in false (expected); -Job there skipped install v3 ok; -Update recopied, rc 0 v4 ok, chrome-profile kept; Git Bash `cat setup.sh | bash -s --` folder 3 rc 0 v5 ok; missing DSS_CHROME_PATH: Chrome line, rc 1 (both); code grep in folders: none; scratch deleted. Test (all) check_contracts PASS 13/13. check_repo, push, ls-remote and raw curl run right after this commit (session report).
+- Decisions: PS exits with `exit` only under -Command/-File without -NoExit, else sets `$LASTEXITCODE` (an interactive `exit` closes the window); restores DSS_* env in finally. `DSS_ENGINE_CMD='uv run --no-dev --frozen --project ../engine dsengine'`; app/ is the zip's top folder flattened; `app/.dss-installed` marker written last; -DryRun skips check and login. AGENTS.md: gotcha on a second job for a done build.
+- Digest: `agent-setup/setup.ps1 -Server URL (-Job|-Check CODE) [-Update -DryRun -Source zip -Home dir]`, `setup.sh --server ... --job|--check ...`; home `%LOCALAPPDATA%\dss-agent` / `~/.dss-agent`: app/ (marker .dss-installed), chrome-profile/, data/; on origin main.
+- Tried and failed: `./start.sh` with DSS_ENGINE_MODE=agent: its readiness probe timed out and stopped the servers mid-build.
+- Gotchas: none new beyond AGENTS.md.
+- Left open: P3 login runs when Chrome is closed (check can't see sign-in) - setup.ps1/sh; P3 VS Code extension terminal (-NonInteractive -Command) treated as batch, exit ends it - setup.ps1; P3 EAP=Stop profile makes check stderr read as signed out - setup.ps1; untested: real GitHub download, uv install and sign-in branches (all runs used -Source/-DryRun); untracked deck/data/bench-2026-10-30-live-recipe.json (this task's e2e by-product, not committed).
+- Next: Task 4.5 Redeploy for judge builds.

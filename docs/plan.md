@@ -161,7 +161,7 @@ Later; 2.7's committed driver code (label flip, analysis approval, .env.example 
   - If: an action hits the driver's fixed 600 s wait -> rerun once; on a repeat, block asking for 2.8's stage-clock waits (PRD Later).
   - If: a hosted case fails inside a part -> rerun only that case once (`--cases`); on a repeat at the same step, block naming the part, the step and the API error body; never silently relabel a required case optional.
   - If: the deployed revision already has backend 29.1 -> wherever a case asserts `424 agent_offline` it asserts a `waiting` ticket instead (as 4.2's If), and never claims the code.
-- [ ] 4.4 Agent setup scripts and their push
+- [x] 4.4 Agent setup scripts and their push
   - Goal: `agent-setup/setup.ps1` and `agent-setup/setup.sh` do the Setup of contracts/conventions.md 1.7 (Build agent: Setup, Setup command, Paths) for a visitor's machine, and reach `main` on GitHub so the Build panel's command works.
   - Files: agent-setup/setup.ps1, agent-setup/setup.sh, .gitattributes
   - Depends on: 4.3
