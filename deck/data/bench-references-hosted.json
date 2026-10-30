@@ -1,0 +1,1032 @@
+{
+  "cases": {
+    "refusal": {
+      "passed": true,
+      "run_date": "2026-10-30T05:39:50Z",
+      "seconds": 93.219,
+      "build_id": "b_948623b27769",
+      "checks": [
+        {
+          "check": "context drafted without issues",
+          "ok": true,
+          "detail": []
+        },
+        {
+          "check": "outline proposed",
+          "ok": true
+        },
+        {
+          "check": "assistant explains the unsupported Other text at once",
+          "ok": true,
+          "detail": [
+            "Your questions were saved. Feasibility needs attention: Geo chart needs a geo_field field (GEO/GEOGRAPHY) that the connected data lacks This app's geo_map offers only country, region and city granularity This app's recipe and engine have no animation or temporal playback op"
+          ]
+        },
+        {
+          "check": "design prefilled without issues",
+          "ok": true,
+          "detail": []
+        },
+        {
+          "check": "moving GPS blocks as unsupported_app",
+          "ok": true,
+          "detail": {
+            "state": "blocked",
+            "issues": [
+              "Animate each delivery van's GPS points moving along its route on a map over the day, like a playback of the trip.",
+              "Animate each delivery van's GPS points moving along its route on a map over the day, like a playback of the trip.",
+              "Animate each delivery van's GPS points moving along its route on a map over the day, like a playback of the trip."
+            ]
+          }
+        },
+        {
+          "check": "blueprint accept refused",
+          "ok": true,
+          "detail": {
+            "status": 409,
+            "code": "feasibility_blocked"
+          }
+        },
+        {
+          "check": "refusal names the GPS issue",
+          "ok": true,
+          "detail": {
+            "assessment_id": "assessment_deca932abf92",
+            "issue_ids": [
+              "issue_f5603af82fbceac969869647",
+              "issue_3af9a3f1e5658911d0fd6b94",
+              "issue_f4b09b19395146433ff0d9e2"
+            ]
+          }
+        },
+        {
+          "check": "a stale assessment id is rejected",
+          "ok": true,
+          "detail": {
+            "status": 409,
+            "code": "feasibility_stale"
+          }
+        },
+        {
+          "check": "an unreadable image is rejected",
+          "ok": true,
+          "detail": {
+            "status": 422,
+            "code": "invalid_source"
+          }
+        },
+        {
+          "check": "the rejected image left no reference set",
+          "ok": true
+        },
+        {
+          "check": "recipe refused",
+          "ok": true,
+          "detail": {
+            "status": 409,
+            "code": "wrong_stage"
+          }
+        },
+        {
+          "check": "run refused",
+          "ok": true,
+          "detail": {
+            "status": 409,
+            "code": "wrong_stage"
+          }
+        },
+        {
+          "check": "no view, spec, prototype, recipe or engine side effect",
+          "ok": true,
+          "detail": {
+            "stage": "blueprint",
+            "spec_version": null,
+            "spec_status": 409,
+            "nodes": [
+              "blueprint",
+              "context",
+              "create_build",
+              "intake",
+              "outline_other",
+              "outline_propose"
+            ]
+          }
+        }
+      ],
+      "assessments": [
+        {
+          "at": "blueprint",
+          "state": "blocked",
+          "prototype_stale": false,
+          "issues": [
+            {
+              "status": "needs_data",
+              "requirement": "Animate each delivery van's GPS points moving along its route on a map over the day, like a playback of the trip.",
+              "resolution": "unresolved",
+              "alternatives": []
+            },
+            {
+              "status": "unsupported_app",
+              "requirement": "Animate each delivery van's GPS points moving along its route on a map over the day, like a playback of the trip.",
+              "resolution": "unresolved",
+              "alternatives": [
+                "Time series using order_date (no point playback or streaming)"
+              ]
+            },
+            {
+              "status": "unsupported_app",
+              "requirement": "Animate each delivery van's GPS points moving along its route on a map over the day, like a playback of the trip.",
+              "resolution": "unresolved",
+              "alternatives": [
+                "Time series using order_date (no point playback or streaming)"
+              ]
+            }
+          ],
+          "pending_comments": false
+        }
+      ],
+      "stages": [
+        {
+          "version": 1,
+          "stage": "context",
+          "seconds": 12.219,
+          "run_ids": [
+            "r_1ed6aa8aefa2"
+          ],
+          "input_tokens": 1743,
+          "output_tokens": 899
+        },
+        {
+          "version": 1,
+          "stage": "outline",
+          "seconds": 25.734,
+          "run_ids": [
+            "r_c0720201f299",
+            "r_aeac4ee65c09"
+          ],
+          "input_tokens": 4247,
+          "output_tokens": 1086
+        },
+        {
+          "version": 1,
+          "stage": "design",
+          "seconds": 2.344,
+          "run_ids": [],
+          "input_tokens": 0,
+          "output_tokens": 0
+        },
+        {
+          "version": 1,
+          "stage": "blueprint",
+          "seconds": 37.75,
+          "run_ids": [
+            "r_66dc701e2776"
+          ],
+          "input_tokens": 9132,
+          "output_tokens": 1994
+        }
+      ],
+      "decisions": [],
+      "git_revision": {
+        "commit": "622b46fbc4ae4704e9f01b48cf8e804dafaaffa9",
+        "dirty": true
+      },
+      "until": "recipe",
+      "cloud_run_revision": "dss-frontend-00003-p2f",
+      "outline_questions": [
+        "What is the total gross revenue generated across all transactions?",
+        "How many distinct orders were completed across all commercial channels?",
+        "What is the aggregate volume of units sold across all completed orders?",
+        "How has monthly total revenue trended over the course of the year?",
+        "What is the monthly trend in total orders and units sold?",
+        "How does the average unit price vary across order months?",
+        "Which product categories generate the highest total revenue?",
+        "What is the distribution of units sold across distinct product categories?",
+        "Which specific products generate the largest share of total revenue?",
+        "How does the average unit price compare across product categories?",
+        "How is total revenue distributed across customer segments?",
+        "Which regions account for the highest total revenue and total orders?",
+        "What is the regional distribution of units sold across countries?",
+        "How do delivery routes and geographic order patterns evolve over time?"
+      ],
+      "design": {
+        "preset_id": "studio_light",
+        "source": "preset",
+        "accent": "#2456A6",
+        "background": "#F0F4F8",
+        "palette": [
+          "#2456A6",
+          "#C27D00",
+          "#22B9C7",
+          "#993878"
+        ],
+        "font_family": "Arial",
+        "page_structure": "per_section"
+      },
+      "refusal": {
+        "requirement": "Animate each delivery van's GPS points moving along its route on a map over the day, like a playback of the trip.",
+        "reason": "This app's geo_map offers only country, region and city granularity",
+        "alternatives": [
+          "Time series using order_date (no point playback or streaming)"
+        ],
+        "planned_view": "ai-projects-250716.dss_demo.dash_b_948623b27769_v1_r_66dc701e2776"
+      },
+      "tokens": {
+        "input_tokens": 15122,
+        "output_tokens": 3979
+      }
+    },
+    "revenue": {
+      "passed": true,
+      "run_date": "2026-10-30T05:41:23Z",
+      "seconds": 133.906,
+      "build_id": "b_3abfd7d157eb",
+      "checks": [
+        {
+          "check": "context drafted without issues",
+          "ok": true,
+          "detail": []
+        },
+        {
+          "check": "context has a Revenue KPI on a sales field",
+          "ok": true,
+          "detail": [
+            {
+              "id": "revenue",
+              "name": "Revenue",
+              "measure": {
+                "field": "net_sales",
+                "agg": "sum"
+              }
+            },
+            {
+              "id": "total_gross_sales",
+              "name": "Gross Sales",
+              "measure": {
+                "field": "gross_sales",
+                "agg": "sum"
+              }
+            },
+            {
+              "id": "total_discount",
+              "name": "Total Discount",
+              "measure": {
+                "field": "discount",
+                "agg": "sum"
+              }
+            },
+            {
+              "id": "total_orders",
+              "name": "Total Orders",
+              "measure": {
+                "field": "order_id",
+                "agg": "count_distinct"
+              }
+            },
+            {
+              "id": "total_units_sold",
+              "name": "Total Units Sold",
+              "measure": {
+                "field": "quantity",
+                "agg": "sum"
+              }
+            },
+            {
+              "id": "average_order_value",
+              "name": "Average Order Value",
+              "measure": null
+            },
+            {
+              "id": "effective_discount_rate",
+              "name": "Effective Discount Rate",
+              "measure": null
+            }
+          ]
+        },
+        {
+          "check": "Revenue KPI states its assumption",
+          "ok": true,
+          "detail": {
+            "field": "net_sales",
+            "description": "Total net sales across all completed orders (named Revenue per executive finance convention)."
+          }
+        },
+        {
+          "check": "outline proposed",
+          "ok": true
+        },
+        {
+          "check": "design prefilled without issues",
+          "ok": true,
+          "detail": []
+        },
+        {
+          "check": "KPI edit sets context draft and the blueprint stale",
+          "ok": true,
+          "detail": {
+            "stage": "context",
+            "artifacts": {
+              "context": "draft",
+              "outline": "stale",
+              "design": "stale",
+              "blueprint": "stale"
+            }
+          }
+        },
+        {
+          "check": "regenerated blueprint uses gross_sales for Revenue",
+          "ok": true,
+          "detail": {
+            "all": [
+              "discount",
+              "gross_sales",
+              "order_id",
+              "quantity"
+            ],
+            "revenue_rows": [
+              "discount",
+              "gross_sales",
+              "order_id",
+              "quantity"
+            ]
+          }
+        }
+      ],
+      "assessments": [],
+      "stages": [
+        {
+          "version": 1,
+          "stage": "context",
+          "seconds": 10.672,
+          "run_ids": [
+            "r_d279123b3393"
+          ],
+          "input_tokens": 1469,
+          "output_tokens": 991
+        },
+        {
+          "version": 1,
+          "stage": "outline",
+          "seconds": 10.938,
+          "run_ids": [
+            "r_42e73ce08207"
+          ],
+          "input_tokens": 1312,
+          "output_tokens": 543
+        },
+        {
+          "version": 1,
+          "stage": "design",
+          "seconds": 2.109,
+          "run_ids": [],
+          "input_tokens": 0,
+          "output_tokens": 0
+        },
+        {
+          "version": 1,
+          "stage": "blueprint",
+          "seconds": 28.531,
+          "run_ids": [
+            "r_cedc1614620c"
+          ],
+          "input_tokens": 4996,
+          "output_tokens": 1313
+        },
+        {
+          "version": 1,
+          "stage": "reconfirm",
+          "seconds": 66.203,
+          "run_ids": [
+            "r_8de2ac1a899c",
+            "r_d3a34794c983",
+            "r_3fc78390bb12"
+          ],
+          "input_tokens": 13911,
+          "output_tokens": 2786
+        }
+      ],
+      "decisions": [],
+      "git_revision": {
+        "commit": "622b46fbc4ae4704e9f01b48cf8e804dafaaffa9",
+        "dirty": true
+      },
+      "until": "recipe",
+      "cloud_run_revision": "dss-frontend-00003-p2f",
+      "revenue": {
+        "kpi_id": "revenue",
+        "assumed_field": "net_sales",
+        "description": "Total net sales across all completed orders (named Revenue per executive finance convention).",
+        "fields_before": [
+          "discount",
+          "gross_sales",
+          "net_sales",
+          "order_id",
+          "quantity"
+        ],
+        "fields_after": [
+          "discount",
+          "gross_sales",
+          "order_id",
+          "quantity"
+        ]
+      },
+      "outline_questions": [
+        "What is the total realized revenue and pre-discount gross sales across all transactions?",
+        "How many total orders and units were processed during the period?",
+        "How have monthly revenue and gross sales trended across 2026?",
+        "How does total order volume correlate with unit sales trends over time?",
+        "Which product categories generate the highest total revenue and unit volumes?",
+        "How does revenue and total discount exposure vary across geographic regions?",
+        "Which customer segments contribute the most to total orders and net revenue?"
+      ],
+      "design": {
+        "preset_id": "studio_light",
+        "source": "preset",
+        "accent": "#2456A6",
+        "background": "#F0F4F8",
+        "palette": [
+          "#2456A6",
+          "#C27D00",
+          "#22B9C7",
+          "#993878"
+        ],
+        "font_family": "Arial",
+        "page_structure": "per_section"
+      },
+      "tokens": {
+        "input_tokens": 21688,
+        "output_tokens": 5633
+      }
+    },
+    "style": {
+      "passed": false,
+      "run_date": "2026-10-30T05:43:37Z",
+      "seconds": 474.719,
+      "build_id": "b_4c785d99b15c",
+      "checks": [
+        {
+          "check": "reference set in style mode",
+          "ok": true,
+          "detail": {
+            "mode": "style",
+            "summary": "Style reference from 1 image: palette #733BF6, #240C5A, #9D72F9, #4F21AC."
+          }
+        },
+        {
+          "check": "context drafted without issues",
+          "ok": true,
+          "detail": []
+        },
+        {
+          "check": "outline proposed",
+          "ok": true
+        },
+        {
+          "check": "design prefilled without issues",
+          "ok": true,
+          "detail": []
+        },
+        {
+          "check": "assessment ready after decisions",
+          "ok": true,
+          "detail": "ready"
+        },
+        {
+          "check": "prototype reached",
+          "ok": true,
+          "detail": "prototype"
+        },
+        {
+          "check": "9 charts bound to real fields",
+          "ok": true,
+          "detail": {
+            "unknown": [],
+            "unbound": [],
+            "not_columns": []
+          }
+        },
+        {
+          "check": "theme taken from the reference",
+          "ok": true,
+          "detail": {
+            "design_source": "reference",
+            "accent": "#733BF6",
+            "palette": [
+              "#733BF6",
+              "#240C5A",
+              "#9D72F9",
+              "#4F21AC"
+            ],
+            "nearest_distance": 12.8
+          }
+        },
+        {
+          "check": "replacement is the reference set on reload",
+          "ok": true,
+          "detail": {
+            "old": "ref_3141ca67cfc4",
+            "new": "ref_6d065f3d3f17"
+          }
+        },
+        {
+          "check": "replacement invalidates the assessment",
+          "ok": true,
+          "detail": "stale"
+        },
+        {
+          "check": "recipe of the stale prototype refused",
+          "ok": false,
+          "detail": {
+            "status": 409,
+            "code": "reference_unapproved"
+          }
+        }
+      ],
+      "assessments": [
+        {
+          "at": "blueprint",
+          "state": "blocked",
+          "prototype_stale": false,
+          "issues": [
+            {
+              "status": "unknown",
+              "requirement": "Borrow the colors, the header band and the card style of this dashboard.",
+              "resolution": "unresolved",
+              "alternatives": []
+            }
+          ],
+          "pending_comments": false
+        },
+        {
+          "at": "blueprint check",
+          "state": "ready",
+          "prototype_stale": false,
+          "issues": [],
+          "pending_comments": false
+        },
+        {
+          "at": "reference replaced",
+          "state": "stale",
+          "prototype_stale": true,
+          "issues": [],
+          "pending_comments": false
+        }
+      ],
+      "stages": [
+        {
+          "version": 1,
+          "stage": "reference_style",
+          "seconds": 15.969,
+          "run_ids": [
+            "r_5e653ee2c517"
+          ],
+          "input_tokens": 2002,
+          "output_tokens": 254
+        },
+        {
+          "version": 1,
+          "stage": "context",
+          "seconds": 11.219,
+          "run_ids": [
+            "r_348a7562c929"
+          ],
+          "input_tokens": 1700,
+          "output_tokens": 798
+        },
+        {
+          "version": 1,
+          "stage": "outline",
+          "seconds": 14.328,
+          "run_ids": [
+            "r_a3c33bcb7029"
+          ],
+          "input_tokens": 1205,
+          "output_tokens": 1020
+        },
+        {
+          "version": 1,
+          "stage": "design",
+          "seconds": 2.234,
+          "run_ids": [],
+          "input_tokens": 0,
+          "output_tokens": 0
+        },
+        {
+          "version": 1,
+          "stage": "blueprint",
+          "seconds": 31.25,
+          "run_ids": [
+            "r_19e6760a88d0"
+          ],
+          "input_tokens": 8599,
+          "output_tokens": 1501
+        },
+        {
+          "version": 1,
+          "stage": "check",
+          "seconds": 4.484,
+          "run_ids": [
+            "r_1ce6ad5f95bf"
+          ],
+          "input_tokens": 5193,
+          "output_tokens": 160
+        },
+        {
+          "version": 1,
+          "stage": "prototype",
+          "seconds": 338.391,
+          "run_ids": [
+            "r_8d4508b2e337"
+          ],
+          "input_tokens": 44219,
+          "output_tokens": 8536
+        },
+        {
+          "version": 1,
+          "stage": "reference_replace",
+          "seconds": 40.0,
+          "run_ids": [
+            "r_271199f59d32"
+          ],
+          "input_tokens": 2525,
+          "output_tokens": 1173
+        }
+      ],
+      "decisions": [],
+      "git_revision": {
+        "commit": "622b46fbc4ae4704e9f01b48cf8e804dafaaffa9",
+        "dirty": true
+      },
+      "until": "recipe",
+      "cloud_run_revision": "dss-frontend-00003-p2f",
+      "reference": {
+        "mode": "style",
+        "summary": "Style reference from 1 image: palette #733BF6, #240C5A, #9D72F9, #4F21AC."
+      },
+      "outline_questions": [
+        "What is the total gross revenue and order volume achieved across the store to date?",
+        "How has weekly total revenue trended over the trading period?",
+        "How do weekly order volumes correspond with weekly revenue performance?",
+        "Which geographic regions generate the highest total revenue and order volume?",
+        "How is revenue distributed across customer segments such as Consumer, SMB, and Enterprise?",
+        "Which product categories contribute the largest share of total gross revenue?",
+        "What are the top-performing individual products by total revenue and total units sold?",
+        "Which product categories achieve the highest order frequency across the store?"
+      ],
+      "design": {
+        "preset_id": "studio_light",
+        "source": "reference",
+        "accent": "#733BF6",
+        "background": "#F6F5FB",
+        "palette": [
+          "#733BF6",
+          "#240C5A",
+          "#9D72F9",
+          "#4F21AC"
+        ],
+        "font_family": "Arial",
+        "page_structure": "per_section"
+      },
+      "components": [
+        {
+          "page": 1,
+          "type": "date_range",
+          "label": "Order Date Range",
+          "fields": [
+            "order_date"
+          ],
+          "grid": {
+            "col": 1,
+            "row": 13,
+            "w": 3,
+            "h": 3
+          }
+        },
+        {
+          "page": 1,
+          "type": "scorecard",
+          "label": "Total Revenue",
+          "fields": [
+            "revenue"
+          ],
+          "grid": {
+            "col": 1,
+            "row": 16,
+            "w": 6,
+            "h": 5
+          }
+        },
+        {
+          "page": 1,
+          "type": "scorecard",
+          "label": "Total Orders",
+          "fields": [
+            "order_id"
+          ],
+          "grid": {
+            "col": 7,
+            "row": 16,
+            "w": 6,
+            "h": 5
+          }
+        },
+        {
+          "page": 2,
+          "type": "date_range",
+          "label": "Trading Period",
+          "fields": [
+            "order_date"
+          ],
+          "grid": {
+            "col": 1,
+            "row": 13,
+            "w": 3,
+            "h": 3
+          }
+        },
+        {
+          "page": 2,
+          "type": "time_series",
+          "label": "Weekly Total Revenue Trend",
+          "fields": [
+            "revenue",
+            "order_date"
+          ],
+          "grid": {
+            "col": 1,
+            "row": 16,
+            "w": 12,
+            "h": 14
+          }
+        },
+        {
+          "page": 2,
+          "type": "time_series",
+          "label": "Weekly Order Volume vs Revenue",
+          "fields": [
+            "order_id",
+            "revenue",
+            "order_date"
+          ],
+          "grid": {
+            "col": 1,
+            "row": 30,
+            "w": 12,
+            "h": 14
+          }
+        },
+        {
+          "page": 3,
+          "type": "dropdown",
+          "label": "Customer Segment Filter",
+          "fields": [
+            "customer_segment"
+          ],
+          "grid": {
+            "col": 1,
+            "row": 14,
+            "w": 3,
+            "h": 3
+          }
+        },
+        {
+          "page": 3,
+          "type": "pie",
+          "label": "Revenue Share by Customer Segment",
+          "fields": [
+            "customer_segment",
+            "revenue"
+          ],
+          "grid": {
+            "col": 1,
+            "row": 17,
+            "w": 6,
+            "h": 14
+          }
+        },
+        {
+          "page": 3,
+          "type": "table",
+          "label": "Revenue and Orders by Region and Country",
+          "fields": [
+            "region",
+            "country",
+            "revenue",
+            "order_id"
+          ],
+          "grid": {
+            "col": 1,
+            "row": 31,
+            "w": 12,
+            "h": 16
+          }
+        },
+        {
+          "page": 4,
+          "type": "dropdown",
+          "label": "Product Category Filter",
+          "fields": [
+            "category"
+          ],
+          "grid": {
+            "col": 1,
+            "row": 13,
+            "w": 3,
+            "h": 3
+          }
+        },
+        {
+          "page": 4,
+          "type": "pie",
+          "label": "Revenue Share by Product Category",
+          "fields": [
+            "category",
+            "revenue"
+          ],
+          "grid": {
+            "col": 1,
+            "row": 16,
+            "w": 6,
+            "h": 14
+          }
+        },
+        {
+          "page": 4,
+          "type": "table",
+          "label": "Top Products by Revenue and Units Sold",
+          "fields": [
+            "product_name",
+            "category",
+            "revenue",
+            "quantity"
+          ],
+          "grid": {
+            "col": 1,
+            "row": 30,
+            "w": 12,
+            "h": 16
+          }
+        },
+        {
+          "page": 4,
+          "type": "bar",
+          "label": "Order Frequency by Product Category",
+          "fields": [
+            "category",
+            "order_id"
+          ],
+          "grid": {
+            "col": 1,
+            "row": 46,
+            "w": 6,
+            "h": 14
+          }
+        }
+      ],
+      "theme": {
+        "background": "#F6F5FB",
+        "accent": "#733BF6",
+        "palette": [
+          "#733BF6",
+          "#240C5A",
+          "#9D72F9",
+          "#4F21AC"
+        ],
+        "font_family": "Arial",
+        "nearest_distance": 12.8
+      },
+      "comparison": {
+        "matched": {
+          "kpi_revenue": {
+            "label": "Total Revenue",
+            "type": "scorecard",
+            "page": 1,
+            "grid": {
+              "col": 1,
+              "row": 16,
+              "w": 6,
+              "h": 5
+            }
+          },
+          "kpi_orders": {
+            "label": "Total Orders",
+            "type": "scorecard",
+            "page": 1,
+            "grid": {
+              "col": 7,
+              "row": 16,
+              "w": 6,
+              "h": 5
+            }
+          },
+          "kpi_units": {
+            "label": "Top Products by Revenue and Units Sold",
+            "type": "table",
+            "page": 4,
+            "grid": {
+              "col": 1,
+              "row": 30,
+              "w": 12,
+              "h": 16
+            }
+          },
+          "revenue_by_month": {
+            "label": "Weekly Total Revenue Trend",
+            "type": "time_series",
+            "page": 2,
+            "grid": {
+              "col": 1,
+              "row": 16,
+              "w": 12,
+              "h": 14
+            }
+          },
+          "revenue_by_category": {
+            "label": "Order Frequency by Product Category",
+            "type": "bar",
+            "page": 4,
+            "grid": {
+              "col": 1,
+              "row": 46,
+              "w": 6,
+              "h": 14
+            }
+          },
+          "top_products": {
+            "label": "Revenue and Orders by Region and Country",
+            "type": "table",
+            "page": 3,
+            "grid": {
+              "col": 1,
+              "row": 31,
+              "w": 12,
+              "h": 16
+            }
+          }
+        },
+        "differences": [
+          "added: Weekly Order Volume vs Revenue (time_series)",
+          "added: Revenue Share by Customer Segment (pie)",
+          "added: Revenue Share by Product Category (pie)"
+        ],
+        "substitutions": [
+          "Units sold: scorecard -> table"
+        ],
+        "order_violations": [
+          "Units sold is not above Revenue by month",
+          "Units sold is not above Top products by revenue",
+          "Revenue by category is not above Top products by revenue"
+        ],
+        "pages": [
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "snapshots": [
+        "deck/render/references/style-prototype.png"
+      ],
+      "error": "RuntimeError: style: recipe of the stale prototype refused: {\"status\": 409, \"code\": \"reference_unapproved\"}",
+      "tokens": {
+        "input_tokens": 65443,
+        "output_tokens": 13442
+      }
+    }
+  },
+  "run_date": "2026-10-30T05:39:49Z",
+  "server_url": "hosted",
+  "git_revision": {
+    "commit": "622b46fbc4ae4704e9f01b48cf8e804dafaaffa9",
+    "dirty": true
+  },
+  "live": false,
+  "until": "recipe",
+  "cloud_run_revision": "dss-frontend-00003-p2f",
+  "engine": {
+    "mode": "agent",
+    "chrome_running": false,
+    "signed_in": false,
+    "agent_connected": false,
+    "agent_last_seen": null
+  },
+  "hosting": {
+    "mode": "agent",
+    "public": true,
+    "share_data": false,
+    "api_version": "3.4"
+  },
+  "all_passed": false,
+  "manual_click_through": {
+    "run_date": "2026-10-30T05:50:00Z",
+    "build_id": "b_1848ec0b0ee8",
+    "cloud_run_revision": "dss-frontend-00003-p2f",
+    "path": "recreate reference PNG -> Generate sample data (proposed 2,000 rows, edited to 1,000; 7 columns) -> context -> outline (4 sections) -> design from the reference (#7038F7) -> blueprint (18 rows, ready) -> 4-page prototype -> Build stage: Generate recipe (43 ops); Build in Data Studio not clicked",
+    "synthetic_label": "prototype banner and background layer say 'Synthetic sample data'; the Build stage says so too",
+    "known_defects": [
+      "Revenue by month plots daily points (2.5's order_date_month defect)"
+    ],
+    "approved": "user card 2026-10-30: Approve",
+    "passed": true
+  }
+}

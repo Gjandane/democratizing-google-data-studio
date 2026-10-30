@@ -147,7 +147,7 @@ Later; 2.7's committed driver code (label flip, analysis approval, .env.example 
   - If: the hosted run fails inside a part -> rerun once (live model nodes fail nondeterministically, Known gotcha); on a repeat at the same step, block with the part, the step and the API error body.
   - If: an action hits the driver's fixed 600 s wait on hosted -> rerun once; on a repeat, block asking for 2.8's stage-clock waits (PRD Later) to come back as a task.
   - If: writing the hosted stop check -> accept either stop, so 4.5 reuses it after the redeploy: `424 agent_offline` (bench `hosted_stop: "agent_offline"`) or, from backend 29.1 (api.md 3.4), `202` with a `waiting` ticket from `GET .../job` (`hosted_stop: "ticket"`); never claim the code; 4.2 itself passes on 4.1's revision with `agent_offline`.
-- [ ] 4.3 Hosted reference, refusal and synthetic acceptance up to the recipe
+- [~] 4.3 Hosted reference, refusal and synthetic acceptance up to the recipe
   - Goal: the same rules as 2.5 hold on the hosted service up to the compiled recipe (the hosted Data Studio build is 4.6, change 2026-10-29 local agent per judge), plus the persisted synthetic CSV across a service restart.
   - Spec: contracts/dashboard-intent.md#Required oracle cases; contracts/dashboard-intent.md#Scope; contracts/synthetic-data.md#Acceptance oracle
   - Files: deck/data/bench-references-hosted.json, integration/e2e_references.py

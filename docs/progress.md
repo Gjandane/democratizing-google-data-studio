@@ -709,3 +709,14 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: see AGENTS.md (designed-page comments).
 - Left open: manual UI walk at the hosted URL (user); P3 local hosts are only localhost/127.0.0.1/::1 (0.0.0.0 or a LAN IP counts as hosted) - integration/e2e_flow1.py.
 - Next: Task 4.3. Start by `status`; the bench and `--until recipe` driver are reusable for its hosted runs.
+
+## 2026-10-30: Task 4.3 Hosted reference, refusal and synthetic acceptance up to the recipe
+- Status: partial
+- Plan check: off
+- What changed: integration/e2e_references.py: `--until recipe` (hosted `--server` only; exit 2 locally or with `--live`): `Case.engine_build` compiles the recipe, `POST /run` must give the expected stop (api >= 3.4 from `GET /api/hosting` -> waiting ticket, else 424 agent_offline), then `ticket_expiry` waits the unclaimed ticket out (stage back to prototype, version failed); hosted recreate skips the narrowed allowlist (`allowlist: "local only (2.5)"`) after a new "v2 recipe compiles" check; synthetic GPS passes on `stale` only with unsupported_app GPS unresolved + recipe 409 (`gps_state`); style replacement refusals accept `reference_unapproved` (dashboard-intent 1.3 case 12); bench `server_url: "hosted"`, `until`, `cloud_run_revision` (gcloud, or `--cloud-run-revision`), `hosting`; URL/host redacted from errors; hosted `--after-restart` needs a new revision. deck/data/bench-references-hosted.json (3 cases + `manual_click_through`).
+- Checks: hosted `--until recipe` (stopped by the user mid-run, rev dss-frontend-00003-p2f): refusal PASS b_948623b27769, revenue PASS b_3abfd7d157eb, style FAIL b_4c785d99b15c (`409 reference_unapproved` on recipe after the recreate replacement; driver fixed, not rerun), recreate reached the v1 ticket (6/6 items in order, 44 ops, 202 + waiting ticket) then stopped. Manual hosted walk PASS, user-approved on the STOP card (b_1848ec0b0ee8: 1,000 synthetic rows, labeled 4-page prototype, 43-op recipe). Usage errors exit 2 (3 forms). Test (all) check_contracts PASS 13/13. `git grep` of the URL host: none.
+- Decisions: `--until recipe` refused on a local server (it would rewrite 2.5's local bench). A ticket blocks the build 30 min, so cases wait for expiry rather than claim or reorder. AGENTS.md: 2 gotchas (ticket lock, hosted upload).
+- Tried and failed: localhost PNG server for the hosted upload (blocked by Local Network Access).
+- Gotchas: see AGENTS.md (ticket lock, hosted upload).
+- Left open: review not run yet; recreate build b_773a9bc703bb's ticket expires on its own.
+- Next: Task 4.3: `uv run --project integration python integration/e2e_references.py --server "$DSS_AGENT_SERVER" --until recipe --cases style,recreate,synthetic` (~90 min, run in background; rerun a failed case once with `--cases`); then `bash deploy/deploy.sh` (new revision), `--after-restart`, Test (all), review, done, commit. The manual walk is already approved and recorded.

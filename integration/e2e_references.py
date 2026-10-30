@@ -2,6 +2,7 @@
 
     uv run --project integration python integration/e2e_references.py --render-reference
     uv run --project integration python integration/e2e_references.py [--server URL] --live [--cases a,b]
+    uv run --project integration python integration/e2e_references.py --server URL --until recipe [--cases a,b]
     uv run --project integration python integration/e2e_references.py [--server URL] --after-restart
 
 Cases, one build each (contracts/dashboard-intent.md 1.2, contracts/synthetic-data.md 1.2):
@@ -15,9 +16,15 @@ Cases, one build each (contracts/dashboard-intent.md 1.2, contracts/synthetic-da
              a live Data Studio build; then a new version and a changed DSS_ALLOWED_TYPES recheck
   synthetic  reference PNG only: proposed and edited schema, 1,000 generated rows, CSV download and
              reparse, typed BigQuery intake, labeled prototype and live report
---after-restart downloads the synthetic CSV again (restart the backend first) and compares checksums.
+--after-restart downloads the synthetic CSV again (restart the backend first) and compares checksums;
+on a hosted server the Cloud Run revision must be a new one.
 Writes deck/data/bench-references-<local|hosted>.json (merged per case; no secrets, no images).
 --live refuses a local .env with DSS_ENGINE_DRY_RUN=1: dry-run builds are no evidence.
+--until recipe (hosted --server only, release 4.3): where a case would build in Data Studio, the
+recipe compiles and POST /run must answer the hosted stop instead: 424 agent_offline, or from api
+3.4 a waiting job ticket, never claimed, that the case waits out (30 min) before its next steps.
+The recreate case skips its narrowed-allowlist step there (it needs a redeploy; 2.5 covers it).
+The bench records a hosted server as "hosted" plus its Cloud Run revision, never the URL.
 """
 from __future__ import annotations
 
@@ -30,6 +37,7 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -54,6 +62,8 @@ GROSS_NET = SAMPLES / "gross_net_sales.csv"
 RENDER = ROOT / "deck" / "render" / "references"     # git-ignored: prototype snapshots for the manual review
 CASES = ("refusal", "revenue", "style", "recreate", "synthetic")
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+SERVICE = "dss-frontend"   # the Cloud Run service (contracts/conventions.md, Cloud deployment)
+STOPS = {"agent_offline": "424 agent_offline", "ticket": "202 and a waiting job ticket"}
 SYNTHETIC_LABEL = "Synthetic sample data"
 CHART_TYPES = {"scorecard", "time_series", "bar", "pie", "table", "pivot_table", "geo_map", "scatter"}
 SIDE_EFFECT_NODES = {"prototype", "recipe", "execute"}
@@ -81,6 +91,27 @@ SPEC_TYPES = {"integer": "number", "number": "number", "string": "string", "date
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def is_local(server: str) -> bool:
+    return httpx.URL(server).host in LOCAL_HOSTS
+
+
+def cloud_run_revision() -> str | None:
+    """The revision serving all of the service's traffic, read with gcloud for the root .env's
+    project and region. Its name holds neither the URL nor the project number."""
+    gcloud = shutil.which("gcloud")
+    project, region = env_value("GCP_PROJECT_ID"), env_value("GCP_REGION") or "asia-southeast1"
+    if not gcloud or not project:
+        return None
+    try:
+        proc = subprocess.run([gcloud, "run", "services", "describe", SERVICE, "--project", project,
+                               "--region", region, "--format=json"], capture_output=True, text=True, timeout=90)
+        traffic = json.loads(proc.stdout)["status"]["traffic"]
+    except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError):
+        return None
+    names = [t.get("revisionName") for t in traffic if t.get("percent") == 100]
+    return names[0] if names and names[0] else None
 
 
 def git_revision() -> dict:
@@ -112,9 +143,12 @@ def spec_components(spec: dict) -> list[tuple[int, dict]]:
 class Case(Flow):
     """One scenario on its own build: checks, timings, assessments and differences for the bench."""
 
-    def __init__(self, client: httpx.Client, secrets: list[str], live: bool, name: str) -> None:
+    def __init__(self, client: httpx.Client, secrets: list[str], live: bool, name: str,
+                 until: str | None = None, expected_stop: str | None = None) -> None:
         super().__init__(client, secrets, live=live)
         self.name = name
+        self.until = until                  # "recipe": engine builds stop at the hosted POST /run
+        self.expected_stop = expected_stop  # "agent_offline" or "ticket", from the server's api version
         self.started = time.monotonic()
         self.out: dict = {"passed": False, "run_date": utc_now(), "seconds": 0.0, "build_id": None,
                           "checks": [], "assessments": [], "stages": self.rows, "decisions": self.decisions}
@@ -299,6 +333,42 @@ class Case(Flow):
         self.out.setdefault("engine", {})[str(version)] = result
         self.check(result and result["status"] == "ok" and result["failed"] == 0,
                    f"v{version} engine run_finished ok with 0 failed ops", result)
+
+    def engine_build(self, version: int) -> None:
+        """Where a case builds in Data Studio: --live runs the engine; --until recipe compiles the
+        recipe and proves the hosted stop at POST /run instead (no engine or agent anywhere)."""
+        if not self.until:
+            return self.live_build(version)
+        self.recipe(version)
+        stop = self.hosted_stop(version)  # raises on any other answer
+        self.out.setdefault("hosted_stop", {})[str(version)] = stop
+        self.check(stop == self.expected_stop, f"v{version} POST /run answers {STOPS[self.expected_stop]}",
+                   {"stop": stop})
+        if stop == "ticket":
+            self.ticket_expiry(version)
+
+    def ticket_expiry(self, version: int) -> None:
+        """A waiting ticket holds the build at `build` until it expires (api.md 3.4: 30 min, no
+        cancel), and the case's later steps need its prototype back: wait it out, never claim it.
+        The ticket's one-time code is never printed or stored."""
+        with self.stage(version, "ticket expiry"):
+            deadline = None
+            while True:
+                ticket = self.api("GET", "/job")
+                if deadline is None:
+                    expires = datetime.fromisoformat(ticket["expires_at"].replace("Z", "+00:00"))
+                    deadline = time.monotonic() + max((expires - datetime.now(timezone.utc)).total_seconds(), 0) + 300
+                build = self.api("GET")
+                status = next(v["status"] for v in build["versions"] if v["n"] == version)
+                if ticket["state"] not in ("waiting", "expired") or (
+                        ticket["state"] == "expired" and build["stage"] == "prototype"):
+                    break
+                if time.monotonic() >= deadline:
+                    break
+                time.sleep(15)
+        self.check(ticket["state"] == "expired" and build["stage"] == "prototype" and status == "failed",
+                   f"v{version} ticket expired unclaimed; the build is back at prototype",
+                   {"ticket": ticket["state"], "stage": build["stage"], "version_status": status})
 
     def snapshot(self, label: str) -> None:
         """Save the prototype HTML and a headless-Chrome PNG of it for the manual comparison."""
@@ -530,8 +600,11 @@ def case_style(c: Case, args) -> None:
             {"old": old, "new": new and new["id"]})
     a = c.assessment("reference replaced")
     c.check(a["state"] != "ready" or a["prototype_stale"], "replacement invalidates the assessment", a["state"])
-    c.refused("POST", "/recipe", 409, {"feasibility_blocked", "feasibility_stale"}, "recipe of the stale prototype refused")
-    c.refused("POST", "/run", 409, {"feasibility_blocked", "feasibility_stale"}, "run of the stale prototype refused")
+    # The replacement is a recreate reference with a pending analysis: recipe and run may also
+    # refuse as reference_unapproved (dashboard-intent 1.3, oracle case 12).
+    replaced = {"feasibility_blocked", "feasibility_stale", "reference_unapproved"}
+    c.refused("POST", "/recipe", 409, replaced, "recipe of the stale prototype refused")
+    c.refused("POST", "/run", 409, replaced, "run of the stale prototype refused")
     response = c.client.delete(f"/api/builds/{c.build_id}/reference-images")
     c.check(response.status_code == 204 and c.api("GET", "/reference-images") is None, "reference removed",
             response.status_code)
@@ -581,8 +654,8 @@ def case_recreate(c: Case, args) -> None:
     c.themed(spec, design, expect)
     c.compare(spec, expect, require_order=True)
     c.snapshot("prototype")
-    c.live_build(1)
-    v1_id = c.assessment("v1 built")["id"]
+    c.engine_build(1)
+    v1_id = c.assessment("v1 recipe, hosted stop" if c.until else "v1 built")["id"]
     # A new version starts unchecked (no inherited proof): recipe and run wait for an explicit check.
     build = c.request("POST", f"/api/builds/{c.build_id}/versions").json()
     c.check(build["current_version"] == 2, "new version v2", build["current_version"])
@@ -595,7 +668,13 @@ def case_recreate(c: Case, args) -> None:
         c.act("POST", "/feasibility/check")
     a = c.assessment("v2 check")
     c.check(a["state"] == "ready" and not a["prototype_stale"] and a["id"] != v1_id, "v2 rechecked ready", a["state"])
-    c.request("POST", f"/api/builds/{c.build_id}/recipe")
+    recipe = c.request("POST", f"/api/builds/{c.build_id}/recipe").json()
+    c.check(recipe["op_count"] > 0, "v2 recipe compiles after the check", recipe["op_count"])
+    if not is_local(args.server):
+        # A narrowed DSS_ALLOWED_TYPES on Cloud Run needs a redeploy and leaves the build
+        # prototype_stale for good: local only (2.5); every other recreate check ran (4.3 If).
+        c.out["allowlist"] = "local only (2.5)"
+        return
     ready_id = a["id"]
     # The least-used non-scorecard type: few requirements fail, so the check names the type
     # (over 20 issues collapse into one "reduce the request scope" summary).
@@ -693,7 +772,7 @@ def case_synthetic(c: Case, args) -> None:
     c.check(c.api("GET", "/spec")["datasource"]["synthetic"] and any(
         SYNTHETIC_LABEL in op["line"] for op in recipe["ops"]) is False,
         f"recipe places no {SYNTHETIC_LABEL!r} text (the background layer holds the only copy)")
-    c.live_build(1)
+    c.engine_build(1)
     # Generated data resolves needs_data, never a capability: moving GPS still refuses (v2, last).
     c.request("POST", f"/api/builds/{c.build_id}/versions")
     sections = c.api("GET", "/outline")["sections"]
@@ -702,11 +781,16 @@ def case_synthetic(c: Case, args) -> None:
     a = c.assessment("v2 moving GPS")
     # Refused means blocked and unresolved; a v2 ledger past the outline_other extraction budget
     # classifies it `unknown` rather than unsupported_app (recorded, never a pass to build).
+    # A `stale` read refuses only with its unsupported_app GPS issues unresolved and the recipe
+    # refused (backend `blocked` there is PRD Later; change 2026-10-29).
     gps = [i["status"] for i in a["issues"] if i["resolution"] == "unresolved" and i["status"] in (
         "unsupported_app", "unknown") and re.search(r"gps|animat|route|playback|moving", i["requirement"], re.I)]
-    c.check(a["state"] == "blocked" and gps, "synthetic data still refuses moving GPS", {"state": a["state"], "status": gps})
-    c.out["synthetic"]["gps_refusal_status"] = gps[0]
-    c.refused("POST", "/recipe", 409, {"feasibility_blocked", "wrong_stage"}, "v2 recipe refused after the GPS request")
+    stale = a["state"] == "stale"
+    c.check(a["state"] == "blocked" and gps or stale and "unsupported_app" in gps,
+            "synthetic data still refuses moving GPS", {"state": a["state"], "status": gps})
+    c.out["synthetic"].update(gps_refusal_status="unsupported_app" if stale else gps[0], gps_state=a["state"])
+    c.refused("POST", "/recipe", 409, {"feasibility_blocked", "wrong_stage"} | ({"feasibility_stale"} if stale else set()),
+              "v2 recipe refused after the GPS request")
 
 
 RUNNERS ={"refusal": case_refusal, "revenue": case_revenue, "style": case_style,
@@ -746,7 +830,7 @@ def bench_path(server: str) -> Path:
     return ROOT / "deck" / "data" / f"bench-references-{target}.json"
 
 
-def after_restart(flow: Case, server: str) -> int:
+def after_restart(flow: Case, server: str, revision: str | None) -> int:
     path = bench_path(server)
     bench = json.loads(path.read_text(encoding="utf-8"))
     case = bench["cases"].get("synthetic") or {}
@@ -755,7 +839,8 @@ def after_restart(flow: Case, server: str) -> int:
         print(f"FAIL after-restart: no passed synthetic case in {path.relative_to(ROOT)}", file=sys.stderr)
         return 1
     # The operator restarts the backend (local: ./start.sh again; hosted: a new revision) first;
-    # the API exposes no boot id, so the restart itself is the operator's record.
+    # the API exposes no boot id: locally the restart is the operator's record, hosted it is the
+    # Cloud Run revision, which must differ from the one the synthetic case ran on.
     flow.build_id = case["build_id"]
     job = flow.api("GET", f"/synthetic-data/jobs/{data['generation_key']}")
     sources = [s for s in flow.api("GET")["sources"] if s["id"] == data["source_id"]]
@@ -767,6 +852,13 @@ def after_restart(flow: Case, server: str) -> int:
                               "same_checksum": sha == data["sha256"], "job_state": job["state"],
                               "same_source": job["source_id"] == data["source_id"] and len(sources) == 1,
                               "passed": ok, "git_revision": git_revision()}
+    if not is_local(server):
+        restarted = bool(revision) and revision != case.get("cloud_run_revision")
+        bench["restart_check"].update(cloud_run_revision=revision, case_cloud_run_revision=case.get("cloud_run_revision"),
+                                      new_revision=restarted, passed=ok and restarted)
+        print(f"Cloud Run revision {revision} ({'new' if restarted else 'NOT new'}; the case ran on "
+              f"{case.get('cloud_run_revision')})")
+        ok = ok and restarted
     path.write_text(json.dumps(bench, indent=2) + "\n", encoding="utf-8")
     print(f"synthetic CSV after restart: {sha} ({'same' if sha == data['sha256'] else 'DIFFERENT'} checksum), "
           f"job {job['state']}, source {'kept' if bench['restart_check']['same_source'] else 'CHANGED'}")
@@ -777,6 +869,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--server", default="http://localhost:8000")
     parser.add_argument("--live", action="store_true", help="real engine builds (required for the bench)")
+    parser.add_argument("--until", choices=["recipe"],
+                        help="hosted --server: stop each engine build at the recipe and prove the hosted stop at POST /run")
+    parser.add_argument("--cloud-run-revision", help="hosted: the serving revision's name, when gcloud can't read it")
     parser.add_argument("--cases", default=",".join(CASES), help="comma-separated subset of " + ", ".join(CASES))
     parser.add_argument("--after-restart", action="store_true",
                         help="download the recorded synthetic CSV again and compare its checksum")
@@ -791,34 +886,61 @@ def main() -> int:
     url = httpx.URL(args.server)
     if url.scheme not in {"http", "https"} or not url.host or url.userinfo or url.query or url.fragment or url.path not in {"", "/"}:
         parser.error("--server must be an http(s) origin without credentials, query or fragment")
-    if not args.after_restart and not args.live:
-        parser.error("--live is required: dry-run engine builds are not evidence of a recreation")
-    if args.live and url.host in LOCAL_HOSTS and env_value("DSS_ENGINE_DRY_RUN", "0") == "1":
+    hosted = not is_local(args.server)
+    if args.until and args.live:
+        parser.error("--until recipe can't be combined with --live")
+    if args.until and not hosted:
+        parser.error("--until recipe proves the hosted stop: give a hosted --server (local runs use --live)")
+    if not args.after_restart and not (args.live or args.until):
+        parser.error("--live or --until recipe is required: dry-run engine builds are not evidence of a recreation")
+    if args.live and not hosted and env_value("DSS_ENGINE_DRY_RUN", "0") == "1":
         parser.error("--live needs DSS_ENGINE_DRY_RUN=0 in .env (restart the backend after changing it)")
     access_code = env_value("DSS_ACCESS_CODE")
+    # A hosted URL is masked like a secret: the bench and every message say "hosted".
     secrets = [access_code, env_value("GOOGLE_API_KEY"), env_value("DSS_AGENT_TOKEN")]
+    secrets += [args.server, url.host] if hosted else []
+    cloud_run = (args.cloud_run_revision or cloud_run_revision()) if hosted else None
+    if hosted and not cloud_run:
+        print("FAIL preflight: gcloud can't read the Cloud Run revision: pass --cloud-run-revision", file=sys.stderr)
+        return 1
     with httpx.Client(base_url=args.server, timeout=120, trust_env=False,
                       headers={"X-DSS-Access-Code": access_code} if access_code else {}) as client:
         if args.after_restart:
             try:
-                return after_restart(Case(client, secrets, False, "synthetic"), args.server)
+                return after_restart(Case(client, secrets, False, "synthetic"), args.server, cloud_run)
             except (RuntimeError, httpx.HTTPError, OSError, KeyError, ValueError) as exc:
                 print(Flow(client, secrets).redact(f"FAIL after-restart: {exc}"), file=sys.stderr)
                 return 1
         path = bench_path(args.server)
         bench = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"cases": {}}
         revision = git_revision()
-        bench.update(run_date=utc_now(), server_url=args.server, git_revision=revision, live=True)
+        bench.update(run_date=utc_now(), server_url="hosted" if hosted else args.server, git_revision=revision,
+                     live=args.live, until=args.until)
+        if hosted:
+            bench["cloud_run_revision"] = cloud_run
+        expected_stop = None
         try:
             Flow(client, secrets).request("GET", "/api/health")
             bench["engine"] = client.get("/api/engine/status").json()
+            if args.until:
+                # GET /api/hosting arrived with api 3.4, which replaced 424 agent_offline by a job ticket.
+                hosting = client.get("/api/hosting")
+                info = hosting.json() if hosting.status_code == 200 else {}
+                bench["hosting"] = {k: info.get(k) for k in ("mode", "public", "share_data", "api_version")}
+                api = tuple(int(n) for n in re.findall(r"\d+", info.get("api_version") or "0")[:2])
+                expected_stop = "ticket" if api >= (3, 4) else "agent_offline"
+                print(f"hosted {cloud_run}, api {info.get('api_version')}: expecting {STOPS[expected_stop]} at POST /run",
+                      flush=True)
         except (RuntimeError, httpx.HTTPError, ValueError) as exc:
-            print(f"FAIL preflight: {exc}", file=sys.stderr)
+            print(Flow(client, secrets).redact(f"FAIL preflight: {exc}"), file=sys.stderr)
             return 1
         failed = []
         for name in cases:
-            case = Case(client, secrets, True, name)
+            case = Case(client, secrets, args.live, name, until=args.until, expected_stop=expected_stop)
             case.out["git_revision"] = revision  # cases merge across runs: each keeps its own revision
+            case.out["until"] = args.until
+            if hosted:
+                case.out["cloud_run_revision"] = cloud_run
             try:
                 RUNNERS[name](case, args)
                 case.out["passed"] = True
@@ -829,7 +951,7 @@ def main() -> int:
             try:
                 bench["cases"][name] = case.finish()
             except (RuntimeError, httpx.HTTPError) as exc:
-                case.out["finish_error"] = str(exc)[:300]
+                case.out["finish_error"] = case.redact(str(exc))[:300]
                 bench["cases"][name] = case.out
             bench.pop("restart_check", None) if name == "synthetic" else None
             bench["all_passed"] = all(bench["cases"].get(n, {}).get("passed") for n in CASES)
