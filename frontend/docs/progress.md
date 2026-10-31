@@ -706,3 +706,9 @@ context. Task status lives in docs/plan.md, not here.
 ## 2026-10-31: Change share CSV numeric NULLs
 - What changed: essentials Contracts row api.md 3.4 -> 3.5 (program root change). 3.5 changes only the backend's share CSV values (sum-only numeric NULLs as 0); no shape or route change.
 - Affected tasks: none.
+
+## 2026-10-31: Change first-visit onboarding (program root)
+- What changed: new docs/onboarding-ui.md (agent-mode "How it works" panel on History, home-page setup modal reusing SetupPanel, how-to steps, copy, visual oracle); Phase 20 tasks 20.1 (panel, visual STOP) and 20.2 (setup modal, SetupPanel props `startUnfolded`/`onState`/`hint`, Modal `closeOnBackdrop`, JobPanel paste line); PRD goal; essentials "Onboarding UI".
+- Why: the user opened the hosted link and found no word about the local build agent before the Build stage (user cards: dismissible panel, setup from the home panel, agent mode only, release 4.8 redeploys).
+- Affected tasks: 20.1, 20.2 new; release 4.8 `Needs: frontend 20.2`. No contract change (`POST /api/agent-checks` is not tied to a build). 20.2 also closes 19.3's Left open P2 (focus after Check again) and the poll-stop P3.
+- Delta audit: 0 P0/P1, 3 P2 (backdrop click closes the dialog mid-check; SetupPanel needs startUnfolded/onState/hint; focus after Done) + 5 P3, all applied in the docs (user cards).

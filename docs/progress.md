@@ -810,3 +810,9 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: in AGENTS.md.
 - Left open: P3 check_repo private check passes vacuously with no .env (same as the history check) - integration/check_repo.py.
 - Next: none in this plan (18/18). Close the hosted link after 2026-11-07 (deploy/README.md).
+
+## 2026-10-31: Change first-visit onboarding (program root)
+- What changed: new docs/onboarding-ui.md (agent-mode "How it works" panel on History, home-page setup modal reusing SetupPanel, how-to steps, copy, visual oracle); frontend Phase 20 tasks 20.1 (panel, visual STOP) and 20.2 (setup modal, SetupPanel props `startUnfolded`/`onState`/`hint`, Modal `closeOnBackdrop`, JobPanel paste line); PRD goal; essentials "Onboarding UI".
+- Why: the user opened the hosted link and found no word about the local build agent before the Build stage (user cards: dismissible panel, setup from the home panel, agent mode only, release 4.8 redeploys).
+- Affected tasks: release 4.8 new (redeploy after a card, hosted screenshots, README line, push after a card), `Needs: frontend 20.2`; frontend 20.1-20.2. No contract change (`POST /api/agent-checks` is not tied to a build). 20.2 also closes 19.3's Left open P2 (focus after Check again) and the poll-stop P3.
+- Delta audit: 0 P0/P1, 3 P2 (backdrop click closes the dialog mid-check; SetupPanel needs startUnfolded/onState/hint; focus after Done) + 5 P3, all applied in the docs (user cards).

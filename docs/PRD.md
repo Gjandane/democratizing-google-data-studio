@@ -51,6 +51,9 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
    contracts/conventions.md 1.7 (Build agent); the user proves it in a private window with a
    second Google account that can't read the owner's BigQuery, and the report lands in that
    account with data (4.6). The link is closed by hand after judging ends 2026-11-07.
+11. First-visit onboarding (change 2026-10-31): the hosted link is redeployed with frontend 20.1-20.2,
+   so a visitor learns on the home page that Build needs the local build agent and can set it up
+   there before the first build; README's hosted section says so (4.8).
 
 ## Non-goals
 - No code in the parts: the release never edits engine/, backend/ or frontend/ (program rule).

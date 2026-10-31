@@ -48,6 +48,13 @@ view of the dashboard being built.
   (api.md 3.4, conventions 1.7); Chrome is stated as required; the share-data note says the data
   goes to a link-readable CSV; Connect shows GCS and BigQuery as locked on the open link.
 
+## Goals added by change 2026-10-31 (first-visit onboarding)
+- On the hosted link (agent mode), History explains how building works before any build: the
+  stages, that Build ends with a one-time code and one copied command, Google Chrome required,
+  Windows tested and macOS/Linux untested, and that the first run installs the build agent and
+  asks for one Google sign-in; it can be hidden and reopened, and its "Set up this computer"
+  opens the existing check-code setup step (docs/onboarding-ui.md). Local mode is unchanged.
+
 ## Non-goals
 - No accounts or per-user data (POC): only the gate of ../contracts/api.md#Access (Google sign-in
   when the backend offers it, else the shared access code; change 2026-10-29).

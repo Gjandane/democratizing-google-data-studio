@@ -62,6 +62,11 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
   recreate analysis review gate (1.3); Studio Light. Full rules and visual oracle:
   docs/reference-ui.md (all sections).
 
+## Onboarding UI
+- Agent mode only: the History "How it works" panel and the home-page setup modal (change
+  2026-10-31); localStorage holds one boolean (`dss.onboardingHidden`), never anything else.
+  Full rules, copy and visual oracle: docs/onboarding-ui.md.
+
 ## Contracts
 | Contract | Version | Role | Conformance check |
 |---|---|---|---|

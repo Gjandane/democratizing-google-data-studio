@@ -236,6 +236,12 @@ phases" below.
   the judge build on a fresh build with the install and sign-in kept. Other aggs on NULL-heavy
   numeric columns stay a known limit (backend PRD Later: engine sets the field type from the
   recipe). No engine or frontend task; the agent's API gate stays 3.4.
+- First-visit onboarding (change 2026-10-31, user report and cards: the hosted link showed no word
+  about the local agent before Build): frontend 20.1 (History "How it works" panel, agent mode
+  only, visual STOP) -> 20.2 (home-page "Set up this computer" modal reusing the setup step, how-to
+  steps in the setup step and the job panel) in frontend/, mocks only; then release 4.8 `Needs:
+  frontend 20.2` (redeploy after a card, hosted screenshots, README line, push after a card). No
+  contract, backend or engine change: `POST /api/agent-checks` is not tied to a build.
 
 ## Integration checks
 - `uv run --project integration python integration/check_contracts.py`: the recipe and event
@@ -358,3 +364,4 @@ phases" below.
 | 2026-10-29 | Open hosted link (conventions 1.6): `DSS_PUBLIC=1` on Cloud Run, with the code and the Google client id empty, runs the service ungated; agent token unchanged; backend 28.1 (fail-closed opt-in), release 4.1 gated on it (deploy.sh open and gated modes), 4.2/4.4 wording; frontend unchanged (the gate opens on `required: false`) | OAuth client in a separate billing-free project with External branding (no code change); access code shared with the link; switch the existing branding to External | user: anyone with the link gets in; the project's branding is limited to one domain; an explicit flag so a missing secret never opens the service | change 2026-10-29 open hosted link (user cards) |
 | 2026-10-31 | Linking URL uses the `ds0` alias only with a template report; without `DSS_TEMPLATE_REPORT_ID`, un-aliased `ds.*` for every connector (recipe.md 1.5, engine 15.1; release 4.6 waits on it and pushes main first) | give visitor agents a public template report id; alias only for GCS | the default report rejects `ds.ds0` (engine 1.2 spike) and accepts `ds.*` (user, second account, 2026-10-31); a shared template is one more public object to keep alive; one rule covers both connectors | change 2026-10-31 (release 4.5) |
 | 2026-10-31 | Share CSV: a numeric column's NULL becomes `0` when the recipe uses it only as `sum` (or sorts on it); other NULLs stay empty (api.md 3.5, backend 30.1; release 4.6 reruns after a redeploy) | NULL as 0 for every numeric column; recipe 1.6 field types and the engine setting a chart's field type to Number; accept as known limit W8 | exact for sum (the only use of the H1 field), backend owns the data shape, no new Data Studio UI; 0 under avg/count/min would change results; the engine path is unproven for metrics (user card) | change 2026-10-31 (release 4.6, H1) |
+| 2026-10-31 | First-visit onboarding on the hosted link: a dismissible "How it works" panel on History (agent mode only, one localStorage boolean) whose "Set up this computer" opens the existing check-code setup step in a modal; how-to steps added to the setup step and the job panel (frontend 20.1-20.2, release 4.8 redeploys); no contract change | first-visit modal; always-on panel; also a link in New build; both modes; owner redeploys by hand | a visitor must learn about the agent before Build; the check endpoint is build-independent, so no backend task; agent mode only keeps local-mode tests unchanged; a release task makes the change reach visitors (user cards) | change 2026-10-31 (first-visit onboarding) |
