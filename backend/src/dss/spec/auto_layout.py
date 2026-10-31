@@ -12,7 +12,8 @@ import re
 from dss.artifacts.design import presets
 from dss.render import kits
 from dss.spec.layout import synthetic_decoration
-from dss.spec.models import CONTROL_TYPES as CONTROLS, FIELD_CONTROLS, Canvas, Cell, DashboardSpec, Grid, Theme
+from dss.spec.models import (CONTROL_TYPES as CONTROLS, DATE_AXIS_TYPES, DATE_TYPES, FIELD_CONTROLS, Canvas, Cell,
+                             DashboardSpec, Grid, Theme, component_title, grain_word)
 from dss.spec.validate import catalog, validate_spec
 
 GRID = Grid()
@@ -196,9 +197,11 @@ def _place(types, row, density, rules):
     return cells, row
 
 
-def _component(prefix, row, cell, used):
+def _component(prefix, row, cell, used, grain=None):
     c = row.component
-    value = {'id': prefix + _unique(_slug(c.label, c.type), used), 'type': c.type, 'label': c.label,
+    # The title rule again, for Blueprints saved before it; clean labels pass byte for byte.
+    label = component_title(c)
+    value = {'id': prefix + _unique(_slug(label, c.type), used), 'type': c.type, 'label': label,
              'grid': cell.model_dump(), 'dimensions': list(c.dimensions),
              'metrics': [m.model_dump() for m in c.metrics], 'date_dimension': c.date_dimension,
              'breakdown': c.breakdown, 'sort': c.sort.model_dump() if c.sort else None,
@@ -211,13 +214,15 @@ def _component(prefix, row, cell, used):
         # spec and the prototype's grouping need them too (recipe options win).
         value['dimensions'] = list(dict.fromkeys(c.options.get('row_dimensions', []) + c.options.get('column_dimensions', [])))
     if c.type == 'text':
-        value['text'] = c.label
+        value['text'] = label
     if row.reference_item:
         value['reference_item'] = row.reference_item
+    if grain:
+        value['date_granularity'] = grain
     return value
 
 
-def _page(index, name, rows, design, theme, kit, rules, heading, synthetic):
+def _page(index, name, rows, design, theme, kit, rules, heading, synthetic, grain=lambda row: None):
     prefix = f'p{index}_'
     title = _wrap(design.title, 28, TITLE_WIDTH.get(kit, 1152))
     subtitle = design.subtitle and _wrap(design.subtitle, 18, 1050)
@@ -233,7 +238,7 @@ def _page(index, name, rows, design, theme, kit, rules, heading, synthetic):
     types = [r.component.type for r in rows]
     cells, end = _place(types, row, design.density, rules)
     used = set(RESERVED)
-    components = [_component(prefix, r, cells[i], used) for i, r in enumerate(rows)]
+    components = [_component(prefix, r, cells[i], used, grain(r)) for i, r in enumerate(rows)]
     panels = [cells[i] for i, kind in enumerate(types) if kind not in CONTROLS]
     decorations = [d.model_dump() for d in kits.decorations(
         kit, theme, title, subtitle, page=index, panels=panels)] + extra
@@ -261,13 +266,6 @@ def spec_value(blueprint, design, outline, fields, *, build_id, archetype, spec_
     sections = {s.id: s.title for s in outline.sections}
     rows = [r for r in blueprint.rows if r.status == 'ok']
     per_section = design.page_structure == 'per_section'
-    pages = []
-    # Pages whose rows were all dropped vanish; later pages renumber and keep their names.
-    for number in sorted({r.page for r in rows}):
-        page_rows = [r for r in rows if r.page == number]
-        name = sections.get(page_rows[0].section_id, design.title) if per_section else design.title
-        pages.append(_page(len(pages) + 1, name, page_rows, design, theme, preset.decoration_kit,
-                           rules, per_section, synthetic and not pages))
     datasource_fields = [{'name': f['name'], 'type': f['type'],
                           'label': f.get('label') or f['name'].replace('_', ' ').title(), 'role': f['role'],
                           'default_agg': f.get('default_agg') or ('sum' if f['role'] == 'metric' else 'none')}
@@ -282,6 +280,25 @@ def spec_value(blueprint, design, outline, fields, *, build_id, archetype, spec_
             f['date_granularity'] = grains[f['name']]
         elif f['name'] not in grains and starts.get(f['name']) and f['type'] == 'DATE':
             f['date_granularity'] = starts[f['name']]
+    # A trend on an unbucketed date whose label or selected question names one grain is drawn at
+    # it (architecture.md#Component titles and grain words); a bucket field keeps its own grain.
+    texts = {q.id: q.text for s in outline.sections for q in s.questions if q.selected}
+    dates = {f['name'] for f in datasource_fields
+             if f['type'].upper() in DATE_TYPES and not f.get('date_granularity')}
+
+    def grain(row):
+        c = row.component
+        if c.type not in DATE_AXIS_TYPES or c.date_dimension not in dates:
+            return None
+        return grain_word(component_title(c), texts.get(row.question_id))
+
+    pages = []
+    # Pages whose rows were all dropped vanish; later pages renumber and keep their names.
+    for number in sorted({r.page for r in rows}):
+        page_rows = [r for r in rows if r.page == number]
+        name = sections.get(page_rows[0].section_id, design.title) if per_section else design.title
+        pages.append(_page(len(pages) + 1, name, page_rows, design, theme, preset.decoration_kit,
+                           rules, per_section, synthetic and not pages, grain))
     return {'spec_version': spec_version, 'build_id': build_id, 'title': design.title, 'archetype': archetype,
             'canvas': {'width': Canvas().width, 'height': pages[0]['height'] if pages else Canvas().height},
             'grid': GRID.model_dump(), 'theme': theme.model_dump(),

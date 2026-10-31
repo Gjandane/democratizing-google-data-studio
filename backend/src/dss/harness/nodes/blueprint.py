@@ -20,7 +20,7 @@ from dss.harness.nodes.style_extract import provider_schema
 from dss.spec import requirements as req
 from dss.spec import feasibility
 from dss.spec.capabilities import Checker, load_registry
-from dss.spec.models import FIELD_CONTROLS
+from dss.spec.models import FIELD_CONTROLS, component_title
 from dss.spec.validate import allowed_types, catalog, label_text
 
 MAX_OUTPUT_TOKENS = 32768  # change 2026-10-26; execution reads the snapshot profile
@@ -121,7 +121,10 @@ def normalize_rows(rows, selected, pages, items=None):
         if section not in pages or (row.question_id is not None and row.question_id not in selected):
             continue  # model cannot resurrect a deselected or invent a selected question
         # Leaked list/quote syntax keeps the first clean fragment; none left -> the row repair.
+        # The fragment never keeps a model-written ` | agg(field) [unit]` suffix (title rule).
         label = label_text(row.component.label)
+        if label is not None:
+            label = component_title(row.component.model_copy(update={'label': label}))
         component = row.component if label is None else row.component.model_copy(update={'label': label})
         result.append(row.model_copy(update={'section_id': section, 'page': 1 if item else pages[section], 'component': component,
                                             'status': 'ok', 'issue_ids': [], 'reference_item': item}, deep=True))

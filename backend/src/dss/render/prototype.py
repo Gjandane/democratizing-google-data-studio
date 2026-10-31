@@ -12,7 +12,7 @@ import re
 from dss.data.bigquery import quoted, table_uri
 from dss.render import design_page
 from dss.spec.layout import decoration_text_style, decoration_text_errors, layout_box
-from dss.spec.models import CONTROL_TYPES, DATE_AXIS_TYPES, reference_image
+from dss.spec.models import CONTROL_TYPES, DATE_AXIS_TYPES, component_title, date_grain, reference_image
 from dss.spec.validate import catalog
 
 
@@ -47,6 +47,11 @@ def aggregate_sql(spec, component):
         raise ValueError('Unknown aggregate field')
     group = [f'ST_ASGEOJSON(ST_CENTROID({quoted(d)}))' if known[d].type.upper() in ('GEO', 'GEOGRAPHY')
              else quoted(d) for d in dims]
+    grain = date_grain(spec, component)
+    if grain and not known[component.date_dimension].date_granularity:
+        # A grain-word grain on a raw date: one point per bucket, as the report draws it.
+        field = known[component.date_dimension]
+        group[0] = f'{field.type.upper()}_TRUNC({quoted(field.name)}, {grain.upper()})'
     select = [f'{expression} AS {quoted(d)}' if expression != quoted(d) else expression
               for d, expression in zip(dims, group)]
     for i, metric in enumerate(component.metrics):
@@ -298,7 +303,7 @@ def render(spec, *, layer=None, data=None, folder=None, page=None):
                 if kind == 'decoration' and item.kind == 'design':
                     parts.append(design_root(spec, page, item, b))
                     continue
-                label = item.label if kind == 'component' else (item.text or item.kind)
+                label = component_title(item) if kind == 'component' else (item.text or item.kind)
                 style = ';'.join(f'{k}:{b[v]}px' for k, v in (('left','x'),('top','y'),('width','w'),('height','h')))
                 style += f';border-radius:{theme.radius}px;--box-height:{b["h"]}px'
                 if kind == 'component':

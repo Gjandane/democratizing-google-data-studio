@@ -5,7 +5,8 @@ from functools import lru_cache
 from jsonschema import Draft202012Validator, ValidationError
 from dss.config import BACKEND_DIR
 from dss.spec.layout import layout_box
-from dss.spec.models import CONTROL_TYPES, DATE_AXIS_TYPES, Component, DashboardSpec, Theme, image_paths, reference_image
+from dss.spec.models import (CONTROL_TYPES, Component, DashboardSpec, Theme, component_title, date_grain, image_paths,
+                             reference_image)
 
 
 @lru_cache(maxsize=1)
@@ -52,7 +53,6 @@ def compile_recipe(spec: DashboardSpec, version: int) -> str:
     if any(reference_image(path) for _, path in image_paths(spec)):
         raise ValueError('Reference screenshots cannot be recipe images or backgrounds')
     project, dataset, table = spec.datasource.table.split(".")
-    grains = {f.name: f.date_granularity for f in spec.datasource.fields if f.date_granularity}
     lines = [dict(recipe_version="1.0", build_id=spec.build_id, version=version,
                   report_name=spec.title, canvas=spec.canvas.model_dump(),
                   datasource=dict(connector="bigQuery", project_id=project, dataset_id=dataset, table_id=table))]
@@ -85,12 +85,14 @@ def compile_recipe(spec: DashboardSpec, version: int) -> str:
                 if c.sort is not None:
                     optional["sort"] = c.sort.model_dump()
                 # The bucket grain is code's (spec datasource field: a TRUNC derivation's or a base
-                # DATE column's profiled bucket start), never a model-written option; one rule for
-                # every chart drawn over a date dimension (time series, area).
+                # DATE column's profiled bucket start; else the component's grain-word grain), never a
+                # model-written option; one rule for every chart drawn over a date dimension.
                 options = {key: value for key, value in c.options.items() if key != "date_granularity"}
-                if c.type in DATE_AXIS_TYPES and grains.get(c.date_dimension):
-                    options["date_granularity"] = grains[c.date_dimension]
-                op("add_chart", chart_type=c.type, dimensions=c.dimensions, metrics=[m.model_dump() for m in c.metrics], title=c.label, options=options, **optional, **args)
+                grain = date_grain(spec, c)
+                if grain:
+                    options["date_granularity"] = grain
+                # The title rule as a backstop for saved specs; a clean label compiles byte for byte.
+                op("add_chart", chart_type=c.type, dimensions=c.dimensions, metrics=[m.model_dump() for m in c.metrics], title=component_title(c), options=options, **optional, **args)
                 # A scorecard has no series swatch: the engine would skip `colors` with a warning.
                 if c.type != "scorecard":
                     op("set_style", component_id=c.id, style=dict(colors=c.colors if c.colors is not None else spec.theme.palette))

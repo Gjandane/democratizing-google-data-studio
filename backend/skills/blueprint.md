@@ -14,6 +14,9 @@ preserve all of them within catalog and page limits. Never change the confirmed 
 Reuse a projected DATE field for yearly grouping when code supplies full-column year-start proof.
 Do not introduce a redundant year alias or DATE arithmetic; sort on the same date binding.
 Use a date dimension for time series and a sort field already used by the component.
+Labels are human titles only: no `agg(field)` formula or `[unit]`. A trend label that names one
+grain (Daily, Weekly, Monthly, Quarterly, Yearly) is drawn at that grain; name one only when the
+question asks for it.
 An area chart is a time series of filled parts (date dimension, metrics or one breakdown):
 set stacked for parts of a total, stacked_percent for shares that sum to 100 %. A bar with
 stacked_percent shows each category's split (e.g. rural vs urban share). A fixed_size_list

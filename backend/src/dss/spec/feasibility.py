@@ -10,7 +10,7 @@ from copy import deepcopy
 from dss.artifacts.models import Blueprint, BlueprintRow, BlueprintComponent, Context, DerivedField, Outline, ViewSources
 from dss.harness.nodes import view
 from dss.spec import requirements as req
-from dss.spec.models import CONTROL_TYPES, DATE_AXIS_TYPES, FIELD_CONTROLS
+from dss.spec.models import CONTROL_TYPES, DATE_AXIS_TYPES, FIELD_CONTROLS, component_title
 from dss.spec.validate import catalog, label_text
 
 
@@ -300,6 +300,8 @@ def item_errors(snapshot, ledger, checker, bp, fields, rules, items):
                 continue
             component = row.component.model_copy(update={'type': item['type'], 'label': label_text(item['label']) or
                                                           row.component.label, 'options': {}}, deep=True)
+            # A reference item's own title passes the title rule too (#Component titles and grain words).
+            component.label = component_title(component)
             candidate = BlueprintRow(question_id=None, section_id=section, page=1, component=component,
                 note=f"reference item {item['id']}", status='ok', issue_ids=[], reference_item=item['id'])
             if component.model_dump() in seen or not item_fulfils(candidate, item, fields, checker, rules):

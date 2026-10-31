@@ -1,4 +1,5 @@
 """Typed Dashboard Spec; semantic constraints are checked against the catalog."""
+import re
 from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_serializer
 
@@ -9,6 +10,8 @@ TYPES = (*CHART_TYPES, "text", "image", *CONTROL_TYPES)
 FIELD_CONTROLS = ("dropdown", "fixed_size_list")
 # Charts drawn over `date_dimension`: one date-grain rule (options.date_granularity) for both.
 DATE_AXIS_TYPES = ("time_series", "area")
+DATE_TYPES = ("DATE", "DATETIME", "TIMESTAMP")
+Grain = Literal["day", "week", "month", "quarter", "year"]
 SYNTHETIC_LABEL_ID = 'p1_synthetic_sample_data'
 SYNTHETIC_LABEL = 'Synthetic sample data'
 
@@ -17,6 +20,85 @@ def reference_image(path):
     """True for a stored reference screenshot (code names them reference_*), whatever the folder,
     case or separator: a screenshot is evidence, never a recipe image, logo or background."""
     return str(path).replace('\\', '/').rsplit('/', 1)[-1].casefold().startswith('reference_')
+
+
+# Formula style `sum(revenue)`: no space before the parenthesis, so "Order Count (distinct)" is text.
+_CALL = r'\b(?:sum|avg|count|count_distinct|min|max|none)\(\s*([^()]*?)\s*\)'
+_FORMULA = re.compile(r'\b(?:sum|avg|count|count_distinct|min|max|none)\(|\[[^\[\]]+\]', re.I)
+_UNIT = re.compile(r'\s*\[[^\[\]]+\]')
+_TRAILING = re.compile(r'(?:\s*(?:,|&|\band\b|\bvs\b\.?)?\s*' + _CALL + r')+\s*$', re.I)
+
+
+def _human(name):
+    return ' '.join(word[:1].upper() + word[1:] for word in name.split('_') if word)
+
+
+def clean_title(label, names=(), kind=''):
+    """A component label without a formula suffix (architecture.md#Component titles and grain words):
+    a ` | ` segment holding an aggregation call or a bracketed unit goes with everything after it, a
+    bracketed unit elsewhere likewise, and a trailing run of aggregation calls; a label emptied that way
+    becomes the bound fields' humanized names (`names`, two joined by " and "), else `kind`. Any other
+    label is returned byte for byte."""
+    text = label
+    for pipe in re.finditer(r'\s*\|', text):
+        following = re.search(r'\|', text[pipe.end():])
+        segment = text[pipe.end():pipe.end() + following.start() if following else len(text)]
+        if _FORMULA.search(segment):
+            text = text[:pipe.start()]
+            break
+    unit = _UNIT.search(text)
+    if unit:
+        text = text[:unit.start()]
+    trailing = _TRAILING.search(text)
+    if trailing:
+        text = text[:trailing.start()]
+    if text == label:
+        return label
+    text = re.sub(r'[\s|:,;\-–—]+$', '', text)
+    if text.strip():
+        return text
+    names = list(dict.fromkeys(names)) or list(dict.fromkeys(m[1] for m in re.finditer(_CALL, label, re.I) if m[1]))
+    return ' and '.join(_human(n) for n in names[:2]) or _human(kind)
+
+
+def component_title(component):
+    """clean_title for a spec or Blueprint component (model or dict): metric fields name an emptied
+    label, else its dimension/date/control field."""
+    get = component.get if isinstance(component, dict) else lambda key, default=None: getattr(component, key, default)
+    # A revise candidate is an unvalidated dict: unusable slots name nothing (its validation reports them).
+    listed = lambda value: value if isinstance(value, list) else []
+    metrics = [m.get('field') if isinstance(m, dict) else getattr(m, 'field', None) for m in listed(get('metrics'))]
+    others = [*listed(get('dimensions')), get('field'), get('date_dimension')]
+    kind = get('type')
+    return clean_title(get('label') or '', [n for n in metrics if isinstance(n, str) and n]
+                       or [n for n in others if isinstance(n, str) and n], kind if isinstance(kind, str) else '')
+
+
+GRAIN_WORDS = {'day': r'daily|per day|by day', 'week': r'weekly|per week|by week',
+               'month': r'monthly|per month|by month|month[\s-]+over[\s-]+month',
+               'quarter': r'quarterly|per quarter|by quarter',
+               'year': r'yearly|annual|per year|by year|year[\s-]+over[\s-]+year'}
+_GRAIN_WORDS = {grain: re.compile(r'\b(?:' + words.replace(' ', r'\s+') + r')\b', re.I) for grain, words in GRAIN_WORDS.items()}
+
+
+def grain_word(*texts):
+    """The one grain the texts name in words (`Monthly`, `by quarter`, ...), or None for none or two."""
+    found = {grain for grain, pattern in _GRAIN_WORDS.items() for text in texts if text and pattern.search(text)}
+    return found.pop() if len(found) == 1 else None
+
+
+def date_grain(spec, component):
+    """The grain a time series or area is drawn at: its date field's bucket grain (a TRUNC field or a
+    bucket-start column; never overridden), else the component's code-recorded grain-word grain when
+    the field is a date."""
+    if component.type not in DATE_AXIS_TYPES or not component.date_dimension:
+        return None
+    field = next((f for f in spec.datasource.fields if f.name == component.date_dimension), None)
+    if field is None:
+        return None
+    if field.date_granularity:
+        return field.date_granularity
+    return component.date_granularity if field.type.upper() in DATE_TYPES else None
 
 
 def image_paths(spec):
@@ -114,10 +196,12 @@ class Component(Model):
     question_ref: str | None = None
     # The approved native reference item this component fulfils (Blueprint row reference_item); omitted when None.
     reference_item: str | None = None
+    # A trend's grain from its label or question words, set by code layout only (date_grain); omitted when None.
+    date_granularity: Grain | None = None
 
     @model_serializer(mode='wrap')
     def _serialize(self, handler):
-        return _without_none(handler, self, ('box', 'reference_item'))
+        return _without_none(handler, self, ('box', 'reference_item', 'date_granularity'))
 
 class Decoration(Model):
     id: str = Field(pattern=r"^p[1-9][0-9]*_[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
@@ -147,7 +231,7 @@ class DataField(Model):
     # A *_TRUNC derived field's bucket grain, or a base DATE column's profiled bucket start
     # (month, quarter, year), set by code layout from the view's derivation or the intake profile;
     # the compiler emits it as a time series' or area's options.date_granularity (recipe 1.2/1.3).
-    date_granularity: Literal["day", "week", "month", "quarter", "year"] | None = None
+    date_granularity: Grain | None = None
 
     def __getitem__(self, key):
         return getattr(self, key)

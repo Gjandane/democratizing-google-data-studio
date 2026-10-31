@@ -6,7 +6,9 @@ confirmed gap/difference KPI. Use precise missing/conflicting-measure feedback i
 repair. Reuse code-proven yearly DATE bindings and their sort; never multiply a DATE or invent
 a redundant year alias. A ratio cannot be a chart metric; leave it for a code-built
 alternative. Return 1-3 component rows per requested question, plus at most two supporting
-controls per page. Do not invent questions. Return only questions requested in this call.
+controls per page. A component label is a short human title ("Total Revenue", "Monthly Orders"):
+never append its formula, aggregation, field names or unit (no " | sum(revenue) [USD]"); code
+reads the bindings from the row. Do not invent questions. Return only questions requested in this call.
 Choose ViewSources by connected source IDs: one base, structured joins OR union, never both.
 Extra derived fields are scalar BigQuery expressions over projected base columns; never
 aggregates, windows, subqueries or DDL. There are no recipe chart filters: express filtered

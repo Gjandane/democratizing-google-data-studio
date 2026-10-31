@@ -1009,7 +1009,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: exactness (only sum-only numeric columns change, so every sum is unchanged); the rule reads the recipe the job ships, not the blueprint.
 
 ## Phase 31: Component titles and grain words (change 2026-10-31)
-- [ ] 31.1 Clean component titles and grain words on trends
+- [x] 31.1 Clean component titles and grain words on trends
   - Goal: per docs/architecture.md#Component titles and grain words, no component title (scorecards and charts included) carries a ` | agg(field) [unit]` suffix in the Blueprint, the prototype, the spec, the component ids or the recipe, and a "Monthly" (weekly, ...) trend on a daily date is drawn at that grain in the prototype and the report (release 5.2 block: hosted build b_302d91fd3a0f).
   - Spec: docs/architecture.md#Component titles and grain words
   - Files: src/dss/harness/nodes/blueprint.py, src/dss/harness/nodes/revise.py, src/dss/spec/models.py, src/dss/spec/auto_layout.py, src/dss/recipe/compiler.py, src/dss/render/prototype.py, skills/blueprint.md, prompts/v1/*, tests/test_blueprint.py, tests/test_compiler.py, tests/test_titles_grain.py (new), docs/progress.md

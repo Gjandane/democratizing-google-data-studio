@@ -2514,3 +2514,15 @@ assert min(timings) < .1
 - Ruling (whole class, user cards): every label write runs one code title rule (the compiler applies it to saved specs as a backstop); one grain word in a trend's label or question sets its grain when the date field has none; root cause of the suffix in the prompt is fixed too.
 - Affected tasks: 31.1 (new); release 4.9 (hosted redeploy) and 5.2 (live recreate of report 98e6423a) `Needs: backend 31.1`.
 - Delta audit: none (target POC).
+
+## 2026-10-31: Task 31.1 Clean component titles and grain words on trends
+- Status: done
+- Plan check: off
+- What changed: spec/models.py `clean_title`, `component_title`, `grain_word`, `date_grain`, Component.date_granularity (omitted when None); title rule at normalize_rows (draft/repair/redraft), revise, layout (label+id), compiler, prototype, feasibility item rows; layout records grain-word grain; compiler/prototype draw it (prototype `<TYPE>_TRUNC`). Prompt + skill sentence. tests/test_titles_grain.py.
+- Checks: Done-when 4 files PASS 167; `uv run pytest` PASS 2418 (17 deselected). Live (real model, DSS_ENGINE_DRY_RUN=1, ecommerce_sales.csv) b_5aabe2ad8b55 PASS: titles Total Revenue, Total Orders, Total Units Sold, Monthly Revenue Trend (month), Total Orders Over Time, Revenue by Region, Orders by Region, Units Sold by Region, Revenue by Country and Region, Units Sold vs Revenue by Product, Revenue Share by Category, Top Products by Revenue, Orders Over Time by Customer Segment, Revenue Share by Customer Segment, Orders and Revenue by Segment and Region.
+- Decisions: suffix source: no code renders `agg(field) [unit]` to the planner (KPIs go as JSON with unit); fixed by prompt+skill sentence. Bracket elsewhere goes with everything after it (literal Spec); also strips a trailing run of `agg(...)` calls; calls need no space before `(`. Grain recorded per component in spec (`date_granularity`), never from options; field grain wins. Revise: patch grain dropped; label/type/date change recomputes from label words, a label-only change naming no grain keeps the old one. Outside Files: feasibility.py (Spec edge case), test_layout_auto.py (golden trend "Net revenue by month" now month; golden file kept as pre-31.1 saved spec), test_blueprint fingerprint hash recaptured (HEAD prompt files reproduce old hash).
+- Digest: dss.spec.models: clean_title(label,names=(),kind=''), component_title(c), grain_word(*texts)->grain|None, date_grain(spec,c); Component.date_granularity (code-only; omitted when None); compiler title=component_title(c).
+- Tried and failed: none
+- Gotchas: a grain-word on a fixture label ("by month") now changes layout output: golden layout tests compare golden_layout() (golden + that key)
+- Left open: none
+- Next: none in plan; release 5.2 can retry its live run.

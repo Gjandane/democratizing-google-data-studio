@@ -37,6 +37,19 @@ GOLDEN_OUTLINE = {'s1': 'Revenue snapshot', 's2': 'Average order value', 's3': '
                   's4': 'Order mix'}
 
 
+def golden_layout():
+    """The golden layout spec as code lays it out since 31.1: its trend "Net revenue by month" on the raw
+    order_date records the month grain (#Component titles and grain words); every other byte is the file's,
+    which stays the pre-31.1 saved spec that test_compiler compiles byte-identically."""
+    from dss.spec.models import DashboardSpec
+    spec = DashboardSpec.model_validate_json(GOLDEN.read_text(encoding='utf-8'))
+    assert spec.model_dump_json(indent=2) == GOLDEN.read_text(encoding='utf-8')
+    [trend] = [c for p in spec.pages for c in p.components if c.type == 'time_series']
+    assert trend.label == 'Net revenue by month' and trend.date_granularity is None
+    trend.date_granularity = 'month'
+    return spec.model_dump_json(indent=2)
+
+
 def golden_inputs():
     blueprint = Blueprint.model_validate_json((DATA / 'golden_blueprint.json').read_text(encoding='utf-8'))
     design = Design.model_validate_json((DATA / 'golden_design.json').read_text(encoding='utf-8'))
@@ -50,7 +63,7 @@ def test_golden_blueprint_and_design_give_byte_identical_spec():
     data = first.model_dump_json(indent=2).encode('utf-8')
     assert data == again.model_dump_json(indent=2).encode('utf-8')
     # read_text: the golden is LF text whatever the checkout's line endings.
-    assert data == GOLDEN.read_text(encoding='utf-8').encode('utf-8')
+    assert data == golden_layout().encode('utf-8')
     # Blueprint pages 1, 3, 4 (page 2's rows were all dropped) renumber and keep section names.
     assert [(p.index, p.name) for p in first.pages] == [
         (1, 'Revenue snapshot'), (2, 'Where revenue comes from'), (3, 'Order mix')]
@@ -278,8 +291,10 @@ def test_base_date_column_on_bucket_starts_carries_its_grain(level, grain):
         {'order_date': grain} if grain else {})
     charts = [json.loads(line) for line in compile_recipe(spec, 1).splitlines()[1:]]
     charts = [o for o in charts if o['op'] == 'add_chart']
+    # Without a bucket fact the trend's own words ("Net revenue by month", 31.1) set its grain, never the
+    # model's `day`; the area ("Revenue area") names none. A bucket-start column's grain always wins.
     assert sorted((o['chart_type'], o['options'].get('date_granularity')) for o in charts if o.get('date_dimension')) == [
-        ('area', grain), ('time_series', grain)]
+        ('area', grain), ('time_series', grain or 'month')]
     assert not any('date_granularity' in o['options'] for o in charts if not o.get('date_dimension'))
 
 
@@ -288,7 +303,7 @@ def test_profiles_without_the_bucket_fact_lay_out_as_before():
     old = profiled_source(3)
     old['columns'] = [{k: v for k, v in c.items() if k != 'bucket_start'} for c in old['columns']]
     spec = layout(blueprint, design, plan, FIELDS, **IDENTITY, allowed=set(catalog()), sources=[old])
-    assert spec.model_dump_json(indent=2) == GOLDEN.read_text(encoding='utf-8')
+    assert spec.model_dump_json(indent=2) == golden_layout()
 
 
 def test_base_grains_follow_the_view_projection():

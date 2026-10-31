@@ -731,8 +731,10 @@ def test_style_and_no_reference_planner_request_fingerprints_stay_unchanged(tmp_
     section, parts = node.reference_section(tmp_path, {'reference': reference})
     assert section is None and parts == []
     request = blueprint_context(Context.model_validate(fixture('context')), [], [], {}, [], [], reference=section)
-    # Captured from HEAD before 26.4, with these same protected metadata inputs.
-    assert hashlib.sha256(request.encode()).hexdigest() == '52c640073b9f22910117aa8d2d153bd839a28a86d29f2f954f9d8c89296a6d02'
+    # Captured from HEAD before 26.4, with these same protected metadata inputs; recaptured at 31.1, whose
+    # title/grain sentences in prompts/v1/blueprint.md and skills/blueprint.md are its only change
+    # (HEAD's two files still give 52c64007...).
+    assert hashlib.sha256(request.encode()).hexdigest() == 'f3938d064648518c67e51460bb8b8bec6772aae36d4df48259a4da61484b3bec'
 
 
 def test_catalog_summary_dropdown_slots_match_feasibility():

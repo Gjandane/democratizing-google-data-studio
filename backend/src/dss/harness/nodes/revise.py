@@ -22,7 +22,7 @@ from dss.harness import stages
 from dss.harness.nodes import designer
 from dss.harness.nodes.render import artifacts
 from dss.render import background, design_page
-from dss.spec.models import DashboardSpec
+from dss.spec.models import DATE_AXIS_TYPES, DATE_TYPES, DashboardSpec, component_title, grain_word
 from dss.spec.patch import apply_scoped, items, pages, PatchError
 from dss.spec.validate import allowed_types, catalog, high_questions, validate_spec
 from dss.spec import requirements as req
@@ -166,6 +166,31 @@ def revised(document, comments, batch, allowed):
             record['redesigned_page'] = page + 1
         candidate = updated
         records.append(record)
+    # Titles and grains stay code's: a revised title passes the title rule, and a patch never writes
+    # a grain; code redraws the grain-word grain of a trend whose label, type or date changed
+    # (architecture.md#Component titles and grain words).
+    before = items(document)
+    fields = document.get('datasource', {}).get('fields', [])
+    dates = {f.get('name') for f in fields if isinstance(f, dict) and str(f.get('type', '')).upper() in DATE_TYPES
+             and not f.get('date_granularity')}
+    for page in candidate['pages']:
+        for item in page['components']:
+            if isinstance(item, dict):
+                if isinstance(item.get('label'), str):
+                    item['label'] = component_title(item)
+                old = before.get(item.get('id')) or {}
+                grain = old.get('date_granularity')
+                changed = [k for k in ('label', 'type', 'date_dimension') if item.get(k) != old.get(k)]
+                if changed:
+                    if item.get('type') not in DATE_AXIS_TYPES or item.get('date_dimension') not in dates:
+                        grain = None
+                    else:
+                        # A label naming no grain keeps a grain its question gave, unless the binding changed.
+                        grain = grain_word(item.get('label')) or (grain if changed == ['label'] else None)
+                if item.get('date_granularity') != grain:
+                    item.pop('date_granularity', None)
+                    if grain:
+                        item['date_granularity'] = grain
     errors = [e for e in validate_spec(candidate, allowed=allowed) if not any(
         e['path'].startswith(f'pages.{n - 1}.components.') and '.box' in e['path'] for n in redesign)]
     if errors:
