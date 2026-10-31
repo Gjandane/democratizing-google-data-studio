@@ -1,6 +1,6 @@
-import { CircleUserRound, ExternalLink, LayoutDashboard, Plus } from 'lucide-react';
+import { CircleHelp, CircleUserRound, ExternalLink, LayoutDashboard, Plus } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../../api/client';
 import { ApiError, type BuildSummary } from '../../api/types';
 import { Button } from '../../components/Button';
@@ -10,6 +10,7 @@ import { focusRing } from '../../components/focus';
 import { Panel } from '../../components/Panel';
 import { LoadingState } from '../../components/Spinner';
 import { useSessionUser } from '../access/sessionUser';
+import { useHosting } from '../workspace/build/hosting';
 import { NewBuildDialog } from './NewBuildDialog';
 
 type Load =
@@ -76,13 +77,28 @@ function BuildRow({ build }: { build: BuildSummary }) {
   );
 }
 
-export function HistoryPage() {
+const loadingPanel = (
+  <Panel>
+    <LoadingState>Loading dashboards…</LoadingState>
+  </Panel>
+);
+
+/** History's loading panel alone, for a page that can't tell yet what to show. */
+export function DashboardsLoading() {
+  return <main className="mx-auto w-full max-w-(--layout-page) px-6 py-8">{loadingPanel}</main>;
+}
+
+/** `hold`: show only the loading panel (the builds request still starts at once). */
+export function HistoryPage({ hold = false }: { hold?: boolean }) {
   const [load, setLoad] = useState<Load>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const heading = useRef<HTMLHeadingElement>(null);
   const retried = useRef(false);
   const [creating, setCreating] = useState(false);
   const user = useSessionUser();
+  const navigate = useNavigate();
+  // Local mode, a hosting still loading or a failed load: no landing page to reopen.
+  const agentMode = useHosting()?.mode === 'agent';
 
   useEffect(() => {
     let active = true;
@@ -115,6 +131,8 @@ export function HistoryPage() {
     setAttempt((n) => n + 1);
   };
 
+  if (hold) return <DashboardsLoading />;
+
   return (
     <main className="mx-auto w-full max-w-(--layout-page) px-6 py-8">
       <header className="mb-6 flex items-start justify-between gap-4">
@@ -131,6 +149,11 @@ export function HistoryPage() {
               <span className="truncate">{user}</span>
             </span>
           )}
+          {agentMode && (
+            <Button icon={<CircleHelp aria-hidden="true" />} onClick={() => navigate('/welcome')}>
+              How it works
+            </Button>
+          )}
           <Button variant="primary" icon={<Plus aria-hidden="true" />} onClick={() => setCreating(true)}>
             New build
           </Button>
@@ -139,11 +162,7 @@ export function HistoryPage() {
       {/* Mounted only while open, so each new build starts from a blank form. */}
       {creating && <NewBuildDialog open onClose={() => setCreating(false)} />}
 
-      {load.status === 'loading' && (
-        <Panel>
-          <LoadingState>Loading dashboards…</LoadingState>
-        </Panel>
-      )}
+      {load.status === 'loading' && loadingPanel}
 
       {load.status === 'error' && <ErrorState title="Couldn't load your dashboards" message={load.message} onRetry={retry} />}
 

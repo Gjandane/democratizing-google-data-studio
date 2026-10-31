@@ -364,7 +364,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: ../contracts/api.md 3.4 `AgentCheck` and conventions 1.7 setup-step command verbatim; Build never gated; the code never stored.
 
 ## Phase 20: First-visit onboarding (change 2026-10-31)
-- [ ] 20.1 Landing page with screenshots and How it works
+- [x] 20.1 Landing page with screenshots and How it works
   - Goal: in agent mode a first visit to `/` lands on a separate page at `/welcome` (docs/onboarding-ui.md): the hero with "Start a new dashboard", four screenshots of the process and the build, the "How it works" panel reused from the 20.1 attempt, and "Proceed to your dashboards"; History's header gets a "How it works" button back to it, so a first-time visitor learns before any build that building needs the local build agent.
   - Files: src/App.tsx, src/features/onboarding/* (new: the landing page, the How it works panel moved from the attempt's OnboardingPanel.tsx, the seen-flag hook), src/features/history/HistoryPage.tsx, src/features/workspace/build/hosting.tsx, public/onboarding/ (new: four .webp), src/mocks/*.ts, tests/onboarding.test.tsx (new), tests/history.test.tsx, screenshots/
   - Depends on: 19.3

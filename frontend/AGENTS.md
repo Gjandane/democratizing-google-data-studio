@@ -56,6 +56,8 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Vitest fake timers: RTL `findBy*`/`waitFor` hang (their wait uses the faked timers); advance with `vi.advanceTimersByTimeAsync`/`runAllTimersAsync`, then assert with `getBy*`. A disabled `<fieldset>` doesn't set `.disabled` on its children: assert `el.matches(':disabled')`.
 - Headless walkthrough of Build: the first "Generate recipe" click right after "Continue to build" can be a no-op while the gates load; retry the click until the Recipe list appears. Hosted mock flow: `VITE_MOCK=1 VITE_MOCK_HOSTED=1`, the failed run via the mock module's `setMockHosting('failed')` before Build.
 - Setup-step screenshots: `sessionStorage` (`dss.agentReady`) survives navigations in one headless profile, so a passed check folds the next state's step; `sessionStorage.clear()` before each, and pick the outcome with the mock's `setMockAgentCheckOutcome` before opening Build.
+- No `@types/node`: a test needing `node:fs` imports it by a string variable (`const m = 'node:fs'; await import(/* @vite-ignore */ m)`) cast to the shape it uses, with paths relative to frontend/; a literal `node:fs` import or `process` fails typecheck.
+- CDP capture scripts: recipe lines finish as `data-status="ok"` (not "done"); stepper buttons read "Context(confirmed)" (match with `startsWith`); `document.documentElement.scrollHeight` reports the viewport under the metrics override, so size a full-page shot from `main.getBoundingClientRect().bottom + scrollY`.
 
 ## Skills
 Use each skill only at its step, on that task's files. If one isn't installed in your tool, skip it and say so under Gotchas. The essentials' UI design section wins over a skill's generic advice.

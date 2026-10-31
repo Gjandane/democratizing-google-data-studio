@@ -2,7 +2,8 @@ import { Link, Route, Routes, useParams } from 'react-router-dom';
 import { buttonClass } from './components/Button';
 import { EmptyState } from './components/EmptyState';
 import { AccessGate } from './features/access/AccessGate';
-import { HistoryPage } from './features/history/HistoryPage';
+import { HomeRoute, WelcomeRoute } from './features/onboarding/LandingPage';
+import { OnboardingSeenProvider } from './features/onboarding/seen';
 import { AppServicesProvider, useAppServices } from './features/settings/AppServices';
 import { HostingProvider } from './features/workspace/build/hosting';
 import { WorkspaceShell } from './features/workspace/WorkspaceShell';
@@ -36,11 +37,14 @@ export function App() {
     <AccessGate>
       <AppServicesProvider>
         <HostingProvider>
-          <Routes>
-            <Route path="/" element={<HistoryPage />} />
-            <Route path="/builds/:id" element={<WorkspaceRoute />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <OnboardingSeenProvider>
+            <Routes>
+              <Route path="/" element={<HomeRoute />} />
+              <Route path="/welcome" element={<WelcomeRoute />} />
+              <Route path="/builds/:id" element={<WorkspaceRoute />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </OnboardingSeenProvider>
         </HostingProvider>
       </AppServicesProvider>
     </AccessGate>
