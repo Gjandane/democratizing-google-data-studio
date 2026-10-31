@@ -816,3 +816,15 @@ context. Task status lives in docs/plan.md, not here.
 - Why: the user opened the hosted link and found no word about the local build agent before the Build stage (user cards: dismissible panel, setup from the home panel, agent mode only, release 4.8 redeploys).
 - Affected tasks: release 4.8 new (redeploy after a card, hosted screenshots, README line, push after a card), `Needs: frontend 20.2`; frontend 20.1-20.2. No contract change (`POST /api/agent-checks` is not tied to a build). 20.2 also closes 19.3's Left open P2 (focus after Check again) and the poll-stop P3.
 - Delta audit: 0 P0/P1, 3 P2 (backdrop click closes the dialog mid-check; SetupPanel needs startUnfolded/onState/hint; focus after Done) + 5 P3, all applied in the docs (user cards).
+
+## 2026-10-31: Task 4.8 Hosted onboarding redeploy and push
+- Status: done
+- Plan check: off
+- What changed: hosted redeployed (rev dss-frontend-00008-cch, frontend 20.1-20.2) after the user's deploy card (no build at stage `build`); README hosted section: one sentence on the first-visit "How it works" page and "Set up this computer"; docs/img/onboarding-4.8-{home,setup}.png.
+- Checks: `bash deploy/deploy.sh` exit 0; `/api/hosting` public true, mode agent, api_version 3.4; built-in browser, empty storage: `/` -> `/welcome` with the three steps, dialog with check code and `-Server <hosted origin> -Check <code>`, Esc closes, Proceed + reload -> Dashboards with "How it works" button: all yes; both PNGs opened: no address bar, hosted URL, project number, email; grep README finds it; check_repo.py 10/10 PASS (rerun after this commit before push); check_contracts.py 13/13 PASS.
+- Decisions: frontend 20.1 shipped a `/welcome` landing page with no "Hide": "Proceed to your dashboards" (markSeen) stands in for Hide. PNGs from a fresh headless Playwright context (engine venv), not the built-in browser: home = `<main>` at a 2000 px viewport; setup = dialog with the check code blurred and the hosted origin in the command replaced by `https://<hosted-origin>` (review P2: a blur is recoverable). AGENTS.md: 1 gotcha.
+- Digest: hosted rev 00008 serves frontend 20.1-20.2 (`/welcome` landing, setup modal); README line "Use the hosted app" names it; docs/img/onboarding-4.8-{home,setup}.png.
+- Tried and failed: full-page/element shot at 800 px viewport: inner scroller paints only the viewport.
+- Gotchas: in AGENTS.md.
+- Left open: none (P3 README repetition fixed; P2 check_repo-before-commit handled by the rerun before push).
+- Next: none in release; the plan is complete.
