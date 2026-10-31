@@ -104,3 +104,7 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Visitor agent setup on this machine: the repo engine's Chrome (`.chrome-profile`, CDP 9222) blocks the agent's Chrome ("DSS_CDP_PORT is occupied by an unrecognized browser"): close it first; to screenshot a visitor report afterwards, start chrome.exe with `--user-data-dir=%LOCALAPPDATA%\dss-agent\chrome-profile --remote-debugging-port=9222` and connect over CDP.
 - Hosted run errors (`agent_timeout`, `job_expired`) aren't in `GET /api/builds/<id>` and SSE never replays: read `GET /api/traces?build_id=<id>` (`node: execute`, `error`).
 - `e2e_flow1.py --until recipe --server <hosted>` rewrites the tracked deck/data/bench-<date>-hosted-recipe.json: `git checkout --` it when the task doesn't own the bench.
+- Hosted prototype comments (4.6 rerun): field, format and style asks stop at feasibility `needs_clarification`/"no registered capability" (even naming `SUM(quantity)`); `Change the title to "<text>".` applies. Discard the batch to clear the stale flag.
+- Agent check/job codes expire 30 min after the Build view shows them: give the user the command only when they're ready; reload the build page (Continue to build) for a new check code.
+- The share CSV's folder isn't in any trace API response: list `<project>-dss-share` objects via ADC REST and match `timeCreated` to the `execute` trace's `started_at` (same second).
+- Built-in browser `javascript_tool` aborts after 45 s: keep in-page polls under ~40 s, or poll the API from a background Bash loop.

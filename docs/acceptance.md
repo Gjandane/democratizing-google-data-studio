@@ -90,3 +90,31 @@ types it Text: s040 fails "Data Studio aggregation Sum is unavailable", s042 tim
 
 Screenshots (page 1, report view, cropped to the canvas): `docs/img/acceptance-4.6-hosted-v1.png`,
 `docs/img/acceptance-4.6-hosted-v2.png`.
+
+## Hosted judge path (rerun after H1)
+
+Backend 30.1 redeployed first (image only; `/api/hosting`: `public: true`, `share_data: true`,
+`api_version` "3.4"). Same machine and agent install as row 6: the setup step's check reused the
+install and the second account's sign-in (no install, no login, no `-Update`). The context draft
+wrote `high_value_revenue` with `ELSE 0`; the builder edited it in the Context stage to
+`CASE WHEN revenue >= 1000 THEN revenue END` (NULL below $1,000, as in row 6) so the fix is exercised.
+
+| # | Date | Source | Input | Build id | Last stage | Checked | Verdict |
+|---|---|---|---|---|---|---|---|
+| 7 | 2026-10-31 | Hosted judge path rerun after H1 (CSV upload, second account) | `samples/ecommerce_sales.csv` (2,000 rows); data note on high-value orders; context edit above; default outline, design, blueprint (page 4: `high_value_revenue` only as `sum` and a sort); v1 comment: trend chart title (applied after 4 blocked tries, finding H2); v2 comment: Total Revenue title "Revenue (All Regions)" | b_fe792fcac708 | done v1 and v2, both engine `ok` (`run_finished` ok 35, failed 0 of 35) | Build: "Agent ready on this computer" (server, versions, Chrome, signed in) after the check (the first check code expired before the user pasted it: a page reload issued a new one); Windows job command built v1 and, with its own code, v2; panel with live ops and the Data Studio link; share CSV (ADC, REST) `high_value_revenue`: `0` in 1,949 rows, none empty, 51 values >= $1,000 summing 85,297.00 (v1 and v2); the user opened v1 in the second account: CSV data, page 4 charts filled, data source Google Cloud Storage (share CSV), not BigQuery; v2's page 1 shows the renamed scorecard. Setup install, first sign-in and the scripted code checks (`job_code_invalid`, `agent_timeout`, `job_expired`): row 6, not rerun (backend 30.1 doesn't touch them) | PASS |
+
+Finding H1: fixed (backend 30.1). Page 4 now holds a scorecard and a bar chart (not row 6's pivot
+and table), both on `sum` of the 0-filled `high_value_revenue`, and both built with no "aggregation
+Sum is unavailable": the scorecard reads 85.3K = the share CSV's sum; the bar chart's data per the
+user's check and `batchedDataV2` 200s (blank in the screenshot).
+
+Finding H2 (backend feasibility, open; not in W1-W7): on the prototype, four plain comments were
+held at `needs_clarification` or "no registered capability" and discarded: Total Orders without
+decimals; add a Units Sold scorecard (twice, the second naming `SUM(quantity)`); remove the units
+series from the trend chart ("Confirm aggregation sum for revenue"); a bolder scorecard number.
+Only a title change applied (v1 and v2). Row 6 applied a "Units Sold" comment on the same sample,
+so the judge's click-to-comment path is narrower than row 6 showed (regression or model variance).
+
+Screenshots (report view in the agent Chrome, cropped to the canvas; bar and time-series charts
+blank because the window was occluded, data rows confirmed by `batchedDataV2` 200s):
+`docs/img/acceptance-4.6-hosted-rerun-v1.png` (v1 page 4), `docs/img/acceptance-4.6-hosted-rerun-v2.png` (v2 page 1).

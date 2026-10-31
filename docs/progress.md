@@ -786,3 +786,15 @@ context. Task status lives in docs/plan.md, not here.
 - Affected tasks: backend 30.1; release 4.6 (rerun), then 4.7.
 - Change requests settled: 4.6's Question (H1) -> planned: backend 30.1, release 4.6 rerun.
 - Delta audit: none (target POC).
+
+## 2026-10-31: Task 4.6 Judge-path acceptance with a second Google account (rerun after H1)
+- Status: done
+- Plan check: off
+- What changed: redeployed (user STOP card; image only, rev dss-frontend-00007-ngh). docs/acceptance.md: "Hosted judge path (rerun after H1)" row 7 (b_fe792fcac708, PASS from the user's card), H1 fixed, new finding H2; docs/img/acceptance-4.6-hosted-rerun-v1.png (v1 page 4), -v2.png (v2 page 1). AGENTS.md: 4 Known gotchas.
+- Checks: deploy.sh rc 0, /api/hosting public true, share_data true, api_version 3.4 PASS; hosted UI CSV -> prototype (1 comment) PASS; "Agent ready" after check, no install/login PASS; v1 and v2 `run_finished` ok 35, failed 0 PASS; share CSV column `high_value_revenue`: 1,949 `0`, 0 empty, 51 >= $1,000 (sum 85,297.00), v1 and v2 PASS; user: data + GCS source in 2nd account PASS; v2 own code PASS; Test (all) check_contracts 13/13 PASS.
+- Decisions: context draft had `ELSE 0`; edited in the Context stage to `CASE WHEN revenue >= 1000 THEN revenue END` so H1 is exercised (told the user on the verdict card); a data note on high-value orders added before the draft; share CSV found by bucket listing + creation time (trace API exposes no folder); 4 blocked comments discarded, recorded as H2; agent Chrome reopened by the builder only for screenshots, then closed.
+- Digest: docs/acceptance.md row 7 (hosted judge path after H1, b_fe792fcac708, PASS, ok 35/0 v1+v2), H1 fixed, H2 open (hosted prototype comments: only title changes pass feasibility); docs/img/acceptance-4.6-hosted-rerun-{v1,v2}.png.
+- Tried and failed: comments "Total Orders no decimals", "add Units Sold scorecard" (x2), "remove units series", "bolder number": all held by feasibility (H2).
+- Gotchas: in AGENTS.md.
+- Left open: H2 (backend feasibility on hosted comments) for the architect; screenshots' bar/time-series charts blank (occlusion gotcha).
+- Next: Task 4.7 README hosted section and final push.
