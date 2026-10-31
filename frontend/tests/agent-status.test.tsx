@@ -339,6 +339,72 @@ describe('hosted build (agent mode)', () => {
   });
 });
 
+const SETUP_STEPS = [
+  'Pick your system and copy the command.',
+  'Paste it into PowerShell (Windows: Start menu, type PowerShell) or Terminal (macOS/Linux) and press Enter.',
+  "If a Chrome window opens, sign in to Google and accept Data Studio's terms if it asks.",
+  'Keep this page open. It shows Agent ready when the check passes.',
+];
+const AGENT_NOTE = 'To continue, the build agent runs this build on your computer, in your own Chrome. This step makes no AI calls, so it uses no AI tokens.';
+const PASTE_LINE =
+  'Paste it into PowerShell (Windows) or Terminal (macOS/Linux) and press Enter. On a computer without the agent, the first run installs it and asks you to sign in to Google.';
+/** `a` comes before `b` in the document. */
+const before = (a: Element, b: Element) => expect(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+describe('Build-stage agent note and job paste line (agent mode)', () => {
+  it('above the setup step before the first Build', async () => {
+    await renderHosted();
+    const note = screen.getByText(AGENT_NOTE);
+    before(note, screen.getByRole('heading', { name: 'Set up this computer' }));
+    expect(screen.getAllByText(AGENT_NOTE)).toHaveLength(1);
+  });
+
+  it('above the job panel while waiting, with the paste line instead of the old one', async () => {
+    await buildToWaiting();
+    before(screen.getByText(AGENT_NOTE), screen.getByRole('heading', { name: 'Build on your computer' }));
+    expect(screen.getByText(PASTE_LINE)).toBeTruthy();
+    expect(screen.queryByText('Run this in a terminal on the computer signed in to Data Studio.')).toBeNull();
+  });
+
+  it('above the running job; gone once the build is done', async () => {
+    const stream = fakeStream();
+    vi.spyOn(api, 'getJob').mockImplementation(async (id) => ({ ...fixtures.jobTicketRunning, build_id: id, code: CODE }));
+    await renderHosted(undefined, stream.open);
+    await buildEnabled();
+    fireEvent.click(buildButton());
+    stream.fire({ name: 'stage.changed', data: { stage: 'build' } });
+    const running = await screen.findByText('Your computer claimed the build code. Building in Data Studio…');
+    before(screen.getByText(AGENT_NOTE), running);
+    stream.fire({ name: 'build.finished', data: { status: 'ok', report_url: 'https://lookerstudio.google.com/reporting/abc', version: 1 } });
+    stream.fire({ name: 'stage.changed', data: { stage: 'done' } });
+    await screen.findByRole('link', { name: /Open in Data Studio/ });
+    expect(screen.queryByText(AGENT_NOTE)).toBeNull();
+  });
+
+  it('after an expired code', async () => {
+    await buildToWaiting();
+    act(() => expireMockJob(fixtures.build.id));
+    const expired = await screen.findByText(EXPIRED);
+    before(screen.getByText(AGENT_NOTE), expired);
+  });
+
+  it('after a failed run', async () => {
+    await renderHosted();
+    setMockHosting('failed');
+    await buildEnabled();
+    fireEvent.click(buildButton());
+    await screen.findByText('The build failed.', {}, { timeout: 6000 });
+    expect(screen.getByText(AGENT_NOTE)).toBeTruthy();
+  }, 12_000);
+
+  it('local mode: no note', async () => {
+    setMockEngine({ signed_in: false });
+    await renderBuild('Not signed in to Google');
+    expect(screen.queryByText(AGENT_NOTE)).toBeNull();
+    expect(screen.queryByRole('list', { name: 'Steps' })).toBeNull();
+  });
+});
+
 const CHECK_CODE = 'P3WN-8HJD';
 const CHECK_POWERSHELL = `& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Gjandane/democratizing-google-data-studio/main/agent-setup/setup.ps1))) -Server ${window.location.origin} -Check ${CHECK_CODE}`;
 const CHECK_BASH = `curl -fsSL https://raw.githubusercontent.com/Gjandane/democratizing-google-data-studio/main/agent-setup/setup.sh | bash -s -- --server ${window.location.origin} --check ${CHECK_CODE}`;
@@ -370,6 +436,14 @@ describe('setup step with the agent connection check (agent mode)', () => {
     expect(screen.getAllByRole('button', { name: 'Copy' })).toHaveLength(1);
     expect(screen.getByText(/^Code expires in (29|30):\d\d$/)).toBeTruthy();
     expect(screen.getByText('Already set up? Build in Data Studio.')).toBeTruthy();
+  });
+
+  it('shows the four how-to steps instead of the old terminal line', async () => {
+    vi.spyOn(api, 'createAgentCheck').mockResolvedValue(checkIn('waiting'));
+    await renderHosted();
+    const steps = within(screen.getByRole('list', { name: 'Steps' })).getAllByRole('listitem');
+    expect(steps.map((li) => li.textContent)).toEqual(SETUP_STEPS);
+    expect(screen.queryByText(/^Run this once in a terminal/)).toBeNull();
   });
 
   it('local mode: no setup step', async () => {
@@ -465,6 +539,20 @@ describe('setup step with the agent connection check (agent mode)', () => {
       await advance(0);
       expect(createSpy).toHaveBeenCalledTimes(2);
       expect(screen.getByText('QWER-2345')).toBeTruthy();
+    });
+
+    it('the folded line\'s Check again asks for a new code and keeps focus off body', async () => {
+      sessionStorage.setItem('dss.agentReady', '1');
+      const { createSpy } = await openSetup(() => checkIn('waiting', { code: 'QWER-2345' }));
+      expect(createSpy).toHaveBeenCalledTimes(0);
+      const again = screen.getByRole('button', { name: 'Check again' });
+      again.focus();
+      fireEvent.click(again);
+      expect(document.activeElement).not.toBe(document.body);
+      await advance(0);
+      expect(createSpy).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('QWER-2345')).toBeTruthy();
+      expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Windows (PowerShell)' }));
     });
 
     it('failed with only the sign-in missing says to sign in to the agent\'s Chrome window', async () => {

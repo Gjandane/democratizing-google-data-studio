@@ -1,8 +1,9 @@
 import { CircleCheck, CircleX, Clock } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../../../api/client';
 import { ApiError, type AgentCheck, type AgentCheckResult } from '../../../api/types';
 import { Button } from '../../../components/Button';
+import { focusableIn } from '../../../components/focus';
 import { Panel } from '../../../components/Panel';
 import { Spinner } from '../../../components/Spinner';
 import { clock, secondsLeft } from './JobPanel';
@@ -14,7 +15,8 @@ export const AGENT_CHECK_POLL_MS = 3000;
 /** sessionStorage key of the passed check: a boolean only, never the code. */
 export const AGENT_READY_KEY = 'dss.agentReady';
 
-function readReady(): boolean {
+/** A check passed earlier in this tab. */
+export function readReady(): boolean {
   try {
     return window.sessionStorage.getItem(AGENT_READY_KEY) === '1';
   } catch {
@@ -71,14 +73,35 @@ function ItemList({ items }: { items: Item[] }) {
 const TITLE = 'Set up this computer';
 const HINT = <p className="text-label text-text-muted">Already set up? Build in Data Studio.</p>;
 
+/** The how-to steps between the Chrome line and the command tabs (docs/onboarding-ui.md#Setup modal). */
+export const SETUP_STEPS = [
+  'Pick your system and copy the command.',
+  'Paste it into PowerShell (Windows: Start menu, type PowerShell) or Terminal (macOS/Linux) and press Enter.',
+  "If a Chrome window opens, sign in to Google and accept Data Studio's terms if it asks.",
+  'Keep this page open. It shows Agent ready when the check passes.',
+];
+
+export type SetupOutcome = 'passed' | 'failed' | 'expired';
+
+interface SetupPanelProps {
+  /** Open on the check-code flow and ask for a code even when a check passed in this tab. */
+  startUnfolded?: boolean;
+  /** Told each time the check ends. */
+  onState?: (state: SetupOutcome) => void;
+  /** The line under the step; `null` for none. */
+  hint?: ReactNode;
+  /** No Panel and no title of its own: the container (a Modal) gives both. */
+  bare?: boolean;
+}
+
 /**
  * Agent mode (api.md 3.4 Checks): the setup step before the first Build. Asks for a check code,
  * shows the setup commands with it and reads the check every 3 s while it waits. A passed check
  * is remembered for the tab as a boolean (never the code); the step then folds to one line.
- * Build is never gated by it.
+ * Build is never gated by it. The landing's setup modal holds it too, `bare` and `startUnfolded`.
  */
-export function SetupPanel() {
-  const [folded, setFolded] = useState(readReady);
+export function SetupPanel({ startUnfolded = false, onState, hint = HINT, bare = false }: SetupPanelProps = {}) {
+  const [folded, setFolded] = useState(() => !startUnfolded && readReady());
   const [check, setCheck] = useState<AgentCheck | null>(null);
   /** The check is gone on the server (404). */
   const [gone, setGone] = useState(false);
@@ -88,6 +111,9 @@ export function SetupPanel() {
   const [, setTick] = useState(0);
   const seq = useRef(0);
   const mounted = useRef(true);
+  const content = useRef<HTMLDivElement>(null);
+  /** A button of ours asked for a new code (or the modal just opened): focus follows to the next state, never to body. */
+  const refocus = useRef(startUnfolded);
 
   useEffect(() => {
     mounted.current = true;
@@ -128,12 +154,20 @@ export function SetupPanel() {
     );
   }, []);
 
+  const again = useCallback(() => {
+    refocus.current = true;
+    create();
+  }, [create]);
+
   // Once on mount, and again when the folded line unfolds.
   useEffect(() => {
     if (!folded) create();
   }, [folded, create]);
 
-  const waiting = check?.state === 'waiting' && !gone;
+  const remaining = check ? secondsLeft(check.expires_at) : 0;
+  /** The countdown ran out before the server said so: reading it again can't help. */
+  const timedOut = check?.state === 'waiting' && remaining <= 0;
+  const waiting = check?.state === 'waiting' && !gone && !timedOut;
   const checkId = check?.check_id;
 
   // The one poller: a timeout chain that exists only while the check waits.
@@ -157,6 +191,23 @@ export function SetupPanel() {
     if (passed || failed) rememberReady(passed);
   }, [passed, failed]);
 
+  const expired = gone || check?.state === 'expired' || timedOut;
+  const outcome: SetupOutcome | null = !check && !gone ? null : expired ? 'expired' : passed ? 'passed' : failed ? 'failed' : null;
+  const report = useRef(onState);
+  report.current = onState;
+  useEffect(() => {
+    if (outcome) report.current?.(outcome);
+  }, [outcome]);
+
+  // The pressed button is gone: hold focus on the step while the code loads, then its first control.
+  useLayoutEffect(() => {
+    const node = content.current;
+    if (!refocus.current || !node) return;
+    const settled = check !== null || createFailed;
+    if (settled) refocus.current = false;
+    (settled ? focusableIn(node)[0] ?? node : node).focus();
+  });
+
   if (folded) {
     return (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -164,22 +215,26 @@ export function SetupPanel() {
           <CircleCheck aria-hidden="true" className="size-4 shrink-0 text-success" />
           Agent ready on this computer
         </p>
-        <Button variant="ghost" size="sm" onClick={() => setFolded(false)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            refocus.current = true;
+            setFolded(false);
+          }}
+        >
           Check again
         </Button>
       </div>
     );
   }
 
-  const remaining = check ? secondsLeft(check.expires_at) : 0;
-  const expired = gone || check?.state === 'expired' || (waiting && remaining <= 0);
-
   let body;
   if (createFailed) {
     body = (
       <>
         <p role="alert" className="text-body text-danger">Couldn't get a check code. Try again.</p>
-        <div><Button onClick={create}>Try again</Button></div>
+        <div><Button onClick={again}>Try again</Button></div>
       </>
     );
   } else if (!check) {
@@ -193,7 +248,7 @@ export function SetupPanel() {
     body = (
       <>
         <p role="status" className="text-body text-text-muted">That check code expired.</p>
-        <div><Button variant="primary" onClick={create}>Get a new code</Button></div>
+        <div><Button variant="primary" onClick={again}>Get a new code</Button></div>
       </>
     );
   } else if (check.state === 'passed') {
@@ -215,7 +270,7 @@ export function SetupPanel() {
         ) : (
           <p className="text-body text-text-muted">The agent reported nothing usable. Rerun the setup command, then check again.</p>
         )}
-        <div><Button variant="primary" onClick={create}>Check again</Button></div>
+        <div><Button variant="primary" onClick={again}>Check again</Button></div>
       </>
     );
   } else {
@@ -223,9 +278,6 @@ export function SetupPanel() {
     body = (
       <>
         <ChromeLine />
-        <p className="text-body text-text">
-          Run this once in a terminal on the computer you will build on. It installs the agent, you sign in to Google in its Chrome window, then it checks.
-        </p>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <p className="text-body text-text-muted">
             Check code{' '}
@@ -236,6 +288,11 @@ export function SetupPanel() {
             <span className="tabular-nums">Code expires in {clock(remaining)}</span>
           </p>
         </div>
+        <ol aria-label="Steps" className="flex list-decimal flex-col gap-1 pl-5 text-body text-text marker:font-semibold marker:text-primary">
+          {SETUP_STEPS.map((step) => (
+            <li key={step}>{step}</li>
+          ))}
+        </ol>
         <SetupCommandTabs commands={commands} />
         <p role="status" className="flex items-center gap-2 text-body text-text-muted">
           <Spinner className="text-primary" />
@@ -245,10 +302,16 @@ export function SetupPanel() {
     );
   }
 
-  return (
-    <Panel title={TITLE} bodyClassName="flex flex-col gap-3 px-4 py-3">
+  const inner = (
+    <div ref={content} tabIndex={-1} className="flex flex-col gap-3 outline-none">
       {body}
-      {HINT}
+      {hint}
+    </div>
+  );
+  if (bare) return inner;
+  return (
+    <Panel title={TITLE} bodyClassName="px-4 py-3">
+      {inner}
     </Panel>
   );
 }

@@ -303,6 +303,30 @@ describe('Modal', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(document.activeElement).toBe(opener);
   });
+
+  it('closes on a press on the backdrop by default, and stays open with closeOnBackdrop false', () => {
+    const onClose = vi.fn();
+    const { rerender } = render(
+      <Modal open onClose={onClose} title="Settings">
+        <Input label="Dataset" />
+      </Modal>,
+    );
+    const backdrop = () => screen.getByRole('dialog', { name: 'Settings' }).parentElement as HTMLElement;
+    fireEvent.pointerDown(screen.getByLabelText('Dataset'));
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.pointerDown(backdrop());
+    expect(onClose).toHaveBeenCalledOnce();
+
+    rerender(
+      <Modal open onClose={onClose} title="Settings" closeOnBackdrop={false}>
+        <Input label="Dataset" />
+      </Modal>,
+    );
+    fireEvent.pointerDown(backdrop());
+    expect(onClose).toHaveBeenCalledOnce();
+    fireEvent.keyDown(document.activeElement as Element, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('Popover', () => {

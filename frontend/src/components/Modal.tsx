@@ -15,6 +15,8 @@ interface ModalProps {
   initialFocus?: RefObject<HTMLElement | null>;
   /** `wide`: 720 px at most (Settings); `xl`: 1280 px at most (Trace, whose run rows expand into a wide table). */
   size?: 'sm' | 'md' | 'wide' | 'lg' | 'xl';
+  /** A press on the backdrop closes the dialog (default); false keeps it open. */
+  closeOnBackdrop?: boolean;
   children: ReactNode;
 }
 
@@ -22,9 +24,9 @@ const widths = { sm: 'max-w-sm', md: 'max-w-lg', wide: 'max-w-180', lg: 'max-w-4
 
 /**
  * A modal dialog: focus is trapped inside while it is open and returns to where it was on close;
- * Esc, the close button and a press on the backdrop close it.
+ * Esc, the close button and (unless `closeOnBackdrop` is false) a press on the backdrop close it.
  */
-export function Modal({ open, onClose, title, description, footer, initialFocus, size = 'md', children }: ModalProps) {
+export function Modal({ open, onClose, title, description, footer, initialFocus, size = 'md', closeOnBackdrop = true, children }: ModalProps) {
   const dialog = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const descriptionId = useId();
@@ -77,7 +79,7 @@ export function Modal({ open, onClose, title, description, footer, initialFocus,
     <div
       className="fixed inset-0 z-40 flex items-center justify-center bg-text/40 p-6"
       onPointerDown={(event) => {
-        if (event.target === event.currentTarget) onCloseRef.current();
+        if (closeOnBackdrop && event.target === event.currentTarget) onCloseRef.current();
       }}
     >
       <div

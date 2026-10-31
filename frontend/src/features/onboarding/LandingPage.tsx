@@ -1,10 +1,12 @@
-import { ArrowRight, Plus } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ArrowRight, CircleCheck, Laptop, Plus } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { Button } from '../../components/Button';
+import { Modal } from '../../components/Modal';
 import { DashboardsLoading, HistoryPage } from '../history/HistoryPage';
 import { NewBuildDialog } from '../history/NewBuildDialog';
 import { useHostingLoad } from '../workspace/build/hosting';
+import { readReady, SetupPanel, type SetupOutcome } from '../workspace/build/SetupPanel';
 import { HowItWorks } from './HowItWorks';
 import { useOnboardingSeen } from './seen';
 
@@ -39,6 +41,8 @@ const SHOTS = [
   },
 ];
 
+const SETUP_TITLE = 'Set up this computer';
+
 const badge = 'flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-caption font-semibold text-on-primary';
 
 /** The first-visit landing page at `/welcome`, agent mode only (docs/onboarding-ui.md#Landing layout). */
@@ -46,6 +50,15 @@ export function LandingPage({ shareData }: { shareData: boolean }) {
   const navigate = useNavigate();
   const { markSeen } = useOnboardingSeen();
   const [creating, setCreating] = useState(false);
+  /** A check passed in this tab (the SetupPanel's sessionStorage boolean). */
+  const [ready, setReady] = useState(readReady);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [outcome, setOutcome] = useState<SetupOutcome | null>(null);
+  const setupButton = useRef<HTMLButtonElement>(null);
+  const checkAgain = useRef<HTMLButtonElement>(null);
+  const done = useRef<HTMLButtonElement>(null);
+  /** The dialog closed: focus goes to whichever hero control shows now (the opener may be gone). */
+  const refocus = useRef(false);
 
   useEffect(() => {
     const previous = document.title;
@@ -60,6 +73,36 @@ export function LandingPage({ shareData }: { shareData: boolean }) {
     setCreating(true);
   };
 
+  const openSetup = () => {
+    setOutcome(null);
+    setSetupOpen(true);
+  };
+
+  const closeSetup = () => {
+    refocus.current = true;
+    setSetupOpen(false);
+  };
+
+  const onSetupState = (state: SetupOutcome) => {
+    setOutcome(state);
+    if (state === 'passed') setReady(true);
+    else if (state === 'failed') setReady(false);
+  };
+
+  // After Modal's own restore (its cleanup runs first), so the right control wins.
+  useEffect(() => {
+    if (setupOpen || !refocus.current) return;
+    refocus.current = false;
+    (ready ? checkAgain : setupButton).current?.focus();
+  }, [setupOpen, ready]);
+
+  // Passed: the focused tab or Copy button is gone, so Done takes focus.
+  useLayoutEffect(() => {
+    if (outcome !== 'passed') return;
+    const active = document.activeElement;
+    if (!active || active === document.body) done.current?.focus();
+  }, [outcome]);
+
   const proceed = () => {
     markSeen();
     navigate('/');
@@ -73,12 +116,46 @@ export function LandingPage({ shareData }: { shareData: boolean }) {
         <p className="mt-2 text-title text-text-muted">
           Design it here step by step. Then a small agent on your computer builds it in your own Data Studio account.
         </p>
-        <div className="mt-4 flex items-center gap-3">
+        <div className="mt-4 flex flex-wrap items-center gap-3">
           <Button variant="primary" icon={<Plus aria-hidden="true" />} onClick={start}>
             Start a new dashboard
           </Button>
+          {ready ? (
+            <div className="flex items-center gap-2">
+              <p className="flex items-center gap-2 text-body text-text">
+                <CircleCheck aria-hidden="true" className="size-4 shrink-0 text-success" />
+                Agent ready on this computer
+              </p>
+              <Button ref={checkAgain} variant="ghost" size="sm" onClick={openSetup}>
+                Check again
+              </Button>
+            </div>
+          ) : (
+            <Button ref={setupButton} icon={<Laptop aria-hidden="true" />} onClick={openSetup}>
+              {SETUP_TITLE}
+            </Button>
+          )}
         </div>
       </header>
+      {/* Mounted only while open: each opening asks for a new check code, closing drops it. */}
+      {setupOpen && (
+        <Modal
+          open
+          onClose={closeSetup}
+          title={SETUP_TITLE}
+          size="wide"
+          closeOnBackdrop={false}
+          footer={
+            outcome === 'passed' ? (
+              <Button ref={done} variant="primary" onClick={closeSetup}>
+                Done
+              </Button>
+            ) : undefined
+          }
+        >
+          <SetupPanel bare startUnfolded hint={null} onState={onSetupState} />
+        </Modal>
+      )}
       {/* Mounted only while open, so each new build starts from a blank form. */}
       {creating && <NewBuildDialog open onClose={() => setCreating(false)} />}
 

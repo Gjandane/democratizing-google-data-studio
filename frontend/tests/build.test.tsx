@@ -127,6 +127,8 @@ describe('Build stage in local mode', () => {
     await withRecipe();
     expect(screen.queryByRole('heading', { name: 'Set up this computer' })).toBeNull();
     expect(screen.queryByText('Agent ready on this computer')).toBeNull();
+    expect(screen.queryByText(/^To continue, the build agent runs this build/)).toBeNull();
+    expect(screen.queryByText('Pick your system and copy the command.')).toBeNull();
   });
 });
 

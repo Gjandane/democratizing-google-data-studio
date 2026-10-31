@@ -1,4 +1,4 @@
-import { CircleCheck, CircleX, ExternalLink, Hammer } from 'lucide-react';
+import { CircleCheck, CircleX, ExternalLink, Hammer, Info } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../../../api/client';
 import { ApiError, HOSTED_ERROR_CODES, type Build, type EngineStatus, type Recipe } from '../../../api/types';
@@ -69,6 +69,18 @@ function ResultCard({ run }: { run: BuildRun }) {
         )}
       </div>
     </section>
+  );
+}
+
+/** Agent mode: the Build step runs the compiled recipe on the visitor's computer, with no model calls. */
+export const AGENT_NOTE = 'To continue, the build agent runs this build on your computer, in your own Chrome. This step makes no AI calls, so it uses no AI tokens.';
+
+function AgentNote() {
+  return (
+    <p className="flex items-start gap-2 rounded-control bg-surface-muted p-3 text-label text-text">
+      <Info aria-hidden="true" className="mt-px size-4 shrink-0 text-primary" />
+      {AGENT_NOTE}
+    </p>
   );
 }
 
@@ -171,6 +183,7 @@ export function BuildStage({ build, run: streamRun, referencesReady = true, feas
 
   return (
     <div className="mt-6 space-y-4">
+      {agent && build.stage !== 'done' && <AgentNote />}
       <SampleDataBanner sources={build.sources}>
         This dashboard is built from invented rows, and Data Studio shows it with the same label.
       </SampleDataBanner>

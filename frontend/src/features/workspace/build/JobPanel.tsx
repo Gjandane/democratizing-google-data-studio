@@ -151,7 +151,9 @@ export function JobPanel({ buildId, stage, jobKey, starting, shareData, runExpir
   return (
     <Panel title="Build on your computer" bodyClassName="flex flex-col gap-3 px-4 py-3">
       <ChromeLine />
-      <p className="text-body text-text">Run this in a terminal on the computer signed in to Data Studio.</p>
+      <p className="text-body text-text">
+        Paste it into PowerShell (Windows) or Terminal (macOS/Linux) and press Enter. On a computer without the agent, the first run installs it and asks you to sign in to Google.
+      </p>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <p className="text-body text-text-muted">
           Build code{' '}
