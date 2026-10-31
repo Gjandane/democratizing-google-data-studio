@@ -836,3 +836,15 @@ context. Task status lives in docs/plan.md, not here.
 - Delta audit: 0 P0, 3 P1 (no live view in local mode -> gdigrab of the engine's Chrome; the interview is now the staged Context/Outline/Design/Blueprint/Prototype UI; pinned comment texts with Discard before the recipe), 8 P2 (opaque masks for the project ID, Playwright ffmpeg install + legibility test clip, per-stage resumable clips and a partial cap, SRT ignored, SRT check in 5.1, no stale d1, History report pans, retimed rows 8-9) and 5 P3, all applied (user cards). Checked here: backend runs dsengine without `--screencast` (execute.py), LiveViewPanel renders only with a frame; local ffmpeg has gdigrab, ebur128, subtitles, overlay and libx264.
 - Lint warnings that predate this change: plan 22 tasks, essentials and AGENTS.md over their length guides.
 
+
+## 2026-10-31: Task 5.1 Video storyboard and captions
+- Status: done
+- Plan check: off
+- What changed: new deck/video/storyboard.json (11 segments, 240 s; 27 shots; 47 cues, 511 words; 18 callouts; 2 masks; credit_name "Prisma team"), user-approved at the STOP; integration/video/check_storyboard.py; .gitignore demo-video lines.
+- Checks: `uv run --project integration python integration/video/check_storyboard.py` PASS 8/8 rc 0; scratch 3-line cue copy FAIL "cue 1: 3 lines" rc 1; scratch project-number copy FAIL "private values" rc 1 (both deleted); `git check-ignore` hits demo.mp4, demo.srt, raw/a.mp4, build/x.png, music.mp3; Test (all) check_contracts.py PASS 13/13. Reviewer: no P0/P1/P2.
+- Decisions: words 450-550 (Spec 400-550 and Done when 450-650 both hold). All times on the final timeline (s); shots tile each segment, carry start/end + clip/in/out (null) and speed (1) for 5.2. Callout boxes {x,y,w,h} in the 1920x1080 frame, above `frame.caption_bar_top` 880, color a Google accent; mask boxes in the shot's source pixels. Boxes are placeholders until footage (5.2/5.3). Check reuses check_repo's read_env_values/private_needle; `--storyboard`/`--srt` override paths.
+- Digest: deck/video/storyboard.json: frame{width,height,fps,caption_bar_top}, credit_name, music_credit, segments[{id,title,start,end}], shots[{id,segment,source,start,end,clip,in,out,speed}], cues[{start,end,text}], callouts[{start,end,label,color,box}], masks[{shot,start,end,box}]
+- Tried and failed: none
+- Gotchas: none
+- Left open: P3 cues "I fix one KPI card" and "Each step turns green" play over the next shot - storyboard.json (retime in 5.2); P3 mask check tests presence, not time coverage or the segment 11 code - check_storyboard.py; P3 10 s boundary drift not enforced - check_storyboard.py; P3 music_credit/clip keys unchecked, non-KeyError errors print type only - check_storyboard.py; P3 cue 8 names BigQuery/GCS sources the hosted link locks (user-approved text) - storyboard.json.
+- Next: Task 5.2. Start by reading docs/demo-video.md#Recording and the storyboard's shots; record the 10 s legibility test clip first.

@@ -1,0 +1,846 @@
+{
+ "title": "Democratizing Google Data Studio",
+ "frame": {
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "caption_bar_top": 880
+ },
+ "credit_name": "Prisma team",
+ "music_credit": "",
+ "segments": [
+  {
+   "id": 1,
+   "title": "Hook",
+   "start": 0,
+   "end": 20
+  },
+  {
+   "id": 2,
+   "title": "Connect",
+   "start": 20,
+   "end": 40
+  },
+  {
+   "id": 3,
+   "title": "Context and outline",
+   "start": 40,
+   "end": 65
+  },
+  {
+   "id": 4,
+   "title": "Design and prototype",
+   "start": 65,
+   "end": 95
+  },
+  {
+   "id": 5,
+   "title": "Edit by comment",
+   "start": 95,
+   "end": 115
+  },
+  {
+   "id": 6,
+   "title": "Honest refusal",
+   "start": 115,
+   "end": 125
+  },
+  {
+   "id": 7,
+   "title": "Trace and cost",
+   "start": 125,
+   "end": 140
+  },
+  {
+   "id": 8,
+   "title": "Build",
+   "start": 140,
+   "end": 165
+  },
+  {
+   "id": 9,
+   "title": "Screenshot recreation",
+   "start": 165,
+   "end": 190
+  },
+  {
+   "id": 10,
+   "title": "Architecture",
+   "start": 190,
+   "end": 225
+  },
+  {
+   "id": 11,
+   "title": "Judge path and end",
+   "start": 225,
+   "end": 240
+  }
+ ],
+ "shots": [
+  {
+   "id": "s1-title",
+   "segment": 1,
+   "source": "card",
+   "start": 0,
+   "end": 5,
+   "what": "title card: Democratizing Google Data Studio, over the montage"
+  },
+  {
+   "id": "s1-montage",
+   "segment": 1,
+   "source": "history",
+   "start": 5,
+   "end": 20,
+   "what": "montage of finished reports (screenshot pans; never d1)",
+   "clip": null,
+   "in": null,
+   "out": null,
+   "speed": 1
+  },
+  {
+   "id": "s2-card",
+   "segment": 2,
+   "source": "card",
+   "start": 20,
+   "end": 22,
+   "what": "section card: Connect"
+  },
+  {
+   "id": "s2-upload",
+   "segment": 2,
+   "source": "live",
+   "start": 22,
+   "end": 40,
+   "what": "new build, upload samples/ecommerce_sales.csv, the sources table",
+   "clip": null,
+   "in": null,
+   "out": null,
+   "speed": 1
+  },
+  {
+   "id": "s3-context",
+   "segment": 3,
+   "source": "live",
+   "start": 40,
+   "end": 55,
+   "what": "Context: the notes box, the drafted Audience and KPI cards, one KPI edited",
+   "clip": null,
+   "in": null,
+   "out": null,
+   "speed": 1
+  },
+  {
+   "id": "s3-outline",
+   "segment": 3,
+   "source": "live",
+   "start": 55,
+   "end": 65,
+   "what": "Outline: the picks",
+   "clip": null,
+   "in": null,
+   "out": null,
+   "speed": 1
+  },
+  {
+   "id": "s4-design",
+   "segment": 4,
+   "source": "live",
+   "start": 65,
+   "end": 73,
+   "what": "Design: the preset",
+   "clip": null,
+   "in": null,
+   "out": null,
+   "speed": 1
+  },
+  {
+   "id": "s4-blueprint",
+   "segment": 4,
+   "source": "live",
+   "start": 73,
+   "end": 82,
+   "what": "Blueprint: the table",
+   "clip": null,
+   "in": null,
+   "out": null,
+   "speed": 1
+  },
+  {
+   "id": "s4-prototype",
+   "segment": 4,
+   "source": "live",
+   "start": 82,
+   "end": 95,
+   "what": "Prototype: the HTML prototype",
+   "clip": null,
+   "in": null,
+   "out": null,
+   "speed": 1
+  },
+  {
+   "id": "s5-comment",
+   "segment": 5,
+   "source": "live",
+   "start": 95,
+   "end": 106,
+   "what": "click-to-comment on the prototype title: Change the title to \"<a title>\".",
+   "clip": null,
+   "in": null,
+   "out": null,
+   "speed": 1
+  },
+  {
+   "id": "s5-revised",
+   "segment": 5,
+   "source": "live",
+   "start": 106,
+   "end": 115,
+   "what": "the revised prototype with the new title",
+   "clip": null,
+   "in": null,
+   "out": null,
+   "speed": 1
+  },
+  {
+   "id": "s6-refusal",
+   "segment": 6,
+   "source": "live",
+   "start": 115,
+   "end": 125,
+   "what": "refused ask (3D globe of orders) as a separate comment, the feasibility refusal, Discard",
+   "clip": null,
+   "in": null,
+   "out": null,
+   "speed": 1
+  },
+  {
+   "id": "s7-strip",
+   "segment": 7,
+   "source": "live",
+   "start": 125,
+   "end": 131,
+   "what": "activity strip with token counts",
+   "clip": null,
+   "in": null,
+   "out": null,
+   "speed": 1
+  },
+  {
+   "id": "s7-trace",
+   "segment": 7,
+   "source": "live",
+   "start": 131,
+   "end": 140,
+   "what": "Trace modal: graph nodes, calls, tokens",
+   "clip": null,
+   "in": null,
+   "out": null,
+   "speed": 1
+  },
+  {
+   "id": "s8-recipe",
+   "segment": 8,
+   "source": "live",
+   "start": 140,
+   "end": 147,
+   "what": "Generate recipe, Build in Data Studio, recipe ops turning ok",
+   "clip": null,
+   "in": null,
+   "out": null,
+   "speed": 1
+  },
+  {
+   "id": "s8-chrome",
+   "segment": 8,
+   "source": "live",
+   "start": 147,
+   "end": 158,
+   "what": "engine's Chrome building the report (gdigrab, sped up, speed labeled)",
+   "clip": null,
+   "in": null,
+   "out": null,
+   "speed": 1
+  },
+  {
+   "id": "s8-report",
+   "segment": 8,
+   "source": "live",
+   "start": 158,
+   "end": 165,
+   "what": "the finished report, screenshot pans from the engine's Chrome",
+   "clip": null,
+   "in": null,
+   "out": null,
+   "speed": 1
+  },
+  {
+   "id": "s9-card",
+   "segment": 9,
+   "source": "card",
+   "start": 165,
+   "end": 167,
+   "what": "section card: From a screenshot"
+  },
+  {
+   "id": "s9-history",
+   "segment": 9,
+   "source": "history",
+   "start": 167,
+   "end": 182,
+   "what": "finished screenshot build in History: reference screenshot, generated data, prototype",
+   "clip": null,
+   "in": null,
+   "out": null,
+   "speed": 1
+  },
+  {
+   "id": "s9-report",
+   "segment": 9,
+   "source": "history",
+   "start": 182,
+   "end": 190,
+   "what": "its report, screenshot pans from the engine's Chrome",
+   "clip": null,
+   "in": null,
+   "out": null,
+   "speed": 1
+  },
+  {
+   "id": "s10-card",
+   "segment": 10,
+   "source": "card",
+   "start": 190,
+   "end": 192,
+   "what": "section card: Under the hood"
+  },
+  {
+   "id": "s10-d5",
+   "segment": 10,
+   "source": "image",
+   "start": 192,
+   "end": 204,
+   "what": "deck/img/d5-adk-graph.png"
+  },
+  {
+   "id": "s10-d4",
+   "segment": 10,
+   "source": "image",
+   "start": 204,
+   "end": 215,
+   "what": "deck/img/d4-harness-memory.png"
+  },
+  {
+   "id": "s10-d8",
+   "segment": 10,
+   "source": "image",
+   "start": 215,
+   "end": 225,
+   "what": "deck/img/d8-cloud-run.png"
+  },
+  {
+   "id": "s11-home",
+   "segment": 11,
+   "source": "image",
+   "start": 225,
+   "end": 229,
+   "what": "docs/img/onboarding-4.8-home.png"
+  },
+  {
+   "id": "s11-setup",
+   "segment": 11,
+   "source": "image",
+   "start": 229,
+   "end": 234,
+   "what": "docs/img/onboarding-4.8-setup.png"
+  },
+  {
+   "id": "s11-end",
+   "segment": 11,
+   "source": "card",
+   "start": 234,
+   "end": 240,
+   "what": "end card: GitHub URL, hosted link in the submission, name, music credit"
+  }
+ ],
+ "cues": [
+  {
+   "start": 0.3,
+   "end": 2.9,
+   "text": "Data Studio is free and powerful."
+  },
+  {
+   "start": 3.1,
+   "end": 8.26,
+   "text": "But a good dashboard still takes hours\nof drag-and-drop and design sense."
+  },
+  {
+   "start": 8.46,
+   "end": 15.44,
+   "text": "What if I could just talk it through,\nand get a real report at the end?"
+  },
+  {
+   "start": 15.64,
+   "end": 19.51,
+   "text": "That's what this app does.\nLet me show you."
+  },
+  {
+   "start": 20.3,
+   "end": 23.94,
+   "text": "I start a new build and upload\nmy e-commerce sales CSV."
+  },
+  {
+   "start": 24.14,
+   "end": 28.43,
+   "text": "It loads the file into BigQuery\nand reads the columns and their types."
+  },
+  {
+   "start": 28.63,
+   "end": 30.94,
+   "text": "A CSV is just one way in."
+  },
+  {
+   "start": 31.14,
+   "end": 35.43,
+   "text": "It also takes BigQuery tables, a CSV\nin Cloud Storage, or a screenshot."
+  },
+  {
+   "start": 35.63,
+   "end": 39.59,
+   "text": "Or I just ask a question,\nand research mode finds the data."
+  },
+  {
+   "start": 40.3,
+   "end": 46.75,
+   "text": "First it asks what I need.\nI type a few notes in my own words."
+  },
+  {
+   "start": 46.95,
+   "end": 52.11,
+   "text": "It drafts who the dashboard is for\nand what it must answer."
+  },
+  {
+   "start": 52.31,
+   "end": 57.9,
+   "text": "Like an analyst would: an audience,\nand the KPIs that matter to them."
+  },
+  {
+   "start": 58.1,
+   "end": 64.55,
+   "text": "I fix one KPI card. Then it proposes\nan outline, and I pick the parts."
+  },
+  {
+   "start": 65.3,
+   "end": 70.04,
+   "text": "Next, the look. I pick a design preset."
+  },
+  {
+   "start": 70.24,
+   "end": 77.3,
+   "text": "It turns the outline into a blueprint:\nevery chart, field and filter."
+  },
+  {
+   "start": 77.5,
+   "end": 83.4,
+   "text": "Then it builds an HTML prototype\nof the whole dashboard."
+  },
+  {
+   "start": 83.6,
+   "end": 89.5,
+   "text": "A designer's layout, before anything\nis built in Data Studio."
+  },
+  {
+   "start": 89.7,
+   "end": 94.44,
+   "text": "Nothing is built yet,\nso changes are cheap."
+  },
+  {
+   "start": 95.3,
+   "end": 100.14,
+   "text": "Want a change? I click the title\nand leave a comment."
+  },
+  {
+   "start": 100.34,
+   "end": 105.7,
+   "text": "It applies my comment and redraws\nthe prototype with the new title."
+  },
+  {
+   "start": 105.9,
+   "end": 110.3,
+   "text": "Any part of the prototype takes\na comment like this."
+  },
+  {
+   "start": 110.5,
+   "end": 114.47,
+   "text": "Once it's built, each change\nbecomes a new version."
+  },
+  {
+   "start": 115.3,
+   "end": 118.54,
+   "text": "I ask for a 3D globe of orders."
+  },
+  {
+   "start": 118.74,
+   "end": 121.55,
+   "text": "It refuses: Data Studio can't do that."
+  },
+  {
+   "start": 121.75,
+   "end": 124.56,
+   "text": "What I approve is what gets built."
+  },
+  {
+   "start": 125.3,
+   "end": 129.96,
+   "text": "Every step shows up in the activity\nstrip, with its token count."
+  },
+  {
+   "start": 130.16,
+   "end": 135.15,
+   "text": "The trace links each call back to\nits node in the ADK graph."
+  },
+  {
+   "start": 135.35,
+   "end": 139.59,
+   "text": "So I can see what it did\nand what it cost."
+  },
+  {
+   "start": 140.3,
+   "end": 145.46,
+   "text": "Happy with it, I generate the recipe:\na list of build steps."
+  },
+  {
+   "start": 145.66,
+   "end": 150.4,
+   "text": "Then the engine drives Data Studio\nin Chrome, step by step."
+  },
+  {
+   "start": 150.6,
+   "end": 153.61,
+   "text": "Each step turns green as it lands."
+  },
+  {
+   "start": 153.81,
+   "end": 158.97,
+   "text": "This part is sped up,\nas the label in the corner shows."
+  },
+  {
+   "start": 159.17,
+   "end": 164.33,
+   "text": "The result: a real Data Studio report,\nin my own Google account."
+  },
+  {
+   "start": 165.3,
+   "end": 170.96,
+   "text": "No data, just a dashboard I like?\nI give it a screenshot."
+  },
+  {
+   "start": 171.16,
+   "end": 175.86,
+   "text": "Here's an earlier build from History,\nstarted from a screenshot."
+  },
+  {
+   "start": 176.06,
+   "end": 180.76,
+   "text": "It can recreate that dashboard,\nor just borrow its style."
+  },
+  {
+   "start": 180.96,
+   "end": 186.1,
+   "text": "There was no data, so it synthesized\nsample data to match."
+  },
+  {
+   "start": 186.3,
+   "end": 189.51,
+   "text": "And here is the report it built."
+  },
+  {
+   "start": 190.3,
+   "end": 195.92,
+   "text": "Under the hood: an ADK 2.0 graph\nof LLM nodes and plain code nodes."
+  },
+  {
+   "start": 196.12,
+   "end": 199.69,
+   "text": "A feasibility gate refuses what\nData Studio can't do."
+  },
+  {
+   "start": 199.89,
+   "end": 202.29,
+   "text": "The harness has three memories."
+  },
+  {
+   "start": 202.49,
+   "end": 207.68,
+   "text": "Skills, for how to do each step.\nOKF semantic memory, instead of RAG."
+  },
+  {
+   "start": 207.88,
+   "end": 212.32,
+   "text": "And episodic memory in SQLite,\nwith every run and its trace."
+  },
+  {
+   "start": 212.52,
+   "end": 218.14,
+   "text": "The app runs on Cloud Run. A small\nbuild agent runs on your machine,"
+  },
+  {
+   "start": 218.34,
+   "end": 224.39,
+   "text": "so the report is built in your own\nData Studio, and your sign-in stays home."
+  },
+  {
+   "start": 225.3,
+   "end": 233.52,
+   "text": "To try it: \"Set up this computer\" once,\nthen build into your own account."
+  },
+  {
+   "start": 233.72,
+   "end": 239.62,
+   "text": "Code on GitHub.\nThe hosted link is in the submission."
+  }
+ ],
+ "callouts": [
+  {
+   "start": 30,
+   "end": 38,
+   "label": "Also: BigQuery, GCS, screenshot, research",
+   "color": "#4285F4",
+   "box": {
+    "x": 120,
+    "y": 160,
+    "w": 760,
+    "h": 320
+   }
+  },
+  {
+   "start": 45,
+   "end": 52,
+   "label": "Audience and KPI cards",
+   "color": "#34A853",
+   "box": {
+    "x": 400,
+    "y": 220,
+    "w": 1100,
+    "h": 420
+   }
+  },
+  {
+   "start": 52,
+   "end": 55,
+   "label": "Edited KPI card",
+   "color": "#FBBC04",
+   "box": {
+    "x": 400,
+    "y": 300,
+    "w": 520,
+    "h": 180
+   }
+  },
+  {
+   "start": 66,
+   "end": 72,
+   "label": "Design preset",
+   "color": "#4285F4",
+   "box": {
+    "x": 400,
+    "y": 200,
+    "w": 700,
+    "h": 400
+   }
+  },
+  {
+   "start": 74,
+   "end": 81,
+   "label": "Every chart, field and filter",
+   "color": "#34A853",
+   "box": {
+    "x": 300,
+    "y": 180,
+    "w": 1300,
+    "h": 560
+   }
+  },
+  {
+   "start": 84,
+   "end": 93,
+   "label": "HTML prototype",
+   "color": "#4285F4",
+   "box": {
+    "x": 300,
+    "y": 140,
+    "w": 1320,
+    "h": 700
+   }
+  },
+  {
+   "start": 96,
+   "end": 105,
+   "label": "Click to comment",
+   "color": "#FBBC04",
+   "box": {
+    "x": 320,
+    "y": 140,
+    "w": 900,
+    "h": 120
+   }
+  },
+  {
+   "start": 107,
+   "end": 114,
+   "label": "New title applied",
+   "color": "#34A853",
+   "box": {
+    "x": 320,
+    "y": 140,
+    "w": 900,
+    "h": 120
+   }
+  },
+  {
+   "start": 118,
+   "end": 124,
+   "label": "Refused: not buildable",
+   "color": "#EA4335",
+   "box": {
+    "x": 1300,
+    "y": 200,
+    "w": 560,
+    "h": 300
+   }
+  },
+  {
+   "start": 126,
+   "end": 131,
+   "label": "Tokens per step",
+   "color": "#4285F4",
+   "box": {
+    "x": 300,
+    "y": 80,
+    "w": 1300,
+    "h": 90
+   }
+  },
+  {
+   "start": 132,
+   "end": 139,
+   "label": "Graph node, calls, tokens",
+   "color": "#4285F4",
+   "box": {
+    "x": 400,
+    "y": 160,
+    "w": 1100,
+    "h": 600
+   }
+  },
+  {
+   "start": 141,
+   "end": 147,
+   "label": "Ops turning ok",
+   "color": "#34A853",
+   "box": {
+    "x": 1300,
+    "y": 160,
+    "w": 560,
+    "h": 640
+   }
+  },
+  {
+   "start": 168,
+   "end": 174,
+   "label": "Reference screenshot",
+   "color": "#4285F4",
+   "box": {
+    "x": 300,
+    "y": 160,
+    "w": 800,
+    "h": 500
+   }
+  },
+  {
+   "start": 175,
+   "end": 181,
+   "label": "Synthesized sample data",
+   "color": "#FBBC04",
+   "box": {
+    "x": 300,
+    "y": 160,
+    "w": 1300,
+    "h": 560
+   }
+  },
+  {
+   "start": 194,
+   "end": 202,
+   "label": "LLM and code nodes",
+   "color": "#4285F4",
+   "box": {
+    "x": 200,
+    "y": 160,
+    "w": 1500,
+    "h": 640
+   }
+  },
+  {
+   "start": 206,
+   "end": 213,
+   "label": "Three memories",
+   "color": "#34A853",
+   "box": {
+    "x": 200,
+    "y": 160,
+    "w": 1500,
+    "h": 640
+   }
+  },
+  {
+   "start": 217,
+   "end": 224,
+   "label": "Build agent on your machine",
+   "color": "#EA4335",
+   "box": {
+    "x": 1100,
+    "y": 160,
+    "w": 700,
+    "h": 640
+   }
+  },
+  {
+   "start": 230,
+   "end": 234,
+   "label": "Set up this computer",
+   "color": "#4285F4",
+   "box": {
+    "x": 400,
+    "y": 160,
+    "w": 1120,
+    "h": 600
+   }
+  }
+ ],
+ "masks": [
+  {
+   "shot": "s2-upload",
+   "start": 22,
+   "end": 40,
+   "box": {
+    "x": 120,
+    "y": 480,
+    "w": 900,
+    "h": 60
+   },
+   "covers": "sources table bq_table (project.dataset.table)"
+  },
+  {
+   "shot": "s11-setup",
+   "start": 229,
+   "end": 234,
+   "box": {
+    "x": 98,
+    "y": 90,
+    "w": 100,
+    "h": 32
+   },
+   "covers": "check code"
+  }
+ ]
+}

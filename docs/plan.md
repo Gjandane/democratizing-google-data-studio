@@ -218,7 +218,7 @@ Later; 2.7's committed driver code (label flip, analysis approval, .env.example 
 Change 2026-10-31 demo video: a ~4-minute captioned screen-capture demo, no voiceover, the user's
 music; the MP4 stays local and git-ignored (docs/demo-video.md).
 
-- [ ] 5.1 Video storyboard and captions
+- [x] 5.1 Video storyboard and captions
   - Goal: `deck/video/storyboard.json` holds the eleven segments with their shots, caption cues and callouts in the voice and rules of docs/demo-video.md, and the user has edited and approved the caption text before anything is recorded.
   - Files: deck/video/storyboard.json, integration/video/check_storyboard.py, .gitignore
   - Depends on: 4.8

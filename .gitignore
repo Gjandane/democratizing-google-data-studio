@@ -26,3 +26,10 @@ deck/render/
 # local media, not part of the repo
 /Democratize_datastudio.mp4
 /thinking.png
+
+# Demo video (docs/demo-video.md): the cut, its SRT, raw clips, build files and the music stay local
+deck/video/*.mp4
+deck/video/*.srt
+deck/video/raw/
+deck/video/build/
+deck/video/music.*
