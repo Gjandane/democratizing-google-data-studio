@@ -712,3 +712,17 @@ context. Task status lives in docs/plan.md, not here.
 - Why: the user opened the hosted link and found no word about the local build agent before the Build stage (user cards: dismissible panel, setup from the home panel, agent mode only, release 4.8 redeploys).
 - Affected tasks: 20.1, 20.2 new; release 4.8 `Needs: frontend 20.2`. No contract change (`POST /api/agent-checks` is not tied to a build). 20.2 also closes 19.3's Left open P2 (focus after Check again) and the poll-stop P3.
 - Delta audit: 0 P0/P1, 3 P2 (backdrop click closes the dialog mid-check; SetupPanel needs startUnfolded/onState/hint; focus after Done) + 5 P3, all applied in the docs (user cards).
+
+## 2026-10-31: Task 20.1 How it works panel on History
+- Status: blocked
+- Plan check: off
+- What changed: nothing kept. Built the History "How it works" panel (OnboardingPanel.tsx, useOnboarding hook, HistoryPage wiring, tests/onboarding.test.tsx, 7 screenshots); set aside in .blueprint/attempts/20.1/ (gitignored; HistoryPage.patch + full files + screenshots), not git stash (AGENTS.md gotcha).
+- Checks: `npm test -- onboarding history` PASS (2 files, 13 tests); `npm run typecheck` PASS; `npm test` PASS (612); `npm run build` exit 0; 1280: cards 3x276 px one row, first row top 652 < 800, no clip/h-scroll, focus ring on Hide. Reviewer: no findings.
+- Decisions: none kept.
+- Tried and failed: none; stopped at the task's STOP sign-off.
+- Gotchas: none
+- Left open: none
+- Blocked because: (b) at the STOP sign-off the user asked for a different design that changes the plan.
+- Question: How should first-visit onboarding be re-planned around the user's request: a separate landing page (screenshots of the build and the process, two buttons, the "How it works" content as in the attempt, and a Proceed button), plus a Build-stage note that continuing needs the downloaded local agent, which runs the build on the user's PC ("will not cost any tokens")?
+- Options: A re-plan 20.1 as a landing page route that reuses the attempt's panel and hook, then 20.2 / B keep the History panel and add the landing page as a new task / Recommend: A (user chose to block over keeping the panel; the attempt is reusable). Check the "no token cost" claim against the build flow before it goes into copy.
+- Next: architect resolves the block (`/blueprint-solution-architect`), then rebuild 20.1.

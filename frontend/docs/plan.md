@@ -364,7 +364,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: ../contracts/api.md 3.4 `AgentCheck` and conventions 1.7 setup-step command verbatim; Build never gated; the code never stored.
 
 ## Phase 20: First-visit onboarding (change 2026-10-31)
-- [ ] 20.1 How it works panel on History
+- [!] 20.1 How it works panel on History
   - Goal: in agent mode History shows the "How it works" panel of docs/onboarding-ui.md (three step cards with the stage chips, the "Before you start" items, Hide and the "How it works" reopen button), so a first-time visitor learns before any build that building needs the local build agent.
   - Files: src/features/history/HistoryPage.tsx, src/features/history/OnboardingPanel.tsx (new), src/mocks/*.ts, tests/onboarding.test.tsx (new), tests/history.test.tsx, screenshots/
   - Depends on: 19.3
