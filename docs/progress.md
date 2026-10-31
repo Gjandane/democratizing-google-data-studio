@@ -869,3 +869,15 @@ context. Task status lives in docs/plan.md, not here.
 - Ruling (user cards): A, Recreate from the reference's screenshots on the sample CSV; segment 9 kept (reframed: a screenshot alone, synthetic data); fix covers every component title (user: "it also happens to Scorecard names") plus grain words; hosted redeploy as a release task.
 - Affected tasks: backend 31.1 (new, first); release 4.9 (new), 5.2 (reopened, re-planned), 5.3 unchanged (Depends 5.2).
 - Delta audit: none (target POC).
+
+## 2026-10-31: Task 4.9 Hosted redeploy with clean titles
+- Status: done
+- Plan check: off
+- What changed: hosted redeployed after the user's deploy card (GET /api/builds: 21 builds, none at `build`, checked twice): `deploy.sh` (`--source .` at HEAD 4e26bfb, backend 31.1) -> rev dss-frontend-00009-m2h, 100% traffic. No repo file changed but this entry and the plan marker.
+- Checks: `bash deploy/deploy.sh` exit 0 (first try exit 1: gcloud reauth, user ran `gcloud auth login`); `/api/hosting` mode agent, public true, api_version 3.4; `e2e_flow1.py --until recipe --server "$DSS_AGENT_SERVER"` exit 0, build b_335b200ae225, 40 ops, hosted stop ticket; `files/recipe.jsonl` 200, title regex 0 hits on 12 titles: Total Revenue, Total Orders, Total Quantity Sold, Revenue Trend Over Time, Orders and Quantity Trend Over Time, Revenue and Orders by Customer Segment, Revenue by Country, Total Quantity Sold by Category, Revenue Share by Product Category, Quantity Share by Product Category, High Value vs Standard Orders by Category, Leading Products by Revenue and Unit Price; `check_repo.py` 10/10 PASS (rerun on the final HEAD before push); Test (all) check_contracts.py 13/13 PASS.
+- Decisions: Monthly clause vacuous here: both trends are on daily `order_date` with no grain word and `options: {}` (matches 31.1's rule); month grain left to backend 31.1's tests, per the If clause. The new bench file deck/data/bench-2026-10-31-hosted-recipe.json is untracked (no `git checkout --` possible): left uncommitted on purpose.
+- Digest: hosted rev dss-frontend-00009-m2h serves backend 31.1 (HEAD 4e26bfb): clean component titles; hosted build b_335b200ae225 recipe titles pass the 4.9 regex; main pushed after the user's card.
+- Tried and failed: none
+- Gotchas: b_335b200ae225 holds a waiting job ticket (stage `build`) for 30 min after 13:58 UTC (AGENTS.md gotcha).
+- Left open: P3 Monthly grain not shown on hosted (no Monthly title this run) - backend/src/dss/spec/models.py; P3 untracked bench-2026-10-31-hosted-recipe.json - deck/data/
+- Next: Task 5.2 Record the live run and the history walk.

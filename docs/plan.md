@@ -214,7 +214,7 @@ Later; 2.7's committed driver code (label flip, analysis approval, .env.example 
   - STOP: before the deploy, check `GET /api/builds` that no build is at stage `build` (a restart fails a claimed ticket with `agent_timeout`, api.md Agent endpoints), then a card: it replaces the live service's image (the link stays open, no data change) and names any build still at `build`; deploy only on the user's yes.
   - STOP: show the commit's file list, the author emails and the check_repo.py results; push only after the user confirms on a card.
 
-- [ ] 4.9 Hosted redeploy with clean titles
+- [x] 4.9 Hosted redeploy with clean titles
   - Goal: the hosted link serves backend 31.1, so a visitor's build has clean chart and scorecard titles and month-grain "Monthly" trends (change 2026-10-31 titles and grain words); main is pushed.
   - Files: docs/progress.md
   - Depends on: 4.8
