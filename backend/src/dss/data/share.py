@@ -1,4 +1,4 @@
-"""Share data (api.md 3.4, task 29.4): one run's view rows as one CSV on the mounted share bucket.
+"""Share data (api.md 3.4/3.5, tasks 29.4, 30.1): one run's view rows as one CSV on the mounted share bucket.
 
 Rows go only to `<DSS_SHARE_DIR>/<32 hex>/data.csv`: never to logs, traces, events or prompts.
 """
@@ -13,6 +13,7 @@ import secrets
 import shutil
 
 from dss.data.bigquery import quoted, table_uri
+from dss.data.profile import NUMBERS
 from dss.harness.guardrails import RunError
 from dss.recipe.compiler import share_header
 
@@ -44,22 +45,62 @@ def cell(value) -> str:
     return str(value)
 
 
+def summed(recipe: str, fields) -> set[str]:
+    """Sum-only numeric columns (api.md 3.5): NULL is written `0` so Data Studio types them Number.
+
+    A numeric, non-repeated column qualifies when the compiled ops name it in at least one
+    `metrics` entry with `agg: sum` and otherwise only in sorts; any other reference (another
+    agg, a dimension, breakdown, date dimension, control field, or any string in `options`)
+    keeps NULL empty, so every sum is unchanged and nothing else is.
+    """
+    numeric = {field.name for field in fields if field.field_type in NUMBERS and field.mode != "REPEATED"}
+    sums, other = set(), set()
+    for line in recipe.split("\n")[1:]:  # the header names the source, never a column
+        if not line.strip():
+            continue
+        op = json.loads(line)
+        if op.get("op") == "add_chart":
+            for metric in op.get("metrics") or []:
+                (sums if metric.get("agg") == "sum" else other).add(metric.get("field"))
+            other.update(op.get("dimensions") or [])
+            other.update({op.get("date_dimension"), op.get("breakdown")})
+            other.update(strings(op.get("options")))
+        elif op.get("op") == "add_control":
+            other.add(op.get("field"))
+    return numeric & sums - other
+
+
+def strings(value):
+    """Every string key and value in an options object: a possible field reference."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            yield key
+            yield from strings(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from strings(item)
+
+
 def query(bq, table):
-    """`SELECT * FROM <view>` through the existing client: column names and a row iterator."""
+    """`SELECT * FROM <view>` through the existing client: schema fields and a row iterator."""
     result = bq.client.query(f"SELECT * FROM {quoted(table_uri(table))}",
                              location=bq.config.bq_location, timeout=30).result(timeout=300)
     if (getattr(result, "total_rows", None) or 0) > MAX_ROWS:  # known up front: nothing is written
         raise TooLarge
-    return [field.name for field in result.schema], result
+    return list(result.schema), result
 
 
-def write(target: Path, names, rows):
+def write(target: Path, names, rows, zero=frozenset()):
     """Stream rows to target/data.csv.tmp, renamed to data.csv when complete; counts rows and
-    bytes while writing and removes the folder on any failure. Returns (rows, bytes)."""
+    bytes while writing and removes the folder on any failure. Columns in `zero` write NULL as
+    `0`. Returns (rows, bytes)."""
     target.mkdir()  # the share dir is the mount: never created here
     temporary, count, size = target / "data.csv.tmp", 0, 0
     buffer = io.StringIO()
     writer = csv.writer(buffer)
+    zeros = {index for index, name in enumerate(names) if name in zero}
     try:
         with open(temporary, "wb") as handle:
             writer.writerow(names)
@@ -68,7 +109,8 @@ def write(target: Path, names, rows):
                 if count > MAX_ROWS:
                     raise TooLarge
                 values = row.values() if hasattr(row, "values") else row
-                writer.writerow([cell(value) for value in values])
+                writer.writerow([cell(value) if value is not None or index not in zeros else "0"
+                                 for index, value in enumerate(values)])
                 if buffer.tell() >= 65536:
                     size = flush(buffer, handle, size)
             size = flush(buffer, handle, size)
@@ -93,16 +135,16 @@ def flush(buffer, handle, size):
 def export(factory, config, table, recipe, folder: Path, run_id, share_dir: Path, bucket):
     """Export the view for one run and record it with the version; blocking (run it in a thread).
 
-    `recipe` is the version's compiled text: the shared header is checked before BigQuery is
-    touched. Returns the record {folder, path, rows, bytes}; errors leave no file and no record.
+    `recipe` is the version's compiled text, the one the job ships: the shared header is checked
+    before BigQuery is touched, and its ops decide the sum-only columns. Returns the record {folder, path, rows, bytes}; errors leave no file and no record.
     """
     name = secrets.token_hex(16)
     path = f"{bucket}/{name}/data.csv"
     target = share_dir / name
     try:
         share_header(recipe, path)
-        names, rows = query(factory(config), table)
-        count, size = write(target, names, rows)  # removes its own folder on failure
+        fields, rows = query(factory(config), table)
+        count, size = write(target, [field.name for field in fields], rows, summed(recipe, fields))  # removes its own folder on failure
         record = dict(folder=name, path=path, rows=count, bytes=size)
         try:
             records = folder / RECORDS

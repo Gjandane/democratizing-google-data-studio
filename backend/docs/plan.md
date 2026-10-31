@@ -998,7 +998,7 @@ Sizes: S small, M a normal session, L needs a whole fresh session (never run una
   - Review focus: ../contracts/api.md 3.4 Checks; one code namespace with job tickets; nothing gates Build on a check.
 
 ## Phase 30: Share CSV numeric NULLs (change 2026-10-31)
-- [ ] 30.1 Sum-only numeric NULLs as 0 in the share CSV
+- [x] 30.1 Sum-only numeric NULLs as 0 in the share CSV
   - Goal: per ../contracts/api.md 3.5 Share data, a numeric view column whose every recipe reference is a `sum` metric or a sort is written with `0` for NULL, so Data Studio's GCS CSV source types it Number and its Sum charts build (release 4.6 finding H1: `high_value_revenue` = `CASE WHEN revenue >= 1000.0 THEN revenue END`, empty in 1,949 of 2,000 rows, typed Text; 4 of 45 ops failed).
   - Spec: docs/architecture.md#Hosted one-shot builds
   - Files: src/dss/data/share.py, src/dss/api/run.py, tests/test_share_data.py, docs/progress.md

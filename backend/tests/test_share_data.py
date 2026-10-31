@@ -1,8 +1,9 @@
-"""Share data (api.md 3.4, recipe.md 1.4): POST /run exports the view as one CSV, BigQuery stubbed."""
+"""Share data (api.md 3.4/3.5, recipe.md 1.4): POST /run exports the view as one CSV, BigQuery stubbed."""
 import csv
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 import json
+from pathlib import Path
 import re
 from types import SimpleNamespace
 
@@ -14,7 +15,9 @@ import pytest
 from dss.config import Config
 from dss.data import share
 from dss.main import create_app
-from fakes import fake_models
+from dss.recipe.compiler import compile_recipe, share_header
+from dss.spec.models import DashboardSpec
+from fakes import fake_models, ready_fixture
 from test_agent_server import CODE, TOKENS, auth, claim, finish, make_build, settle, ticket
 from test_recipe_contract import SCHEMA
 
@@ -35,8 +38,10 @@ FORMATTED = [
 class Result:
     """A RowIterator stand-in: schema, an optional total_rows and lazily iterated rows."""
 
-    def __init__(self, names, rows, total=None):
-        self.schema = [SimpleNamespace(name=name) for name in names]
+    def __init__(self, names, rows, total=None, types=None):
+        types = types or {}
+        self.schema = [SimpleNamespace(name=name, field_type=types.get(name, "STRING"), mode="NULLABLE")
+                       for name in names]
         self.rows, self.total_rows = rows, total
 
     def __iter__(self):
@@ -46,8 +51,8 @@ class Result:
 
 
 class Warehouse:
-    def __init__(self, names=NAMES, rows=lambda: iter(ROWS), total=None):
-        self.result, self.queries = Result(names, rows, total), []
+    def __init__(self, names=NAMES, rows=lambda: iter(ROWS), total=None, types=None):
+        self.result, self.queries = Result(names, rows, total, types), []
 
     def __call__(self, config):  # the app's bigquery_factory
         return SimpleNamespace(config=config, client=self)
@@ -256,3 +261,103 @@ def test_restart_resumes_waiting_ticket_with_its_export(tmp_path, monkeypatch):
         TOKENS[run_id] = {"X-DSS-Job-Token": claimed["job_token"]}
         finish(client, run_id, 1)
         settle(client, app, bid)
+
+
+# Sum-only numeric NULLs (api.md 3.5, task 30.1): release 4.6 finding H1.
+SUMMED = ["region", "high_value_revenue", "high_value_order_id", "day", "active", "spare"]
+SUMMED_ROWS = [("North", 1250.5, "o1", date(2026, 3, 1), True, None),
+               ("South", None, None, None, None, None),
+               ("East", None, None, None, None, 7.5)]
+NUMERIC = ["FLOAT64", "FLOAT", "INT64", "INTEGER", "NUMERIC", "BIGNUMERIC"]
+
+
+def chart(**fields):
+    return {"id": "s005", "op": "add_chart", "chart_type": "bar", "component_id": "p1", "dimensions": [],
+            "metrics": [], "options": {}, "title": "high_value_revenue", **fields}
+
+
+def recipe_of(*ops):
+    header = json.loads(THIN_HEADER)
+    return "\n".join(json.dumps(line) for line in [header, *ops]) + "\n"
+
+
+THIN_HEADER = compile_recipe(DashboardSpec.model_validate_json(
+    Path("tests/data/thin_spec.json").read_text(encoding="utf-8")), 1).split(chr(10), 1)[0]
+SUM = {"field": "high_value_revenue", "agg": "sum"}
+SORTED = chart(dimensions=["region"], metrics=[SUM], sort={"field": "high_value_revenue", "order": "desc"})
+
+
+def exported(tmp_path, recipe, kind="FLOAT64", types=None):
+    """share.export over SUMMED rows; returns the CSV as {column: [cells]}."""
+    share_dir = tmp_path / f"share-{len(list(tmp_path.iterdir()))}"
+    share_dir.mkdir()
+    folder = share_dir / "version"
+    folder.mkdir()
+    types = {"high_value_revenue": kind, "day": "DATE", "active": "BOOL", "spare": "FLOAT64"} | (types or {})
+    warehouse = Warehouse(SUMMED, lambda: iter(SUMMED_ROWS), types=types)
+    record = share.export(warehouse, SimpleNamespace(bq_location="US"), "p.d.v", recipe, folder, "r1", share_dir, BUCKET)
+    with open(share_dir / record["folder"] / "data.csv", encoding="utf-8", newline="") as handle:
+        header, *rows = list(csv.reader(handle))
+    assert header == SUMMED
+    return {name: [row[i] for row in rows] for i, name in enumerate(header)}
+
+
+@pytest.mark.parametrize("kind", NUMERIC)
+def test_sum_and_sort_only_numeric_nulls_are_zero(tmp_path, kind):
+    count = chart(id="s006", metrics=[{"field": "high_value_order_id", "agg": "count_distinct"}])
+    columns = exported(tmp_path, recipe_of(chart(metrics=[SUM]), SORTED, count), kind)
+    assert columns["high_value_revenue"] == ["1250.5", "0", "0"]
+    # Other rows and columns unchanged: STRING/DATE/BOOL NULLs and an unnamed numeric stay empty.
+    assert columns["region"] == ["North", "South", "East"]
+    assert columns["high_value_order_id"] == ["o1", "", ""]
+    assert columns["day"] == ["2026-03-01", "", ""] and columns["active"] == ["true", "", ""]
+    assert columns["spare"] == ["", "", "7.5"]
+
+
+@pytest.mark.parametrize("other", [
+    chart(metrics=[{"field": "high_value_revenue", "agg": agg}]) for agg in ("avg", "min", "max", "count", "count_distinct", "none")
+] + [
+    chart(dimensions=["high_value_revenue"]),
+    chart(breakdown="high_value_revenue"),
+    chart(date_dimension="high_value_revenue"),
+    chart(options={"filter": {"field": "high_value_revenue"}}),
+    {"id": "s009", "op": "add_control", "component_id": "c1", "control_type": "dropdown", "field": "high_value_revenue"},
+])
+def test_any_other_reference_keeps_null_empty(tmp_path, other):
+    columns = exported(tmp_path, recipe_of(SORTED, {**other, "id": "s009"}))
+    assert columns["high_value_revenue"] == ["1250.5", "", ""]
+
+
+def test_non_numeric_unnamed_and_sort_only_keep_null_empty(tmp_path):
+    summed = chart(metrics=[{"field": name, "agg": "sum"} for name in ("high_value_order_id", "day", "active")])
+    columns = exported(tmp_path, recipe_of(summed, chart(id="s006", sort={"field": "spare", "order": "asc"})))
+    assert columns["high_value_order_id"] == ["o1", "", ""] and columns["day"] == ["2026-03-01", "", ""]
+    assert columns["active"] == ["true", "", ""] and columns["spare"] == ["", "", "7.5"]
+    assert exported(tmp_path, recipe_of())["high_value_revenue"] == ["1250.5", "", ""]  # no op names it
+    columns = exported(tmp_path, recipe_of(chart(metrics=[SUM])), types={"high_value_revenue": "STRING"})
+    assert columns["high_value_revenue"] == ["1250.5", "", ""]
+
+
+def test_run_zero_fills_from_the_shipped_recipe(hosted):
+    """End to end: the rule reads the job's compiled recipe, whose bytes it leaves alone."""
+    share_dir, open_app = hosted
+    types = {"revenue": "FLOAT64", "ratio": "FLOAT64", "units": "INT64", "region": "STRING"}
+    client, app, bid, folder = open_app(Warehouse(types=types))
+    spec = json.loads((folder / "spec.json").read_text(encoding="utf-8"))
+    for component in spec["pages"][0]["components"]:  # sort the bar on its summed metric
+        if component["id"] == "p1_regions":
+            component["sort"] = {"field": "revenue", "order": "desc"}
+    (folder / "spec.json").write_text(json.dumps(spec), encoding="utf-8")
+    ready_fixture(app, bid, folder)  # the proof covers the edited spec
+    assert client.post(f"/api/builds/{bid}/run").status_code == 202
+    [target] = exports(share_dir)
+    with open(target / "data.csv", encoding="utf-8", newline="") as handle:
+        rows = list(csv.reader(handle))
+    # revenue is only summed and sorted on: 0; ratio and units are named by no op: empty.
+    assert rows == [NAMES, FORMATTED[0], [*FORMATTED[1][:4], "0", "", "", "false", ""]]
+    _, shipped = job_recipe(client, bid)
+    canonical = (folder / "recipe.jsonl").read_text(encoding="utf-8")
+    assert '"sort":{"field":"revenue","order":"desc"}' in canonical
+    assert shipped == share_header(canonical, f"{BUCKET}/{target.name}/data.csv")
+    from dss.agent.jobs import API_VERSION
+    assert API_VERSION == "3.4"

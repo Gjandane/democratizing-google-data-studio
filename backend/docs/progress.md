@@ -2484,3 +2484,15 @@ assert min(timings) < .1
 - Ruling (whole class, user card): a numeric column used only as `sum` (or a sort) gets 0 for NULL, exact for every sum; every other NULL stays empty. Declined for now: NULL as 0 everywhere (changes avg/count/min), engine field typing from the recipe (unproven Data Studio UI; PRD Later).
 - Affected tasks: 30.1 (new); release 4.6 `Needs: backend 30.1`, then redeploys and reruns.
 - Delta audit: none (target POC).
+
+## 2026-10-31: Task 30.1 Sum-only numeric NULLs as 0 in the share CSV
+- Status: done
+- Plan check: off
+- What changed: share.py `summed(recipe, fields)` picks sum-only numeric columns from the shipped recipe's ops; `query` returns schema fields; `write(..., zero)` writes `0` for their NULLs; export wires it. Tests in test_share_data.py (Result fake carries field_type). run.py unchanged.
+- Checks: `uv run pytest tests/test_share_data.py` PASS (28 passed; 7 new fail on pre-change share.py); Test (all) `uv run pytest` PASS (2386 passed, 17 deselected)
+- Decisions: qualifies only with at least one `agg: sum` metric (sort-only keeps NULL empty: no sum to preserve); agg `none` = other; any string key/value in `add_chart.options` equal to a column = other (conservative); REPEATED excluded; types = profile.NUMBERS (legacy INTEGER/FLOAT too); run.py needs no change: `shared()` reads recipe.jsonl after `refresh()`, the same ops the job ships, export once (the plan's If did not apply).
+- Digest: share.summed(recipe_text, schema_fields)->set[str] (sum-only numeric columns, NULL->"0"); share.query(bq,table)->(schema fields, rows); share.write(target,names,rows,zero=frozenset()).
+- Tried and failed: none
+- Gotchas: none beyond AGENTS.md (heredoc backslash gotcha cost one attempt)
+- Left open: P3 sort-only numeric column stays empty, narrower than spec wording - src/dss/data/share.py; P3 e2e test can't tell shipped recipe from a stale one (revenue summed before and after the edit) - tests/test_share_data.py
+- Next: none in plan (109/109); architect's final audit or release.
