@@ -24,7 +24,7 @@ Known weaknesses: the screenshot run built a partial report (engine `partial`, 3
 - Component catalog: 12 bound component types (9 charts: scorecard, time_series, area, bar, pie, table, pivot_table, geo_map, scatter; 3 controls: date_range, dropdown, fixed_size_list) plus text and image.
 - History and new versions of every build.
 - Live activity strip with token counts.
-- Hosted access code with the local build agent (`dss-agent`).
+- Hosted on Cloud Run: Build gives a one-time code and one command that builds into your own Data Studio through the build agent (`dss-agent`).
 
 Measured on the live end-to-end run of 2026-10-21 ([deck/data/bench-2026-10-21-live.json](deck/data/bench-2026-10-21-live.json)): 33,851 input and 4,096 output tokens across context, outline, blueprint and comments.
 
@@ -46,7 +46,7 @@ Procedural memory is a set of skill files. Semantic memory is an OKF bundle the 
 
 ![Hosted on Cloud Run](deck/img/d8-cloud-run.png)
 
-The hosted target is the Cloud Run service `dss-frontend` in asia-southeast1, deployed through Cloud Build (the full-app deploy is in progress). State lives on a GCS volume, secrets in Secret Manager, data in BigQuery, models on the Gemini API. Google sessions never leave your machine: the local `dss-agent` pulls build jobs and drives Chrome, signed in, to Data Studio.
+The hosted app is the Cloud Run service `dss-frontend` in asia-southeast1, deployed through Cloud Build with `bash deploy/deploy.sh`. State lives on a GCS volume, the Gemini key in Secret Manager, data in BigQuery, models on the Gemini API. Each Build saves the build's data as one CSV in a share bucket and issues a one-time code. You run one command on your own machine: it sets up `dss-agent`, which claims that one job and drives its own Chrome, signed in to your Google account, to build the report in your Data Studio from the share CSV. Your Google session never leaves your machine.
 
 ## Screenshots
 
@@ -70,7 +70,17 @@ Recreated from a screenshot, on synthetic data (with known weaknesses).
 ## Links
 
 - GitHub: https://github.com/Gjandane/democratizing-google-data-studio
-- Hosted app: the link is shared privately with the judges (builds need the owner's agent online). The hosted app is being upgraded from the frontend preview to the full app.
+- Hosted app: the link is shared privately with the judges (never in this repo).
+
+## Use the hosted app
+
+- **Who gets in**: the link is open, with no sign-in, until the owner closes it after judging ends on 2026-11-07 ([deploy/README.md](deploy/README.md#close-the-link-after-2026-11-07)). Every visitor shares one history: you see and can change every build.
+- **Sources**: CSV upload, research, or a screenshot with synthetic data. GCS and BigQuery sources are locked on the hosted link; run it locally with `./start.sh` to use your own GCS or BigQuery.
+- **Build into your own Data Studio**: the Build stage gives a one-time code and one command to copy. Run it on your machine; it sets up the build agent and builds the report in the Data Studio of the Google account you sign in with. "Set up this computer" offers the same command with a check code, to install and sign in before the first build.
+- **Requirements**: Google Chrome. Windows is tested (PowerShell command); macOS and Linux are untested (bash command).
+- **First run**: it installs uv and the app into the install folder (`%LOCALAPPDATA%\dss-agent` on Windows, `~/.dss-agent` elsewhere) and asks you to sign in to Google once, in its own Chrome window. Later codes reuse the install and the sign-in. No Git, `.env` or GCP project is needed on your machine.
+- **Your data**: each build's data is saved as a CSV that anyone with its private link (it is in the recipe) can read, until the owner closes the link.
+- **Proven on the hosted app**: CSV upload (task 4.2) and screenshot with synthetic data (task 4.3) up to the compiled recipe, and the judge build into a second Google account's Data Studio (task 4.6, [docs/acceptance.md](docs/acceptance.md)). Builds from all five sources into Data Studio were proven locally (tasks 2.4 and 2.6; the screenshot build with the known weaknesses above).
 
 ## Run it locally
 
@@ -101,6 +111,25 @@ On Windows PowerShell: `.\start.ps1`.
 
 First-time Google sign-in: the Build stage's "Sign in to Google" button runs `dsengine login` (manual: from `engine/`, `uv run dsengine login`).
 
+## Deploy your own copy
+
+`deploy/deploy.sh` deploys over an existing Cloud Run service `dss-frontend` in asia-southeast1: before it changes anything it checks that the project has the number in `.env` and that the service serves the URL in `.env`. So the first time, create a placeholder service with Google's sample image, then put its URL and your project number in `.env`:
+
+```bash
+gcloud run deploy dss-frontend --image us-docker.pkg.dev/cloudrun/container/hello --region asia-southeast1 --allow-unauthenticated --project <GCP_PROJECT_ID>
+```
+
+Fill the root `.env`: `GCP_PROJECT_ID`, `GCP_PROJECT_NUMBER`, `DSS_AGENT_SERVER` (the service URL printed above), `GOOGLE_API_KEY` and `DSS_PUBLIC` (`1` for an open link). Then:
+
+```bash
+bash deploy/deploy.sh --dry-run   # prints every gcloud command, no secret values
+bash deploy/deploy.sh
+```
+
+It enables the APIs and creates, once: a state bucket mounted at `/data`, a share bucket for the builds' CSVs with a custom role that lets anyone read an object by its exact name (never list), a runtime service account, the build service account's `roles/run.builder` grant and the `GOOGLE_API_KEY` secret. Every run then builds the image through Cloud Build and sets the service in full: 0 to 1 instance (scales to zero), 2 vCPU / 2 GiB, env and secrets. It costs about USD 0.13 per hour while an instance is up, plus small Cloud Build, Artifact Registry, Secret Manager and storage charges. Uploads are limited to 32 MB.
+
+More in [deploy/README.md](deploy/README.md): [before you run it](deploy/README.md#before-you-run-it), [who gets in](deploy/README.md#who-gets-in), [closing the link](deploy/README.md#close-the-link-after-2026-11-07) and [teardown](deploy/README.md#tear-down).
+
 ## Demo walk-through
 
 Every source follows the same stages: New build, Connect, Context, Outline, Design, Blueprint, Prototype (click to comment), Build.
@@ -121,6 +150,8 @@ Every source follows the same stages: New build, Connect, Context, Outline, Desi
 - `deck/`: submission deck, diagrams and benchmark data.
 - `docs/`: this part's plan and the manual acceptance ([docs/acceptance.md](docs/acceptance.md)).
 - `samples/`: the sample CSV.
+- `agent-setup/`: the build agent's one-command setup (`setup.ps1`, `setup.sh`).
+- `deploy/`: the Cloud Run deploy (`deploy.sh`, [deploy/README.md](deploy/README.md)).
 - `start.sh`, `start.ps1`: start backend and frontend.
 
 Process: see [docs/program.md](docs/program.md).

@@ -798,3 +798,15 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: in AGENTS.md.
 - Left open: H2 (backend feasibility on hosted comments) for the architect; screenshots' bar/time-series charts blank (occlusion gotcha).
 - Next: Task 4.7 README hosted section and final push.
+
+## 2026-10-31: Task 4.7 README hosted section and final push
+- Status: done
+- Plan check: off
+- What changed: README.md: Features bullet, Cloud section, Links, new "Use the hosted app" and "Deploy your own copy" sections, folder map (agent-setup/, deploy/). d8 diagram + PNG: open link, visitor's agent builds into the visitor's Data Studio from the share CSV, share bucket, no planned tags. check_repo.py: new check "HEAD private values".
+- Checks: `curl -s "$DSS_AGENT_SERVER/api/health"` {"status":"ok"}; render_diagrams.py 8/8 rc 0, d8 `planned` count 0; `grep -niE "access code|owner's agent|in progress" README.md` none; check_repo.py after fetch PASS 10/10 (on 78bf6c6); negative test: scratch commit on a detached HEAD holding GCP_PROJECT_NUMBER -> FAIL HEAD private values, 9/10 rc 1, then back to main (unreferenced, not pushed); Test (all) check_contracts PASS 13/13. check_repo on this commit, push and ls-remote run right after it (session report).
+- Decisions: the private check matches the URL's host (scheme and trailing slash dropped, case-insensitive) via `git grep -l -F -i HEAD`; empty values are skipped with a note, as the history check does. README documents the first deploy: deploy.sh refuses unless `dss-frontend` already serves DSS_AGENT_SERVER, so a placeholder `gcloud run deploy ... --image us-docker.pkg.dev/cloudrun/container/hello` comes first (review P1). AGENTS.md: 1 gotcha (partial border render).
+- Digest: README sections "Use the hosted app" and "Deploy your own copy" (placeholder service first, then deploy.sh); check_repo.py PRIVATE_NAMES = DSS_AGENT_SERVER, GCP_PROJECT_NUMBER checked in HEAD's tracked files (`check_head_private`); d8 final (no planned tags).
+- Tried and failed: first d8 render left the GCP group's bottom border half drawn; a rerender fixed it.
+- Gotchas: in AGENTS.md.
+- Left open: P3 check_repo private check passes vacuously with no .env (same as the history check) - integration/check_repo.py.
+- Next: none in this plan (18/18). Close the hosted link after 2026-11-07 (deploy/README.md).

@@ -108,3 +108,4 @@ Traps that cost an earlier session time and that the other docs don't cover, one
 - Agent check/job codes expire 30 min after the Build view shows them: give the user the command only when they're ready; reload the build page (Continue to build) for a new check code.
 - The share CSV's folder isn't in any trace API response: list `<project>-dss-share` objects via ADC REST and match `timeCreated` to the `execute` trace's `started_at` (same second).
 - Built-in browser `javascript_tool` aborts after 45 s: keep in-page polls under ~40 s, or poll the API from a background Bash loop.
+- `render_diagrams.py` can paint a `.group`'s dashed border only in part (seen on d8, 2026-10-31) while still printing `ok`: look at each PNG you own and rerender if an edge is missing.

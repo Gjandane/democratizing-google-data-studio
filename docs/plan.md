@@ -197,7 +197,7 @@ Later; 2.7's committed driver code (label flip, analysis approval, .env.example 
   - If: the install or login step fails on this machine -> block naming the step and the script output (secrets masked); never sign in for the user.
   - If: the agent check fails on versions -> the install predates a version change: run the setup command with `-Update` (fresh main.zip, sign-in kept) and say so in the row; never delete the install folder or its Chrome profile.
   - If: the fresh build's view has no sum-only numeric column with NULLs -> H1 is not exercised: say so in the row and ask the user on the verdict card whether to accept or rerun with a comment that asks for a high-value (>= $1,000) revenue breakdown.
-- [ ] 4.7 README hosted section and final push
+- [x] 4.7 README hosted section and final push
   - Goal: README and the Cloud diagram describe the live hosted app, how a judge builds into their own Data Studio, and how to deploy your own copy, and the final version is pushed after the user confirms (renumbered from 4.4, change 2026-10-29 local agent per judge).
   - Files: README.md, deck/diagrams/d8-cloud-run.html, deck/img/d8-cloud-run.png, integration/check_repo.py
   - Depends on: 4.6

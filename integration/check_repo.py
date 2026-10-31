@@ -4,8 +4,9 @@
     uv run --project integration python integration/check_repo.py
 
 Checks the remote, .gitattributes, every tracked .env.example, the tracked paths, every path and
-blob in history, the history text for key patterns and for the .env secret values, nested
-repositories and that origin/main is an ancestor of HEAD. Read-only. Never prints a secret value:
+blob in history, the history text for key patterns and for the .env secret values, HEAD's tracked
+files for the private .env values (hosted URL, project number), nested repositories and that
+origin/main is an ancestor of HEAD. Read-only. Never prints a secret value:
 a hit names the commit and file only. Prints one PASS/FAIL line per check and exits 1 if any fails.
 """
 
@@ -22,6 +23,8 @@ EXAMPLE_EMPTY = ["GOOGLE_API_KEY", "DSS_ACCESS_CODE", "DSS_AGENT_TOKEN", "GCP_PR
                  "GCS_BUCKET", "DSS_TEMPLATE_REPORT_ID", "DSS_AGENT_SERVER", "DSS_CHROME_PATH",
                  "DSS_DB_PATH"]
 SECRET_NAMES = ["GOOGLE_API_KEY", "DSS_ACCESS_CODE", "DSS_AGENT_TOKEN"]
+# Private, not secret (change 2026-10-29): kept out of HEAD's tracked files; history predates the rule.
+PRIVATE_NAMES = ["DSS_AGENT_SERVER", "GCP_PROJECT_NUMBER"]
 # Split literals so this file never matches its own patterns once committed.
 KEY_PATTERNS = {
     "Google API key": re.compile(rb"AIza[0-9A-Za-z_-]{35}"),
@@ -183,10 +186,39 @@ def check_blob_sizes():
     return "no blob over 10 MB"
 
 
-def read_secret_values():
+def read_env_values(names):
     env_path = ROOT / ".env"
     values = parse_env(env_path.read_text(encoding="utf-8-sig")) if env_path.exists() else {}
-    return {name: values.get(name, "") for name in SECRET_NAMES}
+    return {name: values.get(name, "") for name in names}
+
+
+def private_needle(name, value):
+    """The URL's host (scheme and trailing slash dropped, so a bare host also hits); else the value."""
+    if name == "DSS_AGENT_SERVER":
+        value = re.sub(r"^[a-z]+://", "", value, flags=re.I).rstrip("/")
+    return value
+
+
+def check_head_private(private_values):
+    hits, checked, skipped = [], [], []
+    for name, value in private_values.items():
+        needle = private_needle(name, value)
+        if not needle:
+            skipped.append(f"{name} skipped (empty)")
+            continue
+        checked.append(name)
+        proc = git("grep", "-l", "-F", "-i", "-e", needle, "HEAD", check=False)
+        if proc.returncode not in (0, 1):
+            raise CheckFailed(f"git grep failed for {name}")
+        files = [line.split(":", 1)[1] for line in proc.stdout.decode("utf-8", errors="replace").splitlines() if line]
+        if files:
+            hits.append(f".env {name} value in " + ", ".join(files))
+    if hits:
+        raise CheckFailed("; ".join(hits))
+    note = f".env values not in HEAD's tracked files: {', '.join(checked) or 'none'}"
+    if skipped:
+        note += "; " + "; ".join(skipped)
+    return note
 
 
 def doc_mention(line, match):
@@ -302,12 +334,14 @@ def main():
     run("history paths", check_history_paths)
     run("blob sizes", check_blob_sizes)
     try:
-        secret_values = read_secret_values()
+        secret_values = read_env_values(SECRET_NAMES)
+        private_values = read_env_values(PRIVATE_NAMES)
     except Exception as e:
-        secret_values = None
+        secret_values = private_values = None
         results.append((False, "history text", f".env unreadable: {type(e).__name__}"))
     if secret_values is not None:
         run("history text", check_history_text, secret_values)
+        run("HEAD private values", check_head_private, private_values)
     run("nested repos", check_nested_repos)
     run("origin/main ancestor", check_ancestor)
 

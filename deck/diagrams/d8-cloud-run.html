@@ -10,13 +10,12 @@
 </head>
 <body>
 <div class="canvas">
-  <div class="title">Hosted on Cloud Run, built on your machine</div>
+  <div class="title">Hosted on Cloud Run, built into your own Data Studio</div>
   <div class="legend">
     <span><span class="sw blue"></span>frontend</span>
     <span><span class="sw green"></span>backend</span>
     <span><span class="sw red"></span>engine</span>
     <span><span class="sw gray"></span>Google service</span>
-    <span><span class="tag planned">planned</span> not built yet</span>
   </div>
 
   <svg class="wires" viewBox="0 0 1840 800">
@@ -26,26 +25,28 @@
     <path class="w" d="M260,452 V483" marker-end="url(#a)"/>
     <path class="w" d="M260,567 V598" marker-end="url(#a)"/>
     <path class="w" d="M452,670 H558" marker-end="url(#a)"/>
+    <path class="w" d="M902,690 H1008" marker-end="url(#a)"/>
     <path class="w" d="M1125,472 V528" marker-end="url(#a)"/>
     <path class="w" d="M1385,472 V528" marker-end="url(#a)"/>
     <path class="w" d="M1502,220 H1558" marker-end="url(#a)"/>
     <path class="w" d="M1502,400 H1558" marker-end="url(#a)"/>
+    <path class="w" d="M1480,472 V500 H1670 V528" marker-end="url(#a)"/>
   </svg>
 
   <div class="box blue top" style="left:40px;top:120px;width:400px;height:130px">
     <div class="who">anyone with the link</div>
     <h3>Browser</h3>
-    <p>Opens the Cloud Run URL and enters the shared access code.</p>
+    <p>Opens the Cloud Run URL: an open link, no sign-in. Every visitor shares one history.</p>
   </div>
-  <div class="lbl c" style="left:725px;top:155px">HTTPS, header <span class="mono">X-DSS-Access-Code</span></div>
-  <div class="lbl c" style="left:730px;top:375px">pull build jobs, push events (<span class="mono">DSS_AGENT_TOKEN</span>)</div>
+  <div class="lbl c" style="left:725px;top:155px">HTTPS, open link (<span class="mono">DSS_PUBLIC=1</span>)</div>
+  <div class="lbl c" style="left:730px;top:375px">claim one job by its one-time code, push events</div>
 
   <div class="group" style="left:40px;top:320px;width:440px;height:450px">
-    <div class="glabel">Your machine</div>
+    <div class="glabel">Your machine, set up by one copied command</div>
   </div>
   <div class="box green top" style="left:70px;top:360px;width:380px;height:92px">
     <h3 class="mono" style="font-size:20px">dss-agent</h3>
-    <p>Polls the hosted app for Build jobs.</p>
+    <p>Claims the Build's job, runs it, exits.</p>
   </div>
   <div class="box red top" style="left:70px;top:485px;width:380px;height:82px">
     <h3 class="mono" style="font-size:20px">dsengine run</h3>
@@ -53,31 +54,31 @@
   </div>
   <div class="box red top" style="left:70px;top:600px;width:380px;height:140px">
     <h3>Chrome, signed in</h3>
-    <p>Your Google session stays here; it never goes to the cloud.</p>
+    <p>Its own profile, signed in once to your Google account; the session never goes to the cloud.</p>
   </div>
   <div class="box gray top" style="left:560px;top:600px;width:340px;height:140px">
+    <div class="who">your Google account</div>
     <h3>Data Studio</h3>
-    <p>The report, reading the build's BigQuery view.</p>
+    <p>Your report, reading the build's share CSV.</p>
   </div>
 
   <div class="group" style="left:980px;top:110px;width:830px;height:660px">
-    <div class="glabel">Google Cloud project, asia-southeast1 <span class="tag planned">deploy: planned</span></div>
+    <div class="glabel">Google Cloud project, asia-southeast1, deployed by <span class="mono">bash deploy/deploy.sh</span> (Cloud Build)</div>
   </div>
   <div class="box green top" style="left:1010px;top:150px;width:490px;height:322px">
     <div class="who">Cloud Run service</div>
     <h3 class="mono" style="font-size:24px">dss-frontend</h3>
     <p>Backend (FastAPI + ADK) serving the built frontend at <span class="mono">/</span> and the API at <span class="mono">/api</span>.</p>
-    <p>One instance (min = max = 1), CPU always on, timeout 3600 s.</p>
-    <p>Access-code gate on <span class="mono">/api</span>; <span class="mono">DSS_ENGINE_MODE=agent</span> queues each Build as a job.</p>
+    <p>0 to 1 instance (scales to zero), CPU always on while up, timeout 3600 s.</p>
+    <p><span class="mono">DSS_ENGINE_MODE=agent</span>: each Build writes its data to <span class="mono">/share</span> and issues a one-time job code.</p>
   </div>
   <div class="box gray top" style="left:1010px;top:530px;width:230px;height:210px">
-    <h3>GCS volume</h3>
-    <p>Bucket <span class="mono">&lt;project&gt;-dss-state</span> mounted at <span class="mono">/data</span>: builds, uploads, SQLite backup.</p>
+    <h3>Share bucket</h3>
+    <p><span class="mono">&lt;project&gt;-dss-share</span> at <span class="mono">/share</span>: each build's CSV, readable by exact name, never listable.</p>
   </div>
   <div class="box gray top" style="left:1270px;top:530px;width:230px;height:210px">
-    <h3>Secret Manager</h3>
-    <p class="mono" style="font-size:14px">GOOGLE_API_KEY<br>DSS_ACCESS_CODE<br>DSS_AGENT_TOKEN</p>
-    <p>Never in the image.</p>
+    <h3>GCS volume</h3>
+    <p>Bucket <span class="mono">&lt;project&gt;-dss-state</span> mounted at <span class="mono">/data</span>: builds, uploads, SQLite backup.</p>
   </div>
   <div class="box gray top" style="left:1560px;top:150px;width:220px;height:140px">
     <h3>BigQuery</h3>
@@ -87,8 +88,10 @@
     <h3>Gemini API</h3>
     <p>planner and worker models</p>
   </div>
-  <div class="box white plan" style="left:1560px;top:530px;width:220px;height:210px">
-    <p><b>One deploy:</b> <span class="mono">bash deploy/deploy.sh</span> through Cloud Build (<span class="mono">--source .</span>).</p><div class="tags"><span class="tag planned">planned</span></div>
+  <div class="box gray top" style="left:1560px;top:530px;width:220px;height:210px">
+    <h3>Secret Manager</h3>
+    <p class="mono" style="font-size:14px">GOOGLE_API_KEY</p>
+    <p>Never in the image.</p>
   </div>
 </div>
 </body>
