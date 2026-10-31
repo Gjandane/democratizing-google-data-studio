@@ -455,3 +455,9 @@ two with as few tokens as possible, and hands a compiled recipe to the engine fo
   `POST /versions` copies `share/` records; old share folders are never deleted (bucket lifecycle
   is the release part's); `dss-agent check` reports a missing engine as Chrome/sign-in (P3,
   27.1-29.5 left open; audit 2026-10-30).
+- Share CSV NULL leftovers: a numeric column referenced only by sorts keeps NULL empty, though
+  api.md 3.5 and architecture.md#Hosted one-shot builds give it `0` (share.py needs one `sum`;
+  fix there or amend the contract at the program root, P2); a group whose rows are all NULL sums
+  to 0 instead of blank; field matching is case-sensitive and an `options` string equal to a
+  column name blocks the zero-fill (both fail safe); the end-to-end test can't tell the shipped
+  recipe from a stale one (P3, 30.1; audit 2026-10-31).

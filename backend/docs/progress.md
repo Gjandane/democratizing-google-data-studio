@@ -2496,3 +2496,14 @@ assert min(timings) < .1
 - Gotchas: none beyond AGENTS.md (heredoc backslash gotcha cost one attempt)
 - Left open: P3 sort-only numeric column stays empty, narrower than spec wording - src/dss/data/share.py; P3 e2e test can't tell shipped recipe from a stale one (revenue summed before and after the edit) - tests/test_share_data.py
 - Next: none in plan (109/109); architect's final audit or release.
+
+## 2026-10-31: Audit (final)
+- Verdict: ACCEPTED. Re-audit after the 2026-10-30 ACCEPTED audit; independent blueprint-reviewer (opus, high) found no P0/P1 in 30.1.
+- Scope: 30.1 only (the change "Linking without a template" affected no backend task). Rerun: 30.1 Done-when plus 29.4's (its Files share.py/test_share_data.py): `uv run pytest tests/test_share_data.py tests/test_recipe_contract.py tests/test_agent_server.py` PASS 141. Earlier tasks covered by Test (all) only.
+- Test (all): `uv run pytest` PASS 2386 passed, 17 deselected, 9 warnings, 1340 s, exit 0 (log .blueprint/qa/final-audit-20261031/pytest-all.log, junit.xml).
+- Skipped: live-marked checks (paid; none in 30.1's Done when).
+- Review focus: exact (only sum-only numeric columns zero-filled, `numeric & sums - other`); the export reads the recipe.jsonl that `refresh()` just compiled and the job ships; API_VERSION "3.4"; recipe bytes unchanged.
+- Secrets: `git log --all` for *.env/*.env.* and `git ls-files` .env: none. 17a9201 touched no pyproject/uv.lock.
+- Findings to Later (user card): P2 sort-only numeric column keeps NULL empty vs api.md 3.5/architecture.md wording; P3 all-NULL group sums to 0; P3 case-sensitive match / option-string collision (fail safe); P3 e2e test can't tell shipped from stale recipe. PRD Later: "Share CSV NULL leftovers" (audit 2026-10-31).
+- Doc sweep: no new gotchas; 30.1 decisions need no essentials change (the sort-only gap is in Later).
+- POC checklist: unchanged since 2026-10-30 (Commands, core flow, limitations in Later; no backend UI).
