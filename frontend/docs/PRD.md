@@ -49,11 +49,15 @@ view of the dashboard being built.
   goes to a link-readable CSV; Connect shows GCS and BigQuery as locked on the open link.
 
 ## Goals added by change 2026-10-31 (first-visit onboarding)
-- On the hosted link (agent mode), History explains how building works before any build: the
-  stages, that Build ends with a one-time code and one copied command, Google Chrome required,
-  Windows tested and macOS/Linux untested, and that the first run installs the build agent and
-  asks for one Google sign-in; it can be hidden and reopened, and its "Set up this computer"
-  opens the existing check-code setup step (docs/onboarding-ui.md). Local mode is unchanged.
+- On the hosted link (agent mode), a first visit lands on a separate landing page (revised
+  2026-10-31 at the 20.1 sign-off, user cards; replaces the History panel) that explains how
+  building works before any build: screenshots of the process and the build, the stages, that
+  Build ends with a one-time code and one copied command, Google Chrome required, Windows tested
+  and macOS/Linux untested, and that the first run installs the build agent and asks for one
+  Google sign-in. Two buttons ("Start a new dashboard", "Set up this computer", which opens the
+  existing check-code setup step) and "Proceed to your dashboards"; History reopens it with "How
+  it works". The Build stage says the agent runs the build on the visitor's computer and that
+  this step uses no AI tokens (docs/onboarding-ui.md). Local mode is unchanged.
 
 ## Non-goals
 - No accounts or per-user data (POC): only the gate of ../contracts/api.md#Access (Google sign-in
@@ -65,7 +69,8 @@ view of the dashboard being built.
 - No CI.
 
 ## Core flows
-1. History -> "New dashboard" -> pick archetype + mode -> Connect: drop CSVs (or GCS/BigQuery) ->
+1. (Agent mode, first visit: `/welcome` -> "Start a new dashboard" or "Proceed to your
+   dashboards"; change 2026-10-31.) History -> "New dashboard" -> pick archetype + mode -> Connect: drop CSVs (or GCS/BigQuery) ->
    notes about the data -> "Draft context" -> edit KPI cards -> "Confirm context" -> tick
    questions (Other, Suggest more) -> "Confirm outline" -> pick a theme preset and page
    structure -> "Confirm design" -> blueprint table, resolve blocked rows -> "Accept blueprint"
@@ -90,6 +95,7 @@ view of the dashboard being built.
 | access-code gate; hosted Build job command and states, Connect source lock (change 2026-10-29) | | a polling-agent panel (removed 2026-10-29) |
 | | activity strip and run checklist (change 2026-10-19) | |
 | synthetic sample data: schema review, generate, CSV download, labels (change 2026-10-19) | | |
+| agent-mode landing page (screenshots, How it works, setup, Proceed) and Build-stage agent note (change 2026-10-31) | | the History "How it works" panel (replaced 2026-10-31) |
 
 ## Constraints
 - Deadline 2026-10-23 01:05 MPST (moved 2026-10-20) (whole program). Built against ../contracts/api.md with a mock
@@ -117,7 +123,14 @@ view of the dashboard being built.
   Connect, Design and Prototype. The design picker shows user-chosen colors as data swatches
   (inline style on swatches and the mini preview only; components still use tokens).
 - Mock mode via a small fixture-driven fake API (no MSW dependency), switched by `VITE_MOCK=1`.
-- Routing with react-router (two routes: `/` History, `/builds/:id` Workspace).
+- Routing with react-router (two routes: `/` History, `/builds/:id` Workspace; change
+  2026-10-31 adds `/welcome`, the agent-mode landing page).
+- Landing page defaults (change 2026-10-31, architect; the buttons, screenshot source, first-visit
+  rule and token wording are user cards): route `/welcome`; seen = one localStorage boolean set by
+  Proceed or Start a new dashboard; screenshots are four WebP captures of the mock app in
+  `public/onboarding/`, at most 200 KB each; no Hide on the landing; the agent note sits at the top
+  of the Build stage and scopes the no-token claim to the Build step, since earlier stages call
+  models.
 - Markdown in chat and docs via react-markdown; icons via lucide-react.
 - Desktop viewports only: 1280x800 and 1440x900; accessibility: AA contrast + visible focus.
 

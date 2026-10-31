@@ -12,8 +12,9 @@ src/api/         client.ts (fetch wrappers, relative /api), types.ts (from ../co
 src/mocks/       mock API + fake event stream; data comes from ../contracts/fixtures/api/ (never copied)
 src/styles/      tokens.css (all colors, type, spacing, radius as CSS variables)
 src/components/  base components (Button, Input, Panel, Stepper, Pin, Popover, Toast, Spinner, EmptyState, ErrorState, Modal, Table)
-src/features/    history/, activity/ (strip, run cards, node presets), access/, workspace/ (shell, connect/,
+src/features/    history/, onboarding/ (landing page), activity/ (strip, run cards, node presets), access/, workspace/ (shell, connect/,
                  context/, outline/, design/, blueprint/, prototype/, briefs/, build/), settings/, trace/
+public/onboarding/  the landing page's screenshot assets (.webp, copied to dist/ as is)
 tests/           vitest specs; contract.test.ts checks ../contracts/fixtures/api/ against types.ts guards
 screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
 ```
@@ -63,9 +64,10 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
   docs/reference-ui.md (all sections).
 
 ## Onboarding UI
-- Agent mode only: the History "How it works" panel and the home-page setup modal (change
-  2026-10-31); localStorage holds one boolean (`dss.onboardingHidden`), never anything else.
-  Full rules, copy and visual oracle: docs/onboarding-ui.md.
+- Agent mode only: the first-visit landing page at `/welcome` (screenshots, "How it works",
+  two buttons, Proceed), its setup modal and the Build-stage agent note (change 2026-10-31,
+  revised the same day); localStorage holds one boolean (`dss.onboardingSeen`), never anything
+  else. Full rules, copy, assets and visual oracle: docs/onboarding-ui.md.
 
 ## Contracts
 | Contract | Version | Role | Conformance check |
@@ -80,7 +82,7 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
 | --- | --- | --- | --- | --- |
 | react | npm | ^19.3.1 | UI | 2026-10-20 (19.3.1) |
 | react-dom | npm | ^19.3.1 | UI | 2026-10-20 (19.3.1) |
-| react-router-dom | npm | ^7.18.0 | two routes | 2026-10-20 (7.18.4) |
+| react-router-dom | npm | ^7.18.0 | routes (History, Workspace, landing) | 2026-10-20 (7.18.4) |
 | react-markdown | npm | ^10.1.0 | chat and docs markdown | 2026-10-20 (10.1.0) |
 | lucide-react | npm | ^1.59.0 | icons | 2026-10-20 (1.60.0) |
 | vite | npm | ^8.3.0 | dev server + proxy | 2026-10-20 (8.3.4) |
