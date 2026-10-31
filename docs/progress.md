@@ -828,3 +828,11 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: in AGENTS.md.
 - Left open: none (P3 README repetition fixed; P2 check_repo-before-commit handled by the rerun before push).
 - Next: none in release; the plan is complete.
+
+## 2026-10-31: Change demo video
+- What changed: new docs/demo-video.md (story, 11-segment storyboard, text-on-screen rules, ask texts, storyboard file, privacy, recording, assembly); plan Phase 5: 5.1 storyboard and captions (S, STOP: user edits the text and types the end-card name), 5.2 live recording (M), 5.3 assembly and review (M, STOPs: music file, user watches the cut); PRD goal 12, a non-goal and a default; essentials Stack, Folder map, Never do, Dependencies (playwright 1.64.1 verified by `deps`); program.md release row, roadmap bullet, decision row.
+- Why: the user asked for a ~4-minute demo video (user cards: no voiceover, captions + callouts, a fresh live local run on the sample CSV, brief mentions of the other sources, prototype edits, traces and token costs, research mode; the user's YouTube Audio Library track; name on the end card; GitHub URL shown, hosted link only named; MP4 local and git-ignored).
+- Affected tasks: 5.1-5.3 new; no part or contract change; no push in Phase 5 unless the user asks.
+- Delta audit: 0 P0, 3 P1 (no live view in local mode -> gdigrab of the engine's Chrome; the interview is now the staged Context/Outline/Design/Blueprint/Prototype UI; pinned comment texts with Discard before the recipe), 8 P2 (opaque masks for the project ID, Playwright ffmpeg install + legibility test clip, per-stage resumable clips and a partial cap, SRT ignored, SRT check in 5.1, no stale d1, History report pans, retimed rows 8-9) and 5 P3, all applied (user cards). Checked here: backend runs dsengine without `--screencast` (execute.py), LiveViewPanel renders only with a frame; local ffmpeg has gdigrab, ebur128, subtitles, overlay and libx264.
+- Lint warnings that predate this change: plan 22 tasks, essentials and AGENTS.md over their length guides.
+

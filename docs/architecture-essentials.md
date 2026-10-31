@@ -11,6 +11,9 @@ docs/program.md.
   `python:3.12-slim-bookworm`, `pip install uv`, `uv sync --frozen` in backend/,
   `uv run playwright install --with-deps chromium`, a headless smoke screenshot, CMD
   `uv run python -m dss.main`. `deploy/deploy.sh`: gcloud CLI, `--source .` via Cloud Build.
+- Demo video (Phase 5, docs/demo-video.md): Playwright for Python (in `integration/`) records the
+  app with the installed Chrome (`channel="chrome"`); ffmpeg/ffprobe from PATH (installed on the
+  build machine, not a package) cut and mix it.
 - Deck (done in 1.3, final): `deck/build_deck.ps1` via PowerPoint COM (WPS Office here). Diagrams:
   HTML rendered by headless Chrome through `integration/render_diagrams.py`.
 
@@ -29,6 +32,8 @@ deck/                    diagrams/*.html, img/*.png, data/bench-*.json, the 1.3 
 Submission Template _ AI Builder Cup.pptx   the cup's template (team details typed in by the user); tasks never edit it
 README.md                pitch, features, capabilities, simplified architecture, links, start, sign-in, agent, deploy
 docs/acceptance.md       the user's manual acceptance: one row per source (release 2.4, 2.6)
+integration/video/       check_storyboard.py, record_app.py, make_video.py (Phase 5)
+deck/video/              storyboard.json, cards/*.html (committed); demo.mp4, demo.srt, raw/, build/, music.* git-ignored
 docs/img/                README screenshots from 2.4/2.6, cropped (no email, avatar, code or token)
 ```
 
@@ -71,6 +76,8 @@ docs/img/                README screenshots from 2.4/2.6, cropped (no email, ava
   account emails or avatars.
 - Never push before the user confirms on a card (tasks 3.2, 4.4, 4.6 and 4.7); never force-push or rewrite
   history. Never deploy before the user confirms (task 4.1 STOP).
+- Never show or commit, in the demo video, its SRT or storyboard, an account email or avatar, the
+  hosted URL, the project number or ID, a key or a code (docs/demo-video.md#Privacy).
 - Never edit the cup template; never put secrets in the image, Dockerfile or deploy.sh output.
 
 ## Contracts
@@ -85,8 +92,9 @@ docs/img/                README screenshots from 2.4/2.6, cropped (no email, ava
 ## Dependencies
 | Package | Registry | Version | Why | Verified |
 | --- | --- | --- | --- | --- |
-| httpx | pypi | >=0.27 | e2e API calls | 2026-10-18 (0.28.1) |
-| jsonschema | pypi | >=4.23 | validate contract fixtures | 2026-10-18 (4.26.0) |
-| uv | pypi | >=0.13 | installs backend in the image | 2026-10-19 (0.13.1) |
+| httpx | pypi | >=0.27 | e2e API calls | 2026-10-31 (0.28.1) |
+| jsonschema | pypi | >=4.23 | validate contract fixtures | 2026-10-31 (4.26.0) |
+| uv | pypi | >=0.13 | installs backend in the image | 2026-10-31 (0.13.6) |
 | python:3.12-slim-bookworm | docker | 3.12-slim-bookworm | image base (stage 2) | 2026-10-19 (Docker Hub tag exists) |
 | node:20-bookworm-slim | docker | 20-bookworm-slim | frontend build (stage 1) | 2026-10-19 (Docker Hub tag exists) |
+| playwright | pypi | >=1.48 | records the demo video (5.2) | 2026-10-31 (1.64.1) |

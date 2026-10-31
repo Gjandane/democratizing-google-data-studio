@@ -1,5 +1,5 @@
 # Plan: release
-Target: POC · Audit: done 2026-10-31 (change first-visit onboarding, 4.8 added; delta audit: 0 P0/P1, 3 P2 + 5 P3, all applied on user cards; earlier audits recorded in progress.md)
+Target: POC · Audit: done 2026-10-31 (change demo video, 5.1-5.3 added; delta audit: 0 P0, 3 P1, 8 P2, 5 P3, all applied on user cards; earlier audits recorded in progress.md)
 Change 2026-10-20 final phases: local integration and manual acceptance, then README and GitHub,
 then Cloud Run last; unstarted tasks renumbered (old 3.3 split into 2.5 and 4.3; old deck task dropped).
 
@@ -213,3 +213,48 @@ Later; 2.7's committed driver code (label flip, analysis approval, .env.example 
   - Done when: after the first STOP, `bash deploy/deploy.sh` exits 0 and `curl -s "$DSS_AGENT_SERVER/api/hosting"` shows `public: true`, `mode: "agent"` and `api_version` "3.4"; in a browser with no stored site data for the hosted URL (never signed in to Google there), the home page shows the "How it works" panel with the three steps; "Set up this computer" opens the dialog with a check code and the PowerShell command carrying `-Server <the hosted origin> -Check <code>`; Esc closes it; Hide, then a reload, keeps the panel hidden with "How it works" shown; screenshots cropped per the essentials go to docs/img/ as onboarding-4.8-home.png and onboarding-4.8-setup.png, with the check code blurred or the code left to expire (it gates nothing); manual: both PNGs opened and checked to show no address bar, hosted URL or project number; README's hosted section gains one sentence that the home page explains the steps and offers "Set up this computer" before the first build (`grep -n "Set up this computer" README.md` finds it); after `git fetch origin`, `uv run --project integration python integration/check_repo.py` exits 0 (no hosted URL or project number in a tracked text file); after the second STOP, `git push origin main` and `git ls-remote origin refs/heads/main` equals `git rev-parse HEAD`.
   - STOP: before the deploy, check `GET /api/builds` that no build is at stage `build` (a restart fails a claimed ticket with `agent_timeout`, api.md Agent endpoints), then a card: it replaces the live service's image (the link stays open, no data change) and names any build still at `build`; deploy only on the user's yes.
   - STOP: show the commit's file list, the author emails and the check_repo.py results; push only after the user confirms on a card.
+
+## Phase 5: Demo video
+Change 2026-10-31 demo video: a ~4-minute captioned screen-capture demo, no voiceover, the user's
+music; the MP4 stays local and git-ignored (docs/demo-video.md).
+
+- [ ] 5.1 Video storyboard and captions
+  - Goal: `deck/video/storyboard.json` holds the eleven segments with their shots, caption cues and callouts in the voice and rules of docs/demo-video.md, and the user has edited and approved the caption text before anything is recorded.
+  - Files: deck/video/storyboard.json, integration/video/check_storyboard.py, .gitignore
+  - Depends on: 4.8
+  - Size: S
+  - Spec: docs/demo-video.md#Story
+  - Spec: docs/demo-video.md#Storyboard
+  - Spec: docs/demo-video.md#Text on screen
+  - Spec: docs/demo-video.md#Storyboard file
+  - Spec: docs/demo-video.md#Privacy
+  - Done when: `uv run --project integration python integration/video/check_storyboard.py` exits 0 and checks: the JSON parses; segments 1-11 in order with no gap or overlap, total 225-255 s; every segment has at least one cue and one shot; every cue obeys the Text on screen rules (lines, characters, minimum time, words per second, no overlap) and total caption words are 450-650; every callout label is at most 6 words; every Connect shot has a mask; `credit_name` is set (the check runs after the STOP, where the user types it); no .env value of `DSS_AGENT_SERVER` (its host), `GCP_PROJECT_NUMBER` or `GCP_PROJECT_ID` occurs in the file or, when it exists, in deck/video/demo.srt (values read, stripped, never printed; an empty one reported as skipped); a scratch copy with a 3-line cue and one with the project number each make it exit 1 (shown once, not kept); `.gitignore` ignores `deck/video/*.mp4`, `deck/video/*.srt`, `deck/video/raw/`, `deck/video/build/`, `deck/video/music.*` (`git check-ignore` on one path of each); Test (all) passes.
+  - STOP: show every cue as a table (segment, time, text) and the callouts; the user edits or approves the text and types the name for the end card; record nothing before their yes.
+
+- [ ] 5.2 Record the live run and the history walk
+  - Goal: raw 1080p clips of every live and history shot in the storyboard, from a fresh local build on samples/ecommerce_sales.csv through the real Data Studio report, and a walk of an existing screenshot-recreation build, with each shot's in and out points written back to the storyboard.
+  - Files: integration/video/record_app.py, integration/pyproject.toml, integration/uv.lock, deck/video/storyboard.json
+  - Depends on: 5.1
+  - Size: M
+  - Spec: docs/demo-video.md#Storyboard
+  - Spec: docs/demo-video.md#Ask texts
+  - Spec: docs/demo-video.md#Privacy
+  - Spec: docs/demo-video.md#Recording
+  - Done when: a 10 s Playwright test clip of the app at 1080p is opened first and its UI text is legible (else gdigrab records the window, docs/demo-video.md#Recording); with `./start.sh` running (real engine; the engine's Chrome running and signed in, `GET /api/engine/status`), `uv run --project integration python integration/video/record_app.py --shots live` creates a new build from samples/ecommerce_sales.csv and records one clip per stage to deck/video/raw/ (git-ignored) with a shot log: Connect (the upload, the other source options visible), Context (notes, the drafted context, one Audience or KPI card edited), Outline (picks), Design (preset), Blueprint, Prototype (the applied title comment and its revised prototype; the refused ask, its refusal and Discard, per docs/demo-video.md#Ask texts), the activity strip and the Trace modal, Generate recipe with its ops, then Build in Data Studio with the engine's Chrome recorded by gdigrab; `--build <id> --from <stage>` resumes after a failed stage; the build's engine run reads `run_finished` with `failed` 0 over `GET /api/builds/<id>/files/events.jsonl` (an engine `partial` is a rerun, not a pass); `--shots history --build <id>` records the screenshot-recreation build named in the progress entry; both report tours (live and History build) exist as engine-Chrome screenshot pans with the avatar cropped; every recorded shot in the storyboard has its clip, in, out and speed filled, and ffprobe shows each clip at 1920x1080 and at least as long as its out point; manual: a contact sheet per clip (one frame every 5 s) is opened and each shot shows its feature and none of the Privacy items; the progress entry lists the build id and every new report id; `check_storyboard.py` and Test (all) pass.
+  - If: a live model step fails -> rerun that stage once per new failure with `--from <stage>` (AGENTS.md gotcha); block only on a repeat at the same step.
+  - If: the engine run ends `partial` -> rerun the build once; a second `partial` blocks, naming the failed ops (each rerun is another report).
+  - If: feasibility reads stale after the Discard -> stop before Generate recipe and record it; never work around it with an outline Other.
+  - If: the newest finished screenshot-recreation build in History is not a clean one (no report, or failed ops) -> ask the user on a card which build to show, with the candidates' titles and dates.
+
+- [ ] 5.3 Assemble and review the video
+  - Goal: `deck/video/demo.mp4` and `demo.srt`, about 4 minutes, cut from the raw clips, images and cards per the storyboard with burned-in captions, callouts and the user's music, approved by the user after watching it.
+  - Files: integration/video/make_video.py, deck/video/cards/*.html, deck/video/storyboard.json
+  - Depends on: 5.2
+  - Size: M
+  - Spec: docs/demo-video.md#Storyboard
+  - Spec: docs/demo-video.md#Text on screen
+  - Spec: docs/demo-video.md#Privacy
+  - Spec: docs/demo-video.md#Assembly
+  - Done when: `uv run --project integration python integration/video/make_video.py` exits 0 and writes deck/video/demo.mp4 and demo.srt; ffprobe shows 1920x1080, 30 fps, h264 yuv420p, one aac stereo stream, duration 225-255 s and the moov atom first; the SRT's cues equal the storyboard's (text and times within 0.1 s); ffmpeg `ebur128=peak=true` on the MP4 reads integrated loudness -16 +/- 2 LUFS and true peak at most -1 dBTP; `check_storyboard.py` (which also checks demo.srt) passes; manual: a contact sheet (one frame every 5 s) is opened and shows readable captions, callouts on their targets and not under the caption bar, the masks opaque over the project ID and the check code, speed labels on sped-up shots, the end card with the GitHub URL, the name and the music credit when one is set, and none of the Privacy items; `git status --porcelain` lists no MP4, SRT, raw clip or music file; Test (all) passes; after the second STOP the scripts, storyboard and cards are committed (`plan`-style message `task 5.3: ...`), not pushed.
+  - STOP: before the first full render, if no deck/video/music.mp3 exists, ask the user to drop the track there and give its credit line (or "none"); render nothing with music until it is there.
+  - STOP: the user watches deck/video/demo.mp4 and approves it or lists fixes on a card; one round of fixes stays in this task, more becomes a change.

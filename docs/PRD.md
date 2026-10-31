@@ -54,6 +54,12 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
 11. First-visit onboarding (change 2026-10-31): the hosted link is redeployed with frontend 20.1-20.2,
    so a visitor learns on the home page that Build needs the local build agent and can set it up
    there before the first build; README's hosted section says so (4.8).
+12. Demo video (change 2026-10-31 demo video): a ~4-minute screen-capture demo for the judges,
+   on-screen captions and callouts over the user's background music, no voiceover: a fresh live
+   run on samples/ecommerce_sales.csv through to the real Data Studio report, brief mentions of
+   the other sources, prototype edits, the feasibility refusal, traces and token costs, the
+   screenshot recreation and the architecture (docs/demo-video.md). The MP4 is a local,
+   git-ignored file the user uploads; scripts and storyboard are committed (5.1-5.3).
 
 ## Non-goals
 - No code in the parts: the release never edits engine/, backend/ or frontend/ (program rule).
@@ -67,6 +73,9 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
 - No separate architecture document: features and the simplified architecture live in README.md.
 - No GCS or BigQuery sources on the open link, no uploads over 32 MB, no automatic closing of the
   link (change 2026-10-29 local agent per judge; the parts' PRD Later lists hold the first two).
+- Demo video (change 2026-10-31): no voiceover or TTS, no hosted URL on screen, no committed MP4,
+  no upload to YouTube or the submission by a builder, no music download by a builder (the user
+  supplies the track), no push in Phase 5 unless the user asks.
 
 ## Core flows
 1. User runs `./start.sh` -> backend on 8000, frontend on 5173 -> opens http://localhost:5173.
@@ -123,6 +132,10 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
   BigQuery = `bigquery-public-data.thelook_ecommerce.order_items` (US, same location as the
   default `BQ_LOCATION`), or a table the user names; GCS = samples/ecommerce_sales.csv copied to
   `gs://$GCS_BUCKET/samples/`. Fixed inputs keep the rows repeatable.
+
+- Demo video defaults (change 2026-10-31): captions <= 2 lines x 42 chars at >= 0.33 s per word;
+  1920x1080 30 fps H.264 + AAC, burned-in captions plus an SRT; music about -16 LUFS; the
+  screenshot segment reuses an existing finished build so it costs no model calls.
 
 ## Open questions
 - none

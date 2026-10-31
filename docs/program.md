@@ -25,7 +25,7 @@ Written 2026-10-18.
 | engine | engine/ | `dsengine` CLI: runs a recipe in Data Studio through Playwright on a signed-in Chrome profile; streams one event per op | POC | contracts/recipe.md (events half) | contracts/recipe.md, contracts/conventions.md |
 | backend | backend/ | the harness: ADK 2.0 graph, three memory types, Gemini calls, data intake to BigQuery, spec, HTML renderer, recipe compiler, REST + SSE API; cloud mode (static frontend, access code, DB backup) and the build agent (`dss-agent`) | POC | contracts/api.md, contracts/recipe.md (recipe half) | contracts/conventions.md, contracts/recipe.md (events half) |
 | frontend | frontend/ | the web app: history, workspace with stage stepper, chat, click-to-comment prototype, build view, settings, trace tab; access-code gate and the hosted build's job command and states | POC | - | contracts/api.md, contracts/dashboard-intent.md, contracts/synthetic-data.md, contracts/conventions.md |
-| release | . | end-to-end flow checks (local and deployed), start scripts, Dockerfile and Cloud Run deploy script, the agent setup scripts (`agent-setup/`), README, `.env.example`, LICENSE, the AI Builder Cup submission deck (pptx + pdf, HTML-rendered diagrams) | POC | - | every contract |
+| release | . | end-to-end flow checks (local and deployed), start scripts, Dockerfile and Cloud Run deploy script, the agent setup scripts (`agent-setup/`), README, `.env.example`, LICENSE, the AI Builder Cup submission deck (pptx + pdf, HTML-rendered diagrams), the demo video (deck/video, MP4 git-ignored) | POC | - | every contract |
 
 ## Goals and non-goals
 - Target: POC (hackathon prototype). No auth, no scaling; tests on the core flows and the contracts only.
@@ -242,6 +242,9 @@ phases" below.
   steps in the setup step and the job panel) in frontend/, mocks only; then release 4.8 `Needs:
   frontend 20.2` (redeploy after a card, hosted screenshots, README line, push after a card). No
   contract, backend or engine change: `POST /api/agent-checks` is not tied to a build.
+- Demo video (change 2026-10-31, user cards): release Phase 5 only, 5.1 storyboard and captions
+  (STOP: the user edits the text) -> 5.2 live local recording on the sample CSV -> 5.3 assembly
+  with the user's music (STOP: the user watches it); docs/demo-video.md. No part or contract change.
 
 ## Integration checks
 - `uv run --project integration python integration/check_contracts.py`: the recipe and event
@@ -365,3 +368,4 @@ phases" below.
 | 2026-10-31 | Linking URL uses the `ds0` alias only with a template report; without `DSS_TEMPLATE_REPORT_ID`, un-aliased `ds.*` for every connector (recipe.md 1.5, engine 15.1; release 4.6 waits on it and pushes main first) | give visitor agents a public template report id; alias only for GCS | the default report rejects `ds.ds0` (engine 1.2 spike) and accepts `ds.*` (user, second account, 2026-10-31); a shared template is one more public object to keep alive; one rule covers both connectors | change 2026-10-31 (release 4.5) |
 | 2026-10-31 | Share CSV: a numeric column's NULL becomes `0` when the recipe uses it only as `sum` (or sorts on it); other NULLs stay empty (api.md 3.5, backend 30.1; release 4.6 reruns after a redeploy) | NULL as 0 for every numeric column; recipe 1.6 field types and the engine setting a chart's field type to Number; accept as known limit W8 | exact for sum (the only use of the H1 field), backend owns the data shape, no new Data Studio UI; 0 under avg/count/min would change results; the engine path is unproven for metrics (user card) | change 2026-10-31 (release 4.6, H1) |
 | 2026-10-31 | First-visit onboarding on the hosted link: a dismissible "How it works" panel on History (agent mode only, one localStorage boolean) whose "Set up this computer" opens the existing check-code setup step in a modal; how-to steps added to the setup step and the job panel (frontend 20.1-20.2, release 4.8 redeploys); no contract change | first-visit modal; always-on panel; also a link in New build; both modes; owner redeploys by hand | a visitor must learn about the agent before Build; the check endpoint is build-independent, so no backend task; agent mode only keeps local-mode tests unchanged; a release task makes the change reach visitors (user cards) | change 2026-10-31 (first-visit onboarding) |
+| 2026-10-31 | Demo video: ~4 min captioned screen capture with the user's music, no voiceover; fresh local live run on the sample CSV; MP4 local and git-ignored (release 5.1-5.3, docs/demo-video.md) | voiceover (user's or TTS); screenshots only; hosted run; committed MP4 | user: text carries more than a voice, footage of the real build is the proof | change 2026-10-31 demo video (user cards) |
