@@ -848,3 +848,17 @@ context. Task status lives in docs/plan.md, not here.
 - Gotchas: none
 - Left open: P3 cues "I fix one KPI card" and "Each step turns green" play over the next shot - storyboard.json (retime in 5.2); P3 mask check tests presence, not time coverage or the segment 11 code - check_storyboard.py; P3 10 s boundary drift not enforced - check_storyboard.py; P3 music_credit/clip keys unchecked, non-KeyError errors print type only - check_storyboard.py; P3 cue 8 names BigQuery/GCS sources the hosted link locks (user-approved text) - storyboard.json.
 - Next: Task 5.2. Start by reading docs/demo-video.md#Recording and the storyboard's shots; record the 10 s legibility test clip first.
+
+## 2026-10-31: Task 5.2 Record the live run and the history walk
+- Status: blocked
+- Plan check: off
+- What changed: nothing committed. integration/video/record_app.py (stages connect..report, SSE waits, drawn cursor, shot logs with project-ID boxes for masks, gdigrab of the engine window, CDP report tours and pans, storyboard fill), playwright>=1.48 in integration/pyproject.toml + uv.lock and 3 filled shots set aside in `git stash` "blueprint: task 5.2 failed attempt 2026-10-31 19:35". Raw (git-ignored, kept): deck/video/raw/test-clip.webm/.png, history.webm, history-report.mp4, montage.mp4 (+ .log.json).
+- Checks: test clip PASS (1920x1080 VP9, UI text legible at 1080p, so no gdigrab for the app); `record_app.py --shots history --build b_1fece69f4132` ran: history.webm, 3-page tour, history-report.mp4 12.0 s, montage.mp4 7.5 s. Live run not started; Test (all) not run.
+- Decisions: History build b_1fece69f4132 ("E2E synthetic: screenshot only", recreate, ok 36/failed 0), user card: the newest one b_236ae4aa34ee ended partial (16 failed). Blueprint view line and Connect bq_table show the project ID: masks needed on s4-blueprint too.
+- Tried and failed: none
+- Gotchas: the user found the generated dashboards subpar. Hosted build b_302d91fd3a0f's compiled recipe (%LOCALAPPDATA%\dss-agent\data\agent\b_302d91fd3a0f\v2\recipe.jsonl) has chart titles with the metric formula appended, e.g. `Monthly Order Volume vs. Units Sold | count_distinct(order_id), sum(quantity) [count]` (component_id carries it too), so the backend spec/compiler adds it, not the engine; its "Monthly" time series are drawn at daily grain (no granularity in the add_chart op).
+- Left open: none
+- Blocked because: (b) the user changed the task: the demo's live run should produce a dashboard like the existing report https://datastudio.google.com/u/0/reporting/98e6423a-2872-4fdf-a4f9-9b6c570d95be/page/tEnnC (not from a local or agent build here), after a proper fix of the formula-in-title bug, which lives in backend.
+- Question: Should 5.2's live run recreate report 98e6423a (recreate mode from its screenshot, on samples/ecommerce_sales.csv) after a new backend task that drops the ` | agg(field) [unit]` title suffix (and draws "Monthly" trends at month grain), with 5.2 gated on it?
+- Options: A add the backend fix task (regression check on recipe titles, hosted redeploy if the judge path needs it), then re-plan 5.2's live run as a recreate of 98e6423a and adjust segment 9 and the storyboard / B keep 5.2's fresh build as planned, gated only on the title fix / Recommend: A, it is what the user asked and shows the best-looking report.
+- Next: architect at the program root: plan the backend fix and the 5.2 change; the 5.2 builder then `git stash apply` the attempt above and reruns the history walk only if segment 9 changes.
