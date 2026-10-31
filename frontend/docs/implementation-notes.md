@@ -101,4 +101,28 @@
   `setMockDesignPages(id, fixtures.designPages)` before reading design-pages; in WorkspaceShell
   tests find a stage control before reading `main` (the loading view has its own main), and give
   the file's first findBy a longer timeout than the default 1 s.
+- Test traps (Phases 17-20): under fake timers RTL `findBy*`/`waitFor` hang, so advance with
+  `vi.advanceTimersByTimeAsync`/`runAllTimersAsync`, then assert with `getBy*`; `<App/>` in a
+  MemoryRouter never leaves "Loading dashboards…" under fake timers, so land with real timers
+  (`findBy`), then `vi.useFakeTimers`. No `@types/node`: a test needing `node:fs` imports it by a
+  string variable (`const m = 'node:fs'; await import(/* @vite-ignore */ m)`), cast to the shape it
+  uses, paths relative to frontend/.
+- Mock knobs added in Phases 17-20: `setMockReferences`, `setMockHosting('local'|'open'|'failed')`
+  (`VITE_MOCK_HOSTED=1|failed`), `expireMockJob`/`dropMockJob`, `setMockAgentCheckOutcome`,
+  `VITE_MOCK_GOOGLE=1` (seeds session.google.json).
+- Reference analysis gate (17.2): Workspace owns one `AnalysisGateContext` (reference/gate.tsx);
+  unknown before the first load counts as not pending (the server's 409 backstops). client.ts
+  `withReferenceNotice` catches `409 reference_unapproved` from any call, refetches and focuses
+  the review, like `withReviewNotice`.
+- Hosting (19.2, 20.1): `HostingProvider` in App.tsx loads `GET /api/hosting` once;
+  `useHostingLoad()` is pending|ready|failed, and failed behaves as local mode; agent mode is
+  `(hosting?.mode ?? engine?.mode) === 'agent'`. Hosted error-code prefixes ("agent_timeout: ")
+  are stripped from shown errors.
+- Agent setup UI (19.3, 20.2): one `SetupPanel` serves the Build stage and the landing modal
+  (props `bare`, `startUnfolded`, `onState`, `hint`); build/setupTabs.tsx (ChromeLine,
+  SetupCommandTabs) is shared with JobPanel; build/setupCommand.ts `setupCommands(origin,
+  'job'|'check', code)` is the only command builder. The onboarding seen flag lives in
+  `OnboardingSeenProvider` (per app mount), not module state.
+- GIS (18.1): initialize once per (`google.accounts.id` object, client id) and route the callback
+  to the mounted gate; the credential is held nowhere.
 

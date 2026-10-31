@@ -33,9 +33,9 @@ screenshots/     UI check screenshots, named <task>-<view>-<viewport>.png
 - Artifact editors save per control, serialized; a pending or failed save blocks Confirm.
 
 ## Never do
-- Never call anything but the backend's `/api` (one exception, kept by the user at 1.2: the
-  Google Fonts stylesheet for Inter and Fira Code in src/index.css); never store the API key in
-  localStorage.
+- Never call anything but the backend's `/api` (exceptions kept by the user: the Google Fonts
+  stylesheet in src/index.css, 1.2; the GIS script, on the gate only, 18.1); never store the
+  API key in localStorage.
 - No raw hex/px in components: tokens only.
 - Never edit ../contracts/; a needed change is a blocked task.
 
