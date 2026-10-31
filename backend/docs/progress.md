@@ -2507,3 +2507,10 @@ assert min(timings) < .1
 - Findings to Later (user card): P2 sort-only numeric column keeps NULL empty vs api.md 3.5/architecture.md wording; P3 all-NULL group sums to 0; P3 case-sensitive match / option-string collision (fail safe); P3 e2e test can't tell shipped from stale recipe. PRD Later: "Share CSV NULL leftovers" (audit 2026-10-31).
 - Doc sweep: no new gotchas; 30.1 decisions need no essentials change (the sort-only gap is in Later).
 - POC checklist: unchanged since 2026-10-30 (Commands, core flow, limitations in Later; no backend UI).
+
+## 2026-10-31: Change titles and grain words
+- What changed: architecture.md#Component titles and grain words (new) + decision log; essentials (one line); plan Phase 31, task 31.1 (M). No contract change (recipe already has `options.date_granularity`).
+- Why: release 5.2 blocked: the user found the generated dashboards subpar; hosted build b_302d91fd3a0f's recipe titles end in ` | agg(field) [unit]` (scorecards too, user card) and its "Monthly" trends draw daily points (the compiler sets a grain only for DATE_TRUNC fields and bucket-start DATE columns). Read here: recipe/compiler.py:93 passes `c.label` as the title; the label comes from the blueprint model.
+- Ruling (whole class, user cards): every label write runs one code title rule (the compiler applies it to saved specs as a backstop); one grain word in a trend's label or question sets its grain when the date field has none; root cause of the suffix in the prompt is fixed too.
+- Affected tasks: 31.1 (new); release 4.9 (hosted redeploy) and 5.2 (live recreate of report 98e6423a) `Needs: backend 31.1`.
+- Delta audit: none (target POC).

@@ -245,6 +245,11 @@ phases" below.
 - Demo video (change 2026-10-31, user cards): release Phase 5 only, 5.1 storyboard and captions
   (STOP: the user edits the text) -> 5.2 live local recording on the sample CSV -> 5.3 assembly
   with the user's music (STOP: the user watches it); docs/demo-video.md. No part or contract change.
+- Titles and grain words (change 2026-10-31, user cards, release 5.2 block): backend 31.1 in
+  backend/ (no ` | agg(field) [unit]` in any component title, one grain word sets a trend's grain)
+  -> release 4.9 (hosted redeploy, push after a card) and 5.2 (live run re-planned as a Recreate of
+  the user's report 98e6423a on the sample CSV; STOP: side-by-side with the reference), both
+  `Needs: backend 31.1`. No contract change.
 
 ## Integration checks
 - `uv run --project integration python integration/check_contracts.py`: the recipe and event
@@ -369,3 +374,4 @@ phases" below.
 | 2026-10-31 | Share CSV: a numeric column's NULL becomes `0` when the recipe uses it only as `sum` (or sorts on it); other NULLs stay empty (api.md 3.5, backend 30.1; release 4.6 reruns after a redeploy) | NULL as 0 for every numeric column; recipe 1.6 field types and the engine setting a chart's field type to Number; accept as known limit W8 | exact for sum (the only use of the H1 field), backend owns the data shape, no new Data Studio UI; 0 under avg/count/min would change results; the engine path is unproven for metrics (user card) | change 2026-10-31 (release 4.6, H1) |
 | 2026-10-31 | First-visit onboarding on the hosted link: a dismissible "How it works" panel on History (agent mode only, one localStorage boolean) whose "Set up this computer" opens the existing check-code setup step in a modal; how-to steps added to the setup step and the job panel (frontend 20.1-20.2, release 4.8 redeploys); no contract change | first-visit modal; always-on panel; also a link in New build; both modes; owner redeploys by hand | a visitor must learn about the agent before Build; the check endpoint is build-independent, so no backend task; agent mode only keeps local-mode tests unchanged; a release task makes the change reach visitors (user cards) | change 2026-10-31 (first-visit onboarding) |
 | 2026-10-31 | Demo video: ~4 min captioned screen capture with the user's music, no voiceover; fresh local live run on the sample CSV; MP4 local and git-ignored (release 5.1-5.3, docs/demo-video.md) | voiceover (user's or TTS); screenshots only; hosted run; committed MP4 | user: text carries more than a voice, footage of the real build is the proof | change 2026-10-31 demo video (user cards) |
+| 2026-10-31 | Backend 31.1 cleans every component title (code rule, compiler backstop) and draws one-grain-word trends at that grain; release 4.9 redeploys; demo 5.2 records a live Recreate of the user's report 98e6423a on the sample CSV, segment 9 kept as the screenshot-only (synthetic) walk | prompt fix only; titles only; fresh build without a reference; local only | user found the dashboards subpar; titles and grain are model output, never trusted; judges use the hosted link | change titles and grain words (user cards) |

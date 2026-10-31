@@ -1,4 +1,4 @@
-<!-- essentials-of: docs/architecture.md sha256:268a0d172389 (regenerate this page when architecture.md changes, then run stamp) -->
+<!-- essentials-of: docs/architecture.md sha256:61594b81464d (regenerate this page when architecture.md changes, then run stamp) -->
 # Architecture essentials: backend
 docs/architecture.md wins.
 
@@ -69,6 +69,8 @@ tests/          offline fakes; tests/live/ marked live
   intent. No guessed SQL simplification. Exact missing-KPI feedback uses the
   existing one repair; unresolved KPIs block (#Recreate date binding normalization).
   Item rows sit on page 1 with planner titles (truthful-title rule retired with 26.5; PRD Later).
+  Labels never carry ` | agg(field) [unit]`; one grain word on a trend sets its grain when the
+  date field has none (#Component titles and grain words).
   Reuse effective allowed types only within an operation; the next operation sees current
   env/.env (#Feasibility recomputation performance preservation).
   Final POC speed acceptance: 250 ms warm (user, 2026-10-27), with first/cold timings

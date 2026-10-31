@@ -26,14 +26,14 @@ to 10 s to fit the footage.
 | # | Time | Segment | Footage | Must say or show |
 |---|---|---|---|---|
 | 1 | 0:00-0:20 | Hook | title card over a montage of finished reports (never d1: its "planned" tags are stale) | the pain, the promise |
-| 2 | 0:20-0:40 | Connect | live run: upload samples/ecommerce_sales.csv | callout: also research mode, BigQuery tables, a CSV in GCS, a screenshot |
+| 2 | 0:20-0:40 | Connect | live run: upload samples/ecommerce_sales.csv and the screenshot of a report I like (the reference report, Recording), Recreate | my data plus a dashboard I like; callout: also research mode, BigQuery tables, a CSV in GCS |
 | 3 | 0:40-1:05 | Context and outline | live run: Context (the notes box, then the drafted context with its Audience and KPI cards, one edited), Outline (the picks) | it drafts who the dashboard is for and what it must answer, like an analyst would, and I correct it |
 | 4 | 1:05-1:35 | Design and prototype | live run: Design (the preset), Blueprint (the table), Prototype (the HTML prototype) | a designer's layout before anything is built |
 | 5 | 1:35-1:55 | Edit by comment | live run: click-to-comment on the prototype title with the applied ask, the revised prototype | edit any prototype by clicking it; a built dashboard gets new versions |
 | 6 | 1:55-2:05 | Honest refusal | live run: the refused ask as a separate comment, the feasibility refusal, then Discard | what you approve is what gets built |
 | 7 | 2:05-2:20 | Trace and cost | live run: activity strip with token counts, the Trace modal (graph nodes, calls, tokens) | every step traced back to its graph node, with its token cost |
 | 8 | 2:20-2:45 | Build | live run: Generate recipe, Build in Data Studio, the recipe ops turning ok, the engine's Chrome building the report (gdigrab, sped up, speed labeled), the finished report | a real report, in your own account |
-| 9 | 2:45-3:10 | Screenshot recreation | an existing finished build in History (reference screenshot, generated data, prototype), its report as screenshot pans from the engine's Chrome | recreate or borrow the style of a dashboard from a screenshot; sample data synthesized when there is none |
+| 9 | 2:45-3:10 | Screenshot recreation | an existing finished build in History (reference screenshot, generated data, prototype), its report as screenshot pans from the engine's Chrome | no data at all? a screenshot alone is enough: it recreates or borrows the style, and synthesizes sample data to match |
 | 10 | 3:10-3:45 | Architecture | d5, d4, d8 (deck/img) with callouts | ADK 2.0 graph of LLM and code nodes; harness with three memories (skills, OKF semantic memory instead of RAG, episodic SQLite); Cloud Run plus a build agent on the visitor's machine |
 | 11 | 3:45-4:00 | Judge path and end | docs/img/onboarding-4.8-*.png (check code under an opaque box), then the end card | "Set up this computer" once, then build into your own account; GitHub URL; hosted link in the submission; name; music credit |
 
@@ -86,13 +86,21 @@ contact sheet.
 ## Recording
 
 - Fresh live run on the local app (`./start.sh`, real engine, the engine's Chrome signed in), from
-  a new build on samples/ecommerce_sales.csv; the Build view's live view shows the Data Studio
-  build, so the app recording captures it. It makes one new report in the user's account; more
+  a new recreate build on samples/ecommerce_sales.csv plus the reference report's screenshot
+  (below), with backend 31.1 in (clean titles, grain words). It makes one new report in the user's account; more
   only on a rerun, each listed in the progress entry with its report id.
 - The app is recorded by Playwright with the installed Chrome (`channel="chrome"`, a throwaway
   profile, no browser download; its video needs `uv run --project integration playwright install
   ffmpeg`) at a 1920x1080 viewport with `record_video_size` 1920x1080. A 10 s test clip comes first:
   if the UI text isn't legible at 1080p, record the window with ffmpeg gdigrab instead.
+- Reference report (change 2026-10-31, user cards): the user's existing report
+  https://datastudio.google.com/u/0/reporting/98e6423a-2872-4fdf-a4f9-9b6c570d95be/page/tEnnC is
+  the look the live run aims for. 5.2 screenshots its pages from the engine's Chrome (avatar and
+  header cropped, Privacy) into deck/video/raw/ (git-ignored) and uploads them as the build's
+  reference in Recreate mode; stages are recorded as Recreate mode shows them. What recreate
+  can't build from the CSV is decided in the app with the code-built alternatives (never
+  synthetic data on this build). The finished report is shown to the user next to the reference
+  on a card before the clips count (5.2's STOP).
 - One clip per stage, so a failed step reruns only its stage: `--build <id> --from <stage>`
   resumes an existing build. The recorder logs each shot's start and end in its clip with the API
   event that ends it, so the waits can be cut.

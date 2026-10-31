@@ -56,7 +56,8 @@ pass one end-to-end flow, and ship as a clean GitHub repo with a deck that expla
    there before the first build; README's hosted section says so (4.8).
 12. Demo video (change 2026-10-31 demo video): a ~4-minute screen-capture demo for the judges,
    on-screen captions and callouts over the user's background music, no voiceover: a fresh live
-   run on samples/ecommerce_sales.csv through to the real Data Studio report, brief mentions of
+   recreate run (samples/ecommerce_sales.csv plus a screenshot of the user's report 98e6423a,
+   change 2026-10-31 titles and grain words) through to the real Data Studio report, brief mentions of
    the other sources, prototype edits, the feasibility refusal, traces and token costs, the
    screenshot recreation and the architecture (docs/demo-video.md). The MP4 is a local,
    git-ignored file the user uploads; scripts and storyboard are committed (5.1-5.3).

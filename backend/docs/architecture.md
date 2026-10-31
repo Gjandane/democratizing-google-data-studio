@@ -2092,6 +2092,46 @@ Final-audit corrections (2026-10-19):
   model-produced recipes against the shared schema, then execute them with the real engine's
   dry-run; fixture-only golden validation is insufficient release evidence.
 
+### Component titles and grain words
+Change 2026-10-31 (release 5.2 block, user cards): hosted build b_302d91fd3a0f's compiled recipe
+carried chart and scorecard titles like `Total Revenue (USD) | sum(revenue) [USD]` and
+`Monthly Order Volume vs. Units Sold | count_distinct(order_id), sum(quantity) [count]`
+(`component_id` too), and its two "Monthly" time series drew one point per day (no
+`options.date_granularity`: `order_date` is a daily DATE and no DATE_TRUNC field was derived).
+- Problem: every component label (scorecards, charts, tables, controls; every mode, recreate
+  included) is a human title, and a trend whose words name a grain is drawn at that grain, in the
+  prototype and in the report alike.
+- Titles, rule: a label never carries a formula suffix: a ` | ` segment holding an aggregation
+  call (`sum(`, `avg(`, `count(`, `count_distinct(`, `min(`, `max(`, `none(`, any case) or a
+  bracketed unit (`[USD]`, `[orders]`) is removed with everything after it, and a bracketed unit
+  elsewhere in the label likewise; a label that is only a formula becomes the metric field's
+  humanized name (`sum(revenue)` -> `Revenue`, two metrics joined by " and "). Other text stays
+  byte for byte (`Revenue | Q3`, `Avg Unit Price`, `Total Revenue (USD)`). Model output is never
+  trusted: code applies the rule wherever a blueprint row's label is written (draft, row repair,
+  redraft, revise), so the Blueprint table, the prototype, the spec, the component ids and the
+  recipe all show the clean title; the compiler applies the same function to saved specs (a spec
+  without a suffix compiles byte-identically). The builder finds why the model writes the suffix
+  (a prompt or OKF table showing `agg(field) [unit]`) and fixes that too; the code rule stays.
+- Grain words, rule: a `time_series` or `area` whose label or selected question says exactly one
+  grain (`daily`/`per day`/`by day` -> day, `weekly`/`per week`/`by week` -> week,
+  `monthly`/`per month`/`by month`/`month over month` -> month, `quarterly`/`per quarter`/`by
+  quarter` -> quarter, `yearly`/`annual`/`per year`/`by year`/`year over year` -> year; whole
+  words, any case) gets that grain as `options.date_granularity` when its date dimension has no
+  grain from #Recipe compiler's Date buckets rules; a bucket field or bucket-start column keeps
+  its own grain (never finer, never overridden); two different grain words -> none. Code-owned
+  and recorded in the spec per component (two charts on one date field may differ); the
+  prototype buckets its rows by the same grain, so prototype and report draw the same points.
+- Edge cases: a recreate observation's own title passes through the title rule too; a label
+  emptied by the rule falls back to the metric name rule; `per day` in "Revenue per day of
+  week" names a grain only when the date dimension is a date (a weekday text field gets none);
+  older saved specs with no grain words compile byte-identically.
+- Oracle: tests (FakeLLM) where the blueprint returns the b_302d91fd3a0f labels: the Blueprint
+  rows, prototype HTML, spec and recipe titles equal the clean titles, component ids carry no
+  `(`/`[`; the two "Monthly" time series on daily `order_date` compile with
+  `options.date_granularity: "month"` and the prototype's SQL groups by month; a DATE_TRUNC
+  week field under a "Monthly" label keeps week; "Weekly and monthly" -> none; golden recipes
+  unchanged; every recipe validates against ../contracts/recipe.schema.json.
+
 ## External APIs and services
 | Service | Used for | Auth | Limits and failure handling |
 |---|---|---|---|
@@ -2297,3 +2337,4 @@ Live tests marked `live` (excluded by default). Test (all) = `uv run pytest`.
 | 2026-10-29 | Local agent per judge (../contracts/api.md 3.4, conventions 1.7, recipe 1.4): one-shot job tickets with a one-time code and a per-job token replace the polling agent, heartbeat, shared agent token and global agent-mode lock; tickets in SQLite (survive scale to zero via the backup); share data as one stdlib-csv file on the mounted share bucket with a GCS recipe header; GCS/BigQuery sources locked when public | pairing per browser with a polling agent; EXPORT DATA to GCS (sharded, FOLDER mode); google-cloud-storage client; tickets in memory | user cards 2026-10-29; no new dependency; one file per run is what the Linking API FILE path needs | change 2026-10-29 local agent per judge |
 | 2026-10-29 | Open hosted link: `DSS_PUBLIC=1` (Cloud Run only) is the one opt-in past the fail-closed start; it needs the code and the Google client id empty, so the open service runs the existing no-gate path; agent token rule unchanged | drop the fail-closed rule; a public flag that keeps a code or client id; Google sign-in through an OAuth-only project | user: anyone with the link gets in (the project's OAuth branding is locked to one domain); an explicit flag keeps a missing secret from opening the service by accident | change 2026-10-29 open hosted link (user cards; conventions 1.6) |
 | 2026-10-31 | Share CSV writes a numeric column's NULL as `0` when the compiled recipe uses it only as `sum` metrics or a sort (api.md 3.5, task 30.1) | NULL as 0 for every numeric column; the engine sets field types from the recipe (recipe 1.6); accept as a known limit | exact for sum, the only use of the H1 field; 0 under avg/count/min would change results; no new Data Studio UI | change 2026-10-31 share CSV numeric NULLs (release 4.6 H1, user card) |
+| 2026-10-31 | Component titles never carry a formula suffix (`<title> \| agg(field) [unit]`; code rule on every label write, compiler backstop), and a trend whose label or question names one grain gets it as `date_granularity` when its date field has none (task 31.1) | prompt fix only; strip in the compiler only (prototype keeps the suffix); grain only from DATE_TRUNC fields | model output is never trusted for titles or grain; the prototype and report must match; user found the dashboards subpar (release 5.2 block) | change 2026-10-31 titles and grain words (user cards) |
